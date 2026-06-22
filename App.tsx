@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, StyleSheet } from 'react-native';
 
 import DomusScreen from './src/screens/DomusScreen';
@@ -30,48 +30,56 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   );
 }
 
+function AppNavigator() {
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = 52 + insets.bottom;
+
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarIcon: ({ focused }) => (
+          <TabIcon label={route.name} focused={focused} />
+        ),
+        tabBarLabel: ({ focused }) => (
+          <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>
+            {route.name.toUpperCase()}
+          </Text>
+        ),
+        tabBarStyle: {
+          backgroundColor: COLORS.panelSurface,
+          borderTopColor: COLORS.border,
+          borderTopWidth: 1,
+          height: tabBarHeight,
+          paddingBottom: insets.bottom + 4,
+          paddingTop: 4,
+        },
+        tabBarActiveTintColor: COLORS.gold,
+        tabBarInactiveTintColor: COLORS.dust,
+      })}
+    >
+      <Tab.Screen name="Domus" component={DomusScreen} />
+      <Tab.Screen name="Forum" component={ForumScreen} />
+      <Tab.Screen name="Cursus" component={CursusScreen} />
+      <Tab.Screen name="Provinciae" component={ProvinciaeScreen} />
+      <Tab.Screen name="Curia" component={CuriaScreen} />
+    </Tab.Navigator>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
       <NavigationContainer>
         <StatusBar style="light" backgroundColor={COLORS.bg} />
         <ResourceBar />
-        <Tab.Navigator
-          screenOptions={({ route }) => ({
-            headerShown: false,
-            tabBarIcon: ({ focused }) => (
-              <TabIcon label={route.name} focused={focused} />
-            ),
-            tabBarLabel: ({ focused }) => (
-              <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>
-                {route.name.toUpperCase()}
-              </Text>
-            ),
-            tabBarStyle: styles.tabBar,
-            tabBarActiveTintColor: COLORS.gold,
-            tabBarInactiveTintColor: COLORS.dust,
-          })}
-        >
-          <Tab.Screen name="Domus" component={DomusScreen} />
-          <Tab.Screen name="Forum" component={ForumScreen} />
-          <Tab.Screen name="Cursus" component={CursusScreen} />
-          <Tab.Screen name="Provinciae" component={ProvinciaeScreen} />
-          <Tab.Screen name="Curia" component={CuriaScreen} />
-        </Tab.Navigator>
+        <AppNavigator />
       </NavigationContainer>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  tabBar: {
-    backgroundColor: COLORS.panelSurface,
-    borderTopColor: COLORS.border,
-    borderTopWidth: 1,
-    height: 60,
-    paddingBottom: 6,
-    paddingTop: 4,
-  },
   tabIcon: {
     fontSize: 20,
     opacity: 0.5,
