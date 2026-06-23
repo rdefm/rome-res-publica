@@ -3,6 +3,7 @@ import type { Client, ClientType } from '../models/client';
 import type { EventInstance } from '../models/event';
 import { parseEffect } from '../models/bill';
 import { generateClientName } from '../data/clientNames';
+import { computeTotalAssetBonuses } from './assetEngine';
 
 // ─── Options for applyEffectString ──────────────────────────────────────────
 
@@ -19,6 +20,7 @@ export function calcResourceIncome(state: GameState): {
   gravitasIncome: number;
   dignitasIncome: number;
   gratiaIncome: number;
+  denariiIncome: number;
 } {
   const player = state.family.find((c) => c.isPlayer);
   const rhetoric = player?.skills.rhetoric ?? 0;
@@ -39,7 +41,21 @@ export function calcResourceIncome(state: GameState): {
   const gratiaClientBonus = Math.floor(gratia_income_base * publicSupportCount * 0.05);
   const gratiaIncome = gratia_income_base + gratiaClientBonus;
 
-  return { gravitasIncome, dignitasIncome, gratiaIncome };
+  // Asset passive bonuses — denarii income flows from assets only
+  const assetBonuses = computeTotalAssetBonuses(state.ownedAssets);
+  const denariiIncome = assetBonuses.gold ?? 0;
+
+  // Asset bonuses also augment other resources passively each season
+  const gravitasAssetBonus = assetBonuses.gravitas ?? 0;
+  const dignitasAssetBonus = assetBonuses.dignitas ?? 0;
+  const gratiaAssetBonus = assetBonuses.gratia ?? 0;
+
+  return {
+    gravitasIncome: gravitasIncome + gravitasAssetBonus,
+    dignitasIncome: dignitasIncome + dignitasAssetBonus,
+    gratiaIncome: gratiaIncome + gratiaAssetBonus,
+    denariiIncome,
+  };
 }
 
 /**

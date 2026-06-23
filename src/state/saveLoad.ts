@@ -27,6 +27,12 @@ const SaveSchema = z.object({
     type: z.enum(['muscle', 'publicSupport', 'votingSway']),
     acquiredTurn: z.number(),
   })).default([]),
+  ownedAssets: z.array(z.object({
+    definitionId: z.string(),
+    currentTier: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    assignedCharacterId: z.string().optional(),
+    turnAcquired: z.number(),
+  })).default([]),
 });
 
 export interface SaveProvider {

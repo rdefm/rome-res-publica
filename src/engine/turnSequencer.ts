@@ -130,15 +130,16 @@ export function processSeason(state: GameState): {
   s = { ...s, rome: { ...s.rome, ...romeUpdate } };
 
   // 7. Resource income
-  const { gravitasIncome, dignitasIncome, gratiaIncome } = calcResourceIncome(s);
+  const { gravitasIncome, dignitasIncome, gratiaIncome, denariiIncome } = calcResourceIncome(s);
   s = {
     ...s,
     gravitas: s.gravitas + gravitasIncome,
     dignitas: s.dignitas + dignitasIncome,
     gratia: s.gratia + gratiaIncome,
+    denarii: s.denarii + denariiIncome,
   };
   events.push(
-    `Income: +${gravitasIncome} Gravitas, +${dignitasIncome} Dignitas, +${gratiaIncome} Gratia`
+    `Income: +${gravitasIncome} Gravitas, +${dignitasIncome} Dignitas, +${gratiaIncome} Gratia${denariiIncome > 0 ? `, +${denariiIncome} Denarii` : ''}`
   );
 
   // 8. Faction drift
