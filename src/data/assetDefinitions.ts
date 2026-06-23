@@ -1,0 +1,78 @@
+import type { AssetDefinition } from '../models/asset';
+
+export const ASSET_DEFINITIONS: AssetDefinition[] = [
+  {
+    id: 'vineyard',
+    name: 'Vineyard',
+    category: 'economic',
+    flavourText: 'Fertile slopes outside the city yield fine wine and finer coin.',
+    tiers: [
+      { tier: 1, label: 'Small Vineyard',   goldCost: 80,  upgradeCost: 0,
+        passiveBonus: { gold: 5 } },
+      { tier: 2, label: 'Estate Vineyard',  goldCost: 0,   upgradeCost: 120,
+        passiveBonus: { gold: 12, dignitas: 1 } },
+      { tier: 3, label: 'Grand Vineyard',   goldCost: 0,   upgradeCost: 200,
+        passiveBonus: { gold: 22, dignitas: 2 }, unlockedActions: ['host_banquet'] },
+    ],
+  },
+  {
+    id: 'gladiator_school',
+    name: 'Gladiator School',
+    category: 'military',
+    flavourText: 'A ludus of hardened fighters — useful for spectacle, and for sending messages.',
+    tiers: [
+      { tier: 1, label: 'Small Ludus',       goldCost: 100, upgradeCost: 0,
+        passiveBonus: { clientSlots: 1, martialBonus: 2 } },
+      { tier: 2, label: 'Established Ludus', goldCost: 0,   upgradeCost: 150,
+        passiveBonus: { clientSlots: 2, martialBonus: 4, gratia: 2 } },
+      { tier: 3, label: 'Grand Ludus',       goldCost: 0,   upgradeCost: 250,
+        passiveBonus: { clientSlots: 3, martialBonus: 6, gratia: 4 },
+        unlockedActions: ['intimidate_witness'] },
+    ],
+  },
+  {
+    id: 'library',
+    name: 'Library',
+    category: 'cultural',
+    flavourText: 'Scrolls of philosophy, rhetoric, and law. Knowledge is its own form of power.',
+    tiers: [
+      { tier: 1, label: 'Private Library',  goldCost: 60,  upgradeCost: 0,
+        passiveBonus: { rhetoricalBonus: 3, dignitas: 1 } },
+      { tier: 2, label: 'Scholarly Library', goldCost: 0,  upgradeCost: 100,
+        passiveBonus: { rhetoricalBonus: 6, dignitas: 2, gravitas: 1 } },
+      { tier: 3, label: 'Renowned Library', goldCost: 0,   upgradeCost: 180,
+        passiveBonus: { rhetoricalBonus: 10, dignitas: 4, gravitas: 3 },
+        unlockedActions: ['draft_legislation'] },
+    ],
+  },
+  {
+    id: 'baths',
+    name: 'Public Baths',
+    category: 'political',
+    flavourText: 'Coin spent on the people returns as goodwill — and votes.',
+    tiers: [
+      { tier: 1, label: 'Modest Baths',   goldCost: 90,  upgradeCost: 0,
+        passiveBonus: { gratia: 3 } },
+      { tier: 2, label: 'Popular Baths',  goldCost: 0,   upgradeCost: 140,
+        passiveBonus: { gratia: 7, intrigusBonus: 2 } },
+      { tier: 3, label: 'Grand Thermae',  goldCost: 0,   upgradeCost: 220,
+        passiveBonus: { gratia: 12, intrigusBonus: 4 },
+        unlockedActions: ['host_rival_leader'] },
+    ],
+  },
+  {
+    id: 'urban_insulae',
+    name: 'Insulae (Tenements)',
+    category: 'economic',
+    flavourText: "Rome's poor must live somewhere. Their rent fills your coffers.",
+    tiers: [
+      { tier: 1, label: 'Modest Block',       goldCost: 70,  upgradeCost: 0,
+        passiveBonus: { gold: 8 } },
+      { tier: 2, label: 'Prosperous Block',   goldCost: 0,   upgradeCost: 110,
+        passiveBonus: { gold: 18, corruptionShield: 5 } },
+      { tier: 3, label: 'Extensive Holdings', goldCost: 0,   upgradeCost: 190,
+        passiveBonus: { gold: 32, corruptionShield: 10 },
+        unlockedActions: ['sway_urban_mob'] },
+    ],
+  },
+];

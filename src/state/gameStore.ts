@@ -5,6 +5,11 @@ import type { Clan } from '../models/clan';
 import type { OfficeId, ElectionRival } from '../models/office';
 import type { Client } from '../models/client';
 import type { EventInstance } from '../models/event';
+import type { OwnedAsset } from '../models/asset';
+import type { ActiveAmbition } from '../models/ambition';
+import type { LegacyObjective } from '../models/legacyObjective';
+import type { PatronTier } from '../models/patronLadder';
+import type { Trial } from '../models/trial';
 import { STARTING_FAMILY } from '../data/startingFamily';
 import { STARTING_CLANS } from '../data/startingClans';
 import { STARTING_BILLS } from '../data/billTemplates';
@@ -28,6 +33,7 @@ export interface GameState {
   dignitas: number;
   gratia: number;
   denarii: number;
+  imperium: number;
 
   // Laudatio
   laudatioActive: boolean;
@@ -71,6 +77,21 @@ export interface GameState {
 
   // Clientela Network
   clients: Client[];
+
+  // Assets (Feature 1)
+  ownedAssets: OwnedAsset[];
+
+  // Ambitions (Feature 3)
+  ambitions: ActiveAmbition[];
+
+  // Legacy Objectives (Feature 4)
+  legacyObjectives: LegacyObjective[];
+
+  // Patron Ladder (Feature 7)
+  patronTier: PatronTier;
+
+  // Trials (Feature 6)
+  trialQueue: Trial[];
 
   // Event queue
   pendingEvents: EventInstance[];
@@ -126,6 +147,10 @@ export interface GameActions {
   addClient: (client: Client) => void;
   removeClient: (clientId: string) => void;
 
+  // Assets (Feature 1)
+  purchaseAsset: (definitionId: string) => void;
+  upgradeAsset: (definitionId: string) => void;
+
   // Events
   resolveEvent: (choiceId: string, previewClientName?: string) => void;
   dismissEvent: () => void;
@@ -140,7 +165,7 @@ function mkLog(turn: string, text: string, type: LogEntry['type'] = 'neutral'): 
   return { id: `log-${_logId++}`, turn, text, type };
 }
 
-const INITIAL_STATE: GameState = {
+export const INITIAL_STATE: GameState = {
   year: -264,
   turnNumber: 1,
   seasonIndex: 0,
@@ -149,6 +174,7 @@ const INITIAL_STATE: GameState = {
   dignitas: 20,
   gratia: 30,
   denarii: 200,
+  imperium: 0,
 
   laudatioActive: false,
   laudatioBonus: 0,
@@ -180,6 +206,12 @@ const INITIAL_STATE: GameState = {
 
   clients: [],
 
+  ownedAssets: [],
+  ambitions: [],
+  legacyObjectives: [],
+  patronTier: 0,
+  trialQueue: [],
+
   pendingEvents: [],
   activeEvent: null,
 
@@ -206,8 +238,6 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const { nextState, events } = processSeason(state);
     const newLog = [...state.log, mkLog(turnLabel(state), 'Season ended.', 'neutral')];
 
-    // After season processing, surface the first pending event if one exists
-    // and none is already active.
     const firstPending = nextState.pendingEvents[0] ?? null;
     const remainingPending = firstPending
       ? nextState.pendingEvents.slice(1)
@@ -286,6 +316,9 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       ambition: { type: 'personal_power', priority: 0.6 },
       relationship: 50,
       familyTrust: 60,
+      inheritedTraits: [],
+      ambitionIds: [],
+      reputationScores: {},
     };
     const newFamily = [
       ...state.family.map((c) =>
@@ -355,7 +388,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     if (s.gravitas < 6) return;
     const player = s.family.find((c) => c.isPlayer);
     const rhetoric = player?.skills.rhetoric ?? 0;
-    const noise = Math.random() * 6 - 2; // -2 to +4
+    const noise = Math.random() * 6 - 2;
     const base = 4 + Math.floor(rhetoric * 0.8) + noise;
     const delta = direction === 'for' ? base : -base;
     set({
@@ -588,7 +621,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const action = office?.inOfficeActions?.find((a: any) => a.id === actionId);
     if (!action) return;
 
-    if (action.resource && s[action.resource] < action.costVal) return;
+    const resourceKey = action.resource as keyof GameState | undefined;
+    if (resourceKey && (s[resourceKey] as number) < action.costVal) return;
 
     const patch = action.effect(s);
     const { logMsg, ...statePatch } = patch;
@@ -596,7 +630,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
     set({
       ...statePatch,
-      ...(action.resource ? { [action.resource]: s[action.resource] - action.costVal } : {}),
+      ...(resourceKey ? { [resourceKey]: (s[resourceKey] as number) - action.costVal } : {}),
       log: [...s.log, mkLog(label, logMsg, 'neutral')],
     });
   },
@@ -608,6 +642,63 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   removeClient: (clientId) => set((s) => ({
     clients: s.clients.filter(c => c.id !== clientId),
   })),
+
+  // ─── Assets ─────────────────────────────────────────────────────────────────
+
+  purchaseAsset: (definitionId) => {
+    const s = get();
+    const { purchaseCost, getDefinition } = require('../engine/assetEngine');
+
+    if (s.ownedAssets.some(a => a.definitionId === definitionId)) return;
+
+    const def = getDefinition(definitionId);
+    if (!def) return;
+
+    const cost = purchaseCost(definitionId);
+    if (s.denarii < cost) return;
+
+    const newAsset: OwnedAsset = {
+      definitionId,
+      currentTier: 1,
+      turnAcquired: s.turnNumber,
+    };
+
+    const label = turnLabel(s);
+    set({
+      denarii: s.denarii - cost,
+      ownedAssets: [...s.ownedAssets, newAsset],
+      log: [...s.log, mkLog(label, `${def.name} acquired. (${def.tiers[0].label})`, 'good')],
+    });
+  },
+
+  upgradeAsset: (definitionId) => {
+    const s = get();
+    const { upgradeCost, getDefinition } = require('../engine/assetEngine');
+
+    const owned = s.ownedAssets.find(a => a.definitionId === definitionId);
+    if (!owned) return;
+    if (owned.currentTier === 3) return;
+
+    const def = getDefinition(definitionId);
+    if (!def) return;
+
+    const cost = upgradeCost(owned);
+    if (cost === null || s.denarii < cost) return;
+
+    const newTier = (owned.currentTier + 1) as 2 | 3;
+    const tierLabel = def.tiers[newTier - 1].label;
+
+    const label = turnLabel(s);
+    set({
+      denarii: s.denarii - cost,
+      ownedAssets: s.ownedAssets.map(a =>
+        a.definitionId === definitionId
+          ? { ...a, currentTier: newTier }
+          : a
+      ),
+      log: [...s.log, mkLog(label, `${def.name} upgraded to ${tierLabel}.`, 'good')],
+    });
+  },
 
   // ─── Events ─────────────────────────────────────────────────────────────────
 
@@ -630,44 +721,28 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       return;
     }
 
-    // Resolve skill check
     let succeeded = true;
     if (choice.skillCheck) {
       const player = s.family.find((c) => c.isPlayer);
-      const skillVal = player?.skills[choice.skillCheck.skill] ?? 0;
+      const skillVal = player?.skills[choice.skillCheck.skill as keyof typeof player.skills] ?? 0;
       succeeded = skillVal >= choice.skillCheck.difficulty;
     }
 
     const effectStr = succeeded ? choice.successEffect : choice.failureEffect;
 
-    // Apply effect string — returns a partial state patch plus optional side-effect keys
     const patch = effectStr
-      ? applyEffectString(effectStr, s, {
-          previewClientName,
-          instance: s.activeEvent,
-        })
+      ? applyEffectString(effectStr, s, { previewClientName, instance: s.activeEvent })
       : {};
 
-    // Extract client side-effect keys before spreading patch
     const { _addClient, _removeClient, ...statePatch } = patch as any;
 
-    // Surface next pending event (if any)
     const nextEvent = s.pendingEvents[0] ?? null;
     const remainingPending = s.pendingEvents.slice(1);
 
-    set({
-      ...statePatch,
-      activeEvent: nextEvent,
-      pendingEvents: remainingPending,
-    });
+    set({ ...statePatch, activeEvent: nextEvent, pendingEvents: remainingPending });
 
-    // Dispatch client side effects after the main set()
-    if (_addClient) {
-      get().addClient(_addClient);
-    }
-    if (_removeClient) {
-      get().removeClient(_removeClient);
-    }
+    if (_addClient) get().addClient(_addClient);
+    if (_removeClient) get().removeClient(_removeClient);
   },
 
   dismissEvent: () => {

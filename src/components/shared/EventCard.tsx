@@ -96,12 +96,6 @@ export default function EventCard({ def, instance, onChoiceMade }: EventCardProp
 
 // ─── Choice button ────────────────────────────────────────────────────────────
 
-interface ChoiceButtonProps {
-  choice: EventChoice;
-  clients: ReturnType<typeof useGameStore extends (s: infer S) => S['clients'] ? never : any>;
-  onPress: () => void;
-}
-
 function ChoiceButton({
   choice,
   clients,

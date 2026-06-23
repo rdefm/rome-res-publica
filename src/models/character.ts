@@ -24,4 +24,9 @@ export interface Character {
   ambition: AmbitionGoal | null;
   relationship: number;  // -100 to 100 (to player)
   familyTrust: number;   // 0–100
+
+  // Added for multi-feature systems (spec Section 0.2)
+  inheritedTraits: string[];                    // trait IDs from parents (Feature 5)
+  ambitionIds: string[];                        // active ambition IDs (Feature 3)
+  reputationScores: Record<string, number>;     // clanId → -100 to 100 (Feature 2)
 }

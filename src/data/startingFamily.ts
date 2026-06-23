@@ -12,6 +12,9 @@ export const STARTING_FAMILY: Character[] = [
     ambition: { type: 'gain_dignitas', priority: 0.7 },
     relationship: 100,
     familyTrust: 100,
+    inheritedTraits: [],
+    ambitionIds: [],
+    reputationScores: {},
   },
   {
     id: 'npc-wife',
@@ -24,6 +27,9 @@ export const STARTING_FAMILY: Character[] = [
     ambition: { type: 'protect_family', priority: 0.8 },
     relationship: 80,
     familyTrust: 100,
+    inheritedTraits: [],
+    ambitionIds: [],
+    reputationScores: {},
   },
   {
     id: 'npc-son',
@@ -36,6 +42,9 @@ export const STARTING_FAMILY: Character[] = [
     ambition: { type: 'personal_power', priority: 0.5 },
     relationship: 70,
     familyTrust: 90,
+    inheritedTraits: [],
+    ambitionIds: [],
+    reputationScores: {},
   },
   {
     id: 'npc-daughter',
@@ -48,5 +57,8 @@ export const STARTING_FAMILY: Character[] = [
     ambition: null,
     relationship: 75,
     familyTrust: 90,
+    inheritedTraits: [],
+    ambitionIds: [],
+    reputationScores: {},
   },
 ];

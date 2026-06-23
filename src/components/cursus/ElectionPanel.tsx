@@ -132,7 +132,6 @@ export default function ElectionPanel() {
                 activeOpacity={0.75}
               >
                 <Text style={styles.officeBtnName}>{office.name}</Text>
-                <Text style={styles.officeBtnDesc}>{office.description ?? ''}</Text>
               </TouchableOpacity>
             ))}
           </View>
