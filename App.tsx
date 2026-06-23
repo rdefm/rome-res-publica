@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, StyleSheet } from 'react-native';
+import { Text, StyleSheet, View } from 'react-native';
 
 import DomusScreen from './src/screens/DomusScreen';
 import ForumScreen from './src/screens/ForumScreen';
@@ -11,6 +11,7 @@ import CursusScreen from './src/screens/CursusScreen';
 import CuriaScreen from './src/screens/CuriaScreen';
 import ProvinciaeScreen from './src/screens/ProvinciaeScreen';
 import ResourceBar from './src/components/shared/ResourceBar';
+import EventModal from './src/components/shared/EventModal';
 import { COLORS } from './src/utils/theme';
 
 const Tab = createBottomTabNavigator();
@@ -71,15 +72,23 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <NavigationContainer>
-        <StatusBar style="light" backgroundColor={COLORS.bg} />
-        <ResourceBar />
-        <AppNavigator />
+        <View style={styles.root}>
+          <StatusBar style="light" backgroundColor={COLORS.bg} />
+          <ResourceBar />
+          <AppNavigator />
+          {/* EventModal sits above everything — renders only when activeEvent is set */}
+          <EventModal />
+        </View>
       </NavigationContainer>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+  },
   tabIcon: {
     fontSize: 20,
     opacity: 0.5,

@@ -36,6 +36,7 @@ export const SPACING = {
 export const RADIUS = {
   sm: 2,
   md: 4,
+  lg: 12,
 };
 
 export const RESOURCE_BAR_HEIGHT = 48;

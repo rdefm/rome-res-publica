@@ -3,6 +3,8 @@ import type { Character } from '../models/character';
 import type { Bill } from '../models/bill';
 import type { Clan } from '../models/clan';
 import type { OfficeId, ElectionRival } from '../models/office';
+import type { Client } from '../models/client';
+import type { EventInstance } from '../models/event';
 import { STARTING_FAMILY } from '../data/startingFamily';
 import { STARTING_CLANS } from '../data/startingClans';
 import { STARTING_BILLS } from '../data/billTemplates';
@@ -67,6 +69,13 @@ export interface GameState {
   campaignVotes: Record<string, 'for' | 'against' | 'neutral'>;
   electionRivals: ElectionRival[];
 
+  // Clientela Network
+  clients: Client[];
+
+  // Event queue
+  pendingEvents: EventInstance[];
+  activeEvent: EventInstance | null;
+
   // Log
   log: LogEntry[];
   cursusLog: LogEntry[];
@@ -112,6 +121,14 @@ export interface GameActions {
   // Cursus
   declareCampaign: (officeId: OfficeId) => void;
   useOfficeAction: (actionId: string) => void;
+
+  // Clientela
+  addClient: (client: Client) => void;
+  removeClient: (clientId: string) => void;
+
+  // Events
+  resolveEvent: (choiceId: string, previewClientName?: string) => void;
+  dismissEvent: () => void;
 
   // Log
   addLog: (text: string, type?: LogEntry['type']) => void;
@@ -161,6 +178,11 @@ const INITIAL_STATE: GameState = {
   campaignVotes: {},
   electionRivals: [],
 
+  clients: [],
+
+  pendingEvents: [],
+  activeEvent: null,
+
   log: [mkLog('264 BC · Spring', 'The Brutii begin their ascent.', 'neutral')],
   cursusLog: [],
 
@@ -183,8 +205,18 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const state = get();
     const { nextState, events } = processSeason(state);
     const newLog = [...state.log, mkLog(turnLabel(state), 'Season ended.', 'neutral')];
+
+    // After season processing, surface the first pending event if one exists
+    // and none is already active.
+    const firstPending = nextState.pendingEvents[0] ?? null;
+    const remainingPending = firstPending
+      ? nextState.pendingEvents.slice(1)
+      : nextState.pendingEvents;
+
     set({
       ...nextState,
+      pendingEvents: remainingPending,
+      activeEvent: firstPending,
       log: newLog,
       seasonOverlayVisible: true,
       seasonOverlayEvents: events,
@@ -556,7 +588,6 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const action = office?.inOfficeActions?.find((a: any) => a.id === actionId);
     if (!action) return;
 
-    // Check cost
     if (action.resource && s[action.resource] < action.costVal) return;
 
     const patch = action.effect(s);
@@ -568,6 +599,82 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       ...(action.resource ? { [action.resource]: s[action.resource] - action.costVal } : {}),
       log: [...s.log, mkLog(label, logMsg, 'neutral')],
     });
+  },
+
+  // ─── Clientela ──────────────────────────────────────────────────────────────
+
+  addClient: (client) => set((s) => ({ clients: [...s.clients, client] })),
+
+  removeClient: (clientId) => set((s) => ({
+    clients: s.clients.filter(c => c.id !== clientId),
+  })),
+
+  // ─── Events ─────────────────────────────────────────────────────────────────
+
+  resolveEvent: (choiceId, previewClientName) => {
+    const s = get();
+    if (!s.activeEvent) return;
+
+    const { EVENT_DEFS } = require('../data/events');
+    const { applyEffectString } = require('../engine/resourceEngine');
+
+    const def = EVENT_DEFS.find((d: any) => d.id === s.activeEvent!.defId);
+    if (!def) {
+      set({ activeEvent: null });
+      return;
+    }
+
+    const choice = def.choices.find((c: any) => c.id === choiceId);
+    if (!choice) {
+      set({ activeEvent: null });
+      return;
+    }
+
+    // Resolve skill check
+    let succeeded = true;
+    if (choice.skillCheck) {
+      const player = s.family.find((c) => c.isPlayer);
+      const skillVal = player?.skills[choice.skillCheck.skill] ?? 0;
+      succeeded = skillVal >= choice.skillCheck.difficulty;
+    }
+
+    const effectStr = succeeded ? choice.successEffect : choice.failureEffect;
+
+    // Apply effect string — returns a partial state patch plus optional side-effect keys
+    const patch = effectStr
+      ? applyEffectString(effectStr, s, {
+          previewClientName,
+          instance: s.activeEvent,
+        })
+      : {};
+
+    // Extract client side-effect keys before spreading patch
+    const { _addClient, _removeClient, ...statePatch } = patch as any;
+
+    // Surface next pending event (if any)
+    const nextEvent = s.pendingEvents[0] ?? null;
+    const remainingPending = s.pendingEvents.slice(1);
+
+    set({
+      ...statePatch,
+      activeEvent: nextEvent,
+      pendingEvents: remainingPending,
+    });
+
+    // Dispatch client side effects after the main set()
+    if (_addClient) {
+      get().addClient(_addClient);
+    }
+    if (_removeClient) {
+      get().removeClient(_removeClient);
+    }
+  },
+
+  dismissEvent: () => {
+    const s = get();
+    const nextEvent = s.pendingEvents[0] ?? null;
+    const remainingPending = s.pendingEvents.slice(1);
+    set({ activeEvent: nextEvent, pendingEvents: remainingPending });
   },
 
   // ─── Log ────────────────────────────────────────────────────────────────────

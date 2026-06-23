@@ -113,9 +113,12 @@ export function resolveElection(state: GameState): {
     0.5 + (state.popularesRel + state.optimatesRel) / 260
   );
   const uncanvFor = Math.round(uncanvassed * uncanvProb * (0.8 + Math.random() * 0.4));
-  const playerTotal = lockedFor + uncanvFor;
 
-  // 3. Rival totals
+  // 3. Voting Sway client bonus — flat +1 vote per client, no scaling
+  const votingSwayClients = state.clients.filter(c => c.type === 'votingSway').length;
+  const playerTotal = lockedFor + uncanvFor + votingSwayClients;
+
+  // 4. Rival totals
   const rivalResults = state.electionRivals.map((r) => ({
     name: r.name,
     votes: calcRivalVotes(r, state),

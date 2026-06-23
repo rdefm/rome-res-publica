@@ -1,5 +1,15 @@
 import type { GameState } from '../state/gameStore';
+import type { Client, ClientType } from '../models/client';
+import type { EventInstance } from '../models/event';
 import { parseEffect } from '../models/bill';
+import { generateClientName } from '../data/clientNames';
+
+// ─── Options for applyEffectString ──────────────────────────────────────────
+
+export interface ApplyEffectOptions {
+  previewClientName?: string;
+  instance?: EventInstance | null;
+}
 
 /**
  * Calculate seasonal resource income for the player character.
@@ -19,70 +29,150 @@ export function calcResourceIncome(state: GameState): {
     0,
     auctoritas * 2 - Math.floor(state.crisisLevel / 25) + state.laudatioBonus
   );
-  const gratiaIncome = Math.max(0, 8 - Math.floor(state.crisisLevel / 30));
+
+  // NOTE: gratia_income_base intentionally uses 8 - Math.floor(crisisLevel / 30),
+  // not intrigus × 2 − crisis penalty. Do not change this formula.
+  const gratia_income_base = Math.max(0, 8 - Math.floor(state.crisisLevel / 30));
+
+  // Public Support clients: each adds +5% of base Gratia income (floored)
+  const publicSupportCount = state.clients.filter(c => c.type === 'publicSupport').length;
+  const gratiaClientBonus = Math.floor(gratia_income_base * publicSupportCount * 0.05);
+  const gratiaIncome = gratia_income_base + gratiaClientBonus;
 
   return { gravitasIncome, dignitasIncome, gratiaIncome };
 }
 
 /**
- * Apply bill pass/fail effects to state. Returns a partial state update.
+ * Apply effect string to state. Returns a partial state update.
+ *
+ * Effect string format:
+ *   - Standard resource effects:  'key+N' or 'key-N', pipe-separated for multiple
+ *   - Client effects use a colon: 'addClient:muscle', 'removeClient:votingSway'
+ *
+ * Client effects return special keys _addClient / _removeClient in the patch.
+ * The caller (resolveEvent in gameStore.ts) must handle these separately.
+ *
+ * The options param is optional — all existing callers that pass only (effectStr, state)
+ * remain valid with no changes required.
  */
 export function applyEffectString(
   effectStr: string,
-  state: GameState
-): Partial<GameState> {
-  const effects = parseEffect(effectStr);
-  const patch: Partial<GameState> = {};
+  state: GameState,
+  options?: ApplyEffectOptions
+): Partial<GameState> & { _addClient?: Client; _removeClient?: string } {
+  const { previewClientName, instance } = options ?? {};
 
-  for (const { key, delta } of effects) {
-    switch (key) {
-      case 'gravitas':
-        patch.gravitas = Math.max(0, (patch.gravitas ?? state.gravitas) + delta);
-        break;
-      case 'dignitas':
-        patch.dignitas = Math.max(0, (patch.dignitas ?? state.dignitas) + delta);
-        break;
-      case 'gratia':
-        patch.gratia = Math.max(0, (patch.gratia ?? state.gratia) + delta);
-        break;
-      case 'crisis':
-        patch.crisisLevel = Math.min(
-          100,
-          Math.max(0, (patch.crisisLevel ?? state.crisisLevel) + delta)
-        );
-        break;
-      case 'stability':
-        patch.rome = {
-          ...state.rome,
-          ...patch.rome,
-          stability: Math.min(
-            100,
-            Math.max(0, ((patch.rome ?? state.rome).stability) + delta)
-          ),
+  // Split on pipe to handle multi-effect strings (e.g. 'gravitas+2|denarii-10')
+  const segments = effectStr.split('|').map(s => s.trim()).filter(Boolean);
+
+  const patch: Partial<GameState> & { _addClient?: Client; _removeClient?: string } = {};
+
+  for (const segment of segments) {
+    // Client effect: colon-separated, e.g. 'addClient:muscle'
+    if (segment.includes(':')) {
+      const [key, val] = segment.split(':');
+
+      if (key === 'addClient') {
+        const clientType = val as ClientType;
+        // Name resolution: caller passes previewClientName for Class A events.
+        // Fall back to generating a new name only if no preview name was provided.
+        const name = previewClientName ?? generateClientName(clientType, state.clients);
+        const newClient: Client = {
+          id: `client-${Date.now()}`,
+          name,
+          type: clientType,
+          acquiredTurn: state.turnNumber,
         };
-        break;
-      case 'plebs':
-        patch.rome = {
-          ...state.rome,
-          ...patch.rome,
-          plebs: Math.min(
+        patch._addClient = newClient;
+        continue;
+      }
+
+      if (key === 'removeClient') {
+        const clientType = val as ClientType;
+        // For Class B/C events: instance.clientName is set — remove that specific client.
+        // Fallback: remove the oldest client of that type.
+        const target = instance?.clientName
+          ? state.clients.find(c => c.name === instance.clientName && c.type === clientType)
+          : state.clients
+              .filter(c => c.type === clientType)
+              .sort((a, b) => a.acquiredTurn - b.acquiredTurn)[0];
+        if (target) patch._removeClient = target.id;
+        continue;
+      }
+
+      // Unknown colon-key — skip silently
+      continue;
+    }
+
+    // Standard effect: parse via existing parseEffect utility
+    const effects = parseEffect(segment);
+
+    for (const { key, delta } of effects) {
+      switch (key) {
+        case 'gravitas':
+          patch.gravitas = Math.max(0, (patch.gravitas ?? state.gravitas) + delta);
+          break;
+        case 'dignitas':
+          patch.dignitas = Math.max(0, (patch.dignitas ?? state.dignitas) + delta);
+          break;
+        case 'gratia':
+          patch.gratia = Math.max(0, (patch.gratia ?? state.gratia) + delta);
+          break;
+        case 'denarii':
+          patch.denarii = Math.max(0, (patch.denarii ?? state.denarii) + delta);
+          break;
+        case 'crisis':
+          patch.crisisLevel = Math.min(
             100,
-            Math.max(0, ((patch.rome ?? state.rome).plebs) + delta)
-          ),
-        };
-        break;
-      case 'treasury':
-        patch.rome = {
-          ...state.rome,
-          ...patch.rome,
-          treasury: Math.min(
+            Math.max(0, (patch.crisisLevel ?? state.crisisLevel) + delta)
+          );
+          break;
+        case 'popularesRel':
+          patch.popularesRel = Math.min(
             100,
-            Math.max(0, ((patch.rome ?? state.rome).treasury) + delta)
-          ),
-        };
-        break;
+            Math.max(-100, (patch.popularesRel ?? state.popularesRel) + delta)
+          );
+          break;
+        case 'optimatesRel':
+          patch.optimatesRel = Math.min(
+            100,
+            Math.max(-100, (patch.optimatesRel ?? state.optimatesRel) + delta)
+          );
+          break;
+        case 'stability':
+          patch.rome = {
+            ...state.rome,
+            ...patch.rome,
+            stability: Math.min(
+              100,
+              Math.max(0, ((patch.rome ?? state.rome).stability) + delta)
+            ),
+          };
+          break;
+        case 'plebs':
+          patch.rome = {
+            ...state.rome,
+            ...patch.rome,
+            plebs: Math.min(
+              100,
+              Math.max(0, ((patch.rome ?? state.rome).plebs) + delta)
+            ),
+          };
+          break;
+        case 'treasury':
+          patch.rome = {
+            ...state.rome,
+            ...patch.rome,
+            treasury: Math.min(
+              100,
+              Math.max(0, ((patch.rome ?? state.rome).treasury) + delta)
+            ),
+          };
+          break;
+      }
     }
   }
+
   return patch;
 }
 

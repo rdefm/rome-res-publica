@@ -20,6 +20,13 @@ const SaveSchema = z.object({
   family: z.array(z.object({ id: z.string(), name: z.string() })).min(1),
   bills: z.array(z.any()),
   clans: z.array(z.any()),
+  // .default([]) ensures save files created before this feature load cleanly
+  clients: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    type: z.enum(['muscle', 'publicSupport', 'votingSway']),
+    acquiredTurn: z.number(),
+  })).default([]),
 });
 
 export interface SaveProvider {

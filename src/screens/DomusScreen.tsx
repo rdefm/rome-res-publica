@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Image } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
 import CharacterCard from '../components/domus/CharacterCard';
 import CharacterActionModal from '../components/domus/CharacterActionModal';
 import DomesticDirectivesTray from '../components/domus/DomesticDirectivesTray';
+import ClientelaPanel from '../components/domus/ClientelaPanel';
 import EndSeasonButton from '../components/shared/EndSeasonButton';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import StatBar from '../components/shared/StatBar';
-import { COLORS, FONTS, SPACING, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
+import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 
 const PLAYER_PORTRAIT = require('../assets/images/portrait-paterfamilias.png');
 
@@ -22,6 +23,7 @@ const SKILL_COLORS: Record<string, string> = {
 export default function DomusScreen() {
   const { family, selectedCharacterId, selectCharacter } = useGameStore();
   const [modalChar, setModalChar] = useState<string | null>(null);
+  const [domusTab, setDomusTab] = useState<'familias' | 'clientela'>('familias');
 
   const selected = family.find((c) => c.id === selectedCharacterId) ?? family[0];
   const modalCharObj = family.find((c) => c.id === modalChar) ?? null;
@@ -38,66 +40,90 @@ export default function DomusScreen() {
         <Text style={styles.subtitle}>Family & Heritage</Text>
       </View>
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}
-      >
-        {/* Selected character profile */}
-        {selected && (
-          <View style={styles.profilePane}>
-            <View style={styles.profileHeader}>
-              {selected.isPlayer ? (
-                <Image source={PLAYER_PORTRAIT} style={styles.profilePortrait} />
-              ) : (
-                <View style={styles.profilePortraitPlaceholder}>
-                  <Text style={{ fontSize: 48 }}>
-                    {selected.role === 'spouse' ? '👩' : selected.role === 'son' ? '👦' : '👧'}
+      {/* Submenu toggle bar */}
+      <View style={styles.submenuBar}>
+        <TouchableOpacity
+          style={[styles.submenuPill, domusTab === 'familias' && styles.submenuPillActive]}
+          onPress={() => setDomusTab('familias')}
+        >
+          <Text style={[styles.submenuLabel, domusTab === 'familias' && styles.submenuLabelActive]}>
+            FAMILIAS
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.submenuPill, domusTab === 'clientela' && styles.submenuPillActive]}
+          onPress={() => setDomusTab('clientela')}
+        >
+          <Text style={[styles.submenuLabel, domusTab === 'clientela' && styles.submenuLabelActive]}>
+            CLIENTELA
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {domusTab === 'familias' ? (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}
+        >
+          {/* Selected character profile */}
+          {selected && (
+            <View style={styles.profilePane}>
+              <View style={styles.profileHeader}>
+                {selected.isPlayer ? (
+                  <Image source={PLAYER_PORTRAIT} style={styles.profilePortrait} />
+                ) : (
+                  <View style={styles.profilePortraitPlaceholder}>
+                    <Text style={{ fontSize: 48 }}>
+                      {selected.role === 'spouse' ? '👩' : selected.role === 'son' ? '👦' : '👧'}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.profileInfo}>
+                  <Text style={styles.profileName}>{selected.name}</Text>
+                  <Text style={styles.profileRole}>
+                    {selected.role.charAt(0).toUpperCase() + selected.role.slice(1)} · Age {selected.age}
+                  </Text>
+                  <Text style={styles.profileAmbition}>
+                    {selected.ambition
+                      ? `Ambition: ${selected.ambition.type.replace(/_/g, ' ')}`
+                      : 'No ambition'}
+                  </Text>
+                  <Text style={styles.profileTrust}>
+                    Family trust: {selected.familyTrust}
                   </Text>
                 </View>
-              )}
-              <View style={styles.profileInfo}>
-                <Text style={styles.profileName}>{selected.name}</Text>
-                <Text style={styles.profileRole}>
-                  {selected.role.charAt(0).toUpperCase() + selected.role.slice(1)} · Age {selected.age}
-                </Text>
-                <Text style={styles.profileAmbition}>
-                  {selected.ambition
-                    ? `Ambition: ${selected.ambition.type.replace(/_/g, ' ')}`
-                    : 'No ambition'}
-                </Text>
-                <Text style={styles.profileTrust}>
-                  Family trust: {selected.familyTrust}
-                </Text>
+              </View>
+              <View style={styles.skillBars}>
+                {(['rhetoric', 'auctoritas', 'martial', 'intrigus'] as const).map((sk) => (
+                  <StatBar
+                    key={sk}
+                    label={sk.charAt(0).toUpperCase() + sk.slice(1)}
+                    value={selected.skills[sk]}
+                    max={10}
+                    color={SKILL_COLORS[sk]}
+                  />
+                ))}
               </View>
             </View>
-            <View style={styles.skillBars}>
-              {(['rhetoric', 'auctoritas', 'martial', 'intrigus'] as const).map((sk) => (
-                <StatBar
-                  key={sk}
-                  label={sk.charAt(0).toUpperCase() + sk.slice(1)}
-                  value={selected.skills[sk]}
-                  max={10}
-                  color={SKILL_COLORS[sk]}
-                />
-              ))}
-            </View>
-          </View>
-        )}
+          )}
 
-        {/* Family tree */}
-        <Text style={styles.sectionLabel}>FAMILY MEMBERS</Text>
-        {family.map((c) => (
-          <CharacterCard
-            key={c.id}
-            character={c}
-            selected={c.id === selectedCharacterId}
-            onPress={() => handlePress(c.id)}
-          />
-        ))}
+          {/* Family tree */}
+          <Text style={styles.sectionLabel}>FAMILY MEMBERS</Text>
+          {family.map((c) => (
+            <CharacterCard
+              key={c.id}
+              character={c}
+              selected={c.id === selectedCharacterId}
+              onPress={() => handlePress(c.id)}
+            />
+          ))}
 
-        {/* Directives */}
-        <DomesticDirectivesTray />
-      </ScrollView>
+          {/* Directives */}
+          <DomesticDirectivesTray />
+        </ScrollView>
+      ) : (
+        <ClientelaPanel />
+      )}
 
       <EndSeasonButton />
       <SeasonOverlay />
@@ -138,6 +164,39 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginTop: 2,
   },
+
+  // ── Submenu ────────────────────────────────────────────────────────────────
+  submenuBar: {
+    flexDirection: 'row',
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.panelSurface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+  },
+  submenuPill: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  submenuPillActive: {
+    backgroundColor: COLORS.panelElevated,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.gold,
+  },
+  submenuLabel: {
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    letterSpacing: 1,
+    color: COLORS.dust,
+  },
+  submenuLabelActive: {
+    color: COLORS.gold,
+  },
+
+  // ── Familias content ───────────────────────────────────────────────────────
   scroll: {
     flex: 1,
     padding: SPACING.md,
