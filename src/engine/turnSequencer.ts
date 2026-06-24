@@ -11,6 +11,8 @@ import {
 } from './resourceEngine';
 import { resolveElection } from './electionEngine';
 import { pickRandomEvent } from './eventEngine';
+import { tickAmbitions, getAmbitionDefinition } from './ambitionEngine';
+import { incrementLegacy, computeLegacyBonuses } from './legacyEngine';
 import { EVENT_DEFS } from '../data/events';
 import { OFFICES } from '../data/offices';
 import { AUTO_BILL_TEMPLATES } from '../data/billTemplates';
@@ -71,8 +73,17 @@ export function processSeason(state: GameState): {
         campaignVotes: {},
         electionRivals: [],
       };
+      // Increment consular_line if a consul was won
+      if (s.campaigning === 'consul') {
+        const { updated: legacyAfterConsul, newMilestonesReached: cMilestones } =
+          incrementLegacy(s.legacyObjectives, 'consular_line', 1);
+        s = { ...s, legacyObjectives: legacyAfterConsul };
+        for (const m of cMilestones) {
+          events.push(`Legacy milestone: "${m.label}" — permanent bonus unlocked.`);
+        }
+      }
       events.push(
-        `ELECTED! Marcus Brutus wins the ${office?.name ?? ''} with ${result.playerVotes} votes.`
+        `ELECTED! ${s.family.find(c => c.id === s.campaigningCharacterId)?.name ?? 'Your candidate'} wins the ${office?.name ?? ''} with ${result.playerVotes} votes.`
       );
     } else {
       s = { ...s, campaigning: null, campaignVotes: {}, electionRivals: [] };
@@ -131,15 +142,36 @@ export function processSeason(state: GameState): {
 
   // 7. Resource income
   const { gravitasIncome, dignitasIncome, gratiaIncome, denariiIncome } = calcResourceIncome(s);
+
+  // Apply legacy flat bonuses to income
+  const legacyBonuses = computeLegacyBonuses(s.legacyObjectives);
+  const flatBonus = legacyBonuses.flatBonus ?? {};
+  const multiplier = legacyBonuses.resourceMultiplier ?? {};
+  const finalGravitas = Math.round((gravitasIncome + (flatBonus.gravitas ?? 0)) * (multiplier.gravitas ?? 1));
+  const finalDignitas = Math.round((dignitasIncome + (flatBonus.dignitas ?? 0)) * (multiplier.dignitas ?? 1));
+  const finalGratia   = Math.round((gratiaIncome   + (flatBonus.gratia   ?? 0)) * (multiplier.gratia   ?? 1));
+  const finalDenarii  = Math.round((denariiIncome  + (flatBonus.gold     ?? 0)) * (multiplier.gold     ?? 1));
+
   s = {
     ...s,
-    gravitas: s.gravitas + gravitasIncome,
-    dignitas: s.dignitas + dignitasIncome,
-    gratia: s.gratia + gratiaIncome,
-    denarii: s.denarii + denariiIncome,
+    gravitas: s.gravitas + finalGravitas,
+    dignitas: s.dignitas + finalDignitas,
+    gratia:   s.gratia   + finalGratia,
+    denarii:  s.denarii  + finalDenarii,
   };
+
+  // Increment treasury_legacy by denarii earned this season
+  if (finalDenarii > 0) {
+    const { updated: legacyAfterTreasury, newMilestonesReached: tMilestones } =
+      incrementLegacy(s.legacyObjectives, 'treasury_legacy', finalDenarii);
+    s = { ...s, legacyObjectives: legacyAfterTreasury };
+    for (const m of tMilestones) {
+      events.push(`Legacy milestone: "${m.label}" — permanent bonus unlocked.`);
+    }
+  }
+
   events.push(
-    `Income: +${gravitasIncome} Gravitas, +${dignitasIncome} Dignitas, +${gratiaIncome} Gratia${denariiIncome > 0 ? `, +${denariiIncome} Denarii` : ''}`
+    `Income: +${finalGravitas} Gravitas, +${finalDignitas} Dignitas, +${finalGratia} Gratia${finalDenarii > 0 ? `, +${finalDenarii} Denarii` : ''}`
   );
 
   // 8. Faction drift
@@ -148,6 +180,16 @@ export function processSeason(state: GameState): {
 
   // 9. Relationship drift and alliance ticks
   s = { ...s, clans: applyRelationshipDrift(s) };
+
+  // 9b. Increment survival_legacy each season
+  {
+    const { updated: legacyAfterSurvival, newMilestonesReached: sMilestones } =
+      incrementLegacy(s.legacyObjectives, 'survival_legacy', 1);
+    s = { ...s, legacyObjectives: legacyAfterSurvival };
+    for (const m of sMilestones) {
+      events.push(`Legacy milestone: "${m.label}" — permanent bonus unlocked.`);
+    }
+  }
 
   // 10. Age family members
   s = {
@@ -192,6 +234,59 @@ export function processSeason(state: GameState): {
 
     // Append to pending queue — gameStore.endSeason surfaces the first one
     s = { ...s, pendingEvents: [...s.pendingEvents, instance] };
+  }
+
+  // 13. Tick ambitions — check completion, expiry, apply rewards/consequences
+  const { updatedAmbitions, completed, expired } = tickAmbitions(s.ambitions, s);
+  s = { ...s, ambitions: updatedAmbitions };
+
+  for (const a of completed) {
+    const def = getAmbitionDefinition(a.definitionId);
+    if (!def) continue;
+    const r = def.reward;
+    if (r.gold)      s = { ...s, denarii:   s.denarii   + r.gold };
+    if (r.dignitas)  s = { ...s, dignitas:  s.dignitas  + r.dignitas };
+    if (r.gratia)    s = { ...s, gratia:    s.gratia    + r.gratia };
+    if (r.gravitas)  s = { ...s, gravitas:  s.gravitas  + r.gravitas };
+    if (r.imperium)  s = { ...s, imperium:  s.imperium  + r.imperium };
+    if (r.assetId) {
+      s = {
+        ...s,
+        ownedAssets: [
+          ...s.ownedAssets,
+          { definitionId: r.assetId, currentTier: 1, turnAcquired: s.turnNumber },
+        ],
+      };
+    }
+    // Reputation bonuses
+    if (r.reputationBonus) {
+      const newReps = { ...s.familyReputations };
+      for (const { clanId, delta } of r.reputationBonus) {
+        newReps[clanId] = Math.min(100, Math.max(-100, (newReps[clanId] ?? 0) + delta));
+      }
+      s = { ...s, familyReputations: newReps };
+    }
+    events.push(`Ambition complete: "${def.title}". Rewards applied.`);
+    // Chain ambition — queue offer via pendingAmbitionSelection flag (handled in store)
+  }
+
+  for (const a of expired) {
+    const def = getAmbitionDefinition(a.definitionId);
+    if (!def?.consequence) continue;
+    const c = def.consequence;
+    if (c.gold)             s = { ...s, denarii:  Math.max(0, s.denarii + c.gold) };
+    if (c.dignitas)         s = { ...s, dignitas: Math.max(0, s.dignitas + c.dignitas) };
+    if (c.familyTrustDelta) {
+      s = {
+        ...s,
+        family: s.family.map(m =>
+          m.isPlayer
+            ? { ...m, familyTrust: Math.max(0, Math.min(100, m.familyTrust + c.familyTrustDelta!)) }
+            : m
+        ),
+      };
+    }
+    events.push(`Ambition expired: "${def.title}". Consequences applied.`);
   }
 
   return { nextState: s, events };

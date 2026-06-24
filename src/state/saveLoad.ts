@@ -33,6 +33,12 @@ const SaveSchema = z.object({
     assignedCharacterId: z.string().optional(),
     turnAcquired: z.number(),
   })).default([]),
+  familyReputations: z.record(z.string(), z.number()).default({}),
+  legacyObjectives: z.array(z.object({
+    definitionId: z.string(),
+    currentValue: z.number(),
+    milestonesReached: z.array(z.number()),
+  })).default([]),
 });
 
 export interface SaveProvider {

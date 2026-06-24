@@ -5,6 +5,7 @@ import { useGameStore } from '../state/gameStore';
 import CharacterCard from '../components/domus/CharacterCard';
 import CharacterActionModal from '../components/domus/CharacterActionModal';
 import DomesticDirectivesTray from '../components/domus/DomesticDirectivesTray';
+import LegatumPanel from '../components/domus/LegatumPanel';
 import ClientelaPanel from '../components/domus/ClientelaPanel';
 import PatrimoniumPanel from '../components/domus/PatrimoniumPanel';
 import EndSeasonButton from '../components/shared/EndSeasonButton';
@@ -28,6 +29,7 @@ const SECTIONS: { key: DomusSection; label: string }[] = [
   { key: 'clientela',   label: 'CLIENTELA' },
   { key: 'patrimonium', label: 'PATRIMONIUM' },
 ];
+
 
 export default function DomusScreen() {
   const { family, selectedCharacterId, selectCharacter } = useGameStore();
@@ -81,6 +83,9 @@ export default function DomusScreen() {
                 <View style={styles.sectionBody}>
                   {key === 'familias' && (
                     <>
+                      {/* Legacy tracker */}
+                      <LegatumPanel />
+
                       {/* Selected character profile */}
                       {selected && (
                         <View style={styles.profilePane}>

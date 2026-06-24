@@ -14,6 +14,8 @@ import { STARTING_FAMILY } from '../data/startingFamily';
 import { STARTING_CLANS } from '../data/startingClans';
 import { STARTING_BILLS } from '../data/billTemplates';
 import { processSeason } from '../engine/turnSequencer';
+import { incrementLegacy, initLegacyObjectives } from '../engine/legacyEngine';
+import { adjustReputation } from '../engine/reputationEngine';
 
 export interface LogEntry {
   id: string;
@@ -72,8 +74,10 @@ export interface GameState {
   officeSeasons: number;
   heldOffices: OfficeId[];
   campaigning: OfficeId | null;
+  campaigningCharacterId: string | null; // which family member is running
   campaignVotes: Record<string, 'for' | 'against' | 'neutral'>;
   electionRivals: ElectionRival[];
+  pendingAmbitionScopes: ('family' | 'character')[]; // scopes needing a new ambition selection
 
   // Clientela Network
   clients: Client[];
@@ -92,6 +96,9 @@ export interface GameState {
 
   // Trials (Feature 6)
   trialQueue: Trial[];
+
+  // Faction Reputation (Feature 2)
+  familyReputations: Record<string, number>; // clanId → -100 to 100
 
   // Event queue
   pendingEvents: EventInstance[];
@@ -151,6 +158,17 @@ export interface GameActions {
   purchaseAsset: (definitionId: string) => void;
   upgradeAsset: (definitionId: string) => void;
 
+  // Cursus — family member campaigns
+  declareFamilyCampaign: (characterId: string, officeId: OfficeId) => void;
+
+  // Ambitions
+  selectAmbition: (definitionId: string, scope: 'family' | 'character', assignedCharacterId?: string) => void;
+  dismissAmbitionSelection: () => void;
+  clearAmbitionScope: (scope: 'family' | 'character') => void;
+
+  // Reputation
+  adjustClanReputation: (clanId: string, delta: number, clanName: string) => void;
+
   // Events
   resolveEvent: (choiceId: string, previewClientName?: string) => void;
   dismissEvent: () => void;
@@ -164,6 +182,10 @@ let _logId = 0;
 function mkLog(turn: string, text: string, type: LogEntry['type'] = 'neutral'): LogEntry {
   return { id: `log-${_logId++}`, turn, text, type };
 }
+
+export const INITIAL_FAMILY_REPUTATIONS: Record<string, number> = Object.fromEntries(
+  STARTING_CLANS.map((c) => [c.id, 0])
+);
 
 export const INITIAL_STATE: GameState = {
   year: -264,
@@ -201,14 +223,17 @@ export const INITIAL_STATE: GameState = {
   officeSeasons: 0,
   heldOffices: [],
   campaigning: null,
+  campaigningCharacterId: null,
   campaignVotes: {},
   electionRivals: [],
+  pendingAmbitionScopes: ['family', 'character'], // fire on first load
 
   clients: [],
 
   ownedAssets: [],
+  familyReputations: INITIAL_FAMILY_REPUTATIONS,
   ambitions: [],
-  legacyObjectives: [],
+  legacyObjectives: initLegacyObjectives(),
   patronTier: 0,
   trialQueue: [],
 
@@ -235,21 +260,59 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
   endSeason: () => {
     const state = get();
+    console.log('[endSeason] start', {
+      turnNumber: state.turnNumber,
+      seasonIndex: state.seasonIndex,
+      ambitions: state.ambitions.length,
+      pendingAmbitionScopes: state.pendingAmbitionScopes,
+      pendingEvents: state.pendingEvents.length,
+      activeEvent: state.activeEvent?.defId ?? null,
+      clients: state.clients.length,
+      ownedAssets: state.ownedAssets.length,
+    });
     const { nextState, events } = processSeason(state);
+    console.log('[endSeason] processSeason complete', { events: events.length });
     const newLog = [...state.log, mkLog(turnLabel(state), 'Season ended.', 'neutral')];
 
-    const firstPending = nextState.pendingEvents[0] ?? null;
+    // If an election was won, set officeId on the campaigning character
+    let postElectionState = nextState;
+    if (state.campaigning && nextState.currentOffice === state.campaigning) {
+      // Election was won — set officeId on the character who was campaigning
+      const winnerId = state.campaigningCharacterId;
+      if (winnerId) {
+        postElectionState = {
+          ...postElectionState,
+          family: postElectionState.family.map(c =>
+            c.id === winnerId ? { ...c, officeId: state.campaigning } : c
+          ),
+        };
+      }
+    }
+
+    const firstPending = postElectionState.pendingEvents[0] ?? null;
     const remainingPending = firstPending
-      ? nextState.pendingEvents.slice(1)
-      : nextState.pendingEvents;
+      ? postElectionState.pendingEvents.slice(1)
+      : postElectionState.pendingEvents;
+
+    // Check which ambition scopes need a new selection
+    const hasActiveFamilyAmbition = postElectionState.ambitions.some(
+      a => a.scope === 'family' && a.status === 'active'
+    );
+    const hasActiveCharacterAmbition = postElectionState.ambitions.some(
+      a => a.scope === 'character' && a.status === 'active'
+    );
+    const pendingScopes: ('family' | 'character')[] = [];
+    if (!hasActiveFamilyAmbition) pendingScopes.push('family');
+    if (!hasActiveCharacterAmbition) pendingScopes.push('character');
 
     set({
-      ...nextState,
+      ...postElectionState,
       pendingEvents: remainingPending,
       activeEvent: firstPending,
       log: newLog,
       seasonOverlayVisible: true,
       seasonOverlayEvents: events,
+      pendingAmbitionScopes: pendingScopes,
     });
   },
 
@@ -371,8 +434,10 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const s = get();
     if (s.gravitas < 3) return;
     const delta = vote === 'vote_for' ? 8 : -8;
+    const { updated: updatedLegacy } = incrementLegacy(s.legacyObjectives, 'senate_voice', 1);
     set({
       gravitas: s.gravitas - 3,
+      legacyObjectives: updatedLegacy,
       bills: s.bills.map((b) =>
         b.id === billId
           ? { ...b, support: Math.min(100, Math.max(-100, b.support + delta)), playerVote: vote }
@@ -391,8 +456,10 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const noise = Math.random() * 6 - 2;
     const base = 4 + Math.floor(rhetoric * 0.8) + noise;
     const delta = direction === 'for' ? base : -base;
+    const { updated: updatedLegacy } = incrementLegacy(s.legacyObjectives, 'senate_voice', 1);
     set({
       gravitas: s.gravitas - 6,
+      legacyObjectives: updatedLegacy,
       bills: s.bills.map((b) =>
         b.id === billId
           ? { ...b, support: Math.min(100, Math.max(-100, b.support + delta)) }
@@ -406,8 +473,10 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   filibusterBill: (billId) => {
     const s = get();
     if (s.gravitas < 8) return;
+    const { updated: updatedLegacy } = incrementLegacy(s.legacyObjectives, 'senate_voice', 1);
     set({
       gravitas: s.gravitas - 8,
+      legacyObjectives: updatedLegacy,
       bills: s.bills.map((b) =>
         b.id === billId
           ? { ...b, support: Math.max(-100, b.support - 15), turnsLeft: b.turnsLeft + 1, playerVote: 'filibuster' }
@@ -425,8 +494,10 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       playerSubmitted: true,
     };
     const label = turnLabel(s);
+    const { updated: updatedLegacy } = incrementLegacy(s.legacyObjectives, 'senate_voice', 1);
     set({
       gravitas: s.gravitas - 10,
+      legacyObjectives: updatedLegacy,
       bills: [...s.bills, newBill],
       log: [...s.log, mkLog(label, `You submit ${newBill.name} to the Senate.`, 'neutral')],
     });
@@ -447,31 +518,48 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   buyInfluence: (leaderId) => {
     const s = get();
     if (s.gratia < 8) return;
-    const leader = s.clans.flatMap((c) => c.leaders).find((l) => l.id === leaderId);
-    if (!leader) return;
+    const clan = s.clans.find((c) => c.leaders.some((l) => l.id === leaderId));
+    const leader = clan?.leaders.find((l) => l.id === leaderId);
+    if (!leader || !clan) return;
     const gain = Math.max(3, 8 + Math.floor(leader.favour * 2) + Math.floor(Math.random() * 3) - 1);
     const label = turnLabel(s);
+    const { newScore, crossedThreshold } = adjustReputation(
+      s.familyReputations[clan.id] ?? 0, 5
+    );
+    const newReps = { ...s.familyReputations, [clan.id]: newScore };
+    const newOverlayEvents = crossedThreshold
+      ? [...(s.seasonOverlayEvents.length > 0 ? s.seasonOverlayEvents : []),
+         `${clan.name} now regards the Brutii as "${crossedThreshold.label}".`]
+      : s.seasonOverlayEvents;
     set({
       gratia: s.gratia - 8,
+      familyReputations: newReps,
+      seasonOverlayEvents: newOverlayEvents,
       clans: s.clans.map((c) => ({
         ...c,
         leaders: c.leaders.map((l) =>
           l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + gain) } : l
         ),
       })),
-      log: [...s.log, mkLog(label, `${leader.name}'s relationship +${gain}.`, 'good')],
+      log: [...s.log, mkLog(label, `${leader.name}'s relationship +${gain}. Reputation +5.`, 'good')],
     });
   },
 
   inviteToDinner: (leaderId) => {
     const s = get();
     if (s.gratia < 12) return;
-    const leader = s.clans.flatMap((c) => c.leaders).find((l) => l.id === leaderId);
-    if (!leader) return;
+    const clan = s.clans.find((c) => c.leaders.some((l) => l.id === leaderId));
+    const leader = clan?.leaders.find((l) => l.id === leaderId);
+    if (!leader || !clan) return;
     const relGain = 10 + leader.favour * 3 + Math.floor(Math.random() * 5);
     const label = turnLabel(s);
+    const { newScore, crossedThreshold } = adjustReputation(
+      s.familyReputations[clan.id] ?? 0, 3
+    );
+    const newReps = { ...s.familyReputations, [clan.id]: newScore };
     set({
       gratia: s.gratia - 12,
+      familyReputations: newReps,
       clans: s.clans.map((c) => ({
         ...c,
         leaders: c.leaders.map((l) =>
@@ -480,18 +568,28 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
             : l
         ),
       })),
-      log: [...s.log, mkLog(label, `Dinner with ${leader.name}. Relationship +${relGain}, Favour +1.`, 'good')],
+      log: [...s.log, mkLog(label, `Dinner with ${leader.name}. Relationship +${relGain}, Favour +1. Reputation +3.`, 'good')],
+      ...(crossedThreshold ? {
+        seasonOverlayEvents: [...s.seasonOverlayEvents,
+          `${clan.name} now regards the Brutii as "${crossedThreshold.label}".`]
+      } : {}),
     });
   },
 
   forgeAlliance: (leaderId) => {
     const s = get();
     if (s.gratia < 20) return;
-    const leader = s.clans.flatMap((c) => c.leaders).find((l) => l.id === leaderId);
-    if (!leader || leader.relationship < 30) return;
+    const clan = s.clans.find((c) => c.leaders.some((l) => l.id === leaderId));
+    const leader = clan?.leaders.find((l) => l.id === leaderId);
+    if (!leader || !clan || leader.relationship < 30) return;
     const label = turnLabel(s);
+    const { newScore, crossedThreshold } = adjustReputation(
+      s.familyReputations[clan.id] ?? 0, 5
+    );
+    const newReps = { ...s.familyReputations, [clan.id]: newScore };
     set({
       gratia: s.gratia - 20,
+      familyReputations: newReps,
       clans: s.clans.map((c) => ({
         ...c,
         standing: c.leaders.some((l) => l.id === leaderId) && c.standing !== 'ally' ? 'ally' : c.standing,
@@ -501,18 +599,28 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
             : l
         ),
       })),
-      log: [...s.log, mkLog(label, `Alliance forged with ${leader.name} for 2 seasons.`, 'good')],
+      log: [...s.log, mkLog(label, `Alliance forged with ${leader.name} for 2 seasons. Reputation +5.`, 'good')],
+      ...(crossedThreshold ? {
+        seasonOverlayEvents: [...s.seasonOverlayEvents,
+          `${clan.name} now regards the Brutii as "${crossedThreshold.label}".`]
+      } : {}),
     });
   },
 
   arrangeMarriageForum: (leaderId) => {
     const s = get();
     if (s.gratia < 18) return;
-    const leader = s.clans.flatMap((c) => c.leaders).find((l) => l.id === leaderId);
-    if (!leader || leader.relationship < 20) return;
+    const clan = s.clans.find((c) => c.leaders.some((l) => l.id === leaderId));
+    const leader = clan?.leaders.find((l) => l.id === leaderId);
+    if (!leader || !clan || leader.relationship < 20) return;
     const label = turnLabel(s);
+    const { newScore, crossedThreshold } = adjustReputation(
+      s.familyReputations[clan.id] ?? 0, 15
+    );
+    const newReps = { ...s.familyReputations, [clan.id]: newScore };
     set({
       gratia: s.gratia - 18,
+      familyReputations: newReps,
       clans: s.clans.map((c) => ({
         ...c,
         standing:
@@ -526,7 +634,11 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
             : l
         ),
       })),
-      log: [...s.log, mkLog(label, `Marriage arranged with ${leader.name}'s family.`, 'good')],
+      log: [...s.log, mkLog(label, `Marriage arranged with ${leader.name}'s family. Reputation +15.`, 'good')],
+      ...(crossedThreshold ? {
+        seasonOverlayEvents: [...s.seasonOverlayEvents,
+          `${clan.name} now regards the Brutii as "${crossedThreshold.label}".`]
+      } : {}),
     });
   },
 
@@ -536,6 +648,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const leader = s.clans.flatMap((c) => c.leaders).find((l) => l.id === leaderId);
     if (!leader) return;
     const label = turnLabel(s);
+
+    const clan = s.clans.find((c) => c.leaders.some((l) => l.id === leaderId));
 
     if (leader.blackmail) {
       set({
@@ -553,15 +667,24 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     } else {
       const found = Math.random() < 0.5;
       if (found) {
+        const { newScore: bmScore, crossedThreshold: bmCrossed } = adjustReputation(
+          s.familyReputations[clan?.id ?? ''] ?? 0, -20
+        );
+        const newReps = clan ? { ...s.familyReputations, [clan.id]: bmScore } : s.familyReputations;
         set({
           gratia: s.gratia - 6,
+          familyReputations: newReps,
           clans: s.clans.map((c) => ({
             ...c,
             leaders: c.leaders.map((l) =>
               l.id === leaderId ? { ...l, blackmail: true } : l
             ),
           })),
-          log: [...s.log, mkLog(label, `Leverage acquired over ${leader.name}.`, 'good')],
+          log: [...s.log, mkLog(label, `Leverage acquired over ${leader.name}. Reputation -20.`, 'good')],
+          ...(bmCrossed && clan ? {
+            seasonOverlayEvents: [...s.seasonOverlayEvents,
+              `${clan.name} now regards the Brutii as "${bmCrossed.label}".`]
+          } : {}),
         });
       } else {
         set({
@@ -605,11 +728,30 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const { generateRivals } = require('../engine/electionEngine');
     const rivals = generateRivals(officeId, s);
     const label = turnLabel(s);
+    const player = s.family.find(c => c.isPlayer);
     set({
       campaigning: officeId,
+      campaigningCharacterId: player?.id ?? null,
       campaignVotes: {},
       electionRivals: rivals,
       cursusLog: [...s.cursusLog, mkLog(label, `Campaign declared for ${officeId}.`, 'neutral')],
+    });
+  },
+
+  declareFamilyCampaign: (characterId, officeId) => {
+    const s = get();
+    if (s.campaigning) return; // one at a time
+    const char = s.family.find(c => c.id === characterId);
+    if (!char) return;
+    const { generateRivals } = require('../engine/electionEngine');
+    const rivals = generateRivals(officeId, s);
+    const label = turnLabel(s);
+    set({
+      campaigning: officeId,
+      campaigningCharacterId: characterId,
+      campaignVotes: {},
+      electionRivals: rivals,
+      cursusLog: [...s.cursusLog, mkLog(label, `${char.name} declares campaign for ${officeId}.`, 'neutral')],
     });
   },
 
@@ -634,6 +776,58 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       log: [...s.log, mkLog(label, logMsg, 'neutral')],
     });
   },
+
+  // ─── Reputation ─────────────────────────────────────────────────────────────
+
+  adjustClanReputation: (clanId, delta, clanName) => {
+    const s = get();
+    const current = s.familyReputations[clanId] ?? 0;
+    const { newScore, crossedThreshold } = adjustReputation(current, delta);
+    const newReps = { ...s.familyReputations, [clanId]: newScore };
+    set({
+      familyReputations: newReps,
+      ...(crossedThreshold ? {
+        seasonOverlayEvents: [...s.seasonOverlayEvents,
+          `${clanName} now regards the Brutii as "${crossedThreshold.label}".`]
+      } : {}),
+    });
+  },
+
+  // ─── Ambitions ──────────────────────────────────────────────────────────────
+
+  selectAmbition: (definitionId, scope, assignedCharacterId) => {
+    const s = get();
+    const { getAmbitionDefinition } = require('../engine/ambitionEngine');
+    const def = getAmbitionDefinition(definitionId);
+    if (!def) return;
+    const newAmbition = {
+      definitionId,
+      scope,
+      assignedCharacterId,
+      status: 'active' as const,
+      turnActivated: s.turnNumber,
+      turnsRemaining: def.expiresInTurns,
+    };
+    // Also update character's ambitionIds
+    const newFamily = assignedCharacterId
+      ? s.family.map(c =>
+          c.id === assignedCharacterId
+            ? { ...c, ambitionIds: [...c.ambitionIds.filter(id => id !== definitionId), definitionId] }
+            : c
+        )
+      : s.family;
+    set({
+      ambitions: [...s.ambitions, newAmbition],
+      family: newFamily,
+      pendingAmbitionScopes: s.pendingAmbitionScopes.filter(sc => sc !== scope),
+    });
+  },
+
+  dismissAmbitionSelection: () => set({ pendingAmbitionScopes: [] }),
+
+  clearAmbitionScope: (scope) => set((s) => ({
+    pendingAmbitionScopes: s.pendingAmbitionScopes.filter(sc => sc !== scope),
+  })),
 
   // ─── Clientela ──────────────────────────────────────────────────────────────
 

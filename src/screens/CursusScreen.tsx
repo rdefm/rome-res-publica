@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
 } from 'react-native';
@@ -6,38 +6,133 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
 import { OFFICES } from '../data/offices';
 import type { OfficeId } from '../models/office';
+import type { Character } from '../models/character';
 import { calcClanVotesForPlayer } from '../engine/electionEngine';
-import { generateRivals } from '../engine/electionEngine';
 import EndSeasonButton from '../components/shared/EndSeasonButton';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
-import StatBar from '../components/shared/StatBar';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 
-const SEASON_NAMES = ['Spring', 'Summer', 'Autumn', 'Winter'];
+// ─── Family member picker ─────────────────────────────────────────────────────
 
-function OfficeRung({ officeId }: { officeId: OfficeId }) {
+function FamilyMemberPicker({
+  selected,
+  onSelect,
+}: {
+  selected: string;
+  onSelect: (id: string) => void;
+}) {
+  const { family } = useGameStore();
+  // Only show characters old enough to hold any office
+  const eligible = family.filter(c => c.age >= 25);
+
+  return (
+    <View style={fp.container}>
+      <Text style={fp.label}>VIEWING</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={fp.row}>
+        {eligible.map(c => (
+          <TouchableOpacity
+            key={c.id}
+            style={[fp.pill, selected === c.id && fp.pillActive]}
+            onPress={() => onSelect(c.id)}
+          >
+            <Text style={[fp.pillText, selected === c.id && fp.pillTextActive]}>
+              {c.isPlayer ? '⭐ ' : ''}{c.name.split(' ')[0]}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+const fp = StyleSheet.create({
+  container: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  label: {
+    color: COLORS.goldDim,
+    fontFamily: FONTS.ui,
+    fontSize: 9,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: SPACING.xs,
+  },
+  row: {
+    gap: SPACING.sm,
+  },
+  pill: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+  },
+  pillActive: {
+    borderColor: COLORS.gold,
+    backgroundColor: COLORS.goldDim + '22',
+  },
+  pillText: {
+    color: COLORS.dust,
+    fontFamily: FONTS.ui,
+    fontSize: 12,
+  },
+  pillTextActive: {
+    color: COLORS.gold,
+  },
+});
+
+// ─── Office rung ──────────────────────────────────────────────────────────────
+
+function OfficeRung({
+  officeId,
+  character,
+}: {
+  officeId: OfficeId;
+  character: Character;
+}) {
   const state = useGameStore();
   const {
-    currentOffice, heldOffices, campaigning, family,
-    declareCampaign, useOfficeAction,
+    currentOffice, heldOffices, campaigning, campaigningCharacterId,
+    declareCampaign, declareFamilyCampaign, useOfficeAction,
   } = state;
 
   const office = OFFICES.find((o) => o.id === officeId)!;
-  const player = family.find((c) => c.isPlayer);
-  const age = player?.age ?? 0;
+  const isPlayer = character.isPlayer;
 
-  const isCurrent = currentOffice === officeId;
-  const isHeld = heldOffices.includes(officeId);
-  const isCampaigning = campaigning === officeId;
-  const prereqMet = !office.prerequisite || heldOffices.includes(office.prerequisite) || currentOffice === office.prerequisite;
-  const ageOk = age >= office.minAge;
-  const isEligible = !currentOffice && !campaigning && !isHeld && prereqMet && ageOk;
+  // For the player, use existing currentOffice / heldOffices
+  // For NPCs, use their officeId field
+  const isCurrent = isPlayer
+    ? currentOffice === officeId
+    : character.officeId === officeId;
+  const isHeld = isPlayer
+    ? heldOffices.includes(officeId)
+    : character.officeId === officeId;
+  const isCampaigning = campaigning === officeId && campaigningCharacterId === character.id;
+
+  const prereqMet = !office.prerequisite ||
+    (isPlayer
+      ? (heldOffices.includes(office.prerequisite) || currentOffice === office.prerequisite)
+      : character.officeId === office.prerequisite);
+  const ageOk = character.age >= office.minAge;
+  const noCampaignActive = !campaigning;
+  const isEligible = !isCurrent && !isCampaigning && !isHeld && prereqMet && ageOk && noCampaignActive;
 
   const rungColor = isCurrent ? COLORS.gold
     : isCampaigning ? COLORS.denariiColor
     : isHeld ? COLORS.laurel
-    : isEligible ? '#a07840'
+    : isEligible ? COLORS.amber
     : COLORS.border;
+
+  function handleDeclare() {
+    if (isPlayer) {
+      declareCampaign(officeId);
+    } else {
+      declareFamilyCampaign(character.id, officeId);
+    }
+  }
 
   return (
     <View style={[rung.container, { borderColor: rungColor }]}>
@@ -48,8 +143,8 @@ function OfficeRung({ officeId }: { officeId: OfficeId }) {
           <Text style={rung.latin}>{office.latin}</Text>
           <Text style={rung.meta}>Min age {office.minAge} · {office.termSeasons} seasons</Text>
         </View>
-        {isEligible && !isCampaigning && (
-          <TouchableOpacity style={rung.applyBtn} onPress={() => declareCampaign(officeId)}>
+        {isEligible && (
+          <TouchableOpacity style={rung.applyBtn} onPress={handleDeclare}>
             <Text style={rung.applyText}>Apply</Text>
           </TouchableOpacity>
         )}
@@ -57,17 +152,16 @@ function OfficeRung({ officeId }: { officeId: OfficeId }) {
         {isHeld && !isCurrent && <View style={[rung.badge, rung.badgeHeld]}><Text style={rung.badgeText}>HELD</Text></View>}
         {isCampaigning && <View style={[rung.badge, rung.badgeCamp]}><Text style={rung.badgeText}>CAMPAIGN</Text></View>}
       </View>
-      {!isEligible && !isCurrent && !isHeld && !isCampaigning && (
-        <Text style={rung.desc}>{office.desc}</Text>
-      )}
-      {(isCurrent || isEligible) && <Text style={rung.desc}>{office.desc}</Text>}
 
-      {/* In-office actions */}
-      {isCurrent && office.active && office.inOfficeActions && (
+      {(!isEligible || isCurrent) && <Text style={rung.desc}>{office.desc}</Text>}
+      {isEligible && <Text style={rung.desc}>{office.desc}</Text>}
+
+      {/* In-office actions — only for player character */}
+      {isCurrent && isPlayer && office.active && office.inOfficeActions && (
         <View style={rung.actions}>
           {office.inOfficeActions.map((action) => {
             const resource = action.resource;
-            const canAfford = !resource || state[resource] >= action.costVal;
+            const canAfford = !resource || (state as any)[resource] >= action.costVal;
             return (
               <TouchableOpacity
                 key={action.id}
@@ -85,8 +179,7 @@ function OfficeRung({ officeId }: { officeId: OfficeId }) {
           })}
         </View>
       )}
-
-      {isCurrent && !office.active && (
+      {isCurrent && isPlayer && !office.active && (
         <Text style={rung.comingSoon}>{office.inOfficeDesc}</Text>
       )}
     </View>
@@ -102,8 +195,8 @@ const rung = StyleSheet.create({
   latin: { color: COLORS.goldDim, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11 },
   meta: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 10, marginTop: 2 },
   desc: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6, lineHeight: 16 },
-  applyBtn: { backgroundColor: '#a07840' + '22', borderWidth: 1, borderColor: '#a07840', borderRadius: RADIUS.sm, paddingHorizontal: SPACING.sm, paddingVertical: 6, minHeight: 36, justifyContent: 'center' },
-  applyText: { color: '#c9a84c', fontFamily: FONTS.display, fontSize: 13, fontWeight: '700' },
+  applyBtn: { backgroundColor: COLORS.amber + '22', borderWidth: 1, borderColor: COLORS.amber, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.sm, paddingVertical: 6, minHeight: 36, justifyContent: 'center' },
+  applyText: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 13, fontWeight: '700' },
   badge: { backgroundColor: COLORS.gold + '22', borderWidth: 1, borderColor: COLORS.gold, borderRadius: 2, paddingHorizontal: 6, paddingVertical: 2 },
   badgeHeld: { backgroundColor: COLORS.laurel + '22', borderColor: COLORS.laurel },
   badgeCamp: { backgroundColor: COLORS.denariiColor + '22', borderColor: COLORS.denariiColor },
@@ -118,16 +211,18 @@ const rung = StyleSheet.create({
   comingSoon: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6 },
 });
 
-function ElectionPanel() {
+// ─── Election panel ───────────────────────────────────────────────────────────
+
+function ElectionPanel({ character }: { character: Character }) {
   const state = useGameStore();
-  const { campaigning, electionRivals, seasonIndex, clans } = state;
-  if (!campaigning) return null;
+  const { campaigning, campaigningCharacterId, electionRivals, seasonIndex, clans } = state;
+
+  if (!campaigning || campaigningCharacterId !== character.id) return null;
 
   const office = OFFICES.find((o) => o.id === campaigning);
   const seasonsToWinter = (3 - seasonIndex + 4) % 4;
 
-  // Calculate projected player votes
-  const { forPlayer: totalFor, total: totalVotes } = clans.reduce(
+  const { forPlayer: totalFor } = clans.reduce(
     (acc, c) => {
       const { forPlayer, total } = calcClanVotesForPlayer(c.id, state);
       return { forPlayer: acc.forPlayer + forPlayer, total: acc.total + total };
@@ -136,8 +231,12 @@ function ElectionPanel() {
   );
 
   const candidates = [
-    { name: 'Marcus Brutus', votes: totalFor, isPlayer: true },
-    ...electionRivals.map((r) => ({ name: r.name, votes: Math.round(r.strength * 0.5 + Math.random() * 10), isPlayer: false })),
+    { name: character.name, votes: totalFor, isPlayer: true },
+    ...electionRivals.map((r) => ({
+      name: r.name,
+      votes: Math.round(r.strength * 0.5 + Math.random() * 10),
+      isPlayer: false,
+    })),
   ].sort((a, b) => b.votes - a.votes);
 
   const maxVotes = Math.max(...candidates.map((c) => c.votes), 1);
@@ -145,15 +244,17 @@ function ElectionPanel() {
   return (
     <View style={ep.container}>
       <Text style={ep.title}>Campaign: {office?.name}</Text>
+      <Text style={ep.candidate}>Candidate: {character.name}</Text>
       {seasonsToWinter === 0 ? (
         <Text style={ep.urgent}>Election resolves this season — End Season to vote.</Text>
       ) : (
-        <Text style={ep.countdown}>{seasonsToWinter} season{seasonsToWinter !== 1 ? 's' : ''} until election (Winter)</Text>
+        <Text style={ep.countdown}>{seasonsToWinter} season{seasonsToWinter !== 1 ? 's' : ''} until election</Text>
       )}
-
       {candidates.map((c) => (
         <View key={c.name} style={ep.candidateRow}>
-          <Text style={[ep.candidateName, c.isPlayer && { color: COLORS.gold }]} numberOfLines={1}>{c.name}</Text>
+          <Text style={[ep.candidateName, c.isPlayer && { color: COLORS.gold }]} numberOfLines={1}>
+            {c.name}
+          </Text>
           <View style={ep.voteBarTrack}>
             <View style={[ep.voteBarFill, {
               width: `${(c.votes / maxVotes) * 100}%`,
@@ -169,7 +270,8 @@ function ElectionPanel() {
 
 const ep = StyleSheet.create({
   container: { backgroundColor: COLORS.panelSurface, borderWidth: 1, borderColor: COLORS.gold, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md },
-  title: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 16, fontWeight: '700', marginBottom: 4 },
+  title: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 16, fontWeight: '700', marginBottom: 2 },
+  candidate: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, marginBottom: 4 },
   countdown: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, marginBottom: SPACING.sm },
   urgent: { color: COLORS.crimson, fontFamily: FONTS.display, fontSize: 12, fontWeight: '700', marginBottom: SPACING.sm },
   candidateRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
@@ -179,9 +281,15 @@ const ep = StyleSheet.create({
   voteCount: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, width: 30, textAlign: 'right' },
 });
 
+// ─── CursusScreen ─────────────────────────────────────────────────────────────
+
 export default function CursusScreen() {
-  const { cursusLog, currentOffice, officeSeasons, campaigning } = useGameStore();
+  const { cursusLog, currentOffice, officeSeasons, family } = useGameStore();
   const currentOfficeDef = OFFICES.find((o) => o.id === currentOffice);
+
+  const player = family.find(c => c.isPlayer);
+  const [selectedCharId, setSelectedCharId] = useState(player?.id ?? '');
+  const selectedChar = family.find(c => c.id === selectedCharId) ?? player;
 
   return (
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
@@ -200,12 +308,14 @@ export default function CursusScreen() {
         )}
       </View>
 
+      <FamilyMemberPicker selected={selectedCharId} onSelect={setSelectedCharId} />
+
       <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}>
-        {campaigning && <ElectionPanel />}
+        {selectedChar && <ElectionPanel character={selectedChar} />}
 
         <Text style={styles.sectionLabel}>OFFICES</Text>
-        {OFFICES.map((office) => (
-          <OfficeRung key={office.id} officeId={office.id} />
+        {selectedChar && OFFICES.map((office) => (
+          <OfficeRung key={office.id} officeId={office.id} character={selectedChar} />
         ))}
 
         {cursusLog.length > 0 && (

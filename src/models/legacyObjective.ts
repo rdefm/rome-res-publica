@@ -1,10 +1,26 @@
-export type LegacyObjectiveStatus = 'active' | 'completed' | 'failed';
+export interface LegacyBonus {
+  resourceMultiplier?: Partial<Record<'gold' | 'dignitas' | 'gratia' | 'gravitas' | 'imperium', number>>;
+  flatBonus?: Partial<Record<'gold' | 'dignitas' | 'gratia' | 'gravitas' | 'imperium', number>>;
+  unlocksTrait?: string;
+  unlocksAsset?: string;
+}
 
-export interface LegacyObjective {
+export interface LegacyMilestone {
+  threshold: number;
+  label: string;
+  permanentBonus: LegacyBonus;
+}
+
+export interface LegacyObjectiveDefinition {
   id: string;
   title: string;
   description: string;
-  status: LegacyObjectiveStatus;
-  turnActivated: number;
-  turnCompleted?: number;
+  trackingUnit: string;
+  milestones: LegacyMilestone[];
+}
+
+export interface LegacyObjective {
+  definitionId: string;
+  currentValue: number;         // lifetime accumulated value
+  milestonesReached: number[];  // threshold values already claimed
 }
