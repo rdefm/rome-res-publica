@@ -177,6 +177,9 @@ export interface GameActions {
   // Reputation
   adjustClanReputation: (clanId: string, delta: number, clanName: string) => void;
 
+  // Trials
+  takeTrialAction: (trialId: string, actionId: string) => void;
+
   // Birth
   confirmBirthNaming: (name: string) => void;
   dismissBirthNaming: () => void;
@@ -693,6 +696,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
               l.id === leaderId ? { ...l, blackmail: true } : l
             ),
           })),
+          // Acquiring blackmail also adds corruption to the target's reputation
+          // (representing the dangerous knowledge that's now circulating)
           log: [...s.log, mkLog(label, `Leverage acquired over ${leader.name}. Reputation -20.`, 'good')],
           ...(bmCrossed && clan ? {
             seasonOverlayEvents: [...s.seasonOverlayEvents,
@@ -904,6 +909,47 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
           : a
       ),
       log: [...s.log, mkLog(label, `${def.name} upgraded to ${tierLabel}.`, 'good')],
+    });
+  },
+
+  // ─── Trials ─────────────────────────────────────────────────────────────────
+
+  takeTrialAction: (trialId, actionId) => {
+    const s = get();
+    const { TRIAL_ACTIONS } = require('../data/trialActions');
+    const { getUnlockedAssetActions } = require('../engine/assetEngine');
+
+    const trial = s.trialQueue.find(t => t.id === trialId);
+    if (!trial || trial.resolved) return;
+    if (trial.actionsUsed.includes(actionId)) return;
+
+    const action = TRIAL_ACTIONS.find((a: any) => a.id === actionId);
+    if (!action) return;
+
+    // Check asset requirement
+    if (action.requiresAssetAction) {
+      const unlocked = getUnlockedAssetActions(s.ownedAssets);
+      if (!unlocked.includes(action.requiresAssetAction)) return;
+    }
+
+    // Check can afford
+    const resource = action.cost.resource as keyof typeof s;
+    const currentAmount = s[resource] as number;
+    if (currentAmount < action.cost.amount) return;
+
+    const label = turnLabel(s);
+    set({
+      [resource]: currentAmount - action.cost.amount,
+      trialQueue: s.trialQueue.map(t =>
+        t.id === trialId
+          ? {
+              ...t,
+              defenseStrength: Math.min(100, t.defenseStrength + action.defenseBonus),
+              actionsUsed: [...t.actionsUsed, actionId],
+            }
+          : t
+      ),
+      log: [...s.log, mkLog(label, `Trial defense: ${action.label}. Defense +${action.defenseBonus}.`, 'good')],
     });
   },
 

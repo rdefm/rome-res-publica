@@ -5,12 +5,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
 import { getCrisisInfo, getCrisisColour } from '../engine/crisisEngine';
+import { getUnlockedAssetActions } from '../engine/assetEngine';
 import EndSeasonButton from '../components/shared/EndSeasonButton';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import StatBar from '../components/shared/StatBar';
 import { BILL_TEMPLATES } from '../data/billTemplates';
+import { TRIAL_ACTIONS } from '../data/trialActions';
 import type { Bill } from '../models/bill';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
+
+// ─── Bloc meter ───────────────────────────────────────────────────────────────
 
 function BlocMeter({ support }: { support: number }) {
   const norm = (support + 100) / 200;
@@ -30,6 +34,210 @@ const bloc = StyleSheet.create({
   container: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', marginTop: 6 },
   segment: { height: '100%' },
 });
+
+// ─── Trial banner ─────────────────────────────────────────────────────────────
+
+const CHARGE_LABELS: Record<string, string> = {
+  corruption:      'Corruption',
+  treason:         'Treason',
+  electoral_fraud: 'Electoral Fraud',
+  murder:          'Murder',
+};
+
+const OUTCOME_COLORS: Record<string, string> = {
+  acquitted: COLORS.laurel,
+  dismissed: COLORS.senatBlue,
+  fined:     COLORS.denariiColor,
+  exiled:    COLORS.crimson,
+  executed:  COLORS.crimson,
+};
+
+function TrialBanner() {
+  const {
+    trialQueue, family, clans, ownedAssets,
+    denarii, gratia, gravitas,
+    takeTrialAction,
+  } = useGameStore();
+  const [expanded, setExpanded] = useState(false);
+
+  const activeTrial = trialQueue.find(t => !t.resolved);
+
+  if (!activeTrial) {
+    const resolved = trialQueue.filter(t => t.resolved && t.outcome);
+    if (resolved.length === 0) return null;
+    const last = resolved[resolved.length - 1];
+    const color = OUTCOME_COLORS[last.outcome!] ?? COLORS.dust;
+    return (
+      <View style={[tb.container, { borderColor: color }]}>
+        <Text style={[tb.heading, { color, padding: SPACING.md }]}>
+          TRIAL CONCLUDED — {last.outcome!.toUpperCase()}
+        </Text>
+      </View>
+    );
+  }
+
+  const accused = family.find(c => c.id === activeTrial.accusedCharacterId);
+  const clan = clans.find(c => c.id === activeTrial.accusingClanId);
+  const unlockedAssetActions = getUnlockedAssetActions(ownedAssets);
+  const resources: Record<string, number> = { denarii, gratia, gravitas };
+
+  return (
+    <View style={tb.container}>
+      <TouchableOpacity
+        style={tb.header}
+        onPress={() => setExpanded(e => !e)}
+        activeOpacity={0.75}
+      >
+        <View style={tb.headerLeft}>
+          <Text style={tb.heading}>⚖️ ACTIVE TRIAL</Text>
+          <Text style={tb.sub}>
+            {CHARGE_LABELS[activeTrial.charge] ?? activeTrial.charge} · {accused?.name ?? 'Unknown'}
+          </Text>
+          <Text style={tb.sub}>
+            Brought by {clan?.name ?? 'Unknown'} · {activeTrial.turnsRemaining} season{activeTrial.turnsRemaining !== 1 ? 's' : ''} remaining
+          </Text>
+        </View>
+        <Text style={tb.chevron}>{expanded ? '▲' : '▼'}</Text>
+      </TouchableOpacity>
+
+      {/* Strength bars */}
+      <View style={tb.barsRow}>
+        <View style={tb.barWrap}>
+          <Text style={tb.barLabel}>Defense</Text>
+          <View style={tb.barTrack}>
+            <View style={[tb.barFill, { width: `${activeTrial.defenseStrength}%`, backgroundColor: COLORS.laurel }]} />
+          </View>
+          <Text style={[tb.barVal, { color: COLORS.laurel }]}>{activeTrial.defenseStrength}</Text>
+        </View>
+        <View style={tb.barWrap}>
+          <Text style={tb.barLabel}>Prosecution</Text>
+          <View style={tb.barTrack}>
+            <View style={[tb.barFill, { width: `${activeTrial.prosecutionStrength}%`, backgroundColor: COLORS.crimson }]} />
+          </View>
+          <Text style={[tb.barVal, { color: COLORS.crimson }]}>{activeTrial.prosecutionStrength}</Text>
+        </View>
+      </View>
+
+      {expanded && (
+        <View style={tb.actions}>
+          <Text style={tb.actionsLabel}>DEFENSE ACTIONS</Text>
+          {TRIAL_ACTIONS.map(action => {
+            const alreadyUsed = activeTrial.actionsUsed.includes(action.id);
+            const needsAsset = action.requiresAssetAction &&
+              !unlockedAssetActions.includes(action.requiresAssetAction);
+            const canAfford = resources[action.cost.resource] >= action.cost.amount;
+            const disabled = alreadyUsed || !!needsAsset || !canAfford;
+
+            const resourceLabel = action.cost.resource === 'denarii' ? 'Denarii'
+              : action.cost.resource === 'gratia' ? 'Gratia' : 'Gravitas';
+
+            return (
+              <TouchableOpacity
+                key={action.id}
+                style={[tb.actionBtn, disabled && tb.actionBtnDisabled]}
+                disabled={disabled}
+                onPress={() => takeTrialAction(activeTrial.id, action.id)}
+                activeOpacity={0.75}
+              >
+                <View style={tb.actionRow}>
+                  <Text style={tb.actionLabel}>{action.label}</Text>
+                  <Text style={tb.actionCost}>−{action.cost.amount} {resourceLabel}</Text>
+                </View>
+                <Text style={tb.actionDesc}>
+                  {alreadyUsed ? 'Already used this trial.'
+                    : needsAsset ? `Requires: ${action.requiresAssetAction?.replace('_', ' ')}`
+                    : `Defense +${action.defenseBonus}`}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const tb = StyleSheet.create({
+  container: {
+    backgroundColor: COLORS.panelSurface,
+    borderWidth: 2,
+    borderColor: COLORS.crimson,
+    borderRadius: RADIUS.md,
+    marginBottom: SPACING.md,
+    overflow: 'hidden',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    padding: SPACING.md,
+  },
+  headerLeft: { flex: 1 },
+  heading: {
+    color: COLORS.crimson,
+    fontFamily: FONTS.display,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: 3,
+  },
+  sub: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, marginTop: 1 },
+  chevron: { color: COLORS.dust, fontSize: 14 },
+  barsRow: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.sm,
+  },
+  barWrap: { flex: 1 },
+  barLabel: {
+    color: COLORS.dust,
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 3,
+  },
+  barTrack: {
+    height: 6,
+    backgroundColor: COLORS.bg,
+    borderRadius: 3,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  barFill: { height: '100%', borderRadius: 3 },
+  barVal: { fontFamily: FONTS.ui, fontSize: 10, fontWeight: '700', marginTop: 2, textAlign: 'right' },
+  actions: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    padding: SPACING.md,
+  },
+  actionsLabel: {
+    color: COLORS.goldDim,
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: SPACING.sm,
+  },
+  actionBtn: {
+    backgroundColor: COLORS.panelElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+    minHeight: 44,
+  },
+  actionBtnDisabled: { opacity: 0.4 },
+  actionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  actionLabel: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 13, fontWeight: '600', flex: 1 },
+  actionCost: { color: COLORS.denariiColor, fontFamily: FONTS.ui, fontSize: 12, fontWeight: '700' },
+  actionDesc: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11, marginTop: 2 },
+});
+
+// ─── Bill card ────────────────────────────────────────────────────────────────
 
 function BillCard({ bill }: { bill: Bill }) {
   const { gravitas, expandBill, _expandedBill, _expandedType, voteBill, speechBill, filibusterBill } =
@@ -63,7 +271,6 @@ function BillCard({ bill }: { bill: Bill }) {
       </View>
       <BlocMeter support={bill.support} />
 
-      {/* Actions */}
       <View style={bstyle.actions}>
         <TouchableOpacity
           style={[bstyle.actionBtn, isExpandedVote && bstyle.actionBtnActive]}
@@ -132,12 +339,8 @@ function BillCard({ bill }: { bill: Bill }) {
 
 const bstyle = StyleSheet.create({
   card: {
-    backgroundColor: COLORS.panelElevated,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.md,
-    padding: SPACING.sm,
-    marginBottom: SPACING.sm,
+    backgroundColor: COLORS.panelElevated, borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.sm,
   },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   name: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 15, fontWeight: '600', flex: 1 },
@@ -161,6 +364,8 @@ const bstyle = StyleSheet.create({
   subBtn: { borderWidth: 1, borderRadius: RADIUS.sm, padding: SPACING.sm, minHeight: 44, justifyContent: 'center' },
   subBtnLabel: { fontFamily: FONTS.display, fontSize: 14, fontWeight: '600', textAlign: 'center' },
 });
+
+// ─── Submit bill modal ────────────────────────────────────────────────────────
 
 function SubmitBillModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { bills, submitBill, gravitas } = useGameStore();
@@ -215,6 +420,8 @@ const modal = StyleSheet.create({
   itemMeta: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 11, marginTop: 4 },
 });
 
+// ─── CuriaScreen ──────────────────────────────────────────────────────────────
+
 export default function CuriaScreen() {
   const { rome, crisisLevel, bills, gravitas } = useGameStore();
   const [submitVisible, setSubmitVisible] = useState(false);
@@ -229,6 +436,9 @@ export default function CuriaScreen() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}>
+        {/* Active trial — shown when trialQueue has unresolved trial */}
+        <TrialBanner />
+
         {/* Rome stats */}
         <View style={styles.panel}>
           <Text style={styles.panelTitle}>ROME — STATE OF THE REPUBLIC</Text>

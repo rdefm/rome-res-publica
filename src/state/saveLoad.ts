@@ -39,6 +39,18 @@ const SaveSchema = z.object({
     currentValue: z.number(),
     milestonesReached: z.array(z.number()),
   })).default([]),
+  trialQueue: z.array(z.object({
+    id: z.string(),
+    accusedCharacterId: z.string(),
+    accusingClanId: z.string(),
+    charge: z.string(),
+    defenseStrength: z.number(),
+    prosecutionStrength: z.number(),
+    turnsRemaining: z.number(),
+    resolved: z.boolean(),
+    outcome: z.string().optional(),
+    actionsUsed: z.array(z.string()),
+  })).default([]),
 });
 
 export interface SaveProvider {

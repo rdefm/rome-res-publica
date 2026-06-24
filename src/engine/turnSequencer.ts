@@ -19,6 +19,15 @@ import {
   resolveInheritedTraits,
   suggestChildName,
 } from './inheritanceEngine';
+import {
+  shouldTriggerTrial,
+  buildTrial,
+  resolveTrial,
+  OUTCOME_CONSEQUENCES,
+  tickCorruption,
+} from './trialEngine';
+import { computeTotalAssetBonuses } from './assetEngine';
+import { TRIAL_ACTIONS } from '../data/trialActions';
 import { EVENT_DEFS } from '../data/events';
 import { OFFICES } from '../data/offices';
 import { AUTO_BILL_TEMPLATES } from '../data/billTemplates';
@@ -295,7 +304,119 @@ export function processSeason(state: GameState): {
     events.push(`Ambition expired: "${def.title}". Consequences applied.`);
   }
 
-  // 14. Passive birth check
+  // 14. Corruption tick — passive accumulation/decay on player character
+  {
+    const player = s.family.find(c => c.isPlayer);
+    if (player) {
+      const assetBonuses = computeTotalAssetBonuses(s.ownedAssets);
+      const shield = assetBonuses.corruptionShield ?? 0;
+      const newScore = tickCorruption(player.corruptionScore, s.crisisLevel, shield);
+      if (newScore !== player.corruptionScore) {
+        s = {
+          ...s,
+          family: s.family.map(c =>
+            c.isPlayer ? { ...c, corruptionScore: newScore } : c
+          ),
+        };
+      }
+    }
+  }
+
+  // 15. Trial resolution — tick turnsRemaining, resolve expired trials
+  {
+    let trialEvents: string[] = [];
+    const updatedTrials = s.trialQueue.map(trial => {
+      if (trial.resolved) return trial;
+      const newTurns = trial.turnsRemaining - 1;
+      if (newTurns > 0) return { ...trial, turnsRemaining: newTurns };
+
+      // Time's up — resolve
+      const outcome = resolveTrial(trial);
+      const cons = OUTCOME_CONSEQUENCES[outcome];
+      const accused = s.family.find(c => c.id === trial.accusedCharacterId);
+      const accusedName = accused?.name ?? 'the accused';
+
+      trialEvents.push(`Trial resolved: ${accusedName} — ${outcome.toUpperCase()}.`);
+
+      // Apply reputation delta to accusing clan
+      if (cons.reputationDelta !== 0 && trial.accusingClanId) {
+        const newRep = Math.min(100, Math.max(-100,
+          (s.familyReputations[trial.accusingClanId] ?? 0) + cons.reputationDelta
+        ));
+        s = { ...s, familyReputations: { ...s.familyReputations, [trial.accusingClanId]: newRep } };
+      }
+
+      // Apply dignitas delta
+      s = { ...s, dignitas: Math.max(0, s.dignitas + cons.dignitas) };
+
+      // Apply fine
+      if (cons.denarii) {
+        s = { ...s, denarii: Math.max(0, s.denarii + cons.denarii) };
+      }
+
+      // Clear corruption if acquitted
+      if (cons.corruptionClear) {
+        s = {
+          ...s,
+          family: s.family.map(c =>
+            c.id === trial.accusedCharacterId ? { ...c, corruptionScore: 0 } : c
+          ),
+        };
+      }
+
+      // Family trust delta
+      if (cons.familyTrustDelta) {
+        s = {
+          ...s,
+          family: s.family.map(c =>
+            c.isPlayer ? { ...c, familyTrust: Math.max(0, c.familyTrust + cons.familyTrustDelta!) } : c
+          ),
+        };
+      }
+
+      // Remove character if exiled/executed
+      if (cons.removeCharacter) {
+        s = {
+          ...s,
+          family: s.family.filter(c => c.id !== trial.accusedCharacterId),
+        };
+      }
+
+      return { ...trial, resolved: true, outcome };
+    });
+
+    s = { ...s, trialQueue: updatedTrials };
+    events.push(...trialEvents);
+  }
+
+  // 16. Trial trigger check — may add new trial to queue
+  {
+    const trigger = shouldTriggerTrial(s);
+    if (trigger) {
+      const accused = s.family.find(c => c.id === trigger.accusedId);
+      const accusingClan = s.clans.find(c => c.id === trigger.accusingClanId);
+      const accuserLeader = accusingClan?.leaders[0];
+      const accuserIntrigus = accuserLeader?.sphere === 'intelligence' ? 7 : 4;
+      const assetBonuses = computeTotalAssetBonuses(s.ownedAssets);
+      const trialDefenseBonus = assetBonuses.trialDefenseBonus ?? 0;
+
+      const newTrial = buildTrial(
+        trigger.accusedId,
+        trigger.accusingClanId,
+        trigger.charge,
+        accuserIntrigus,
+        accused?.corruptionScore ?? 0,
+        trialDefenseBonus
+      );
+
+      s = { ...s, trialQueue: [...s.trialQueue, newTrial] };
+      events.push(
+        `⚖️ ${accusingClan?.name ?? 'A rival faction'} has brought charges of ${trigger.charge.replace('_', ' ')} against ${accused?.name ?? 'your family'}. ${newTrial.turnsRemaining} seasons to prepare your defense.`
+      );
+    }
+  }
+
+  // 17. Passive birth check
   if (isBirthEligible(s.family) && s.pendingBirthNaming === null) {
     const prob = calcBirthProbability(s.family);
     if (Math.random() < prob) {

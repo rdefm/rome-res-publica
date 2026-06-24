@@ -27,6 +27,7 @@ export interface Character {
 
   // Added for multi-feature systems (spec Section 0.2)
   officeId: string | null;                      // current office held (null if none)
+  corruptionScore: number;                      // 0–100, triggers prosecution risk
   inheritedTraits: string[];                    // trait IDs from parents (Feature 5)
   ambitionIds: string[];                        // active ambition IDs (Feature 3)
   reputationScores: Record<string, number>;     // clanId → -100 to 100 (Feature 2)

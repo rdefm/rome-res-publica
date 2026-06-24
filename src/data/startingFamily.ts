@@ -13,6 +13,7 @@ export const STARTING_FAMILY: Character[] = [
     relationship: 100,
     familyTrust: 100,
     officeId: null,
+    corruptionScore: 0,
     inheritedTraits: [],
     // Migrated from old ambition.type: 'gain_dignitas' → 'wealthy_house'
     ambitionIds: ['wealthy_house'],
@@ -30,6 +31,7 @@ export const STARTING_FAMILY: Character[] = [
     relationship: 80,
     familyTrust: 100,
     officeId: null,
+    corruptionScore: 0,
     inheritedTraits: [],
     // Migrated from old ambition.type: 'protect_family' → 'survive_dynasty'
     ambitionIds: ['survive_dynasty'],
@@ -47,6 +49,7 @@ export const STARTING_FAMILY: Character[] = [
     relationship: 70,
     familyTrust: 90,
     officeId: null,
+    corruptionScore: 0,
     inheritedTraits: [],
     // Migrated from old ambition.type: 'personal_power' → 'first_consul'
     ambitionIds: ['first_consul'],
@@ -64,6 +67,7 @@ export const STARTING_FAMILY: Character[] = [
     relationship: 75,
     familyTrust: 90,
     officeId: null,
+    corruptionScore: 0,
     inheritedTraits: [],
     ambitionIds: [],
     reputationScores: {},
