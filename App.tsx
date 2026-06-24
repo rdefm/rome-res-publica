@@ -13,6 +13,7 @@ import ProvinciaeScreen from './src/screens/ProvinciaeScreen';
 import ResourceBar from './src/components/shared/ResourceBar';
 import EventModal from './src/components/shared/EventModal';
 import AmbitionSelectionModal from './src/components/shared/AmbitionSelectionModal';
+import BirthNamingModal from './src/components/domus/BirthNamingModal';
 import { COLORS } from './src/utils/theme';
 
 const Tab = createBottomTabNavigator();

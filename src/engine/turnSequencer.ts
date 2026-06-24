@@ -13,6 +13,12 @@ import { resolveElection } from './electionEngine';
 import { pickRandomEvent } from './eventEngine';
 import { tickAmbitions, getAmbitionDefinition } from './ambitionEngine';
 import { incrementLegacy, computeLegacyBonuses } from './legacyEngine';
+import {
+  isBirthEligible,
+  calcBirthProbability,
+  resolveInheritedTraits,
+  suggestChildName,
+} from './inheritanceEngine';
 import { EVENT_DEFS } from '../data/events';
 import { OFFICES } from '../data/offices';
 import { AUTO_BILL_TEMPLATES } from '../data/billTemplates';
@@ -287,6 +293,38 @@ export function processSeason(state: GameState): {
       };
     }
     events.push(`Ambition expired: "${def.title}". Consequences applied.`);
+  }
+
+  // 14. Passive birth check
+  if (isBirthEligible(s.family) && s.pendingBirthNaming === null) {
+    const prob = calcBirthProbability(s.family);
+    if (Math.random() < prob) {
+      const player = s.family.find(c => c.isPlayer)!;
+      const spouse = s.family.find(c => c.role === 'spouse')!;
+      const role: 'son' | 'daughter' = Math.random() < 0.5 ? 'son' : 'daughter';
+      const inheritedTraits = resolveInheritedTraits(player, spouse);
+
+      // Base skills: average of parents' skills with small random variation
+      const baseSkills = {
+        rhetoric:   Math.max(1, Math.min(8, Math.round((player.skills.rhetoric   + spouse.skills.rhetoric)   / 2 + (Math.random() * 2 - 1)))),
+        auctoritas: Math.max(1, Math.min(8, Math.round((player.skills.auctoritas + spouse.skills.auctoritas) / 2 + (Math.random() * 2 - 1)))),
+        martial:    Math.max(1, Math.min(8, Math.round((player.skills.martial    + spouse.skills.martial)    / 2 + (Math.random() * 2 - 1)))),
+        intrigus:   Math.max(1, Math.min(8, Math.round((player.skills.intrigus   + spouse.skills.intrigus)   / 2 + (Math.random() * 2 - 1)))),
+      };
+
+      const suggestedName = suggestChildName(role, 'Brutus');
+
+      s = {
+        ...s,
+        pendingBirthNaming: {
+          suggestedName,
+          role,
+          inheritedTraits,
+          baseSkills,
+        },
+      };
+      events.push(`A child is expected in the Brutii household. Name them before the season ends.`);
+    }
   }
 
   return { nextState: s, events };

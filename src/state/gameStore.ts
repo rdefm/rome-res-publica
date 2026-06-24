@@ -104,6 +104,14 @@ export interface GameState {
   pendingEvents: EventInstance[];
   activeEvent: EventInstance | null;
 
+  // Birth naming queue
+  pendingBirthNaming: {
+    suggestedName: string;
+    role: 'son' | 'daughter';
+    inheritedTraits: string[];
+    baseSkills: { rhetoric: number; auctoritas: number; martial: number; intrigus: number };
+  } | null;
+
   // Log
   log: LogEntry[];
   cursusLog: LogEntry[];
@@ -168,6 +176,10 @@ export interface GameActions {
 
   // Reputation
   adjustClanReputation: (clanId: string, delta: number, clanName: string) => void;
+
+  // Birth
+  confirmBirthNaming: (name: string) => void;
+  dismissBirthNaming: () => void;
 
   // Events
   resolveEvent: (choiceId: string, previewClientName?: string) => void;
@@ -239,6 +251,7 @@ export const INITIAL_STATE: GameState = {
 
   pendingEvents: [],
   activeEvent: null,
+  pendingBirthNaming: null,
 
   log: [mkLog('264 BC · Spring', 'The Brutii begin their ascent.', 'neutral')],
   cursusLog: [],
@@ -893,6 +906,42 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       log: [...s.log, mkLog(label, `${def.name} upgraded to ${tierLabel}.`, 'good')],
     });
   },
+
+  // ─── Birth ──────────────────────────────────────────────────────────────────
+
+  confirmBirthNaming: (name) => {
+    const s = get();
+    if (!s.pendingBirthNaming) return;
+    const { role, inheritedTraits, baseSkills } = s.pendingBirthNaming;
+    const { applyTraitModifiers } = require('../engine/inheritanceEngine');
+
+    const baseChild: import('../models/character').Character = {
+      id: `child-${Date.now()}`,
+      name,
+      role,
+      isPlayer: false,
+      age: 0,
+      skills: baseSkills,
+      traits: [],
+      ambition: null,
+      relationship: 80,
+      familyTrust: 100,
+      officeId: null,
+      inheritedTraits: [],
+      ambitionIds: [],
+      reputationScores: {},
+    };
+
+    const child = applyTraitModifiers(baseChild, inheritedTraits);
+    const label = turnLabel(s);
+    set({
+      family: [...s.family, child],
+      pendingBirthNaming: null,
+      log: [...s.log, mkLog(label, `${name} is born into the Brutii.`, 'good')],
+    });
+  },
+
+  dismissBirthNaming: () => set({ pendingBirthNaming: null }),
 
   // ─── Events ─────────────────────────────────────────────────────────────────
 

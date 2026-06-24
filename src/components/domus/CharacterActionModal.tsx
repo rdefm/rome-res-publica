@@ -5,6 +5,7 @@ import {
 import type { Character } from '../../models/character';
 import { useGameStore } from '../../state/gameStore';
 import { getAmbitionDefinition } from '../../engine/ambitionEngine';
+import { TRAIT_DEFINITIONS } from '../../data/traits';
 import type { ActiveAmbition } from '../../models/ambition';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
@@ -268,6 +269,139 @@ const npc = StyleSheet.create({
   },
 });
 
+
+// ─── Trait badges with inline expansion ──────────────────────────────────────
+
+function TraitBadges({ character }: { character: Character }) {
+  const [expandedTrait, setExpandedTrait] = useState<string | null>(null);
+
+  const allTraitIds = [
+    ...character.traits,
+    ...character.inheritedTraits,
+  ];
+
+  if (allTraitIds.length === 0) return null;
+
+  return (
+    <View style={tb.container}>
+      <Text style={tb.heading}>TRAITS</Text>
+      <View style={tb.pills}>
+        {allTraitIds.map(id => {
+          const def = TRAIT_DEFINITIONS.find(t => t.id === id);
+          const isPersonality = character.traits.includes(id as any);
+          const isInherited = character.inheritedTraits.includes(id);
+          const isExpanded = expandedTrait === id;
+          const label = def?.name ?? id;
+
+          return (
+            <View key={id}>
+              <TouchableOpacity
+                style={[
+                  tb.pill,
+                  isInherited && tb.pillInherited,
+                  isExpanded && tb.pillExpanded,
+                ]}
+                onPress={() => setExpandedTrait(prev => (prev === id ? null : id))}
+              >
+                {isInherited && <Text style={tb.inheritIcon}>🧬 </Text>}
+                <Text style={[tb.pillText, isInherited && tb.pillTextInherited]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+
+              {isExpanded && def && (
+                <View style={tb.detail}>
+                  <Text style={tb.detailDesc}>{def.description}</Text>
+                  {Object.keys(def.skillModifiers ?? {}).length > 0 && (
+                    <Text style={tb.detailMods}>
+                      {Object.entries(def.skillModifiers ?? {})
+                        .map(([k, v]) => `${(v as number) > 0 ? '+' : ''}${v} ${k.charAt(0).toUpperCase() + k.slice(1)}`)
+                        .join(' · ')}
+                    </Text>
+                  )}
+                  {def.resourceBonuses && Object.keys(def.resourceBonuses).length > 0 && (
+                    <Text style={tb.detailMods}>
+                      {Object.entries(def.resourceBonuses)
+                        .map(([k, v]) => `+${v} ${k.charAt(0).toUpperCase() + k.slice(1)}/season`)
+                        .join(' · ')}
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const tb = StyleSheet.create({
+  container: {
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  heading: {
+    color: COLORS.goldDim,
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: SPACING.xs,
+  },
+  pills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.xs,
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+  },
+  pillInherited: {
+    borderColor: COLORS.laurel,
+  },
+  pillExpanded: {
+    backgroundColor: COLORS.panelElevated,
+  },
+  inheritIcon: {
+    fontSize: 10,
+  },
+  pillText: {
+    color: COLORS.dust,
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+  },
+  pillTextInherited: {
+    color: COLORS.laurel,
+  },
+  detail: {
+    backgroundColor: COLORS.panelElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  detailDesc: {
+    color: COLORS.dust,
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  detailMods: {
+    color: COLORS.laurel,
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+  },
+});
+
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 export default function CharacterActionModal({ character, visible, onClose }: Props) {
@@ -306,6 +440,7 @@ export default function CharacterActionModal({ character, visible, onClose }: Pr
                 onPress={() => doAction('auctoritas', 5)}
                 resource="gravitas"
               />
+              <TraitBadges character={character} />
               <PlayerAmbitionTracker characterId={character.id} />
             </>
           ) : (
@@ -349,6 +484,7 @@ export default function CharacterActionModal({ character, visible, onClose }: Pr
                 onPress={() => doAction(Math.random() < 0.5 ? 'rhetoric' : 'auctoritas', 4)}
                 resource="dignitas"
               />
+              <TraitBadges character={character} />
               <NpcAmbitionDisplay character={character} />
             </>
           )}
