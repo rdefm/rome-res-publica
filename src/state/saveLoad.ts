@@ -34,6 +34,7 @@ const SaveSchema = z.object({
     turnAcquired: z.number(),
   })).default([]),
   familyReputations: z.record(z.string(), z.number()).default({}),
+  lifetimeDignitas: z.number().default(0),
   legacyObjectives: z.array(z.object({
     definitionId: z.string(),
     currentValue: z.number(),

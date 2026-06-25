@@ -93,6 +93,7 @@ export interface GameState {
 
   // Patron Ladder (Feature 7)
   patronTier: PatronTier;
+  lifetimeDignitas: number; // total Dignitas ever earned, used for patron tier calc
 
   // Trials (Feature 6)
   trialQueue: Trial[];
@@ -250,6 +251,7 @@ export const INITIAL_STATE: GameState = {
   ambitions: [],
   legacyObjectives: initLegacyObjectives(),
   patronTier: 0,
+  lifetimeDignitas: 0,
   trialQueue: [],
 
   pendingEvents: [],
