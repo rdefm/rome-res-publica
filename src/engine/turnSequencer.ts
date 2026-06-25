@@ -29,6 +29,7 @@ import {
 import { computePatronTier, processFavourCallIns } from './patronEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import { computeTotalAssetBonuses } from './assetEngine';
+import { tickAllProvinces } from './provinceEngine';
 import { TRIAL_ACTIONS } from '../data/trialActions';
 import { EVENT_DEFS } from '../data/events';
 import { OFFICES } from '../data/offices';
@@ -42,10 +43,6 @@ function nextBillId(): string {
 
 // ─── Client helpers ──────────────────────────────────────────────────────────
 
-/**
- * Return the oldest-acquired client of a given type, or undefined if none.
- * "Oldest" = smallest acquiredTurn value.
- */
 function pickOldestClient(clients: Client[], type: ClientType): Client | undefined {
   return clients
     .filter(c => c.type === type)
@@ -54,10 +51,6 @@ function pickOldestClient(clients: Client[], type: ClientType): Client | undefin
 
 // ─── Season processor ────────────────────────────────────────────────────────
 
-/**
- * Run the full end-of-season sequence.
- * Returns a full new GameState and an array of log messages for the overlay.
- */
 export function processSeason(state: GameState): {
   nextState: GameState;
   events: string[];
@@ -90,7 +83,6 @@ export function processSeason(state: GameState): {
         campaignVotes: {},
         electionRivals: [],
       };
-      // Increment consular_line if a consul was won
       if (s.campaigning === 'consul') {
         const { updated: legacyAfterConsul, newMilestonesReached: cMilestones } =
           incrementLegacy(s.legacyObjectives, 'consular_line', 1);
@@ -130,13 +122,11 @@ export function processSeason(state: GameState): {
   for (const bill of s.bills) {
     const turnsLeft = bill.turnsLeft - 1;
     if (bill.support > 0) {
-      // Passes
       passedBills.push(bill);
       const patch = applyEffectString(bill.passEffect, s);
       s = { ...s, ...patch };
       resolvedLogs.push(`✓ ${bill.name} passes.`);
     } else if (turnsLeft <= 0) {
-      // Expires
       const patch = applyEffectString(bill.failEffect, s);
       s = { ...s, ...patch };
       resolvedLogs.push(`✗ ${bill.name} expires without passing.`);
@@ -160,7 +150,6 @@ export function processSeason(state: GameState): {
   // 7. Resource income
   const { gravitasIncome, dignitasIncome, gratiaIncome, denariiIncome } = calcResourceIncome(s);
 
-  // Apply legacy flat bonuses to income
   const legacyBonuses = computeLegacyBonuses(s.legacyObjectives);
   const flatBonus = legacyBonuses.flatBonus ?? {};
   const multiplier = legacyBonuses.resourceMultiplier ?? {};
@@ -177,7 +166,6 @@ export function processSeason(state: GameState): {
     denarii:  s.denarii  + finalDenarii,
   };
 
-  // Increment treasury_legacy by denarii earned this season
   if (finalDenarii > 0) {
     const { updated: legacyAfterTreasury, newMilestonesReached: tMilestones } =
       incrementLegacy(s.legacyObjectives, 'treasury_legacy', finalDenarii);
@@ -187,14 +175,11 @@ export function processSeason(state: GameState): {
     }
   }
 
-  // Accumulate lifetime Dignitas for patron tier calculation
   const newLifetimeDignitas = s.lifetimeDignitas + Math.max(0, finalDignitas);
 
-  // Apply patron tier Gratia multiplier on top of legacy multiplier
   const patronTierDef = PATRON_TIER_DEFINITIONS[s.patronTier];
   const patronGratiaMultiplier = patronTierDef?.passiveBonus.gratiaMultiplier ?? 1;
   const finalGratiaWithPatron = Math.round(finalGratia * patronGratiaMultiplier);
-  // Correct the already-applied gratia with the patron bonus difference
   const patronGratiaDelta = finalGratiaWithPatron - finalGratia;
   if (patronGratiaDelta > 0) {
     s = { ...s, gratia: s.gratia + patronGratiaDelta };
@@ -212,6 +197,30 @@ export function processSeason(state: GameState): {
 
   // 9. Relationship drift and alliance ticks
   s = { ...s, clans: applyRelationshipDrift(s) };
+
+  // 9c. Province tick — relationship, infrastructure, gold/imperium from provinces
+  if (s.provinces && s.provinces.length > 0) {
+    const { updatedProvinces, totalGoldDelta, totalImperiumDelta, events: provinceEvents } =
+      tickAllProvinces(s.provinces, s);
+
+    s = {
+      ...s,
+      provinces: updatedProvinces,
+      denarii:  s.denarii  + totalGoldDelta,
+      imperium: s.imperium + totalImperiumDelta,
+      lifetimeImperium: (s.lifetimeImperium ?? 0) + Math.max(0, totalImperiumDelta),
+    };
+
+    for (const msg of provinceEvents) {
+      events.push(msg);
+    }
+
+    if (totalGoldDelta > 0 || totalImperiumDelta > 0) {
+      events.push(
+        `Provincial income: +${totalGoldDelta} Gold, +${totalImperiumDelta} Imperium from Italy.`
+      );
+    }
+  }
 
   // 9b. Increment survival_legacy each season
   {
@@ -245,7 +254,6 @@ export function processSeason(state: GameState): {
   // 12. Pick and inject one end-of-season event (if eligible)
   const chosenDef = pickRandomEvent(EVENT_DEFS, s);
   if (chosenDef) {
-    // Detect Class B / C events: those with a hasClient condition
     const clientCondition = chosenDef.conditions.find(
       c => c.type === 'hasClient'
     ) as { type: 'hasClient'; clientType: ClientType } | undefined;
@@ -260,15 +268,14 @@ export function processSeason(state: GameState): {
       defId: chosenDef.id,
       firedAtTurn: s.turnNumber,
       targetCharacterId: player?.id ?? 'pc-1',
-      clientName: involvedClient?.name,   // undefined for Class A events
-      clientType: involvedClient?.type,   // undefined for Class A events
+      clientName: involvedClient?.name,
+      clientType: involvedClient?.type,
     };
 
-    // Append to pending queue — gameStore.endSeason surfaces the first one
     s = { ...s, pendingEvents: [...s.pendingEvents, instance] };
   }
 
-  // 13. Tick ambitions — check completion, expiry, apply rewards/consequences
+  // 13. Tick ambitions
   const { updatedAmbitions, completed, expired } = tickAmbitions(s.ambitions, s);
   s = { ...s, ambitions: updatedAmbitions };
 
@@ -290,7 +297,6 @@ export function processSeason(state: GameState): {
         ],
       };
     }
-    // Reputation bonuses
     if (r.reputationBonus) {
       const newReps = { ...s.familyReputations };
       for (const { clanId, delta } of r.reputationBonus) {
@@ -299,7 +305,6 @@ export function processSeason(state: GameState): {
       s = { ...s, familyReputations: newReps };
     }
     events.push(`Ambition complete: "${def.title}". Rewards applied.`);
-    // Chain ambition — queue offer via pendingAmbitionSelection flag (handled in store)
   }
 
   for (const a of expired) {
@@ -321,7 +326,7 @@ export function processSeason(state: GameState): {
     events.push(`Ambition expired: "${def.title}". Consequences applied.`);
   }
 
-  // 14. Corruption tick — passive accumulation/decay on player character
+  // 14. Corruption tick
   {
     const player = s.family.find(c => c.isPlayer);
     if (player) {
@@ -339,7 +344,7 @@ export function processSeason(state: GameState): {
     }
   }
 
-  // 15. Trial resolution — tick turnsRemaining, resolve expired trials
+  // 15. Trial resolution
   {
     let trialEvents: string[] = [];
     const updatedTrials = s.trialQueue.map(trial => {
@@ -347,7 +352,6 @@ export function processSeason(state: GameState): {
       const newTurns = trial.turnsRemaining - 1;
       if (newTurns > 0) return { ...trial, turnsRemaining: newTurns };
 
-      // Time's up — resolve
       const outcome = resolveTrial(trial);
       const cons = OUTCOME_CONSEQUENCES[outcome];
       const accused = s.family.find(c => c.id === trial.accusedCharacterId);
@@ -355,7 +359,6 @@ export function processSeason(state: GameState): {
 
       trialEvents.push(`Trial resolved: ${accusedName} — ${outcome.toUpperCase()}.`);
 
-      // Apply reputation delta to accusing clan
       if (cons.reputationDelta !== 0 && trial.accusingClanId) {
         const newRep = Math.min(100, Math.max(-100,
           (s.familyReputations[trial.accusingClanId] ?? 0) + cons.reputationDelta
@@ -363,15 +366,12 @@ export function processSeason(state: GameState): {
         s = { ...s, familyReputations: { ...s.familyReputations, [trial.accusingClanId]: newRep } };
       }
 
-      // Apply dignitas delta
       s = { ...s, dignitas: Math.max(0, s.dignitas + cons.dignitas) };
 
-      // Apply fine
       if (cons.denarii) {
         s = { ...s, denarii: Math.max(0, s.denarii + cons.denarii) };
       }
 
-      // Clear corruption if acquitted
       if (cons.corruptionClear) {
         s = {
           ...s,
@@ -381,7 +381,6 @@ export function processSeason(state: GameState): {
         };
       }
 
-      // Family trust delta
       if (cons.familyTrustDelta) {
         s = {
           ...s,
@@ -391,7 +390,6 @@ export function processSeason(state: GameState): {
         };
       }
 
-      // Remove character if exiled/executed
       if (cons.removeCharacter) {
         s = {
           ...s,
@@ -406,7 +404,7 @@ export function processSeason(state: GameState): {
     events.push(...trialEvents);
   }
 
-  // 16. Trial trigger check — may add new trial to queue
+  // 16. Trial trigger check
   {
     const trigger = shouldTriggerTrial(s);
     if (trigger) {
@@ -442,7 +440,6 @@ export function processSeason(state: GameState): {
       const role: 'son' | 'daughter' = Math.random() < 0.5 ? 'son' : 'daughter';
       const inheritedTraits = resolveInheritedTraits(player, spouse);
 
-      // Base skills: average of parents' skills with small random variation
       const baseSkills = {
         rhetoric:   Math.max(1, Math.min(8, Math.round((player.skills.rhetoric   + spouse.skills.rhetoric)   / 2 + (Math.random() * 2 - 1)))),
         auctoritas: Math.max(1, Math.min(8, Math.round((player.skills.auctoritas + spouse.skills.auctoritas) / 2 + (Math.random() * 2 - 1)))),

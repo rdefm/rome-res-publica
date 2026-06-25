@@ -1,0 +1,73 @@
+// ─── Ambassador Engine ────────────────────────────────────────────────────────
+// Handles Ambassador appointment, expulsion checks, and Rapport tracking.
+// Italy provinces are all incorporated so Ambassador logic is minimal in v1,
+// but this engine is ready for Mediterranean / East maps.
+
+import type { ProvinceState, AmbassadorState } from '../models/province';
+
+/**
+ * Check whether an expulsion event should fire this season.
+ * Triggers if relationship dropped by 20+ points in a single season
+ * while an Ambassador is posted.
+ */
+export function checkExpulsion(
+  prevRelationship: number,
+  currentRelationship: number,
+  ambassador: AmbassadorState | null
+): boolean {
+  if (!ambassador) return false;
+  const drop = prevRelationship - currentRelationship;
+  return drop >= 20;
+}
+
+/**
+ * Apply ambassador expulsion consequences.
+ * Returns province state delta and resource patch.
+ */
+export function resolveExpulsion(
+  province: ProvinceState
+): {
+  provincePatch: Partial<ProvinceState>;
+  resourcePatch: { dignitas?: number; gratia?: number };
+  logMessage: string;
+} {
+  return {
+    provincePatch: {
+      playerAmbassador: null,
+      relationshipScore: Math.max(0, province.relationshipScore - 15),
+    },
+    resourcePatch: { dignitas: -8 },
+    logMessage: `Ambassador expelled from ${province.id}. −15 Relationship, −8 Dignitas.`,
+  };
+}
+
+/**
+ * Calculate Personal Rapport decay per season (resets when a new ambassador
+ * is appointed — this handles passive decay during posting).
+ */
+export function calcRapportDecay(_ambassador: AmbassadorState): number {
+  // Rapport decays by 1 per season when no action is taken.
+  // The game prevents this going negative.
+  return 1;
+}
+
+/**
+ * Check whether a Provincial Client can be recruited from this province.
+ */
+export function canRecruitClient(
+  province: ProvinceState,
+  requiredSupport: number,
+  requiredRelationship: number
+): boolean {
+  return (
+    province.localSupport >= requiredSupport &&
+    province.relationshipScore >= requiredRelationship
+  );
+}
+
+/**
+ * Get the cooldown reset for ambassador actions at the start of a new season.
+ */
+export function resetAmbassadorCooldowns(ambassador: AmbassadorState): AmbassadorState {
+  return { ...ambassador, actionsUsedThisTurn: [] };
+}

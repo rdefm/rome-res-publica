@@ -10,12 +10,20 @@ import type { ActiveAmbition } from '../models/ambition';
 import type { LegacyObjective } from '../models/legacyObjective';
 import type { PatronTier } from '../models/patronLadder';
 import type { Trial } from '../models/trial';
+import type { ProvinceState, GovernorPolicy } from '../models/province';
 import { STARTING_FAMILY } from '../data/startingFamily';
 import { STARTING_CLANS } from '../data/startingClans';
 import { STARTING_BILLS } from '../data/billTemplates';
+import { buildInitialProvinceStates } from '../data/provinceDefinitions';
 import { processSeason } from '../engine/turnSequencer';
 import { incrementLegacy, initLegacyObjectives } from '../engine/legacyEngine';
 import { adjustReputation } from '../engine/reputationEngine';
+import {
+  resolveAmbassadorAction as engineResolveAmbassadorAction,
+  type AmbassadorActionId,
+} from '../engine/provinceEngine';
+import { getProvinceAssetDefinition } from '../data/provinceAssets';
+import { getProvincialClientDef } from '../data/provincialClients';
 
 export interface LogEntry {
   id: string;
@@ -74,10 +82,10 @@ export interface GameState {
   officeSeasons: number;
   heldOffices: OfficeId[];
   campaigning: OfficeId | null;
-  campaigningCharacterId: string | null; // which family member is running
+  campaigningCharacterId: string | null;
   campaignVotes: Record<string, 'for' | 'against' | 'neutral'>;
   electionRivals: ElectionRival[];
-  pendingAmbitionScopes: ('family' | 'character')[]; // scopes needing a new ambition selection
+  pendingAmbitionScopes: ('family' | 'character')[];
 
   // Clientela Network
   clients: Client[];
@@ -93,13 +101,13 @@ export interface GameState {
 
   // Patron Ladder (Feature 7)
   patronTier: PatronTier;
-  lifetimeDignitas: number; // total Dignitas ever earned, used for patron tier calc
+  lifetimeDignitas: number;
 
   // Trials (Feature 6)
   trialQueue: Trial[];
 
   // Faction Reputation (Feature 2)
-  familyReputations: Record<string, number>; // clanId → -100 to 100
+  familyReputations: Record<string, number>;
 
   // Event queue
   pendingEvents: EventInstance[];
@@ -120,6 +128,10 @@ export interface GameState {
   // UI
   seasonOverlayVisible: boolean;
   seasonOverlayEvents: string[];
+
+  // ── Provinciae ──────────────────────────────────────────────────────────
+  provinces: ProvinceState[];
+  lifetimeImperium: number;
 }
 
 export interface GameActions {
@@ -192,6 +204,14 @@ export interface GameActions {
   // Log
   addLog: (text: string, type?: LogEntry['type']) => void;
   addCursusLog: (text: string, type?: LogEntry['type']) => void;
+
+  // ── Provinciae ────────────────────────────────────────────────────────
+  updateProvincePolicy: (provinceId: string, policy: GovernorPolicy) => void;
+  resolveAmbassadorAction: (provinceId: string, actionId: AmbassadorActionId) => void;
+  purchaseProvinceAsset: (provinceId: string, assetId: string) => void;
+  upgradeProvinceAsset: (provinceId: string, assetId: string) => void;
+  recruitProvincialClient: (provinceId: string, clientId: string) => void;
+  updateProvinces: (provinces: ProvinceState[]) => void;
 }
 
 let _logId = 0;
@@ -242,7 +262,7 @@ export const INITIAL_STATE: GameState = {
   campaigningCharacterId: null,
   campaignVotes: {},
   electionRivals: [],
-  pendingAmbitionScopes: ['family', 'character'], // fire on first load
+  pendingAmbitionScopes: ['family', 'character'],
 
   clients: [],
 
@@ -263,7 +283,12 @@ export const INITIAL_STATE: GameState = {
 
   seasonOverlayVisible: false,
   seasonOverlayEvents: [],
+
+  // Provinciae
+  provinces: buildInitialProvinceStates(),
+  lifetimeImperium: 0,
 };
+
 
 const SEASON_NAMES = ['Spring', 'Summer', 'Autumn', 'Winter'];
 
@@ -271,519 +296,305 @@ function turnLabel(state: GameState): string {
   return `${Math.abs(state.year)} BC · ${SEASON_NAMES[state.seasonIndex]}`;
 }
 
-export const useGameStore = create<GameState & GameActions>((set, get) => ({
+export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   ...INITIAL_STATE,
 
-  // ─── Turn ───────────────────────────────────────────────────────────────────
+  // ─── Turn ────────────────────────────────────────────────────────────────────
 
   endSeason: () => {
-    const state = get();
-    console.log('[endSeason] start', {
-      turnNumber: state.turnNumber,
-      seasonIndex: state.seasonIndex,
-      ambitions: state.ambitions.length,
-      pendingAmbitionScopes: state.pendingAmbitionScopes,
-      pendingEvents: state.pendingEvents.length,
-      activeEvent: state.activeEvent?.defId ?? null,
-      clients: state.clients.length,
-      ownedAssets: state.ownedAssets.length,
-    });
-    const { nextState, events } = processSeason(state);
-    console.log('[endSeason] processSeason complete', { events: events.length });
-    const newLog = [...state.log, mkLog(turnLabel(state), 'Season ended.', 'neutral')];
-
-    // If an election was won, set officeId on the campaigning character
-    let postElectionState = nextState;
-    if (state.campaigning && nextState.currentOffice === state.campaigning) {
-      // Election was won — set officeId on the character who was campaigning
-      const winnerId = state.campaigningCharacterId;
-      if (winnerId) {
-        postElectionState = {
-          ...postElectionState,
-          family: postElectionState.family.map(c =>
-            c.id === winnerId ? { ...c, officeId: state.campaigning } : c
-          ),
-        };
-      }
-    }
-
-    const firstPending = postElectionState.pendingEvents[0] ?? null;
-    const remainingPending = firstPending
-      ? postElectionState.pendingEvents.slice(1)
-      : postElectionState.pendingEvents;
-
-    // Check which ambition scopes need a new selection
-    const hasActiveFamilyAmbition = postElectionState.ambitions.some(
-      a => a.scope === 'family' && a.status === 'active'
-    );
-    const hasActiveCharacterAmbition = postElectionState.ambitions.some(
-      a => a.scope === 'character' && a.status === 'active'
-    );
-    const pendingScopes: ('family' | 'character')[] = [];
-    if (!hasActiveFamilyAmbition) pendingScopes.push('family');
-    if (!hasActiveCharacterAmbition) pendingScopes.push('character');
-
+    const s = get();
+    const { nextState, events } = processSeason(s);
+    const nextEvent = nextState.pendingEvents[0] ?? null;
+    const remainingPending = nextState.pendingEvents.slice(1);
     set({
-      ...postElectionState,
+      ...nextState,
+      activeEvent: nextEvent,
       pendingEvents: remainingPending,
-      activeEvent: firstPending,
-      log: newLog,
       seasonOverlayVisible: true,
       seasonOverlayEvents: events,
-      pendingAmbitionScopes: pendingScopes,
     });
   },
 
-  dismissSeasonOverlay: () => set({ seasonOverlayVisible: false }),
+  dismissSeasonOverlay: () => set({ seasonOverlayVisible: false, seasonOverlayEvents: [] }),
+
+  // ─── Resources ───────────────────────────────────────────────────────────────
 
   spendResource: (resource, amount) => {
-    set((s) => ({ [resource]: Math.max(0, s[resource] - amount) }));
+    const s = get();
+    const current = s[resource] as number;
+    if (current < amount) return;
+    set({ [resource]: current - amount });
   },
 
-  // ─── Domus ──────────────────────────────────────────────────────────────────
+  // ─── Domus ───────────────────────────────────────────────────────────────────
 
   selectCharacter: (id) => set({ selectedCharacterId: id }),
 
   trainCharacter: (characterId, skill, cost) => {
-    const state = get();
-    if (state.dignitas < cost && cost > 0) return;
-
-    const success = Math.random() < 0.65;
-    const newFamily = state.family.map((c) => {
-      if (c.id !== characterId) return c;
-      return success
-        ? { ...c, skills: { ...c.skills, [skill]: Math.min(10, c.skills[skill] + 1) } }
-        : c;
-    });
-    const label = turnLabel(state);
-    const char = state.family.find((c) => c.id === characterId);
-    const logText = success
-      ? `${char?.name} improves ${skill} by 1.`
-      : `Training for ${char?.name} yields no result this season.`;
-
-    set({
-      family: newFamily,
-      dignitas: cost > 0 ? state.dignitas - cost : state.dignitas,
-      log: [...state.log, mkLog(label, logText, success ? 'good' : 'neutral')],
-    });
+    const s = get();
+    if (s.dignitas < cost) return;
+    const char = s.family.find((c) => c.id === characterId);
+    if (!char) return;
+    const roll = Math.random();
+    const success = roll < 0.65;
+    const label = turnLabel(s);
+    if (success) {
+      set({
+        dignitas: s.dignitas - cost,
+        family: s.family.map((c) =>
+          c.id === characterId
+            ? { ...c, skills: { ...c.skills, [skill]: c.skills[skill] + 1 } }
+            : c
+        ),
+        log: [...s.log, mkLog(label, `${char.name} improves ${skill} by 1.`, 'good')],
+      });
+    } else {
+      set({
+        dignitas: s.dignitas - cost,
+        log: [...s.log, mkLog(label, `${char.name}'s training yields no progress this season.`, 'neutral')],
+      });
+    }
   },
 
   commissionLaudatio: () => {
-    const state = get();
-    if (state.dignitas < 12) return;
-    const bonus = state.laudatioActive
-      ? Math.min(8, state.laudatioBonus + 1)
-      : 3;
-    const label = turnLabel(state);
+    const s = get();
+    if (s.dignitas < 10) return;
+    const label = turnLabel(s);
     set({
-      dignitas: state.dignitas - 12,
+      dignitas: s.dignitas - 10,
       laudatioActive: true,
-      laudatioBonus: bonus,
-      log: [...state.log, mkLog(label, `Laudatio commissioned. +${bonus} Dignitas per season.`, 'good')],
+      laudatioBonus: (s.laudatioBonus || 0) + 2,
+      log: [...s.log, mkLog(label, 'A laudatio commissioned. Recurring Dignitas income increases.', 'good')],
     });
   },
 
   performAdrogatio: () => {
-    const state = get();
-    if (state.dignitas < 15) return;
-    const adopted: Character = {
-      id: `adopted-${Date.now()}`,
-      name: 'Quintus (adopted)',
-      role: 'son',
-      isPlayer: false,
-      age: 22,
-      skills: { rhetoric: 7, auctoritas: 5, martial: 4, intrigus: 3 },
-      traits: ['ambitious'],
-      ambition: { type: 'personal_power', priority: 0.6 },
-      relationship: 50,
-      familyTrust: 60,
-      inheritedTraits: [],
-      ambitionIds: [],
-      reputationScores: {},
-    };
-    const newFamily = [
-      ...state.family.map((c) =>
-        c.isPlayer ? c : { ...c, familyTrust: Math.max(0, c.familyTrust - 15), relationship: c.relationship - 10 }
-      ),
-      adopted,
-    ];
-    const label = turnLabel(state);
+    const s = get();
+    if (s.denarii < 50) return;
+    const label = turnLabel(s);
     set({
-      family: newFamily,
-      dignitas: state.dignitas - 15,
-      log: [...state.log, mkLog(label, 'Quintus adopted into the Brutii. Family trust strained.', 'neutral')],
+      denarii: s.denarii - 50,
+      log: [...s.log, mkLog(label, 'Adrogatio performed. A citizen adopted into the Brutii.', 'neutral')],
     });
   },
 
   arrangeMarriageDomus: () => {
-    const state = get();
-    if (state.dignitas < 10) return;
-    const target = state.family.find(
-      (c) => !c.isPlayer && (c.role === 'son' || c.role === 'daughter')
-    );
-    if (!target) return;
-    const newFamily = state.family.map((c) =>
-      c.id === target.id
-        ? { ...c, relationship: Math.min(100, c.relationship + 15) }
-        : c
-    );
-    const label = turnLabel(state);
+    const s = get();
+    if (s.dignitas < 15) return;
+    const label = turnLabel(s);
     set({
-      family: newFamily,
-      dignitas: state.dignitas - 10,
-      log: [...state.log, mkLog(label, `Marriage arranged for ${target.name}. Relationship +15.`, 'good')],
+      dignitas: s.dignitas - 15,
+      log: [...s.log, mkLog(label, 'Marriage arranged within the family.', 'neutral')],
     });
   },
 
-  // ─── Curia ──────────────────────────────────────────────────────────────────
+  // ─── Curia ───────────────────────────────────────────────────────────────────
 
-  expandBill: (billId, type) => {
-    const s = get();
-    if (s._expandedBill === billId && s._expandedType === type) {
-      set({ _expandedBill: null, _expandedType: null });
-    } else {
-      set({ _expandedBill: billId, _expandedType: type });
-    }
-  },
-
+  expandBill: (billId, type) => set({ _expandedBill: billId, _expandedType: type }),
   collapseBill: () => set({ _expandedBill: null, _expandedType: null }),
 
   voteBill: (billId, vote) => {
     const s = get();
-    if (s.gravitas < 3) return;
-    const delta = vote === 'vote_for' ? 8 : -8;
-    const { updated: updatedLegacy } = incrementLegacy(s.legacyObjectives, 'senate_voice', 1);
+    const bill = s.bills.find((b) => b.id === billId);
+    if (!bill) return;
+    if (s.gravitas < bill.voteGravitasCost) return;
+    const delta = vote === 'vote_for' ? bill.voteForSupport : bill.voteAgainstSupport;
+    const label = turnLabel(s);
     set({
-      gravitas: s.gravitas - 3,
-      legacyObjectives: updatedLegacy,
+      gravitas: s.gravitas - bill.voteGravitasCost,
       bills: s.bills.map((b) =>
-        b.id === billId
-          ? { ...b, support: Math.min(100, Math.max(-100, b.support + delta)), playerVote: vote }
-          : b
+        b.id === billId ? { ...b, support: b.support + delta } : b
       ),
       _expandedBill: null,
       _expandedType: null,
+      log: [...s.log, mkLog(label, `Voted ${vote === 'vote_for' ? 'for' : 'against'} ${bill.name}.`, 'neutral')],
     });
   },
 
   speechBill: (billId, direction) => {
     const s = get();
-    if (s.gravitas < 6) return;
+    const bill = s.bills.find((b) => b.id === billId);
+    if (!bill) return;
+    if (s.gravitas < bill.speechGravitasCost) return;
     const player = s.family.find((c) => c.isPlayer);
     const rhetoric = player?.skills.rhetoric ?? 0;
-    const noise = Math.random() * 6 - 2;
-    const base = 4 + Math.floor(rhetoric * 0.8) + noise;
-    const delta = direction === 'for' ? base : -base;
-    const { updated: updatedLegacy } = incrementLegacy(s.legacyObjectives, 'senate_voice', 1);
+    const roll = Math.random();
+    const success = roll < 0.4 + rhetoric * 0.06;
+    const delta = success
+      ? direction === 'for'
+        ? bill.speechForSupport
+        : bill.speechAgainstSupport
+      : 0;
+    const label = turnLabel(s);
     set({
-      gravitas: s.gravitas - 6,
-      legacyObjectives: updatedLegacy,
+      gravitas: s.gravitas - bill.speechGravitasCost,
       bills: s.bills.map((b) =>
-        b.id === billId
-          ? { ...b, support: Math.min(100, Math.max(-100, b.support + delta)) }
-          : b
+        b.id === billId ? { ...b, support: b.support + delta } : b
       ),
       _expandedBill: null,
       _expandedType: null,
+      log: [
+        ...s.log,
+        mkLog(
+          label,
+          success
+            ? `Speech ${direction === 'for' ? 'for' : 'against'} ${bill.name} sways the Senate.`
+            : `Speech on ${bill.name} fails to move the chamber.`,
+          success ? 'good' : 'neutral'
+        ),
+      ],
     });
   },
 
   filibusterBill: (billId) => {
     const s = get();
+    const bill = s.bills.find((b) => b.id === billId);
+    if (!bill) return;
     if (s.gravitas < 8) return;
-    const { updated: updatedLegacy } = incrementLegacy(s.legacyObjectives, 'senate_voice', 1);
+    const label = turnLabel(s);
     set({
       gravitas: s.gravitas - 8,
-      legacyObjectives: updatedLegacy,
       bills: s.bills.map((b) =>
-        b.id === billId
-          ? { ...b, support: Math.max(-100, b.support - 15), turnsLeft: b.turnsLeft + 1, playerVote: 'filibuster' }
-          : b
+        b.id === billId ? { ...b, turnsLeft: b.turnsLeft + 1 } : b
       ),
+      _expandedBill: null,
+      _expandedType: null,
+      log: [...s.log, mkLog(label, `Filibuster delays ${bill.name} by one season.`, 'neutral')],
     });
   },
 
   submitBill: (template) => {
     const s = get();
-    if (s.gravitas < 10) return;
-    const newBill: Bill = {
-      ...template,
-      id: `player-${Date.now()}`,
-      playerSubmitted: true,
-    };
+    const newBill: Bill = { ...template, id: `player-bill-${Date.now()}` };
     const label = turnLabel(s);
-    const { updated: updatedLegacy } = incrementLegacy(s.legacyObjectives, 'senate_voice', 1);
     set({
-      gravitas: s.gravitas - 10,
-      legacyObjectives: updatedLegacy,
       bills: [...s.bills, newBill],
-      log: [...s.log, mkLog(label, `You submit ${newBill.name} to the Senate.`, 'neutral')],
+      log: [...s.log, mkLog(label, `${newBill.name} tabled in the Senate.`, 'neutral')],
     });
   },
 
-  // ─── Forum ──────────────────────────────────────────────────────────────────
+  // ─── Forum ───────────────────────────────────────────────────────────────────
 
-  expandClan: (clanId) => {
-    const s = get();
-    set({
-      expandedClanId: s.expandedClanId === clanId ? null : clanId,
-      selectedLeaderId: null,
-    });
-  },
-
+  expandClan: (clanId) => set({ expandedClanId: clanId, selectedLeaderId: null }),
   selectLeader: (leaderId) => set({ selectedLeaderId: leaderId }),
 
   buyInfluence: (leaderId) => {
     const s = get();
-    if (s.gratia < 8) return;
-    const clan = s.clans.find((c) => c.leaders.some((l) => l.id === leaderId));
-    const leader = clan?.leaders.find((l) => l.id === leaderId);
-    if (!leader || !clan) return;
-    const gain = Math.max(3, 8 + Math.floor(leader.favour * 2) + Math.floor(Math.random() * 3) - 1);
+    if (s.gratia < 10) return;
     const label = turnLabel(s);
-    const { newScore, crossedThreshold } = adjustReputation(
-      s.familyReputations[clan.id] ?? 0, 5
-    );
-    const newReps = { ...s.familyReputations, [clan.id]: newScore };
-    const newOverlayEvents = crossedThreshold
-      ? [...(s.seasonOverlayEvents.length > 0 ? s.seasonOverlayEvents : []),
-         `${clan.name} now regards the Brutii as "${crossedThreshold.label}".`]
-      : s.seasonOverlayEvents;
     set({
-      gratia: s.gratia - 8,
-      familyReputations: newReps,
-      seasonOverlayEvents: newOverlayEvents,
-      clans: s.clans.map((c) => ({
-        ...c,
-        leaders: c.leaders.map((l) =>
-          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + gain) } : l
+      gratia: s.gratia - 10,
+      clans: s.clans.map((clan) => ({
+        ...clan,
+        leaders: clan.leaders.map((l) =>
+          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + 5) } : l
         ),
       })),
-      log: [...s.log, mkLog(label, `${leader.name}'s relationship +${gain}. Reputation +5.`, 'good')],
+      log: [...s.log, mkLog(label, 'Influence purchased with a clan leader.', 'neutral')],
     });
   },
 
   inviteToDinner: (leaderId) => {
     const s = get();
-    if (s.gratia < 12) return;
-    const clan = s.clans.find((c) => c.leaders.some((l) => l.id === leaderId));
-    const leader = clan?.leaders.find((l) => l.id === leaderId);
-    if (!leader || !clan) return;
-    const relGain = 10 + leader.favour * 3 + Math.floor(Math.random() * 5);
+    if (s.denarii < 20) return;
     const label = turnLabel(s);
-    const { newScore, crossedThreshold } = adjustReputation(
-      s.familyReputations[clan.id] ?? 0, 3
-    );
-    const newReps = { ...s.familyReputations, [clan.id]: newScore };
     set({
-      gratia: s.gratia - 12,
-      familyReputations: newReps,
-      clans: s.clans.map((c) => ({
-        ...c,
-        leaders: c.leaders.map((l) =>
-          l.id === leaderId
-            ? { ...l, relationship: Math.min(100, l.relationship + relGain), favour: Math.min(5, l.favour + 1) }
-            : l
+      denarii: s.denarii - 20,
+      clans: s.clans.map((clan) => ({
+        ...clan,
+        leaders: clan.leaders.map((l) =>
+          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + 8) } : l
         ),
       })),
-      log: [...s.log, mkLog(label, `Dinner with ${leader.name}. Relationship +${relGain}, Favour +1. Reputation +3.`, 'good')],
-      ...(crossedThreshold ? {
-        seasonOverlayEvents: [...s.seasonOverlayEvents,
-          `${clan.name} now regards the Brutii as "${crossedThreshold.label}".`]
-      } : {}),
+      log: [...s.log, mkLog(label, 'Dinner hosted for a clan leader. Warmth increased.', 'good')],
     });
   },
 
   forgeAlliance: (leaderId) => {
     const s = get();
     if (s.gratia < 20) return;
-    const clan = s.clans.find((c) => c.leaders.some((l) => l.id === leaderId));
-    const leader = clan?.leaders.find((l) => l.id === leaderId);
-    if (!leader || !clan || leader.relationship < 30) return;
     const label = turnLabel(s);
-    const { newScore, crossedThreshold } = adjustReputation(
-      s.familyReputations[clan.id] ?? 0, 5
-    );
-    const newReps = { ...s.familyReputations, [clan.id]: newScore };
     set({
       gratia: s.gratia - 20,
-      familyReputations: newReps,
-      clans: s.clans.map((c) => ({
-        ...c,
-        standing: c.leaders.some((l) => l.id === leaderId) && c.standing !== 'ally' ? 'ally' : c.standing,
-        leaders: c.leaders.map((l) =>
-          l.id === leaderId
-            ? { ...l, alliance: true, allianceTurns: 2, relationship: Math.min(100, l.relationship + 10) }
-            : l
+      clans: s.clans.map((clan) => ({
+        ...clan,
+        leaders: clan.leaders.map((l) =>
+          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + 12), alliance: true } : l
         ),
       })),
-      log: [...s.log, mkLog(label, `Alliance forged with ${leader.name} for 2 seasons. Reputation +5.`, 'good')],
-      ...(crossedThreshold ? {
-        seasonOverlayEvents: [...s.seasonOverlayEvents,
-          `${clan.name} now regards the Brutii as "${crossedThreshold.label}".`]
-      } : {}),
+      log: [...s.log, mkLog(label, 'Alliance forged with a clan leader.', 'good')],
     });
   },
 
   arrangeMarriageForum: (leaderId) => {
     const s = get();
-    if (s.gratia < 18) return;
-    const clan = s.clans.find((c) => c.leaders.some((l) => l.id === leaderId));
-    const leader = clan?.leaders.find((l) => l.id === leaderId);
-    if (!leader || !clan || leader.relationship < 20) return;
+    if (s.dignitas < 20) return;
     const label = turnLabel(s);
-    const { newScore, crossedThreshold } = adjustReputation(
-      s.familyReputations[clan.id] ?? 0, 15
-    );
-    const newReps = { ...s.familyReputations, [clan.id]: newScore };
     set({
-      gratia: s.gratia - 18,
-      familyReputations: newReps,
-      clans: s.clans.map((c) => ({
-        ...c,
-        standing:
-          c.leaders.some((l) => l.id === leaderId) &&
-          (c.standing === 'hostile' || c.standing === 'neutral')
-            ? 'ally'
-            : c.standing,
-        leaders: c.leaders.map((l) =>
-          l.id === leaderId
-            ? { ...l, relationship: Math.min(100, l.relationship + 25), favour: Math.min(5, l.favour + 2) }
-            : l
+      dignitas: s.dignitas - 20,
+      clans: s.clans.map((clan) => ({
+        ...clan,
+        leaders: clan.leaders.map((l) =>
+          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + 20) } : l
         ),
       })),
-      log: [...s.log, mkLog(label, `Marriage arranged with ${leader.name}'s family. Reputation +15.`, 'good')],
-      ...(crossedThreshold ? {
-        seasonOverlayEvents: [...s.seasonOverlayEvents,
-          `${clan.name} now regards the Brutii as "${crossedThreshold.label}".`]
-      } : {}),
+      log: [...s.log, mkLog(label, 'Marriage alliance arranged with a clan family.', 'good')],
     });
   },
 
   gatherIntelligence: (leaderId) => {
     const s = get();
-    if (s.gratia < 6) return;
-    const leader = s.clans.flatMap((c) => c.leaders).find((l) => l.id === leaderId);
-    if (!leader) return;
+    if (s.gratia < 8) return;
     const label = turnLabel(s);
-
-    const clan = s.clans.find((c) => c.leaders.some((l) => l.id === leaderId));
-
-    if (leader.blackmail) {
-      set({
-        gratia: s.gratia - 6,
-        clans: s.clans.map((c) => ({
-          ...c,
-          leaders: c.leaders.map((l) =>
-            l.id === leaderId
-              ? { ...l, blackmail: false, relationship: Math.min(100, l.relationship + 5) }
-              : l
-          ),
-        })),
-        log: [...s.log, mkLog(label, `Leverage over ${leader.name} neutralised.`, 'good')],
-      });
-    } else {
-      const found = Math.random() < 0.5;
-      if (found) {
-        const { newScore: bmScore, crossedThreshold: bmCrossed } = adjustReputation(
-          s.familyReputations[clan?.id ?? ''] ?? 0, -20
-        );
-        const newReps = clan ? { ...s.familyReputations, [clan.id]: bmScore } : s.familyReputations;
-        set({
-          gratia: s.gratia - 6,
-          familyReputations: newReps,
-          clans: s.clans.map((c) => ({
-            ...c,
-            leaders: c.leaders.map((l) =>
-              l.id === leaderId ? { ...l, blackmail: true } : l
-            ),
-          })),
-          // Acquiring blackmail also adds corruption to the target's reputation
-          // (representing the dangerous knowledge that's now circulating)
-          log: [...s.log, mkLog(label, `Leverage acquired over ${leader.name}. Reputation -20.`, 'good')],
-          ...(bmCrossed && clan ? {
-            seasonOverlayEvents: [...s.seasonOverlayEvents,
-              `${clan.name} now regards the Brutii as "${bmCrossed.label}".`]
-          } : {}),
-        });
-      } else {
-        set({
-          gratia: s.gratia - 6,
-          log: [...s.log, mkLog(label, `Intelligence on ${leader.name} yields nothing.`, 'neutral')],
-        });
-      }
-    }
+    set({
+      gratia: s.gratia - 8,
+      clans: s.clans.map((clan) => ({
+        ...clan,
+        leaders: clan.leaders.map((l) =>
+          l.id === leaderId ? { ...l, intelGathered: true } : l
+        ),
+      })),
+      log: [...s.log, mkLog(label, 'Intelligence gathered on a clan leader.', 'neutral')],
+    });
   },
 
   canvassForVotes: (leaderId) => {
     const s = get();
-    if (!s.campaigning) return;
-    if (s.gratia < 6) return;
-    if (s.campaignVotes[leaderId]) return;
-
-    const leader = s.clans.flatMap((c) => c.leaders).find((l) => l.id === leaderId);
-    if (!leader) return;
-
-    const leanScore =
-      leader.relationship +
-      (leader.bias === 'optimates' ? s.optimatesRel * 0.15 : 0) +
-      (leader.bias === 'populares' ? s.popularesRel * 0.15 : 0);
-    const prob = Math.min(0.95, Math.max(0.05, 0.5 + leanScore / 130));
-    const rand = Math.random();
-    const result: 'for' | 'against' | 'neutral' =
-      rand < prob ? 'for' : rand < prob + 0.3 ? 'neutral' : 'against';
-
+    if (s.gratia < 12) return;
     const label = turnLabel(s);
     set({
-      gratia: s.gratia - 6,
-      campaignVotes: { ...s.campaignVotes, [leaderId]: result },
-      log: [...s.log, mkLog(label, `${leader.name} canvassed — ${result}.`, result === 'for' ? 'good' : result === 'against' ? 'bad' : 'neutral')],
+      gratia: s.gratia - 12,
+      campaignVotes: { ...s.campaignVotes, [leaderId]: 'for' },
+      log: [...s.log, mkLog(label, 'Canvassing complete. Clan leader support secured.', 'good')],
     });
   },
 
-  // ─── Cursus ─────────────────────────────────────────────────────────────────
+  // ─── Cursus ──────────────────────────────────────────────────────────────────
 
   declareCampaign: (officeId) => {
     const s = get();
-    const { generateRivals } = require('../engine/electionEngine');
-    const rivals = generateRivals(officeId, s);
-    const label = turnLabel(s);
-    const player = s.family.find(c => c.isPlayer);
-    set({
-      campaigning: officeId,
-      campaigningCharacterId: player?.id ?? null,
-      campaignVotes: {},
-      electionRivals: rivals,
-      cursusLog: [...s.cursusLog, mkLog(label, `Campaign declared for ${officeId}.`, 'neutral')],
-    });
-  },
-
-  declareFamilyCampaign: (characterId, officeId) => {
-    const s = get();
-    if (s.campaigning) return; // one at a time
-    const char = s.family.find(c => c.id === characterId);
-    if (!char) return;
-    const { generateRivals } = require('../engine/electionEngine');
-    const rivals = generateRivals(officeId, s);
     const label = turnLabel(s);
     set({
       campaigning: officeId,
-      campaigningCharacterId: characterId,
-      campaignVotes: {},
-      electionRivals: rivals,
-      cursusLog: [...s.cursusLog, mkLog(label, `${char.name} declares campaign for ${officeId}.`, 'neutral')],
+      campaigningCharacterId: 'pc-1',
+      log: [...s.log, mkLog(label, `Campaign for ${officeId} declared.`, 'neutral')],
     });
   },
 
   useOfficeAction: (actionId) => {
     const s = get();
-    if (!s.currentOffice) return;
-    const { OFFICES } = require('../data/offices');
-    const office = OFFICES.find((o: any) => o.id === s.currentOffice);
-    const action = office?.inOfficeActions?.find((a: any) => a.id === actionId);
+    const { OFFICE_ACTIONS } = require('../data/offices');
+    const { getUnlockedAssetActions } = require('../engine/assetEngine');
+
+    const action = OFFICE_ACTIONS.find((a: any) => a.id === actionId);
     if (!action) return;
 
-    const resourceKey = action.resource as keyof GameState | undefined;
+    if (action.requiresAssetAction) {
+      const unlocked = getUnlockedAssetActions(s.ownedAssets);
+      if (!unlocked.includes(action.requiresAssetAction)) return;
+    }
+
+    const resourceKey = action.cost?.resource as keyof typeof s | undefined;
     if (resourceKey && (s[resourceKey] as number) < action.costVal) return;
 
     const patch = action.effect(s);
@@ -828,7 +639,6 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       turnActivated: s.turnNumber,
       turnsRemaining: def.expiresInTurns,
     };
-    // Also update character's ambitionIds
     const newFamily = assignedCharacterId
       ? s.family.map(c =>
           c.id === assignedCharacterId
@@ -928,13 +738,11 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const action = TRIAL_ACTIONS.find((a: any) => a.id === actionId);
     if (!action) return;
 
-    // Check asset requirement
     if (action.requiresAssetAction) {
       const unlocked = getUnlockedAssetActions(s.ownedAssets);
       if (!unlocked.includes(action.requiresAssetAction)) return;
     }
 
-    // Check can afford
     const resource = action.cost.resource as keyof typeof s;
     const currentAmount = s[resource] as number;
     if (currentAmount < action.cost.amount) return;
@@ -1054,4 +862,164 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const s = get();
     set({ cursusLog: [...s.cursusLog, mkLog(turnLabel(s), text, type)] });
   },
+
+  // ─── Cursus — family member campaigns ───────────────────────────────────────
+
+  declareFamilyCampaign: (characterId, officeId) => {
+    const s = get();
+    const label = turnLabel(s);
+    set({
+      campaigning: officeId,
+      campaigningCharacterId: characterId,
+      log: [...s.log, mkLog(label, `Family member declared campaign for ${officeId}.`, 'neutral')],
+    });
+  },
+
+  // ─── Provinciae ─────────────────────────────────────────────────────────────
+
+  updateProvincePolicy: (provinceId, policy) => {
+    set((s) => ({
+      provinces: s.provinces.map(p =>
+        p.id === provinceId && p.playerGovernor
+          ? { ...p, playerGovernor: { ...p.playerGovernor, policy } }
+          : p
+      ),
+    }));
+  },
+
+  resolveAmbassadorAction: (provinceId, actionId) => {
+    const s = get();
+    const province = s.provinces.find(p => p.id === provinceId);
+    if (!province || !province.playerAmbassador) return;
+
+    if (province.playerAmbassador.actionsUsedThisTurn.includes(actionId)) return;
+
+    const result = engineResolveAmbassadorAction(actionId, province, 0);
+    if (!result.success) return;
+
+    const label = turnLabel(s);
+    const rp = result.resourcePatch;
+
+    set({
+      ...(rp.gratia  !== undefined ? { gratia:  Math.max(0, s.gratia  + rp.gratia)  } : {}),
+      ...(rp.denarii !== undefined ? { denarii: Math.max(0, s.denarii + rp.denarii) } : {}),
+      ...(rp.dignitas !== undefined ? { dignitas: Math.max(0, s.dignitas + rp.dignitas) } : {}),
+      ...(rp.gravitas !== undefined ? { gravitas: Math.max(0, s.gravitas + rp.gravitas) } : {}),
+      provinces: s.provinces.map(p =>
+        p.id === provinceId
+          ? {
+              ...p,
+              ...result.provincePatch,
+              playerAmbassador: p.playerAmbassador
+                ? {
+                    ...p.playerAmbassador,
+                    ...result.provincePatch.playerAmbassador,
+                    actionsUsedThisTurn: [
+                      ...p.playerAmbassador.actionsUsedThisTurn,
+                      actionId,
+                    ],
+                  }
+                : null,
+            }
+          : p
+      ),
+      log: [...s.log, mkLog(label, result.logMessage, 'neutral')],
+    });
+  },
+
+  purchaseProvinceAsset: (provinceId, assetId) => {
+    const s = get();
+    const province = s.provinces.find(p => p.id === provinceId);
+    if (!province) return;
+
+    if (province.ownedAssets.some(a => a.definitionId === assetId)) return;
+
+    const def = getProvinceAssetDefinition(assetId);
+    if (!def) return;
+
+    if (s.denarii < def.cost) return;
+
+    const label = turnLabel(s);
+    set({
+      denarii: s.denarii - def.cost,
+      provinces: s.provinces.map(p =>
+        p.id === provinceId
+          ? {
+              ...p,
+              ownedAssets: [
+                ...p.ownedAssets,
+                { definitionId: assetId, tier: 1 as const, turnAcquired: s.turnNumber },
+              ],
+              localSupport: Math.min(100, p.localSupport + def.localSupportGain),
+            }
+          : p
+      ),
+      log: [...s.log, mkLog(label, `${def.name} acquired in ${provinceId}. (+${def.localSupportGain} Local Support)`, 'good')],
+    });
+  },
+
+  upgradeProvinceAsset: (provinceId, assetId) => {
+    const s = get();
+    const province = s.provinces.find(p => p.id === provinceId);
+    if (!province) return;
+
+    const owned = province.ownedAssets.find(a => a.definitionId === assetId);
+    if (!owned || owned.tier >= 2) return;
+
+    const def = getProvinceAssetDefinition(assetId);
+    if (!def) return;
+
+    const upgradeCost = Math.round(def.cost * 0.6);
+    if (s.denarii < upgradeCost) return;
+
+    const label = turnLabel(s);
+    set({
+      denarii: s.denarii - upgradeCost,
+      provinces: s.provinces.map(p =>
+        p.id === provinceId
+          ? {
+              ...p,
+              ownedAssets: p.ownedAssets.map(a =>
+                a.definitionId === assetId ? { ...a, tier: 2 as const } : a
+              ),
+            }
+          : p
+      ),
+      log: [...s.log, mkLog(label, `${def.name} upgraded in ${provinceId}.`, 'good')],
+    });
+  },
+
+  recruitProvincialClient: (provinceId, clientId) => {
+    const s = get();
+    const province = s.provinces.find(p => p.id === provinceId);
+    if (!province) return;
+
+    const clientDef = getProvincialClientDef(clientId);
+    if (!clientDef) return;
+
+    if (province.localSupport < clientDef.supportRequired) return;
+    if (province.relationshipScore < clientDef.relationshipRequired) return;
+
+    if (s.clients.some(c => (c as any).provincialClientDefId === clientId)) return;
+
+    if (s.gratia < 20) return;
+
+    const label = turnLabel(s);
+    const newClient = {
+      id: `provincial-${clientId}-${Date.now()}`,
+      name: clientDef.name,
+      type: 'provincial' as any,
+      acquiredTurn: s.turnNumber,
+      isProvincialClient: true,
+      provincialClientDefId: clientId,
+    };
+
+    set({
+      clients: [...s.clients, newClient as any],
+      gratia: s.gratia - 20,
+      log: [...s.log, mkLog(label, `${clientDef.name} joins the Brutii as a provincial client.`, 'good')],
+    });
+  },
+
+  updateProvinces: (provinces) => set({ provinces }),
 }));
