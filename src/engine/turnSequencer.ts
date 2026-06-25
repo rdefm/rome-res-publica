@@ -26,6 +26,8 @@ import {
   OUTCOME_CONSEQUENCES,
   tickCorruption,
 } from './trialEngine';
+import { computePatronTier, processFavourCallIns } from './patronEngine';
+import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import { computeTotalAssetBonuses } from './assetEngine';
 import { TRIAL_ACTIONS } from '../data/trialActions';
 import { EVENT_DEFS } from '../data/events';
@@ -185,8 +187,23 @@ export function processSeason(state: GameState): {
     }
   }
 
+  // Accumulate lifetime Dignitas for patron tier calculation
+  const newLifetimeDignitas = s.lifetimeDignitas + Math.max(0, finalDignitas);
+
+  // Apply patron tier Gratia multiplier on top of legacy multiplier
+  const patronTierDef = PATRON_TIER_DEFINITIONS[s.patronTier];
+  const patronGratiaMultiplier = patronTierDef?.passiveBonus.gratiaMultiplier ?? 1;
+  const finalGratiaWithPatron = Math.round(finalGratia * patronGratiaMultiplier);
+  // Correct the already-applied gratia with the patron bonus difference
+  const patronGratiaDelta = finalGratiaWithPatron - finalGratia;
+  if (patronGratiaDelta > 0) {
+    s = { ...s, gratia: s.gratia + patronGratiaDelta };
+  }
+
+  s = { ...s, lifetimeDignitas: newLifetimeDignitas };
+
   events.push(
-    `Income: +${finalGravitas} Gravitas, +${finalDignitas} Dignitas, +${finalGratia} Gratia${finalDenarii > 0 ? `, +${finalDenarii} Denarii` : ''}`
+    `Income: +${finalGravitas} Gravitas, +${finalDignitas} Dignitas, +${finalGratiaWithPatron} Gratia${finalDenarii > 0 ? `, +${finalDenarii} Denarii` : ''}${patronGratiaDelta > 0 ? ` (patron bonus +${patronGratiaDelta})` : ''}`
   );
 
   // 8. Faction drift
@@ -445,6 +462,23 @@ export function processSeason(state: GameState): {
         },
       };
       events.push(`A child is expected in the Brutii household. Name them before the season ends.`);
+    }
+  }
+
+  // 18. Patron tier update and favour call-ins
+  {
+    const newPatronTier = computePatronTier(s.lifetimeDignitas, s.gratia);
+    if (newPatronTier !== s.patronTier) {
+      const tierDef = PATRON_TIER_DEFINITIONS[newPatronTier];
+      const direction = newPatronTier > s.patronTier ? 'risen to' : 'fallen to';
+      events.push(`Your family has ${direction} "${tierDef.label}" on the Patron Ladder.`);
+      s = { ...s, patronTier: newPatronTier };
+    }
+
+    const { gratiaOwed, callInCount } = processFavourCallIns(s.patronTier, s.clients.length);
+    if (callInCount > 0) {
+      s = { ...s, gratia: Math.max(0, s.gratia - gratiaOwed) };
+      events.push(`${callInCount} client${callInCount !== 1 ? 's' : ''} called in favour${callInCount !== 1 ? 's' : ''} this season (−${gratiaOwed} Gratia).`);
     }
   }
 
