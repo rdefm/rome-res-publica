@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Image, ImageBackground, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import type { Character } from '../../models/character';
-import { COLORS, SPACING, RADIUS } from '../../utils/theme';
+import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 const PLAYER_PORTRAIT = require('../../assets/images/portrait-paterfamilias.png');
 const MARBLE_BG = require('../../assets/images/marble_rectangle.png');
@@ -15,7 +15,7 @@ interface CharacterCardProps {
 function traitColor(trait: string): string {
   switch (trait) {
     case 'aggressive': return COLORS.crimson;
-    case 'ambitious':  return '#8B6914';
+    case 'ambitious':  return '#8B6914';   // dark gold — readable on white marble
     case 'cautious':   return COLORS.senatBlue;
     case 'content':    return COLORS.laurel;
     default:           return '#6a5a4a';
@@ -76,7 +76,6 @@ const styles = StyleSheet.create({
     borderColor: '#c8c2b8',
     marginBottom: SPACING.sm,
     marginHorizontal: SPACING.md,
-    // overflow hidden is required to clip ImageBackground to the border radius
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -92,16 +91,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: SPACING.sm + 4,
-    // No fixed height — grows to fit content
   },
   cardBgImage: {
-    // No borderRadius here — cardShell overflow:hidden handles clipping
+    borderRadius: RADIUS.sm,
   },
   portraitPlaceholder: {
     width: 72,
     height: 72,
     borderRadius: RADIUS.sm,
-    backgroundColor: 'rgba(200, 184, 144, 0.5)',
+    backgroundColor: 'rgba(200, 184, 144, 0.6)',
     marginRight: SPACING.sm,
     flexShrink: 0,
     overflow: 'hidden',
@@ -120,8 +118,6 @@ const styles = StyleSheet.create({
   },
   info: {
     flex: 1,
-    // Ensures info column can never be squashed to zero
-    minWidth: 0,
   },
   cardName: {
     fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
