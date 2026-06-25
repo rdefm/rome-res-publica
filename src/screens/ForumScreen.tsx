@@ -5,6 +5,7 @@ import { useGameStore } from '../state/gameStore';
 import EndSeasonButton from '../components/shared/EndSeasonButton';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import ClanCard from '../components/forum/ClanCard';
+import PatronLadderPanel from '../components/forum/PatronLadderPanel';
 import { COLORS, FONTS, SPACING, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 
 export default function ForumScreen() {
@@ -20,6 +21,10 @@ export default function ForumScreen() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}>
+        {/* Patron Ladder — family standing in Roman social hierarchy */}
+        <PatronLadderPanel />
+
+        <Text style={styles.sectionLabel}>GENTES — CLAN DIRECTORY</Text>
         <Text style={styles.intro}>
           Each clan is led by individual men of influence. Build relationships with them personally to
           shift their votes and allegiance.
@@ -41,5 +46,20 @@ const styles = StyleSheet.create({
   title: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 20, fontWeight: '700', letterSpacing: 2 },
   subtitle: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 1, marginTop: 2 },
   scroll: { flex: 1, padding: SPACING.md },
-  intro: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 13, marginBottom: SPACING.md, lineHeight: 18 },
+  sectionLabel: {
+    color: COLORS.goldDim,
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: SPACING.xs,
+  },
+  intro: {
+    color: COLORS.dust,
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 13,
+    marginBottom: SPACING.md,
+    lineHeight: 18,
+  },
 });
