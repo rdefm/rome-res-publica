@@ -35,7 +35,6 @@ export default function CharacterCard({ character, selected, onPress }: Characte
         imageStyle={styles.cardBgImage}
         resizeMode="cover"
       >
-        {/* Portrait */}
         <View style={styles.portraitPlaceholder}>
           {character.isPlayer ? (
             <Image source={PLAYER_PORTRAIT} style={styles.portraitImage} />
@@ -76,8 +75,7 @@ const styles = StyleSheet.create({
     borderColor: '#c8c2b8',
     marginBottom: SPACING.sm,
     marginHorizontal: SPACING.md,
-    // overflow hidden is required to clip ImageBackground to the border radius
-    overflow: 'hidden',
+    overflow: 'hidden',   // clips ImageBackground flush to border — no gap
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
@@ -92,10 +90,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: SPACING.sm + 4,
-    // No fixed height — grows to fit content
   },
   cardBgImage: {
-    // No borderRadius here — cardShell overflow:hidden handles clipping
+    // No borderRadius — cardShell overflow:hidden handles clipping.
+    // No margin/offset — image must start at pixel 0,0 of the container.
   },
   portraitPlaceholder: {
     width: 72,
@@ -120,7 +118,6 @@ const styles = StyleSheet.create({
   },
   info: {
     flex: 1,
-    // Ensures info column can never be squashed to zero
     minWidth: 0,
   },
   cardName: {

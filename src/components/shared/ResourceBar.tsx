@@ -101,11 +101,11 @@ const styles = StyleSheet.create({
   resourceItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
   },
   resourceIcon: {
-    width: 20,
-    height: 20,
+    width: 28,   // bumped from 20 — more readable in the bar
+    height: 28,
   },
   resourceValue: {
     fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',

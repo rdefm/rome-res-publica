@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, StyleSheet, View } from 'react-native';
+import { Text, StyleSheet, View, ImageBackground } from 'react-native';
 
 import DomusScreen from './src/screens/DomusScreen';
 import ForumScreen from './src/screens/ForumScreen';
@@ -18,6 +18,7 @@ import { renderTabIcon, renderTabLabel, tabBarStyle } from './src/components/sha
 import { COLORS } from './src/utils/theme';
 
 const Tab = createBottomTabNavigator();
+const MARBLE_BG = require('./src/assets/images/marble_rectangle.png');
 
 // ─── Error boundary ───────────────────────────────────────────────────────────
 
@@ -26,11 +27,7 @@ class ErrorBoundary extends React.Component<
   { error: string | null }
 > {
   state = { error: null };
-
-  static getDerivedStateFromError(e: Error) {
-    return { error: e.message + '\n\n' + e.stack };
-  }
-
+  static getDerivedStateFromError(e: Error) { return { error: e.message + '\n\n' + e.stack }; }
   render() {
     if (this.state.error) {
       return (
@@ -45,24 +42,34 @@ class ErrorBoundary extends React.Component<
 }
 
 const eb = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-    padding: 20,
-    paddingTop: 60,
+  container: { flex: 1, backgroundColor: COLORS.bg, padding: 20, paddingTop: 60 },
+  heading:   { color: COLORS.gold, fontSize: 16, fontWeight: '700', marginBottom: 12, fontFamily: 'System' },
+  body:      { color: COLORS.marble, fontSize: 11, fontFamily: 'monospace', lineHeight: 16 },
+});
+
+// ─── Tab bar marble background ────────────────────────────────────────────────
+
+function TabBarBackground() {
+  return (
+    <ImageBackground
+      source={MARBLE_BG}
+      style={StyleSheet.absoluteFill}
+      imageStyle={tabBarBg.image}
+      resizeMode="cover"
+    >
+      {/* Top border drawn over the marble */}
+      <View style={tabBarBg.topBorder} />
+    </ImageBackground>
+  );
+}
+
+const tabBarBg = StyleSheet.create({
+  image: {
+    // No borderRadius, no margin — must fill edge to edge
   },
-  heading: {
-    color: COLORS.gold,
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 12,
-    fontFamily: 'System',
-  },
-  body: {
-    color: COLORS.marble,
-    fontSize: 11,
-    fontFamily: 'monospace',
-    lineHeight: 16,
+  topBorder: {
+    height: 2,
+    backgroundColor: COLORS.border,
   },
 });
 
@@ -76,21 +83,25 @@ function AppNavigator() {
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused }) => renderTabIcon(route.name, focused),
-        tabBarLabel: ({ focused }) => renderTabLabel(route.name, focused),
+        tabBarLabel: () => null,
+        tabBarBackground: () => <TabBarBackground />,
         tabBarStyle: {
           ...tabBarStyle,
-          paddingBottom: insets.bottom + 4,
+          paddingBottom: insets.bottom,
           height: tabBarStyle.height + insets.bottom,
         },
-        tabBarActiveTintColor: COLORS.gold,
-        tabBarInactiveTintColor: COLORS.dust,
+        tabBarItemStyle: {
+          paddingVertical: 0,
+          paddingHorizontal: 0,
+          flex: 1,
+        },
       })}
     >
-      <Tab.Screen name="Domus" component={DomusScreen} />
-      <Tab.Screen name="Forum" component={ForumScreen} />
-      <Tab.Screen name="Cursus" component={CursusScreen} />
+      <Tab.Screen name="Domus"      component={DomusScreen} />
+      <Tab.Screen name="Forum"      component={ForumScreen} />
+      <Tab.Screen name="Cursus"     component={CursusScreen} />
       <Tab.Screen name="Provinciae" component={ProvinciaeScreen} />
-      <Tab.Screen name="Curia" component={CuriaScreen} />
+      <Tab.Screen name="Curia"      component={CuriaScreen} />
     </Tab.Navigator>
   );
 }
@@ -116,8 +127,5 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
+  root: { flex: 1, backgroundColor: COLORS.bg },
 });
