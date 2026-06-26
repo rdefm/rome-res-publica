@@ -1,22 +1,39 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGameStore } from '../../state/gameStore';
 import { getCrisisColour } from '../../engine/crisisEngine';
 import SettingsModal from './SettingsModal';
 import { COLORS, FONTS, SPACING, RESOURCE_BAR_HEIGHT } from '../../utils/theme';
 
+const RESOURCE_ICONS = {
+  dignitas: require('../../assets/images/icon-dignitas.png'),
+  gratia:   require('../../assets/images/icon-gratia.png'),
+  denarii:  require('../../assets/images/icon-denarii.png'),
+  gravitas: require('../../assets/images/icon-gravitas.png'),
+};
+
+const RESOURCE_TINTS = {
+  dignitas: COLORS.dignitasColor,
+  gratia:   COLORS.gratiaColor,
+  denarii:  COLORS.denariiColor,
+  gravitas: COLORS.marble,
+};
+
 interface ResourceItemProps {
   value: number;
-  color: string;
-  icon: string;
+  tintColor: string;
+  icon: ReturnType<typeof require>;
 }
 
-function ResourceItem({ value, color, icon }: ResourceItemProps) {
+function ResourceItem({ value, tintColor, icon }: ResourceItemProps) {
   return (
     <View style={styles.resourceItem}>
-      <Text style={styles.resourceIcon}>{icon}</Text>
-      <Text style={[styles.resourceValue, { color }]}>{value}</Text>
+      <Image
+        source={icon}
+        style={[styles.resourceIcon, { tintColor }]}
+      />
+      <Text style={[styles.resourceValue, { color: tintColor }]}>{value}</Text>
     </View>
   );
 }
@@ -40,10 +57,10 @@ export default function ResourceBar() {
         </TouchableOpacity>
 
         <View style={styles.resources}>
-          <ResourceItem value={dignitas}  icon="🏺" color={COLORS.dignitasColor} />
-          <ResourceItem value={gratia}    icon="🤝" color={COLORS.gratiaColor} />
-          <ResourceItem value={denarii}   icon="🪙" color={COLORS.denariiColor} />
-          <ResourceItem value={gravitas}  icon="⚖️" color={COLORS.gravitasColor} />
+          <ResourceItem value={dignitas} icon={RESOURCE_ICONS.dignitas} tintColor={RESOURCE_TINTS.dignitas} />
+          <ResourceItem value={gratia}   icon={RESOURCE_ICONS.gratia}   tintColor={RESOURCE_TINTS.gratia} />
+          <ResourceItem value={denarii}  icon={RESOURCE_ICONS.denarii}  tintColor={RESOURCE_TINTS.denarii} />
+          <ResourceItem value={gravitas} icon={RESOURCE_ICONS.gravitas} tintColor={RESOURCE_TINTS.gravitas} />
         </View>
 
         <View style={styles.rightSection}>
@@ -60,9 +77,9 @@ export default function ResourceBar() {
 
 const styles = StyleSheet.create({
   bar: {
-    backgroundColor: COLORS.panelSurface,
-    borderBottomColor: COLORS.border,
+    backgroundColor: 'rgba(15, 10, 8, 0.75)',
     borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
@@ -87,12 +104,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   resourceIcon: {
-    fontSize: 14,
+    width: 20,
+    height: 20,
   },
   resourceValue: {
-    fontFamily: FONTS.ui,
-    fontSize: 15,
-    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   rightSection: {
     alignItems: 'flex-end',

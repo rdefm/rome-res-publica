@@ -14,6 +14,7 @@ import ResourceBar from './src/components/shared/ResourceBar';
 import EventModal from './src/components/shared/EventModal';
 import AmbitionSelectionModal from './src/components/shared/AmbitionSelectionModal';
 import BirthNamingModal from './src/components/domus/BirthNamingModal';
+import { renderTabIcon, renderTabLabel, tabBarStyle } from './src/components/shared/TabBar';
 import { COLORS } from './src/utils/theme';
 
 const Tab = createBottomTabNavigator();
@@ -67,44 +68,19 @@ const eb = StyleSheet.create({
 
 // ─── Tab navigator ────────────────────────────────────────────────────────────
 
-function TabIcon({ label, focused }: { label: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    Domus: '🏛',
-    Forum: '🏺',
-    Cursus: '📜',
-    Provinciae: '🗺',
-    Curia: '⚖️',
-  };
-  return (
-    <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>
-      {icons[label] ?? '●'}
-    </Text>
-  );
-}
-
 function AppNavigator() {
   const insets = useSafeAreaInsets();
-  const tabBarHeight = 52 + insets.bottom;
 
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarIcon: ({ focused }) => (
-          <TabIcon label={route.name} focused={focused} />
-        ),
-        tabBarLabel: ({ focused }) => (
-          <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>
-            {route.name.toUpperCase()}
-          </Text>
-        ),
+        tabBarIcon: ({ focused }) => renderTabIcon(route.name, focused),
+        tabBarLabel: ({ focused }) => renderTabLabel(route.name, focused),
         tabBarStyle: {
-          backgroundColor: COLORS.panelSurface,
-          borderTopColor: COLORS.border,
-          borderTopWidth: 1,
-          height: tabBarHeight,
+          ...tabBarStyle,
           paddingBottom: insets.bottom + 4,
-          paddingTop: 4,
+          height: tabBarStyle.height + insets.bottom,
         },
         tabBarActiveTintColor: COLORS.gold,
         tabBarInactiveTintColor: COLORS.dust,
@@ -130,9 +106,7 @@ export default function App() {
             <StatusBar style="light" backgroundColor={COLORS.bg} />
             <ResourceBar />
             <AppNavigator />
-            {/* EventModal sits above everything — renders only when activeEvent is set */}
             <EventModal />
-            {/* AmbitionSelectionModal — fires when player needs to pick an ambition */}
             <AmbitionSelectionModal />
           </View>
         </NavigationContainer>
@@ -145,21 +119,5 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: COLORS.bg,
-  },
-  tabIcon: {
-    fontSize: 20,
-    opacity: 0.5,
-  },
-  tabIconActive: {
-    opacity: 1,
-  },
-  tabLabel: {
-    fontSize: 9,
-    fontFamily: 'System',
-    letterSpacing: 1,
-    color: COLORS.dust,
-  },
-  tabLabelActive: {
-    color: COLORS.gold,
   },
 });
