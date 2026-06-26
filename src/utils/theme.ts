@@ -55,7 +55,7 @@ export const RADIUS = {
   lg: 12,
 };
 
-export const RESOURCE_BAR_HEIGHT = 48;
+export const RESOURCE_BAR_HEIGHT = 60;
 export const TAB_BAR_HEIGHT = 60;
 export const END_SEASON_BAR_HEIGHT = 56;
 export const CONTENT_PADDING_BOTTOM = TAB_BAR_HEIGHT + END_SEASON_BAR_HEIGHT + SPACING.md;

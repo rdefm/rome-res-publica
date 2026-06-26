@@ -29,10 +29,7 @@ interface ResourceItemProps {
 function ResourceItem({ value, tintColor, icon }: ResourceItemProps) {
   return (
     <View style={styles.resourceItem}>
-      <Image
-        source={icon}
-        style={[styles.resourceIcon, { tintColor }]}
-      />
+      <Image source={icon} style={[styles.resourceIcon, { tintColor }]} />
       <Text style={[styles.resourceValue, { color: tintColor }]}>{value}</Text>
     </View>
   );
@@ -99,17 +96,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   resourceItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    alignItems: 'center',   // icon centred above number
+    justifyContent: 'center',
   },
   resourceIcon: {
-    width: 28,   // bumped from 20 — more readable in the bar
-    height: 28,
+    width: 24,
+    height: 24,
+    marginBottom: 1,
   },
   resourceValue: {
     fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: 'bold',
   },
   rightSection: {

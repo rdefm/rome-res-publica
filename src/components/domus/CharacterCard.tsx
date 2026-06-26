@@ -6,6 +6,12 @@ import { COLORS, SPACING, RADIUS } from '../../utils/theme';
 const PLAYER_PORTRAIT = require('../../assets/images/portrait-paterfamilias.png');
 const MARBLE_BG = require('../../assets/images/marble_rectangle.png');
 
+const NPC_PORTRAITS: Record<string, ReturnType<typeof require>> = {
+  'npc-wife':      require('../../assets/images/npc-wife.png'),
+  'npc-son':       require('../../assets/images/npc-son.png'),
+  'npc-daughter':  require('../../assets/images/npc-daughter.png'),
+};
+
 interface CharacterCardProps {
   character: Character;
   selected: boolean;
@@ -38,6 +44,8 @@ export default function CharacterCard({ character, selected, onPress }: Characte
         <View style={styles.portraitPlaceholder}>
           {character.isPlayer ? (
             <Image source={PLAYER_PORTRAIT} style={styles.portraitImage} />
+          ) : NPC_PORTRAITS[character.id] ? (
+            <Image source={NPC_PORTRAITS[character.id]} style={styles.portraitImage} />
           ) : (
             <Text style={styles.portraitEmoji}>
               {character.role === 'spouse' ? '👩' : character.role === 'son' ? '👦' : '👧'}
@@ -96,8 +104,8 @@ const styles = StyleSheet.create({
     // No margin/offset — image must start at pixel 0,0 of the container.
   },
   portraitPlaceholder: {
-    width: 72,
-    height: 72,
+    width: 88,
+    height: 88,
     borderRadius: RADIUS.sm,
     backgroundColor: 'rgba(200, 184, 144, 0.5)',
     marginRight: SPACING.sm,
@@ -109,8 +117,8 @@ const styles = StyleSheet.create({
     borderColor: '#b0a898',
   },
   portraitImage: {
-    width: 72,
-    height: 72,
+    width: 88,
+    height: 88,
     resizeMode: 'cover',
   },
   portraitEmoji: {

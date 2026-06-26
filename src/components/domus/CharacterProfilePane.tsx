@@ -6,6 +6,12 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 const PLAYER_PORTRAIT = require('../../assets/images/portrait-paterfamilias.png');
 const COIN = require('../../assets/images/ornament-coin.png');
 
+const NPC_PORTRAITS: Record<string, ReturnType<typeof require>> = {
+  'npc-wife':      require('../../assets/images/npc-wife.png'),
+  'npc-son':       require('../../assets/images/npc-son.png'),
+  'npc-daughter':  require('../../assets/images/npc-daughter.png'),
+};
+
 const SKILL_COLORS: Record<string, string> = {
   rhetoric:   COLORS.denariiColor,
   auctoritas: COLORS.dignitasColor,
@@ -31,6 +37,8 @@ export default function CharacterProfilePane({ character }: CharacterProfilePane
         <View style={styles.profileHeader}>
           {character.isPlayer ? (
             <Image source={PLAYER_PORTRAIT} style={styles.portrait} />
+          ) : NPC_PORTRAITS[character.id] ? (
+            <Image source={NPC_PORTRAITS[character.id]} style={styles.portrait} />
           ) : (
             <View style={styles.portraitPlaceholder}>
               <Text style={{ fontSize: 40 }}>
