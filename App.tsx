@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, StyleSheet, View, ImageBackground } from 'react-native';
+import { Text, StyleSheet, View } from 'react-native';
 
 import DomusScreen from './src/screens/DomusScreen';
 import ForumScreen from './src/screens/ForumScreen';
@@ -14,11 +14,10 @@ import ResourceBar from './src/components/shared/ResourceBar';
 import EventModal from './src/components/shared/EventModal';
 import AmbitionSelectionModal from './src/components/shared/AmbitionSelectionModal';
 import BirthNamingModal from './src/components/domus/BirthNamingModal';
-import { renderTabIcon, renderTabLabel, tabBarStyle } from './src/components/shared/TabBar';
+import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle } from './src/components/shared/TabBar';
 import { COLORS } from './src/utils/theme';
 
 const Tab = createBottomTabNavigator();
-const MARBLE_BG = require('./src/assets/images/marble_rectangle.png');
 
 // ─── Error boundary ───────────────────────────────────────────────────────────
 
@@ -47,36 +46,11 @@ const eb = StyleSheet.create({
   body:      { color: COLORS.marble, fontSize: 11, fontFamily: 'monospace', lineHeight: 16 },
 });
 
-// ─── Tab bar marble background ────────────────────────────────────────────────
-
-function TabBarBackground() {
-  return (
-    <ImageBackground
-      source={MARBLE_BG}
-      style={StyleSheet.absoluteFill}
-      imageStyle={tabBarBg.image}
-      resizeMode="cover"
-    >
-      {/* Top border drawn over the marble */}
-      <View style={tabBarBg.topBorder} />
-    </ImageBackground>
-  );
-}
-
-const tabBarBg = StyleSheet.create({
-  image: {
-    // No borderRadius, no margin — must fill edge to edge
-  },
-  topBorder: {
-    height: 2,
-    backgroundColor: COLORS.border,
-  },
-});
-
 // ─── Tab navigator ────────────────────────────────────────────────────────────
 
 function AppNavigator() {
   const insets = useSafeAreaInsets();
+  const barHeight = tabBarStyle.height + insets.bottom;
 
   return (
     <Tab.Navigator
@@ -84,16 +58,18 @@ function AppNavigator() {
         headerShown: false,
         tabBarIcon: ({ focused }) => renderTabIcon(route.name, focused),
         tabBarLabel: () => null,
-        tabBarBackground: () => <TabBarBackground />,
+        // Single Image covers the full bar — no per-item background needed
+        tabBarBackground: () => <TabBarBackground height={barHeight} />,
         tabBarStyle: {
           ...tabBarStyle,
           paddingBottom: insets.bottom,
-          height: tabBarStyle.height + insets.bottom,
+          height: barHeight,
         },
         tabBarItemStyle: {
           paddingVertical: 0,
           paddingHorizontal: 0,
           flex: 1,
+          backgroundColor: 'transparent',
         },
       })}
     >

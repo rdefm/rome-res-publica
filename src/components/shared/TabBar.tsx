@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet, Platform } from 'react-native';
+import { View, Text, Image, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { COLORS } from '../../utils/theme';
 
 const TAB_ICONS: Record<string, ReturnType<typeof require>> = {
@@ -10,7 +10,23 @@ const TAB_ICONS: Record<string, ReturnType<typeof require>> = {
   Provinciae: require('../../assets/images/icon-tab-provinciae.png'),
 };
 
-// renderTabIcon renders BOTH icon and label — tabBarLabel must be () => null in App.tsx
+const MARBLE_BG = require('../../assets/images/marble_rectangle.png');
+
+// Rendered once as tabBarBackground — covers the full bar width at exactly the right height
+export function TabBarBackground({ height }: { height: number }): JSX.Element {
+  const { width } = useWindowDimensions();
+  return (
+    <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
+      <Image
+        source={MARBLE_BG}
+        style={{ width, height, position: 'absolute', top: 0, left: 0 }}
+        resizeMode="cover"
+      />
+      <View style={bg.topBorder} />
+    </View>
+  );
+}
+
 export function renderTabIcon(label: string, focused: boolean): JSX.Element {
   const icon = TAB_ICONS[label];
   const tint = focused ? COLORS.crimson : '#6a5a4a';
@@ -34,15 +50,25 @@ export function renderTabLabel(): null {
   return null;
 }
 
-// tabBarStyle: transparent bg, marble is painted by App.tsx via tabBarBackground
 export const tabBarStyle = {
   backgroundColor: 'transparent',
-  borderTopWidth: 0,          // we'll draw our own border inside tabBarBackground
+  borderTopWidth: 0,
   height: 70,
   paddingBottom: 0,
   paddingTop: 0,
-  elevation: 0,               // remove Android shadow so background shows cleanly
+  elevation: 0,
 };
+
+const bg = StyleSheet.create({
+  topBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: COLORS.border,
+  },
+});
 
 const styles = StyleSheet.create({
   tabItem: {
@@ -50,6 +76,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 6,
+    backgroundColor: 'transparent',
   },
   focusBar: {
     position: 'absolute',
