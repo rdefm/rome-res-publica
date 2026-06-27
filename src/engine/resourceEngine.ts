@@ -4,6 +4,7 @@ import type { EventInstance } from '../models/event';
 import { parseEffect } from '../models/bill';
 import { generateClientName } from '../data/clientNames';
 import { computeTotalAssetBonuses } from './assetEngine';
+import { calcAssetGoldOutput, calcAssetDignitasOutput, calcAssetGratiaOutput } from './provinceEngine';
 
 // ─── Options for applyEffectString ──────────────────────────────────────────
 
@@ -41,20 +42,29 @@ export function calcResourceIncome(state: GameState): {
   const gratiaClientBonus = Math.floor(gratia_income_base * publicSupportCount * 0.05);
   const gratiaIncome = gratia_income_base + gratiaClientBonus;
 
-  // Asset passive bonuses — denarii income flows from assets only
+  // Domus asset passive bonuses (Patrimonium — ownedAssets)
   const assetBonuses = computeTotalAssetBonuses(state.ownedAssets);
-  const denariiIncome = assetBonuses.gold ?? 0;
-
-  // Asset bonuses also augment other resources passively each season
   const gravitasAssetBonus = assetBonuses.gravitas ?? 0;
   const dignitasAssetBonus = assetBonuses.dignitas ?? 0;
   const gratiaAssetBonus = assetBonuses.gratia ?? 0;
+  const denariiDomusBonus = assetBonuses.gold ?? 0;
+
+  // Province asset passive bonuses — summed across all provinces
+  const provinceDenariiBonus = state.provinces.reduce(
+    (sum, p) => sum + calcAssetGoldOutput(p), 0
+  );
+  const provinceDignitasBonus = state.provinces.reduce(
+    (sum, p) => sum + calcAssetDignitasOutput(p), 0
+  );
+  const provinceGratiaBonus = state.provinces.reduce(
+    (sum, p) => sum + calcAssetGratiaOutput(p), 0
+  );
 
   return {
     gravitasIncome: gravitasIncome + gravitasAssetBonus,
-    dignitasIncome: dignitasIncome + dignitasAssetBonus,
-    gratiaIncome: gratiaIncome + gratiaAssetBonus,
-    denariiIncome,
+    dignitasIncome: dignitasIncome + dignitasAssetBonus + provinceDignitasBonus,
+    gratiaIncome: gratiaIncome + gratiaAssetBonus + provinceGratiaBonus,
+    denariiIncome: denariiDomusBonus + provinceDenariiBonus,
   };
 }
 
