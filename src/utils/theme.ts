@@ -19,26 +19,32 @@ export const COLORS = {
   denariiColor:  '#d4a017',
   gravitasColor: '#c9a84c',
   // Chunk 7 tokens (previously hardcoded in EndSeasonButton / OfficeRung)
-  goldBronze:    '#a07840',   // eligible office rung border/button
-  crimsonDark:   '#6b1414',   // end season button top border highlight
-  crimsonMuted:  '#c09090',   // end season button inactive text
+  goldBronze:    '#a07840',
+  crimsonDark:   '#6b1414',
+  crimsonMuted:  '#c09090',
   // Redesign tokens (domus-visual-redesign-plan-v2)
-  parchment:       '#e8dcc8',  // family card backgrounds
-  parchmentBorder: '#b8a070',  // family card borders
-  parchmentText:   '#2a1f0e',  // dark text on parchment
-  parchmentMid:    '#5a4a30',  // mid-tone text on parchment (role labels)
-  parchmentDark:   '#4a3a22',  // darker text on parchment (stat text)
-  portraitPlaceholder: '#c8b890', // portrait placeholder fill
-  terracotta:      '#8B3A2A',  // fresco background fallback colour
-  goldBorder:      '#8B6914',  // structural frame borders / coin ornaments (darker than gold)
-  crimsonDeep:     '#4a1a1a',  // END SEASON button fill
-  crimsonBlack:    '#2a0a0a',  // END SEASON button bottom border shadow
+  parchment:       '#e8dcc8',
+  parchmentBorder: '#b8a070',
+  parchmentText:   '#2a1f0e',
+  parchmentMid:    '#5a4a30',
+  parchmentDark:   '#4a3a22',
+  portraitPlaceholder: '#c8b890',
+  terracotta:      '#8B3A2A',
+  goldBorder:      '#8B6914',
+  crimsonDeep:     '#4a1a1a',
+  crimsonBlack:    '#2a0a0a',
 };
 
+// ─── Typography ───────────────────────────────────────────────────────────────
+// Cinzel loaded via useFonts in App.tsx.
+// FONTS.display / FONTS.displayLight resolve to Cinzel once loaded.
+
 export const FONTS = {
-  display: 'Georgia',        // headings, names, office titles
-  body:    'Georgia',        // body / descriptions (italic in practice)
-  ui:      'System',         // numbers, labels, costs
+  display:      'Cinzel-Bold',      // Roman display caps — headings, names, button labels
+  displayLight: 'Cinzel-Regular',   // lighter weight for subtitles, secondary headings
+  body:         'Georgia-Italic',   // italic narrative text — descriptions, log, ambition
+  bodyRegular:  'Georgia',          // non-italic body
+  ui:           'System',           // numbers, stat values, resource counts, badges
 };
 
 export const SPACING = {
@@ -57,5 +63,5 @@ export const RADIUS = {
 
 export const RESOURCE_BAR_HEIGHT = 60;
 export const TAB_BAR_HEIGHT = 60;
-export const END_SEASON_BAR_HEIGHT = 56;
-export const CONTENT_PADDING_BOTTOM = TAB_BAR_HEIGHT + END_SEASON_BAR_HEIGHT + SPACING.md;
+export const END_SEASON_BAR_HEIGHT = 92;   // 949x263 image at 85% screen width ~330px
+export const CONTENT_PADDING_BOTTOM = 180;  // TAB_BAR(60) + gap(70) + slab(~92) + margin(16)

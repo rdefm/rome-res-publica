@@ -1,63 +1,85 @@
 import React from 'react';
-import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, Image, Dimensions } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
-import { COLORS, FONTS, END_SEASON_BAR_HEIGHT } from '../../utils/theme';
+import { COLORS, FONTS } from '../../utils/theme';
+
+const MARBLE_BG = require('../../assets/images/btn-end-season-bg.png');
+
+// Image is 949×263 — render at 70% screen width (down from 85%)
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const BTN_WIDTH    = Math.round(SCREEN_WIDTH * 0.70);
+const BTN_HEIGHT   = Math.round(BTN_WIDTH * (263 / 949));
 
 export default function EndSeasonButton() {
   const { endSeason, seasonOverlayVisible } = useGameStore();
 
   return (
-    <>
-      <View style={styles.rule} />
+    <View style={styles.floatWrapper}>
       <TouchableOpacity
-        style={[styles.button, seasonOverlayVisible && styles.buttonDisabled]}
+        style={[styles.button, seasonOverlayVisible && styles.disabled]}
         onPress={endSeason}
         disabled={seasonOverlayVisible}
-        activeOpacity={0.85}
+        activeOpacity={0.75}
       >
-        <Text style={styles.buttonLabel}>END SEASON</Text>
-        <Text style={styles.buttonSub}>Process Year</Text>
+        <Image
+          source={MARBLE_BG}
+          style={styles.bgImage}
+          resizeMode="stretch"
+        />
+        <View style={styles.content}>
+          <Text style={styles.label}>END SEASON</Text>
+          <Text style={styles.sub}>Process Year</Text>
+        </View>
       </TouchableOpacity>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  rule: {
-    height: 1,
-    backgroundColor: COLORS.border,
+  floatWrapper: {
+    position: 'absolute',
+    bottom: 12,                              // lower — closer to tab bar
+    width: BTN_WIDTH,
+    left: (SCREEN_WIDTH - BTN_WIDTH) / 2,
+    // No shadow properties at all
   },
   button: {
+    width: BTN_WIDTH,
+    height: BTN_HEIGHT,
+  },
+  disabled: {
+    opacity: 0.4,
+  },
+  bgImage: {
     position: 'absolute',
-    bottom: 0,
+    top: 0,
     left: 0,
-    right: 0,
-    height: END_SEASON_BAR_HEIGHT,
-    backgroundColor: COLORS.crimsonDeep,
-    borderTopWidth: 2,
-    borderTopColor: COLORS.crimsonDark,
-    borderBottomWidth: 2,
-    borderBottomColor: COLORS.crimsonBlack,
-    paddingVertical: 14,
+    width: BTN_WIDTH,
+    height: BTN_HEIGHT,
+  },
+  content: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buttonDisabled: {
-    opacity: 0.4,
-  },
-  buttonLabel: {
-    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-    fontSize: 18,
-    fontWeight: 'bold',
+  label: {
+    fontFamily: FONTS.display,
+    fontSize: 14,
     color: COLORS.marble,
-    letterSpacing: 3,
-    textTransform: 'uppercase',
+    letterSpacing: 4,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
-  buttonSub: {
-    fontFamily: Platform.OS === 'ios' ? 'Georgia-Italic' : 'serif',
+  sub: {
+    fontFamily: FONTS.body,
     fontStyle: 'italic',
-    fontSize: 12,
+    fontSize: 10,
     color: COLORS.dust,
+    letterSpacing: 1,
     marginTop: 2,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
 });
