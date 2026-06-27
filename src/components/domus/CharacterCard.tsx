@@ -1,15 +1,16 @@
 import React from 'react';
 import { View, Text, Image, ImageBackground, TouchableOpacity, StyleSheet } from 'react-native';
 import type { Character } from '../../models/character';
-import { COLORS, SPACING, RADIUS, FONTS } from '../../utils/theme';
+import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
+import { PARCHMENT_TEXT } from '../shared/ParchmentCard';
 
 const PLAYER_PORTRAIT = require('../../assets/images/portrait-paterfamilias.png');
-const MARBLE_BG = require('../../assets/images/marble_rectangle.png');
+const PARCHMENT_IMG   = require('../../assets/images/card-parchment-cropped.png');
 
 const NPC_PORTRAITS: Record<string, ReturnType<typeof require>> = {
-  'npc-wife':      require('../../assets/images/npc-wife.png'),
-  'npc-son':       require('../../assets/images/npc-son.png'),
-  'npc-daughter':  require('../../assets/images/npc-daughter.png'),
+  'npc-wife':     require('../../assets/images/npc-wife.png'),
+  'npc-son':      require('../../assets/images/npc-son.png'),
+  'npc-daughter': require('../../assets/images/npc-daughter.png'),
 };
 
 interface CharacterCardProps {
@@ -29,47 +30,56 @@ function traitColor(trait: string): string {
 }
 
 export default function CharacterCard({ character, selected, onPress }: CharacterCardProps) {
+  const portrait = character.isPlayer
+    ? PLAYER_PORTRAIT
+    : NPC_PORTRAITS[character.id] ?? null;
+
   return (
     <TouchableOpacity
-      style={[styles.cardShell, selected && styles.cardSelected]}
       onPress={onPress}
       activeOpacity={0.75}
+      style={[styles.touchable, selected && styles.selected]}
     >
       <ImageBackground
-        source={MARBLE_BG}
-        style={styles.cardBg}
-        imageStyle={styles.cardBgImage}
+        source={PARCHMENT_IMG}
         resizeMode="cover"
+        style={styles.bg}
+        imageStyle={styles.bgImage}
       >
-        <View style={styles.portraitPlaceholder}>
-          {character.isPlayer ? (
-            <Image source={PLAYER_PORTRAIT} style={styles.portraitImage} />
-          ) : NPC_PORTRAITS[character.id] ? (
-            <Image source={NPC_PORTRAITS[character.id]} style={styles.portraitImage} />
-          ) : (
-            <Text style={styles.portraitEmoji}>
-              {character.role === 'spouse' ? '👩' : character.role === 'son' ? '👦' : '👧'}
-            </Text>
-          )}
-        </View>
-
-        <View style={styles.info}>
-          <Text style={styles.cardName}>{character.name}</Text>
-          <Text style={styles.cardRole}>
-            {character.role.charAt(0).toUpperCase() + character.role.slice(1)} · Age {character.age}
-          </Text>
-          <View style={styles.traits}>
-            {character.traits.map((t) => (
-              <View key={t} style={[styles.badge, { borderColor: traitColor(t) }]}>
-                <Text style={[styles.badgeText, { color: traitColor(t) }]}>{t}</Text>
+        {/* Row: portrait | info */}
+        <View style={styles.row}>
+          {/* Portrait */}
+          <View style={styles.portraitWrap}>
+            {portrait ? (
+              <Image source={portrait} style={styles.portrait} />
+            ) : (
+              <View style={styles.portraitFallback}>
+                <Text style={{ fontSize: 36 }}>
+                  {character.role === 'spouse' ? '👩' : character.role === 'son' ? '👦' : '👧'}
+                </Text>
               </View>
-            ))}
+            )}
           </View>
-          <Text style={styles.cardStats}>
-            {(['rhetoric', 'auctoritas', 'martial', 'intrigus'] as const)
-              .map((sk) => `${sk.slice(0, 3).toUpperCase()} ${character.skills[sk]}`)
-              .join('  ')}
-          </Text>
+
+          {/* Text info */}
+          <View style={styles.info}>
+            <Text style={styles.name}>{character.name}</Text>
+            <Text style={styles.role}>
+              {character.role.charAt(0).toUpperCase() + character.role.slice(1)} · Age {character.age}
+            </Text>
+            <View style={styles.traits}>
+              {character.traits.map(t => (
+                <View key={t} style={[styles.badge, { borderColor: traitColor(t) }]}>
+                  <Text style={[styles.badgeText, { color: traitColor(t) }]}>{t}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={styles.stats}>
+              {(['rhetoric', 'auctoritas', 'martial', 'intrigus'] as const)
+                .map(sk => `${sk.slice(0, 3).toUpperCase()} ${character.skills[sk]}`)
+                .join('  ')}
+            </Text>
+          </View>
         </View>
       </ImageBackground>
     </TouchableOpacity>
@@ -77,68 +87,69 @@ export default function CharacterCard({ character, selected, onPress }: Characte
 }
 
 const styles = StyleSheet.create({
-  cardShell: {
-    borderRadius: RADIUS.sm,
-    borderWidth: 1,
-    borderColor: '#c8c2b8',
-    marginBottom: SPACING.sm,
+  touchable: {
     marginHorizontal: SPACING.md,
-    overflow: 'hidden',   // clips ImageBackground flush to border — no gap
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 3,
+    marginBottom: SPACING.sm,
+    borderRadius: 4,
+    overflow: 'hidden',
   },
-  cardSelected: {
-    borderColor: COLORS.goldBorder,
+  selected: {
     borderWidth: 2,
+    borderColor: COLORS.gold,
   },
-  cardBg: {
+  bg: {
+    // ImageBackground sizes to its children — no explicit height needed
+  },
+  bgImage: {
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+  },
+  // The single row that holds everything
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: SPACING.sm + 4,
+    padding: SPACING.sm + 2,
   },
-  cardBgImage: {
-    // No borderRadius — cardShell overflow:hidden handles clipping.
-    // No margin/offset — image must start at pixel 0,0 of the container.
-  },
-  portraitPlaceholder: {
-    width: 88,
-    height: 88,
+  portraitWrap: {
+    width: 80,
+    height: 80,
     borderRadius: RADIUS.sm,
-    backgroundColor: 'rgba(200, 184, 144, 0.5)',
+    overflow: 'hidden',
     marginRight: SPACING.sm,
     flexShrink: 0,
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#b0a898',
+    borderColor: PARCHMENT_TEXT.border,
+    backgroundColor: 'rgba(200,184,144,0.4)',
   },
-  portraitImage: {
-    width: 88,
-    height: 88,
+  portrait: {
+    width: 80,
+    height: 80,
     resizeMode: 'cover',
   },
-  portraitEmoji: {
-    fontSize: 36,
+  portraitFallback: {
+    width: 80,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   info: {
     flex: 1,
     minWidth: 0,
   },
-  cardName: {
+  name: {
     fontFamily: FONTS.display,
-    fontSize: 18,
-    color: '#1a1410',
-    fontWeight: 'bold',
+    fontSize: 16,
+    color: PARCHMENT_TEXT.heading,
   },
-  cardRole: {
+  role: {
     fontFamily: FONTS.body,
     fontStyle: 'italic',
-    fontSize: 13,
-    color: '#5a4a3a',
+    fontSize: 12,
+    color: PARCHMENT_TEXT.muted,
     marginTop: 1,
   },
   traits: {
@@ -149,11 +160,10 @@ const styles = StyleSheet.create({
   },
   badge: {
     borderWidth: 1,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: 'rgba(255,255,255,0.35)',
     borderRadius: RADIUS.sm,
-    paddingHorizontal: 6,
+    paddingHorizontal: 5,
     paddingVertical: 2,
-    alignSelf: 'flex-start',
   },
   badgeText: {
     fontFamily: FONTS.ui,
@@ -161,10 +171,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
-  cardStats: {
+  stats: {
     fontFamily: FONTS.ui,
     fontSize: 12,
-    color: '#3a2e20',
+    color: PARCHMENT_TEXT.body,
     marginTop: 4,
     letterSpacing: 0.5,
   },

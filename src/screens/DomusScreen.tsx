@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ImageBackground,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
@@ -16,7 +17,6 @@ import DomesticDirectivesTray from '../components/domus/DomesticDirectivesTray';
 import LegatumPanel from '../components/domus/LegatumPanel';
 import ClientelaPanel from '../components/domus/ClientelaPanel';
 import PatrimoniumPanel from '../components/domus/PatrimoniumPanel';
-import EndSeasonButton from '../components/shared/EndSeasonButton';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 
@@ -114,8 +114,7 @@ export default function DomusScreen() {
           <View style={{ height: CONTENT_PADDING_BOTTOM }} />
         </ScrollView>
 
-        <EndSeasonButton />
-        <SeasonOverlay />
+          <SeasonOverlay />
 
         {modalCharObj && (
           <CharacterActionModal
@@ -144,7 +143,7 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.sm,
   },
   headerTitle: {
-    fontFamily: FONTS.display,
+    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
     fontSize: 28,
     color: COLORS.gold,
     fontWeight: 'bold',
@@ -154,7 +153,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
   },
   headerSubtitle: {
-    fontFamily: FONTS.body,
+    fontFamily: Platform.OS === 'ios' ? 'Georgia-Italic' : 'serif',
     fontStyle: 'italic',
     fontSize: 14,
     color: COLORS.marble,

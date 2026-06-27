@@ -6,7 +6,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
 import { getCrisisInfo, getCrisisColour } from '../engine/crisisEngine';
 import { getUnlockedAssetActions } from '../engine/assetEngine';
-import EndSeasonButton from '../components/shared/EndSeasonButton';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import StatBar from '../components/shared/StatBar';
 import { BILL_TEMPLATES } from '../data/billTemplates';
@@ -484,7 +483,6 @@ export default function CuriaScreen() {
         )}
       </ScrollView>
 
-      <EndSeasonButton />
       <SeasonOverlay />
       <SubmitBillModal visible={submitVisible} onClose={() => setSubmitVisible(false)} />
     </SafeAreaView>

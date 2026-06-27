@@ -12,6 +12,7 @@ import { ASSET_DEFINITIONS } from '../../data/assetDefinitions';
 import type { AssetDefinition } from '../../models/asset';
 import PatrimoniumModal from './PatrimoniumModal';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
+import ParchmentCard, { PARCHMENT_TEXT } from '../shared/ParchmentCard';
 
 // ─── Asset image map ──────────────────────────────────────────────────────────
 
@@ -70,11 +71,8 @@ function AssetCard({ def, onPress }: { def: AssetDefinition; onPress: () => void
     : !isMaxTier && denarii >= def.tiers[(currentTier ?? 1)].upgradeCost;
 
   return (
-    <TouchableOpacity
-      style={[styles.card, { borderColor: owned ? catColor : COLORS.border }]}
-      onPress={onPress}
-      activeOpacity={0.75}
-    >
+    <TouchableOpacity onPress={onPress} activeOpacity={0.75}>
+      <ParchmentCard contentStyle={styles.cardInner} selected={!!owned} style={{ borderColor: owned ? catColor : 'transparent', borderWidth: owned ? 1 : 0 }}>
       {/* Left — square image */}
       <View style={styles.cardImageWrap}>
         {source ? (
@@ -124,6 +122,7 @@ function AssetCard({ def, onPress }: { def: AssetDefinition; onPress: () => void
           </Text>
         </View>
       </View>
+      </ParchmentCard>
     </TouchableOpacity>
   );
 }
@@ -213,7 +212,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   emptyText: {
-    color: COLORS.dust,
+    color: PARCHMENT_TEXT.muted,
     fontFamily: FONTS.body,
     fontStyle: 'italic',
     fontSize: 13,
@@ -222,11 +221,12 @@ const styles = StyleSheet.create({
   },
 
   // ── Card ───────────────────────────────────────────────────────────────────
+  cardInner: { flexDirection: 'row', alignItems: 'center' },
   card: {
     flexDirection: 'row',
-    backgroundColor: COLORS.panelElevated,
+    backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: PARCHMENT_TEXT.border,
     borderRadius: RADIUS.md,
     marginBottom: SPACING.sm,
     overflow: 'hidden',
@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 16,
   },
   cardImageFallback: {
-    backgroundColor: COLORS.panelSurface,
+    backgroundColor: 'transparent',
   },
 
   // ── Right info column ──────────────────────────────────────────────────────
@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   cardName: {
-    color: COLORS.marble,
+    color: PARCHMENT_TEXT.heading,
     fontFamily: FONTS.display,
     fontSize: 15,
     fontWeight: '700',
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   cardFlavour: {
-    color: COLORS.dust,
+    color: PARCHMENT_TEXT.muted,
     fontFamily: FONTS.body,
     fontStyle: 'italic',
     fontSize: 12,
@@ -307,6 +307,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   cardActionTextDisabled: {
-    color: COLORS.dust,
+    color: PARCHMENT_TEXT.muted,
   },
 });

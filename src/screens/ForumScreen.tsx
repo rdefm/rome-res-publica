@@ -2,7 +2,6 @@ import React from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
-import EndSeasonButton from '../components/shared/EndSeasonButton';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import ClanCard from '../components/forum/ClanCard';
 import PatronLadderPanel from '../components/forum/PatronLadderPanel';
@@ -34,7 +33,6 @@ export default function ForumScreen() {
         ))}
       </ScrollView>
 
-      <EndSeasonButton />
       <SeasonOverlay />
     </SafeAreaView>
   );

@@ -8,8 +8,8 @@ import { OFFICES } from '../data/offices';
 import type { OfficeId } from '../models/office';
 import type { Character } from '../models/character';
 import { calcClanVotesForPlayer } from '../engine/electionEngine';
-import EndSeasonButton from '../components/shared/EndSeasonButton';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
+import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 
 // ─── Family member picker ─────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ const fp = StyleSheet.create({
   },
   pill: {
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: PARCHMENT_TEXT.border,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 5,
@@ -75,7 +75,7 @@ const fp = StyleSheet.create({
     backgroundColor: COLORS.goldDim + '22',
   },
   pillText: {
-    color: COLORS.dust,
+    color: PARCHMENT_TEXT.muted,
     fontFamily: FONTS.ui,
     fontSize: 12,
   },
@@ -135,7 +135,7 @@ function OfficeRung({
   }
 
   return (
-    <View style={[rung.container, { borderColor: rungColor }]}>
+    <ParchmentCard style={[rung.container]} contentStyle={rung.inner}>
       <View style={rung.row}>
         <Text style={rung.icon}>{office.icon}</Text>
         <View style={rung.info}>
@@ -182,19 +182,20 @@ function OfficeRung({
       {isCurrent && isPlayer && !office.active && (
         <Text style={rung.comingSoon}>{office.inOfficeDesc}</Text>
       )}
-    </View>
+    </ParchmentCard>
   );
 }
 
 const rung = StyleSheet.create({
-  container: { backgroundColor: COLORS.panelElevated, borderWidth: 1, borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.sm },
+  container: { marginBottom: SPACING.sm },
   row: { flexDirection: 'row', alignItems: 'center' },
   icon: { fontSize: 24, marginRight: SPACING.sm },
   info: { flex: 1 },
-  name: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 15, fontWeight: '700' },
+  inner: { padding: 2 },
+  name: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 15, fontWeight: '700' },
   latin: { color: COLORS.goldDim, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11 },
-  meta: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 10, marginTop: 2 },
-  desc: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6, lineHeight: 16 },
+  meta: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 10, marginTop: 2 },
+  desc: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6, lineHeight: 16 },
   applyBtn: { backgroundColor: COLORS.amber + '22', borderWidth: 1, borderColor: COLORS.amber, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.sm, paddingVertical: 6, minHeight: 36, justifyContent: 'center' },
   applyText: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 13, fontWeight: '700' },
   badge: { backgroundColor: COLORS.gold + '22', borderWidth: 1, borderColor: COLORS.gold, borderRadius: 2, paddingHorizontal: 6, paddingVertical: 2 },
@@ -202,13 +203,13 @@ const rung = StyleSheet.create({
   badgeCamp: { backgroundColor: COLORS.denariiColor + '22', borderColor: COLORS.denariiColor },
   badgeText: { color: COLORS.gold, fontFamily: FONTS.ui, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 },
   actions: { marginTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.sm },
-  actionBtn: { backgroundColor: COLORS.panelSurface, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm, padding: SPACING.sm, marginBottom: SPACING.sm, minHeight: 44 },
+  actionBtn: { backgroundColor: 'rgba(200,168,112,0.25)', borderWidth: 1, borderColor: PARCHMENT_TEXT.border, borderRadius: RADIUS.sm, padding: SPACING.sm, marginBottom: SPACING.sm, minHeight: 44 },
   actionBtnDisabled: { opacity: 0.4 },
   actionRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  actionLabel: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 13, fontWeight: '600', flex: 1 },
+  actionLabel: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 13, fontWeight: '600', flex: 1 },
   actionCost: { color: COLORS.gravitasColor, fontFamily: FONTS.ui, fontSize: 11 },
-  actionDesc: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11, marginTop: 2 },
-  comingSoon: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6 },
+  actionDesc: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11, marginTop: 2 },
+  comingSoon: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6 },
 });
 
 // ─── Election panel ───────────────────────────────────────────────────────────
@@ -269,16 +270,16 @@ function ElectionPanel({ character }: { character: Character }) {
 }
 
 const ep = StyleSheet.create({
-  container: { backgroundColor: COLORS.panelSurface, borderWidth: 1, borderColor: COLORS.gold, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md },
+  container: { backgroundColor: 'rgba(200,168,112,0.25)', borderWidth: 1, borderColor: COLORS.gold, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md },
   title: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 16, fontWeight: '700', marginBottom: 2 },
-  candidate: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, marginBottom: 4 },
-  countdown: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, marginBottom: SPACING.sm },
+  candidate: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, marginBottom: 4 },
+  countdown: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, marginBottom: SPACING.sm },
   urgent: { color: COLORS.crimson, fontFamily: FONTS.display, fontSize: 12, fontWeight: '700', marginBottom: SPACING.sm },
   candidateRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  candidateName: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 12, width: 110 },
+  candidateName: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 12, width: 110 },
   voteBarTrack: { flex: 1, height: 8, backgroundColor: COLORS.bg, borderRadius: 4, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   voteBarFill: { height: '100%', borderRadius: 4 },
-  voteCount: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, width: 30, textAlign: 'right' },
+  voteCount: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, width: 30, textAlign: 'right' },
 });
 
 // ─── CursusScreen ─────────────────────────────────────────────────────────────
@@ -331,7 +332,6 @@ export default function CursusScreen() {
         )}
       </ScrollView>
 
-      <EndSeasonButton />
       <SeasonOverlay />
     </SafeAreaView>
   );
@@ -341,11 +341,11 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.bg, paddingTop: RESOURCE_BAR_HEIGHT },
   header: { padding: SPACING.md, borderBottomColor: COLORS.border, borderBottomWidth: 1 },
   title: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 20, fontWeight: '700', letterSpacing: 2 },
-  subtitle: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 1, marginTop: 2 },
-  flavor: { color: COLORS.marble, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 13, marginTop: 3 },
+  subtitle: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 1, marginTop: 2 },
+  flavor: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 13, marginTop: 3 },
   scroll: { flex: 1, padding: SPACING.md },
   sectionLabel: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: SPACING.sm },
   logEntry: { borderLeftWidth: 2, borderLeftColor: COLORS.border, paddingLeft: SPACING.sm, marginBottom: SPACING.sm },
   logTurn: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 10 },
-  logText: { color: COLORS.dust, fontFamily: FONTS.body, fontSize: 12 },
+  logText: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontSize: 12 },
 });

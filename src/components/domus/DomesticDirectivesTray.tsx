@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
-import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
+import { COLORS, FONTS, SPACING } from '../../utils/theme';
+import ParchmentCard, { PARCHMENT_TEXT } from '../shared/ParchmentCard';
 
 export default function DomesticDirectivesTray() {
   const {
@@ -24,6 +25,7 @@ export default function DomesticDirectivesTray() {
         badge={laudatioActive ? `+${laudatioBonus}/yr` : undefined}
         disabled={dignitas < 12}
         onPress={commissionLaudatio}
+        resource="dignitas"
       />
 
       <DirectiveButton
@@ -32,6 +34,7 @@ export default function DomesticDirectivesTray() {
         desc="Adopt a high-skill commoner. Family trust suffers."
         disabled={dignitas < 15}
         onPress={performAdrogatio}
+        resource="dignitas"
       />
 
       <DirectiveButton
@@ -40,13 +43,14 @@ export default function DomesticDirectivesTray() {
         desc="Strengthen family bonds through a strategic match. Relationship +15."
         disabled={dignitas < 10}
         onPress={arrangeMarriageDomus}
+        resource="dignitas"
       />
     </View>
   );
 }
 
 function DirectiveButton({
-  label, cost, desc, disabled, onPress, badge,
+  label, cost, desc, disabled, onPress, badge, resource,
 }: {
   label: string;
   cost: string;
@@ -54,33 +58,37 @@ function DirectiveButton({
   disabled: boolean;
   onPress: () => void;
   badge?: string;
+  resource: 'dignitas' | 'gravitas';
 }) {
+  const costColor = resource === 'dignitas' ? COLORS.dignitasColor : COLORS.gravitasColor;
+
   return (
     <TouchableOpacity
-      style={[styles.btn, disabled && styles.btnDisabled]}
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.7}
+      style={disabled && styles.disabled}
     >
-      <View style={styles.topRow}>
-        <Text style={styles.label}>{label}</Text>
-        <View style={styles.rightCluster}>
-          {badge && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{badge}</Text>
-            </View>
-          )}
-          <Text style={styles.cost}>{cost}</Text>
+      <ParchmentCard>
+        <View style={styles.topRow}>
+          <Text style={styles.label}>{label}</Text>
+          <View style={styles.rightCluster}>
+            {badge && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{badge}</Text>
+              </View>
+            )}
+            <Text style={[styles.cost, { color: costColor }]}>{cost}</Text>
+          </View>
         </View>
-      </View>
-      <Text style={styles.desc}>{desc}</Text>
+        <Text style={styles.desc}>{desc}</Text>
+      </ParchmentCard>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: COLORS.panelSurface,
     borderTopColor: COLORS.border,
     borderTopWidth: 1,
     padding: SPACING.md,
@@ -93,16 +101,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: SPACING.sm,
   },
-  btn: {
-    backgroundColor: COLORS.panelElevated,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.md,
-    padding: SPACING.sm,
-    marginBottom: SPACING.sm,
-    minHeight: 44,
-  },
-  btnDisabled: {
+  disabled: {
     opacity: 0.4,
   },
   topRow: {
@@ -111,10 +110,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   label: {
-    color: COLORS.marble,
+    color: PARCHMENT_TEXT.heading,
     fontFamily: FONTS.display,
     fontSize: 14,
-    fontWeight: '600',
     flex: 1,
   },
   rightCluster: {
@@ -123,7 +121,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   cost: {
-    color: COLORS.dignitasColor,
     fontFamily: FONTS.ui,
     fontSize: 12,
     fontWeight: '700',
@@ -142,7 +139,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
   },
   desc: {
-    color: COLORS.dust,
+    color: PARCHMENT_TEXT.body,
     fontFamily: FONTS.body,
     fontStyle: 'italic',
     fontSize: 12,

@@ -11,7 +11,6 @@ import {
   TextStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import EndSeasonButton from '../components/shared/EndSeasonButton';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import { COLORS, FONTS, SPACING, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 import { useGameStore } from '../state/gameStore';
@@ -218,7 +217,6 @@ export default function ProvinciaeScreen() {
         </>
       )}
 
-      <EndSeasonButton />
       <SeasonOverlay />
     </SafeAreaView>
   );

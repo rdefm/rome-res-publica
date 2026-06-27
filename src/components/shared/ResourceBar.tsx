@@ -20,13 +20,11 @@ const RESOURCE_TINTS = {
   gravitas: COLORS.marble,
 };
 
-interface ResourceItemProps {
+function ResourceItem({ value, tintColor, icon }: {
   value: number;
   tintColor: string;
   icon: ReturnType<typeof require>;
-}
-
-function ResourceItem({ value, tintColor, icon }: ResourceItemProps) {
+}) {
   return (
     <View style={styles.resourceItem}>
       <Image source={icon} style={[styles.resourceIcon, { tintColor }]} />
@@ -36,15 +34,20 @@ function ResourceItem({ value, tintColor, icon }: ResourceItemProps) {
 }
 
 export default function ResourceBar() {
-  const { gravitas, dignitas, gratia, denarii, crisisLevel, year, seasonIndex } = useGameStore();
+  const {
+    gravitas, dignitas, gratia, denarii,
+    crisisLevel, year, seasonIndex,
+    endSeason, seasonOverlayVisible,
+  } = useGameStore();
   const insets = useSafeAreaInsets();
-  const seasonNames = ['Spring', 'Summer', 'Autumn', 'Winter'];
-  const crisisColor = getCrisisColour(crisisLevel);
+  const SEASON_NAMES = ['Spring', 'Summer', 'Autumn', 'Winter'];
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <>
       <View style={[styles.bar, { paddingTop: insets.top }]}>
+
+        {/* Left — gear */}
         <TouchableOpacity
           onPress={() => setSettingsOpen(true)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -53,6 +56,7 @@ export default function ResourceBar() {
           <Text style={styles.gearIcon}>⚙️</Text>
         </TouchableOpacity>
 
+        {/* Centre — resources */}
         <View style={styles.resources}>
           <ResourceItem value={dignitas} icon={RESOURCE_ICONS.dignitas} tintColor={RESOURCE_TINTS.dignitas} />
           <ResourceItem value={gratia}   icon={RESOURCE_ICONS.gratia}   tintColor={RESOURCE_TINTS.gratia} />
@@ -60,11 +64,26 @@ export default function ResourceBar() {
           <ResourceItem value={gravitas} icon={RESOURCE_ICONS.gravitas} tintColor={RESOURCE_TINTS.gravitas} />
         </View>
 
-        <View style={styles.rightSection}>
-          <Text style={styles.yearText}>{Math.abs(year)} BC</Text>
-          <Text style={styles.seasonText}>{seasonNames[seasonIndex]}</Text>
-          <View style={[styles.crisisDot, { backgroundColor: crisisColor }]} />
-        </View>
+        {/* Right — single unified box: date on left, divider, END SEASON on right */}
+        <TouchableOpacity
+          style={[styles.endBox, seasonOverlayVisible && styles.endBoxDisabled]}
+          onPress={endSeason}
+          disabled={seasonOverlayVisible}
+          activeOpacity={0.75}
+        >
+          {/* Date column */}
+          <View style={styles.dateCol}>
+            <Text style={styles.yearText}>{Math.abs(year)} BC</Text>
+            <Text style={styles.seasonText}>{SEASON_NAMES[seasonIndex].toUpperCase()}</Text>
+          </View>
+
+          {/* Vertical divider */}
+          <View style={styles.divider} />
+
+          {/* End Season label */}
+          <Text style={styles.endText}>END{'\n'}SEASON</Text>
+        </TouchableOpacity>
+
       </View>
 
       <SettingsModal visible={settingsOpen} onClose={() => setSettingsOpen(false)} />
@@ -74,7 +93,7 @@ export default function ResourceBar() {
 
 const styles = StyleSheet.create({
   bar: {
-    backgroundColor: 'rgba(15, 10, 8, 0.75)',
+    backgroundColor: 'rgba(15, 10, 8, 0.92)',
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     flexDirection: 'row',
@@ -96,37 +115,62 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   resourceItem: {
-    alignItems: 'center',   // icon centred above number
+    alignItems: 'center',
     justifyContent: 'center',
   },
   resourceIcon: {
-    width: 24,
-    height: 24,
+    width: 20,
+    height: 20,
     marginBottom: 1,
   },
   resourceValue: {
     fontFamily: FONTS.ui,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 'bold',
   },
-  rightSection: {
-    alignItems: 'flex-end',
+
+  // Single unified rectangle — date | divider | END SEASON
+  endBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.crimsonDeep,
+    borderWidth: 1,
+    borderColor: COLORS.gold,
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    gap: 8,
+  },
+  endBoxDisabled: {
+    opacity: 0.4,
+  },
+  dateCol: {
+    alignItems: 'center',
   },
   yearText: {
-    color: COLORS.gold,
     fontFamily: FONTS.display,
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    color: COLORS.gold,
+    letterSpacing: 0.5,
   },
   seasonText: {
-    color: COLORS.dust,
-    fontFamily: FONTS.ui,
-    fontSize: 10,
+    fontFamily: FONTS.display,
+    fontSize: 9,
+    color: COLORS.marble,
+    letterSpacing: 1,
   },
-  crisisDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginTop: 2,
+  divider: {
+    width: 1,
+    height: 28,
+    backgroundColor: COLORS.gold,
+    opacity: 0.4,
+  },
+  endText: {
+    fontFamily: FONTS.display,
+    fontSize: 10,
+    color: COLORS.marble,
+    letterSpacing: 2,
+    textAlign: 'center',
+    lineHeight: 14,
   },
 });
