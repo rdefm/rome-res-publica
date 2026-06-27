@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import CharacterCard from './CharacterCard';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
@@ -30,7 +30,7 @@ export default function FamilyTree({ selectedCharacterId, onPressCharacter }: Fa
 
 const styles = StyleSheet.create({
   sectionLabel: {
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+    fontFamily: FONTS.ui,
     fontSize: 12,
     color: COLORS.gold,
     letterSpacing: 2,

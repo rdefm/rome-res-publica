@@ -11,6 +11,7 @@ import {
 import type { AssetDefinition, AssetBonus } from '../../models/asset';
 import { useGameStore } from '../../state/gameStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
+import ScrollModal, { PARCHMENT } from '../shared/ScrollModal';
 
 const { height } = Dimensions.get('window');
 
@@ -163,27 +164,12 @@ export default function PatrimoniumModal({ def, onClose }: PatrimoniumModalProps
   };
 
   return (
-    <View style={styles.overlay}>
-      <View style={styles.backdrop} />
-      <View style={styles.modal}>
-        {/* Header */}
-        <View style={[styles.modalHeader, { borderBottomColor: CATEGORY_COLORS[def.category] ?? COLORS.gold }]}>
-          <View style={styles.modalHeaderText}>
-            <Text style={styles.modalTitle}>{def.name}</Text>
-            <Text style={[styles.modalCategory, { color: CATEGORY_COLORS[def.category] ?? COLORS.gold }]}>
-              {def.category.toUpperCase()}
-            </Text>
-          </View>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Text style={styles.closeBtnText}>✕</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          style={styles.modalScroll}
-          contentContainerStyle={styles.modalScrollContent}
-          showsVerticalScrollIndicator={false}
-        >
+    <ScrollModal
+      visible
+      onClose={onClose}
+      title={def.name}
+      subtitle={def.category.toUpperCase()}
+    >
           {/* Hero image */}
           {ASSET_IMAGES[def.id] && (
             <View style={styles.heroContainer}>
@@ -209,10 +195,8 @@ export default function PatrimoniumModal({ def, onClose }: PatrimoniumModalProps
               isCurrent={currentTier === i + 1}
             />
           ))}
-        </ScrollView>
-
-        {/* Action button */}
-        <View style={styles.actionRow}>
+      {/* Action button */}
+      <View style={styles.actionRow}>
           {isMaxTier ? (
             <View style={[styles.actionBtn, styles.actionBtnDisabled]}>
               <Text style={styles.actionBtnText}>Maximum tier reached</Text>
@@ -248,9 +232,8 @@ export default function PatrimoniumModal({ def, onClose }: PatrimoniumModalProps
               )}
             </TouchableOpacity>
           )}
-        </View>
       </View>
-    </View>
+    </ScrollModal>
   );
 }
 
@@ -269,11 +252,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(10,8,6,0.85)',
   },
   modal: {
-    backgroundColor: COLORS.panelSurface,
+    backgroundColor: 'transparent',
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: PARCHMENT.border,
     maxHeight: height * 0.80,
   },
 
@@ -289,7 +272,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modalTitle: {
-    color: COLORS.marble,
+    color: PARCHMENT.heading,
     fontFamily: FONTS.display,
     fontSize: 20,
     fontWeight: '700',
@@ -304,7 +287,7 @@ const styles = StyleSheet.create({
     padding: SPACING.xs,
   },
   closeBtnText: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.ui,
     fontSize: 16,
   },
@@ -328,7 +311,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   flavourText: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.body,
     fontStyle: 'italic',
     fontSize: 13,
@@ -346,9 +329,9 @@ const styles = StyleSheet.create({
 
   // ── Tier row ───────────────────────────────────────────────────────────────
   tierRow: {
-    backgroundColor: COLORS.panelElevated,
+    backgroundColor: 'rgba(200,168,112,0.25)',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: PARCHMENT.border,
     borderRadius: RADIUS.md,
     padding: SPACING.sm,
     marginBottom: SPACING.sm,
@@ -363,19 +346,19 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   tierStars: {
-    color: COLORS.gold,
+    color: PARCHMENT.gold,
     fontFamily: FONTS.ui,
     fontSize: 12,
   },
   tierLabel: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.display,
     fontSize: 14,
     fontWeight: '600',
     flex: 1,
   },
   tierLabelCurrent: {
-    color: COLORS.marble,
+    color: PARCHMENT.heading,
   },
   currentBadge: {
     backgroundColor: COLORS.gold + '22',
@@ -386,7 +369,7 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   currentBadgeText: {
-    color: COLORS.gold,
+    color: PARCHMENT.gold,
     fontFamily: FONTS.ui,
     fontSize: 9,
     letterSpacing: 1,
@@ -406,7 +389,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   bonusNone: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.ui,
     fontSize: 11,
     fontStyle: 'italic',
@@ -425,7 +408,7 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.border,
   },
   actionBtn: {
-    backgroundColor: COLORS.panelElevated,
+    backgroundColor: 'rgba(200,168,112,0.25)',
     borderWidth: 1,
     borderColor: COLORS.gold,
     borderRadius: RADIUS.md,
@@ -433,17 +416,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionBtnDisabled: {
-    borderColor: COLORS.border,
+    borderColor: PARCHMENT.border,
     opacity: 0.5,
   },
   actionBtnText: {
-    color: COLORS.gold,
+    color: PARCHMENT.gold,
     fontFamily: FONTS.display,
     fontSize: 14,
     fontWeight: '700',
   },
   actionBtnSub: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.ui,
     fontSize: 11,
     marginTop: 4,

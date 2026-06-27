@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet, Platform, useWindowDimensions } from 'react-native';
-import { COLORS } from '../../utils/theme';
+import { View, Text, Image, StyleSheet, useWindowDimensions } from 'react-native';
+import { COLORS, FONTS } from '../../utils/theme';
 
 const TAB_ICONS: Record<string, ReturnType<typeof require>> = {
   Domus:      require('../../assets/images/icon-tab-domus.png'),
@@ -29,7 +29,7 @@ export function TabBarBackground({ height }: { height: number }): JSX.Element {
 
 export function renderTabIcon(label: string, focused: boolean): JSX.Element {
   const icon = TAB_ICONS[label];
-  const tint = focused ? COLORS.crimson : '#6a5a4a';
+  const tint = focused ? COLORS.crimson : '#9a8060';
 
   return (
     <View style={styles.tabItem}>
@@ -92,8 +92,9 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   tabLabel: {
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+    fontFamily: FONTS.display,
     fontSize: 9,
+    fontWeight: '700',
     letterSpacing: 1,
     textTransform: 'uppercase',
   },

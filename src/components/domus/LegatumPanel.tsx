@@ -8,6 +8,7 @@ import { LEGACY_DEFINITIONS } from '../../data/legacyDefinitions';
 import { getNextMilestone } from '../../engine/legacyEngine';
 import type { LegacyObjective } from '../../models/legacyObjective';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
+import ScrollModal, { PARCHMENT } from '../shared/ScrollModal';
 
 const { height } = Dimensions.get('window');
 
@@ -55,14 +56,12 @@ function LegatumModal({
   const { legacyObjectives } = useGameStore();
 
   return (
-    <Modal visible={visible} animationType="slide" transparent presentationStyle="overFullScreen">
-      <TouchableOpacity style={modal.backdrop} activeOpacity={1} onPress={onClose} />
-      <View style={modal.sheet}>
-        <View style={modal.handle} />
-        <Text style={modal.heading}>LEGATUM — DYNASTIC LEGACY</Text>
-        <Text style={modal.sub}>Permanent achievements that persist across generations.</Text>
-
-        <ScrollView showsVerticalScrollIndicator={false}>
+    <ScrollModal
+      visible={visible}
+      onClose={onClose}
+      title="LEGATUM — DYNASTIC LEGACY"
+      subtitle="Permanent achievements that persist across generations."
+    >
           {LEGACY_DEFINITIONS.map(def => {
             const obj = legacyObjectives.find(o => o.definitionId === def.id);
             if (!obj) return null;
@@ -141,9 +140,7 @@ function LegatumModal({
               </View>
             );
           })}
-        </ScrollView>
-      </View>
-    </Modal>
+    </ScrollModal>
   );
 }
 
@@ -153,7 +150,7 @@ const modal = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
   },
   sheet: {
-    backgroundColor: COLORS.panelSurface,
+    backgroundColor: 'transparent',
     borderTopColor: COLORS.border,
     borderTopWidth: 1,
     borderTopLeftRadius: 12,
@@ -170,7 +167,7 @@ const modal = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   heading: {
-    color: COLORS.gold,
+    color: PARCHMENT.gold,
     fontFamily: FONTS.display,
     fontSize: 16,
     fontWeight: '700',
@@ -178,7 +175,7 @@ const modal = StyleSheet.create({
     marginBottom: 2,
   },
   sub: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.body,
     fontStyle: 'italic',
     fontSize: 12,
@@ -191,14 +188,14 @@ const modal = StyleSheet.create({
     paddingBottom: SPACING.md,
   },
   objTitle: {
-    color: COLORS.marble,
+    color: PARCHMENT.heading,
     fontFamily: FONTS.display,
     fontSize: 14,
     fontWeight: '700',
     marginBottom: 2,
   },
   objDesc: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.body,
     fontStyle: 'italic',
     fontSize: 11,
@@ -213,7 +210,7 @@ const modal = StyleSheet.create({
     borderRadius: 4,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: PARCHMENT.border,
     position: 'relative',
     marginBottom: 4,
   },
@@ -238,13 +235,13 @@ const modal = StyleSheet.create({
     justifyContent: 'space-between',
   },
   trackValue: {
-    color: COLORS.gold,
+    color: PARCHMENT.gold,
     fontFamily: FONTS.ui,
     fontSize: 10,
     fontWeight: '700',
   },
   trackUnit: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.ui,
     fontSize: 10,
   },
@@ -262,27 +259,27 @@ const modal = StyleSheet.create({
     gap: SPACING.xs,
   },
   msDot: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.ui,
     fontSize: 11,
   },
   msLabel: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.display,
     fontSize: 12,
     fontWeight: '600',
     flex: 1,
   },
   msLabelReached: {
-    color: COLORS.marble,
+    color: PARCHMENT.heading,
   },
   msThreshold: {
-    color: COLORS.goldDim,
+    color: PARCHMENT.gold,
     fontFamily: FONTS.ui,
     fontSize: 10,
   },
   msBonus: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.ui,
     fontSize: 11,
     marginLeft: SPACING.md,
@@ -292,7 +289,7 @@ const modal = StyleSheet.create({
     color: COLORS.laurel,
   },
   nextHint: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.body,
     fontStyle: 'italic',
     fontSize: 11,
@@ -378,9 +375,9 @@ export default function LegatumPanel() {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: COLORS.panelSurface,
+    backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: PARCHMENT.border,
     borderRadius: RADIUS.md,
     padding: SPACING.sm,
     marginBottom: SPACING.md,
@@ -392,14 +389,14 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   heading: {
-    color: COLORS.goldDim,
+    color: PARCHMENT.gold,
     fontFamily: FONTS.ui,
     fontSize: 10,
     letterSpacing: 2,
     textTransform: 'uppercase',
   },
   tapHint: {
-    color: COLORS.goldDim,
+    color: PARCHMENT.gold,
     fontFamily: FONTS.ui,
     fontSize: 10,
   },
@@ -413,13 +410,13 @@ const styles = StyleSheet.create({
     width: 130,
   },
   objName: {
-    color: COLORS.marble,
+    color: PARCHMENT.heading,
     fontFamily: FONTS.display,
     fontSize: 11,
     fontWeight: '600',
   },
   nextLabel: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.ui,
     fontSize: 9,
     marginTop: 1,
@@ -437,7 +434,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: PARCHMENT.border,
     position: 'relative',
   },
   miniTrackFill: {
@@ -456,7 +453,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gold,
   },
   miniValue: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.ui,
     fontSize: 9,
     minWidth: 28,

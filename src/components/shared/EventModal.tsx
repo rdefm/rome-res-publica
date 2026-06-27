@@ -11,6 +11,7 @@ import { useGameStore } from '../../state/gameStore';
 import { EVENT_DEFS } from '../../data/events';
 import EventCard from './EventCard';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
+import ScrollModal, { PARCHMENT } from './ScrollModal';
 
 const { width, height } = Dimensions.get('window');
 
@@ -25,28 +26,23 @@ export default function EventModal() {
   if (!def) return null;
 
   return (
-    <View style={styles.overlay}>
-      <View style={styles.backdrop} />
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.heading}>AN EVENT UNFOLDS</Text>
-
-        <EventCard
-          def={def}
-          instance={activeEvent}
-          onChoiceMade={(choiceId, previewClientName) => {
-            resolveEvent(choiceId, previewClientName);
-          }}
-        />
-
-        <TouchableOpacity style={styles.skipBtn} onPress={dismissEvent}>
-          <Text style={styles.skipTxt}>Dismiss</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
+    <ScrollModal
+      visible={!!activeEvent}
+      onClose={dismissEvent}
+      title="AN EVENT UNFOLDS"
+      animationType="fade"
+    >
+      <EventCard
+        def={def}
+        instance={activeEvent}
+        onChoiceMade={(choiceId, previewClientName) => {
+          resolveEvent(choiceId, previewClientName);
+        }}
+      />
+      <TouchableOpacity style={styles.skipBtn} onPress={dismissEvent}>
+        <Text style={styles.skipTxt}>Dismiss</Text>
+      </TouchableOpacity>
+    </ScrollModal>
   );
 }
 
@@ -95,7 +91,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   skipTxt: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.ui,
     fontSize: 12,
     letterSpacing: 1,

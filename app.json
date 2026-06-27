@@ -9,6 +9,13 @@
     "splash": {
       "backgroundColor": "#1a1714"
     },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "devServer": {
+    "host": "0.0.0.0"
+  }
+    },
     "assetBundlePatterns": [
       "**/*"
     ],

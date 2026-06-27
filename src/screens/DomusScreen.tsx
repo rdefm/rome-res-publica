@@ -6,7 +6,6 @@ import {
   StyleSheet,
   ImageBackground,
   TouchableOpacity,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
@@ -145,7 +144,7 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.sm,
   },
   headerTitle: {
-    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+    fontFamily: FONTS.display,
     fontSize: 28,
     color: COLORS.gold,
     fontWeight: 'bold',
@@ -155,7 +154,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
   },
   headerSubtitle: {
-    fontFamily: Platform.OS === 'ios' ? 'Georgia-Italic' : 'serif',
+    fontFamily: FONTS.body,
     fontStyle: 'italic',
     fontSize: 14,
     color: COLORS.marble,

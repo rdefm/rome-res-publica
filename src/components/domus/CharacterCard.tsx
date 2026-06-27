@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, Image, ImageBackground, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, Image, ImageBackground, TouchableOpacity, StyleSheet } from 'react-native';
 import type { Character } from '../../models/character';
-import { COLORS, SPACING, RADIUS } from '../../utils/theme';
+import { COLORS, SPACING, RADIUS, FONTS } from '../../utils/theme';
 
 const PLAYER_PORTRAIT = require('../../assets/images/portrait-paterfamilias.png');
 const MARBLE_BG = require('../../assets/images/marble_rectangle.png');
@@ -129,13 +129,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   cardName: {
-    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+    fontFamily: FONTS.display,
     fontSize: 18,
     color: '#1a1410',
     fontWeight: 'bold',
   },
   cardRole: {
-    fontFamily: Platform.OS === 'ios' ? 'Georgia-Italic' : 'serif',
+    fontFamily: FONTS.body,
     fontStyle: 'italic',
     fontSize: 13,
     color: '#5a4a3a',
@@ -156,13 +156,13 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   badgeText: {
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+    fontFamily: FONTS.ui,
     fontSize: 10,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   cardStats: {
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+    fontFamily: FONTS.ui,
     fontSize: 12,
     color: '#3a2e20',
     marginTop: 4,

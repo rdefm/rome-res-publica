@@ -6,6 +6,7 @@ import { useGameStore } from '../../state/gameStore';
 import { drawAmbitions } from '../../engine/ambitionEngine';
 import type { AmbitionDefinition } from '../../models/ambition';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
+import ScrollModal, { PARCHMENT } from './ScrollModal';
 
 // ─── Reward summary line ──────────────────────────────────────────────────────
 
@@ -89,15 +90,13 @@ export default function AmbitionSelectionModal() {
   const canConfirm = (!needsFamily || !!selectedFamily) && (!needsCharacter || needsFamily || !!selectedCharacter);
 
   return (
-    <Modal visible animationType="fade" transparent presentationStyle="overFullScreen">
-      <View style={styles.overlay}>
-        <View style={styles.modal}>
-          <Text style={styles.heading}>CHOOSE YOUR AMBITIONS</Text>
-          <Text style={styles.subheading}>
-            Select one family ambition to pursue. A character ambition is optional.
-          </Text>
-
-          <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+    <ScrollModal
+      visible
+      onClose={dismissAmbitionSelection}
+      title="CHOOSE YOUR AMBITIONS"
+      subtitle="Select one family ambition to pursue. A character ambition is optional."
+      animationType="fade"
+    >
 
             {/* Family ambitions */}
             {needsFamily && (
@@ -132,10 +131,8 @@ export default function AmbitionSelectionModal() {
                 ))}
               </>
             )}
-          </ScrollView>
-
-          {/* Actions */}
-          <View style={styles.footer}>
+      {/* Actions */}
+      <View style={styles.footer}>
             <TouchableOpacity
               style={[styles.confirmBtn, !canConfirm && styles.confirmBtnDisabled]}
               onPress={handleConfirm}
@@ -152,10 +149,8 @@ export default function AmbitionSelectionModal() {
             <TouchableOpacity style={styles.skipBtn} onPress={dismissAmbitionSelection}>
               <Text style={styles.skipText}>Skip for now</Text>
             </TouchableOpacity>
-          </View>
-        </View>
       </View>
-    </Modal>
+    </ScrollModal>
   );
 }
 
@@ -169,14 +164,14 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
   },
   modal: {
-    backgroundColor: COLORS.panelSurface,
+    backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: COLORS.gold,
     borderRadius: RADIUS.md,
     maxHeight: '90%',
   },
   heading: {
-    color: COLORS.gold,
+    color: PARCHMENT.gold,
     fontFamily: FONTS.display,
     fontSize: 18,
     fontWeight: '700',
@@ -186,7 +181,7 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.xs,
   },
   subheading: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.body,
     fontStyle: 'italic',
     fontSize: 12,
@@ -198,7 +193,7 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
   },
   sectionLabel: {
-    color: COLORS.goldDim,
+    color: PARCHMENT.gold,
     fontFamily: FONTS.ui,
     fontSize: 10,
     letterSpacing: 2,
@@ -208,16 +203,16 @@ const styles = StyleSheet.create({
 
   // ── Ambition card ─────────────────────────────────────────────────────────
   card: {
-    backgroundColor: COLORS.panelElevated,
+    backgroundColor: 'rgba(200,168,112,0.25)',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: PARCHMENT.border,
     borderRadius: RADIUS.md,
     padding: SPACING.sm,
     marginBottom: SPACING.sm,
   },
   cardSelected: {
     borderColor: COLORS.gold,
-    backgroundColor: COLORS.panelSurface,
+    backgroundColor: 'transparent',
   },
   cardTop: {
     flexDirection: 'row',
@@ -226,14 +221,14 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   cardTitle: {
-    color: COLORS.marble,
+    color: PARCHMENT.heading,
     fontFamily: FONTS.display,
     fontSize: 14,
     fontWeight: '700',
     flex: 1,
   },
   cardTitleSelected: {
-    color: COLORS.gold,
+    color: PARCHMENT.gold,
   },
   expiry: {
     color: COLORS.denariiColor,
@@ -241,13 +236,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   cardDesc: {
-    color: COLORS.marble,
+    color: PARCHMENT.heading,
     fontFamily: FONTS.body,
     fontSize: 12,
     marginBottom: 3,
   },
   cardFlavour: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.body,
     fontStyle: 'italic',
     fontSize: 11,
@@ -258,7 +253,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   rewardLabel: {
-    color: COLORS.goldDim,
+    color: PARCHMENT.gold,
     fontFamily: FONTS.ui,
     fontSize: 10,
     letterSpacing: 0.5,
@@ -289,10 +284,10 @@ const styles = StyleSheet.create({
   },
   confirmBtnDisabled: {
     opacity: 0.4,
-    borderColor: COLORS.border,
+    borderColor: PARCHMENT.border,
   },
   confirmText: {
-    color: COLORS.gold,
+    color: PARCHMENT.gold,
     fontFamily: FONTS.display,
     fontSize: 14,
     fontWeight: '700',
@@ -302,7 +297,7 @@ const styles = StyleSheet.create({
     padding: SPACING.xs,
   },
   skipText: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.ui,
     fontSize: 12,
   },

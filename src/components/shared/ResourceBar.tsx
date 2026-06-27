@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGameStore } from '../../state/gameStore';
 import { getCrisisColour } from '../../engine/crisisEngine';
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     marginBottom: 1,
   },
   resourceValue: {
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+    fontFamily: FONTS.ui,
     fontSize: 13,
     fontWeight: 'bold',
   },
