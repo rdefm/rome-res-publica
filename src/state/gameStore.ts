@@ -411,11 +411,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const s = get();
     const bill = s.bills.find((b) => b.id === billId);
     if (!bill) return;
-    if (s.gravitas < bill.voteGravitasCost) return;
-    const delta = vote === 'vote_for' ? bill.voteForSupport : bill.voteAgainstSupport;
+    const voteGravitasCost = bill.voteGravitasCost ?? 4;
+    if (s.gravitas < voteGravitasCost) return;
+    const delta = vote === 'vote_for'
+      ? (bill.voteForSupport ?? 15)
+      : (bill.voteAgainstSupport ?? -15);
     const label = turnLabel(s);
     set({
-      gravitas: s.gravitas - bill.voteGravitasCost,
+      gravitas: s.gravitas - voteGravitasCost,
       bills: s.bills.map((b) =>
         b.id === billId ? { ...b, support: b.support + delta } : b
       ),
@@ -429,19 +432,20 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const s = get();
     const bill = s.bills.find((b) => b.id === billId);
     if (!bill) return;
-    if (s.gravitas < bill.speechGravitasCost) return;
+    const speechGravitasCost = bill.speechGravitasCost ?? 6;
+    if (s.gravitas < speechGravitasCost) return;
     const player = s.family.find((c) => c.isPlayer);
     const rhetoric = player?.skills.rhetoric ?? 0;
     const roll = Math.random();
     const success = roll < 0.4 + rhetoric * 0.06;
     const delta = success
       ? direction === 'for'
-        ? bill.speechForSupport
-        : bill.speechAgainstSupport
+        ? (bill.speechForSupport ?? 20)
+        : (bill.speechAgainstSupport ?? -20)
       : 0;
     const label = turnLabel(s);
     set({
-      gravitas: s.gravitas - bill.speechGravitasCost,
+      gravitas: s.gravitas - speechGravitasCost,
       bills: s.bills.map((b) =>
         b.id === billId ? { ...b, support: b.support + delta } : b
       ),

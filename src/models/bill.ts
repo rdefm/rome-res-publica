@@ -8,6 +8,13 @@ export interface Bill {
   failEffect: string;
   playerVote?: 'vote_for' | 'vote_against' | 'filibuster';
   playerSubmitted?: boolean;
+  // Optional vote action costs/effects — defaults applied in gameStore if absent
+  voteGravitasCost?: number;      // default 4
+  voteForSupport?: number;        // default 15
+  voteAgainstSupport?: number;    // default -15
+  speechGravitasCost?: number;    // default 6
+  speechForSupport?: number;      // default 20
+  speechAgainstSupport?: number;  // default -20
 }
 
 // Effect string format: key+N or key-N, pipe-separated
