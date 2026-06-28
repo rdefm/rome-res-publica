@@ -810,4 +810,38 @@ export const EVENT_DEFS: EventDef[] = [
       },
     ],
   },
+
+  // EVENT — Senatorial Crisis (triggers at stability < 25)
+  {
+    id: 'evt-senatorial-crisis',
+    title: 'A House Divided',
+    bodyText:
+      'The Senate has descended into open faction. Three senators came to blows in the vestibule this morning. The presiding consul was shouted down before he could speak. Legislation has stalled entirely. The city watches, and draws its own conclusions about the health of the Republic.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [
+      { type: 'rome', key: 'stability', op: 'lte', value: 25 },
+    ],
+    weight: 8,
+    choices: [
+      {
+        id: 'speak-out',
+        label: 'Address the Senate — call for order',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 5 },
+        successEffect: 'stability+8|dignitas+5|gravitas+3',
+        failureEffect: 'dignitas-4',
+      },
+      {
+        id: 'back-faction',
+        label: 'Back the stronger faction — pick a side',
+        successEffect: 'gratia+6|stability-4',
+        failureEffect: '',
+      },
+      {
+        id: 'wait',
+        label: 'Wait — let the storm exhaust itself',
+        successEffect: 'stability-3|crisis+2',
+        failureEffect: '',
+      },
+    ],
+  },
 ];

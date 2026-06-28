@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Character } from '../models/character';
-import type { Bill } from '../models/bill';
+import type { Bill, ActiveLaw } from '../models/bill';
 import type { Clan } from '../models/clan';
 import type { OfficeId, ElectionRival } from '../models/office';
 import type { Client } from '../models/client';
@@ -109,6 +109,10 @@ export interface GameState {
   // Faction Reputation (Feature 2)
   familyReputations: Record<string, number>;
 
+  // Legislation
+  activeLaws: ActiveLaw[];
+  passedBills: { id: string; name: string; passedOnTurn: number }[];
+
   // Event queue
   pendingEvents: EventInstance[];
   activeEvent: EventInstance | null;
@@ -201,6 +205,10 @@ export interface GameActions {
   resolveEvent: (choiceId: string, previewClientName?: string) => void;
   dismissEvent: () => void;
 
+  // Legislation
+  proposeRepeal: (lawId: string) => void;
+  expireLaw: (lawId: string) => void;
+
   // App flow
   startGame: (mode: 'senator' | 'debug') => void;
 
@@ -277,6 +285,9 @@ export const INITIAL_STATE: GameState = {
   lifetimeDignitas: 0,
   trialQueue: [],
 
+  activeLaws: [],
+  passedBills: [],
+
   pendingEvents: [],
   activeEvent: null,
   pendingBirthNaming: null,
@@ -306,6 +317,29 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   ...INITIAL_STATE,
 
   // ─── Turn ────────────────────────────────────────────────────────────────────
+
+  proposeRepeal: (lawId) => {
+    const s = get();
+    if (s.gravitas < 10) return;
+    const law = (s.activeLaws ?? []).find(l => l.billId === lawId);
+    if (!law || !law.repealable) return;
+    const repealAlreadyActive = s.bills.some(b => b.type === 'repeal' && b.repeals === lawId);
+    if (repealAlreadyActive) return;
+    const { buildRepealBill } = require('../data/billTemplates');
+    const repealBill = buildRepealBill(law);
+    const label = turnLabel(s);
+    set({
+      gravitas: s.gravitas - 10,
+      bills: [...s.bills, repealBill],
+      log: [...s.log, mkLog(label, `Abrogatio proposed: ${law.name}.`, 'neutral')],
+    });
+  },
+
+  expireLaw: (lawId) => {
+    set(s => ({
+      activeLaws: (s.activeLaws ?? []).filter(l => l.billId !== lawId),
+    }));
+  },
 
   startGame: (mode) => {
     set({
@@ -483,9 +517,11 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   submitBill: (template) => {
     const s = get();
+    if (s.gravitas < 10) return;
     const newBill: Bill = { ...template, id: `player-bill-${Date.now()}` };
     const label = turnLabel(s);
     set({
+      gravitas: s.gravitas - 10,
       bills: [...s.bills, newBill],
       log: [...s.log, mkLog(label, `${newBill.name} tabled in the Senate.`, 'neutral')],
     });
