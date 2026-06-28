@@ -7,6 +7,8 @@ import {
   Animated,
   PanResponder,
   Dimensions,
+  TouchableOpacity,
+  Alert,
   ViewStyle,
   TextStyle,
 } from 'react-native';
@@ -18,6 +20,7 @@ import MapView from '../components/provinciae/MapView';
 import ProvinceSheet from '../components/provinciae/ProvinceSheet';
 import type { GovernorPolicy } from '../models/province';
 import type { AmbassadorActionId } from '../engine/provinceEngine';
+import { getProvinceDefinition } from '../data/provinceDefinitions';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SHEET_SNAP_HEIGHT = SCREEN_HEIGHT * 0.72;
@@ -29,35 +32,66 @@ export default function ProvinciaeScreen() {
   const sheetAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const sheetVisible = selectedProvinceId !== null;
 
-  // Store state
-  const provinces = useGameStore(s => s.provinces);
-  const imperium = useGameStore(s => s.imperium);
-  const gratia = useGameStore(s => s.gratia);
-  const denarii = useGameStore(s => s.denarii);
-  const family = useGameStore(s => s.family);
-  const clients = useGameStore(s => s.clients);
+  // ── Store state ──────────────────────────────────────────────────────────────
+  const provinces                  = useGameStore(s => s.provinces);
+  const imperium                   = useGameStore(s => s.imperium);
+  const gratia                     = useGameStore(s => s.gratia);
+  const gravitas                   = useGameStore(s => s.gravitas);
+  const denarii                    = useGameStore(s => s.denarii);
+  const family                     = useGameStore(s => s.family);
+  const clients                    = useGameStore(s => s.clients);
+  const campaignVotes              = useGameStore(s => s.campaignVotes);
+  const pendingGovernorAssignment  = useGameStore(s => s.pendingGovernorAssignment);
+  const rigLotAvailable            = useGameStore(s => s.rigLotAvailable);
+  const pendingCommanderElection   = useGameStore(s => s.pendingCommanderElection);
+  const officerVolunteers          = useGameStore(s => s.officerVolunteers);
 
-  // Actions
-  const updateProvincePolicy = useGameStore(s => s.updateProvincePolicy);
-  const resolveAmbassadorAction = useGameStore(s => s.resolveAmbassadorAction);
-  const purchaseProvinceAsset = useGameStore(s => s.purchaseProvinceAsset);
-  const upgradeProvinceAsset = useGameStore(s => s.upgradeProvinceAsset);
-  const recruitProvincialClient = useGameStore(s => s.recruitProvincialClient);
+  // ── Store actions ────────────────────────────────────────────────────────────
+  const updateProvincePolicy       = useGameStore(s => s.updateProvincePolicy);
+  const resolveAmbassadorAction    = useGameStore(s => s.resolveAmbassadorAction);
+  const purchaseProvinceAsset      = useGameStore(s => s.purchaseProvinceAsset);
+  const upgradeProvinceAsset       = useGameStore(s => s.upgradeProvinceAsset);
+  const recruitProvincialClient    = useGameStore(s => s.recruitProvincialClient);
+  const attemptRigTheLot           = useGameStore(s => s.attemptRigTheLot);
+  const chooseGovernorProvince     = useGameStore(s => s.chooseGovernorProvince);
+  const dismissGovernorAssignment  = useGameStore(s => s.dismissGovernorAssignment);
+  const nominateCommander          = useGameStore(s => s.nominateCommander);
+  const voteForCommander           = useGameStore(s => s.voteForCommander);
+  const speechForCommander         = useGameStore(s => s.speechForCommander);
+  const commitCampaignSeason       = useGameStore(s => s.commitCampaignSeason);
+  const resolveCampaignEvent       = useGameStore(s => s.resolveCampaignEvent);
+  const volunteerAsOfficer         = useGameStore(s => s.volunteerAsOfficer);
+  const resolveOfficerDecisionAction = useGameStore(s => s.resolveOfficerDecisionAction);
 
-  // Find governor martial skill for selected province
+  // ── Derived ──────────────────────────────────────────────────────────────────
   const selectedProvince = provinces.find(p => p.id === selectedProvinceId);
+
   const governorCharacterId = selectedProvince?.playerGovernor?.characterId;
   const governorCharacter = governorCharacterId
     ? family.find(c => c.id === governorCharacterId)
     : null;
   const governorMartial = governorCharacter?.skills.martial ?? 0;
 
-  // Recruited provincial client IDs
   const recruitedClientIds = clients
     .filter(c => (c as any).isProvincialClient)
     .map(c => (c as any).provincialClientDefId ?? c.id);
 
-  // ── Sheet animation ────────────────────────────────────────────────────────
+  const playerPostings = provinces.filter(p => p.playerGovernor || p.playerAmbassador);
+  const activeCampaigns = provinces.filter(p => p.activeCampaign && !p.activeCampaign.resolved);
+  const pendingElection = pendingCommanderElection && !pendingCommanderElection.resolved;
+
+  // Officer volunteer for selected province
+  const selectedOfficerVolunteer = selectedProvinceId
+    ? officerVolunteers.find(v => v.provinceId === selectedProvinceId && !v.resolved) ?? null
+    : null;
+
+  // Commander election for selected province
+  const selectedCommanderElection =
+    pendingCommanderElection?.provinceId === selectedProvinceId && !pendingCommanderElection.resolved
+      ? pendingCommanderElection
+      : null;
+
+  // ── Sheet animation ──────────────────────────────────────────────────────────
 
   function openSheet(provinceId: string) {
     setSelectedProvinceId(provinceId);
@@ -74,12 +108,9 @@ export default function ProvinciaeScreen() {
       toValue: SCREEN_HEIGHT,
       duration: 240,
       useNativeDriver: false,
-    }).start(() => {
-      setSelectedProvinceId(null);
-    });
+    }).start(() => setSelectedProvinceId(null));
   }
 
-  // Swipe-to-dismiss pan responder
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: (_, gs) => gs.dy > 0,
@@ -104,16 +135,96 @@ export default function ProvinciaeScreen() {
     })
   ).current;
 
-  // ── Active posting banner ─────────────────────────────────────────────────
-
-  const playerPostings = provinces.filter(
-    p => p.playerGovernor || p.playerAmbassador
-  );
-
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
+
+      {/* ── Governor Assignment Modal ───────────────────────────────────────── */}
+      <Modal
+        visible={!!pendingGovernorAssignment}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>⚖ PROVINCIAL LOT</Text>
+            <Text style={styles.modalDesc}>
+              {pendingGovernorAssignment?.characterName} has completed their term in office
+              and is eligible for a provincial governorship.
+            </Text>
+
+            {/* Rig the lot — only in final season and not yet attempted */}
+            {rigLotAvailable && pendingGovernorAssignment && !pendingGovernorAssignment.rigAttempted && (
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnRig]}
+                onPress={() => {
+                  Alert.alert(
+                    'Attempt to Rig the Lot',
+                    'Use your Intrigus to influence which province is assigned. Success is not guaranteed.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Attempt', onPress: attemptRigTheLot },
+                    ]
+                  );
+                }}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.modalBtnText}>🎲 Attempt to Rig the Lot</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Player chooses — rig succeeded */}
+            {pendingGovernorAssignment?.rigSucceeded && (
+              <>
+                <Text style={styles.modalSubtitle}>Choose your province:</Text>
+                {provinces
+                  .filter(p => {
+                    const def = getProvinceDefinition(p.id);
+                    return def?.status === 'incorporated' && !p.playerGovernor && p.id !== 'latium';
+                  })
+                  .map(p => {
+                    const def = getProvinceDefinition(p.id);
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        style={styles.provinceChoiceBtn}
+                        onPress={() => chooseGovernorProvince(p.id)}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={styles.provinceChoiceName}>{def?.name ?? p.id}</Text>
+                        <Text style={styles.provinceChoiceStats}>
+                          Relationship {p.relationshipScore} · Infrastructure {p.infrastructureRating}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+              </>
+            )}
+
+            {/* Random lot drawn — show result */}
+            {pendingGovernorAssignment?.assignedProvinceId && !pendingGovernorAssignment.rigSucceeded && (
+              <>
+                <Text style={styles.modalSubtitle}>Assigned by lot:</Text>
+                <View style={styles.lotResult}>
+                  <Text style={styles.lotResultProvince}>
+                    {pendingGovernorAssignment.assignedProvinceId.replace(/_/g, ' ').toUpperCase()}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.modalBtn}
+                  onPress={dismissGovernorAssignment}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.modalBtnTextDark}>Accept Appointment</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>PROVINCIAE</Text>
@@ -123,19 +234,52 @@ export default function ProvinciaeScreen() {
         </View>
       </View>
 
-      {/* Active posting banner */}
+      {/* Active posting banners */}
       {playerPostings.map(p => {
         const isGov = !!p.playerGovernor;
         return (
           <View key={p.id} style={styles.postingBanner}>
             <View style={[styles.postingDot, { backgroundColor: isGov ? '#c47a4a' : COLORS.senate }]} />
             <Text style={styles.postingText}>
-              {p.id.replace('_', ' ').toUpperCase()} ·{' '}
+              {p.id.replace(/_/g, ' ').toUpperCase()} ·{' '}
               {isGov ? 'Governor posting active' : 'Ambassador posting active'}
             </Text>
           </View>
         );
       })}
+
+      {/* Commander election pending banner */}
+      {pendingElection && (
+        <TouchableOpacity
+          style={[styles.postingBanner, styles.campaignBanner]}
+          onPress={() => {
+            const prov = provinces.find(p => p.id === pendingCommanderElection!.provinceId);
+            if (prov) openSheet(prov.id);
+          }}
+          activeOpacity={0.75}
+        >
+          <View style={[styles.postingDot, { backgroundColor: COLORS.gold }]} />
+          <Text style={styles.postingText}>
+            ⚖ Commander election pending — {pendingCommanderElection!.provinceId.replace(/_/g, ' ').toUpperCase()} · Tap to open Military tab
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Active campaigns banners */}
+      {activeCampaigns.map(p => (
+        <TouchableOpacity
+          key={p.id}
+          style={[styles.postingBanner, styles.campaignBanner]}
+          onPress={() => openSheet(p.id)}
+          activeOpacity={0.75}
+        >
+          <View style={[styles.postingDot, { backgroundColor: COLORS.crimson }]} />
+          <Text style={styles.postingText}>
+            ⚔ {p.id.replace(/_/g, ' ').toUpperCase()} · Campaign —{' '}
+            Progress {p.activeCampaign!.campaignProgress}/100 · Enemy {p.activeCampaign!.enemyStrength}/100
+          </Text>
+        </TouchableOpacity>
+      ))}
 
       {/* Map */}
       <View style={styles.mapContainer}>
@@ -164,7 +308,6 @@ export default function ProvinciaeScreen() {
       {/* Bottom sheet overlay */}
       {sheetVisible && selectedProvince && (
         <>
-          {/* Scrim */}
           <Animated.View
             style={[
               styles.scrim,
@@ -176,42 +319,53 @@ export default function ProvinciaeScreen() {
                 }),
               },
             ]}
-            // @ts-ignore — pointerEvents on Animated.View is fine
+            // @ts-ignore
             pointerEvents="none"
           />
 
-          {/* Sheet */}
           <Animated.View
             style={[styles.sheetContainer, { top: sheetAnim }]}
             {...panResponder.panHandlers}
           >
             <ProvinceSheet
               province={selectedProvince}
+              family={family}
               playerGratia={gratia}
               playerDenarii={denarii}
+              playerGravitas={gravitas}
+              playerImperium={imperium}
               playerGoverningMartial={governorMartial}
               recruitedClientIds={recruitedClientIds}
+              commanderElection={selectedCommanderElection}
+              officerVolunteer={selectedOfficerVolunteer}
+              campaignVotes={campaignVotes}
               onClose={closeSheet}
-              onPolicyChange={(provinceId, policy) =>
-                updateProvincePolicy(provinceId, policy)
-              }
-              onAmbassadorAction={(provinceId, actionId) =>
-                resolveAmbassadorAction(provinceId, actionId)
-              }
-              onPurchaseAsset={(provinceId, assetId) =>
-                purchaseProvinceAsset(provinceId, assetId)
-              }
-              onUpgradeAsset={(provinceId, assetId) =>
-                upgradeProvinceAsset(provinceId, assetId)
-              }
-              onRecruitClient={(provinceId, clientId) =>
-                recruitProvincialClient(provinceId, clientId)
-              }
+              onPolicyChange={(provinceId, policy) => updateProvincePolicy(provinceId, policy)}
+              onAmbassadorAction={(provinceId, actionId) => resolveAmbassadorAction(provinceId, actionId)}
+              onPurchaseAsset={(provinceId, assetId) => purchaseProvinceAsset(provinceId, assetId)}
+              onUpgradeAsset={(provinceId, assetId) => upgradeProvinceAsset(provinceId, assetId)}
+              onRecruitClient={(provinceId, clientId) => recruitProvincialClient(provinceId, clientId)}
               onSeekPosting={(provinceId) => {
-                // TODO: wire into Forum canvass flow for Senate vote
-                // For now, log intent
-                console.log(`Seek posting in ${provinceId}`);
+                // Ambassador posting for unincorporated provinces only
+                console.log(`Seek ambassador posting in ${provinceId}`);
               }}
+              onCommitCampaignSeason={(provinceId, allocation) =>
+                commitCampaignSeason(provinceId, allocation)
+              }
+              onResolveCampaignEvent={(provinceId, eventId, optionId) =>
+                resolveCampaignEvent(provinceId, eventId, optionId)
+              }
+              onNominateCommander={(provinceId, candidateId) =>
+                nominateCommander(provinceId, candidateId)
+              }
+              onVoteCommander={(leaderId, vote) => voteForCommander(leaderId, vote)}
+              onSpeechCommander={(provinceId) => speechForCommander(provinceId)}
+              onVolunteerOfficer={(provinceId, characterId) =>
+                volunteerAsOfficer(provinceId, characterId)
+              }
+              onResolveOfficerDecision={(provinceId, decisionIndex, tookRisk) =>
+                resolveOfficerDecisionAction(provinceId, decisionIndex, tookRisk)
+              }
             />
           </Animated.View>
         </>
@@ -286,23 +440,23 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   } as ViewStyle,
 
-  postingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  campaignBanner: {
+    backgroundColor: '#1a1218',
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.crimson,
   } as ViewStyle,
+
+  postingDot: { width: 6, height: 6, borderRadius: 3 } as ViewStyle,
 
   postingText: {
     color: COLORS.dust,
     fontFamily: FONTS.ui,
     fontSize: 10,
     letterSpacing: 0.5,
+    flex: 1,
   } as TextStyle,
 
-  mapContainer: {
-    flex: 1,
-    overflow: 'hidden',
-  } as ViewStyle,
+  mapContainer: { flex: 1, overflow: 'hidden' } as ViewStyle,
 
   legend: {
     flexDirection: 'row',
@@ -315,17 +469,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1714',
   } as ViewStyle,
 
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  } as ViewStyle,
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 } as ViewStyle,
 
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  } as ViewStyle,
+  legendDot: { width: 8, height: 8, borderRadius: 4 } as ViewStyle,
 
   legendLabel: {
     color: COLORS.dust,
@@ -350,4 +496,113 @@ const styles = StyleSheet.create({
     bottom: 0,
     height: SHEET_SNAP_HEIGHT,
   } as ViewStyle,
+
+  // Governor Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.lg,
+  } as ViewStyle,
+
+  modalCard: {
+    backgroundColor: '#2e2a24',
+    borderRadius: 12,
+    padding: SPACING.lg,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: COLORS.gold,
+  } as ViewStyle,
+
+  modalTitle: {
+    fontFamily: FONTS.display,
+    fontSize: 18,
+    color: COLORS.gold,
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
+    letterSpacing: 1,
+  } as TextStyle,
+
+  modalDesc: {
+    fontFamily: FONTS.body,
+    fontSize: 13,
+    color: COLORS.dust,
+    lineHeight: 18,
+    textAlign: 'center',
+    marginBottom: SPACING.md,
+  } as TextStyle,
+
+  modalSubtitle: {
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    color: COLORS.goldDim ?? COLORS.dust,
+    letterSpacing: 0.5,
+    marginBottom: SPACING.sm,
+  } as TextStyle,
+
+  provinceChoiceBtn: {
+    backgroundColor: '#1a1814',
+    borderRadius: 6,
+    padding: SPACING.sm,
+    marginBottom: SPACING.xs,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  } as ViewStyle,
+
+  provinceChoiceName: {
+    fontFamily: FONTS.display,
+    fontSize: 14,
+    color: COLORS.marble ?? COLORS.gold,
+  } as TextStyle,
+
+  provinceChoiceStats: {
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    color: COLORS.dust,
+    marginTop: 2,
+  } as TextStyle,
+
+  lotResult: {
+    backgroundColor: `${COLORS.gold}18`,
+    borderRadius: 8,
+    padding: SPACING.md,
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.gold,
+  } as ViewStyle,
+
+  lotResultProvince: {
+    fontFamily: FONTS.display,
+    fontSize: 20,
+    color: COLORS.gold,
+    letterSpacing: 1,
+  } as TextStyle,
+
+  modalBtn: {
+    backgroundColor: COLORS.gold,
+    borderRadius: 8,
+    padding: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+  } as ViewStyle,
+
+  modalBtnRig: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  } as ViewStyle,
+
+  modalBtnText: {
+    fontFamily: FONTS.display,
+    fontSize: 13,
+    color: COLORS.dust,
+  } as TextStyle,
+
+  modalBtnTextDark: {
+    fontFamily: FONTS.display,
+    fontSize: 14,
+    color: '#1a1410',
+  } as TextStyle,
 });

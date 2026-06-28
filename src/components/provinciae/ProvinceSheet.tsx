@@ -12,28 +12,42 @@ import {
   TextStyle,
 } from 'react-native';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
-import type { ProvinceState, GovernorPolicy } from '../../models/province';
+import type {
+  ProvinceState,
+  GovernorPolicy,
+  CommanderElectionState,
+  OfficerVolunteerState,
+} from '../../models/province';
 import { getRelationshipLabel, getRelationshipTier } from '../../models/province';
 import { getProvinceDefinition } from '../../data/provinceDefinitions';
 import PolicyBoard from './PolicyBoard';
 import DiplomatDesk from './DiplomatDesk';
 import ProvinceAssetGrid from './ProvinceAssetGrid';
 import ProvincialClientCard from './ProvincialClientCard';
+import MilitaryTab from './MilitaryTab';
 import type { AmbassadorActionId } from '../../engine/provinceEngine';
+import type { Character } from '../../models/character';
+import type { CampaignAllocation } from '../../engine/campaignEngine';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.72;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type SheetTab = 'overview' | 'policy' | 'assets' | 'clients';
+type SheetTab = 'overview' | 'policy' | 'assets' | 'clients' | 'military';
 
 interface ProvinceSheetProps {
   province: ProvinceState;
+  family: Character[];
   playerGratia: number;
   playerDenarii: number;
+  playerGravitas: number;
+  playerImperium: number;
   playerGoverningMartial: number;
   recruitedClientIds: string[];
+  commanderElection: CommanderElectionState | null;
+  officerVolunteer: OfficerVolunteerState | null;
+  campaignVotes: Record<string, 'for' | 'against' | 'neutral'>;
   onClose: () => void;
   onPolicyChange: (provinceId: string, policy: GovernorPolicy) => void;
   onAmbassadorAction: (provinceId: string, actionId: AmbassadorActionId) => void;
@@ -41,16 +55,29 @@ interface ProvinceSheetProps {
   onUpgradeAsset: (provinceId: string, assetId: string) => void;
   onRecruitClient: (provinceId: string, clientId: string) => void;
   onSeekPosting: (provinceId: string) => void;
+  onCommitCampaignSeason: (provinceId: string, allocation: CampaignAllocation) => void;
+  onResolveCampaignEvent: (provinceId: string, eventId: string, optionId: string) => void;
+  onNominateCommander: (provinceId: string, candidateId: string) => void;
+  onVoteCommander: (leaderId: string, vote: 'for' | 'against') => void;
+  onSpeechCommander: (provinceId: string) => void;
+  onVolunteerOfficer: (provinceId: string, characterId: string) => void;
+  onResolveOfficerDecision: (provinceId: string, decisionIndex: number, tookRisk: boolean) => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ProvinceSheet({
   province,
+  family,
   playerGratia,
   playerDenarii,
+  playerGravitas,
+  playerImperium,
   playerGoverningMartial,
   recruitedClientIds,
+  commanderElection,
+  officerVolunteer,
+  campaignVotes,
   onClose,
   onPolicyChange,
   onAmbassadorAction,
@@ -58,6 +85,13 @@ export default function ProvinceSheet({
   onUpgradeAsset,
   onRecruitClient,
   onSeekPosting,
+  onCommitCampaignSeason,
+  onResolveCampaignEvent,
+  onNominateCommander,
+  onVoteCommander,
+  onSpeechCommander,
+  onVolunteerOfficer,
+  onResolveOfficerDecision,
 }: ProvinceSheetProps) {
   const [activeTab, setActiveTab] = useState<SheetTab>('overview');
   const def = getProvinceDefinition(province.id);
@@ -68,6 +102,13 @@ export default function ProvinceSheet({
   const hasPlayerAmbassador = !!province.playerAmbassador;
   const relationshipTier = getRelationshipTier(province.relationshipScore);
 
+  // Military tab badge — show dot if active campaign or pending election
+  const hasMilitaryActivity =
+    !!province.activeCampaign ||
+    !!commanderElection ||
+    !!officerVolunteer ||
+    province.revoltActive;
+
   // Tab 2 label adapts to context
   const policyTabLabel = hasPlayerGovernor
     ? 'POLICY'
@@ -75,11 +116,12 @@ export default function ProvinceSheet({
     ? 'DIPLOMAT'
     : 'INTEL';
 
-  const tabs: { id: SheetTab; label: string }[] = [
+  const tabs: { id: SheetTab; label: string; badge?: boolean }[] = [
     { id: 'overview', label: 'OVERVIEW' },
     { id: 'policy', label: policyTabLabel },
     { id: 'assets', label: 'ASSETS' },
     { id: 'clients', label: 'CLIENTS' },
+    { id: 'military', label: 'MILITARY', badge: hasMilitaryActivity },
   ];
 
   return (
@@ -113,15 +155,18 @@ export default function ProvinceSheet({
               onPress={() => setActiveTab(tab.id)}
               activeOpacity={0.75}
             >
-              <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>
-                {tab.label}
-              </Text>
+              <View style={styles.tabLabelRow}>
+                <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>
+                  {tab.label}
+                </Text>
+                {tab.badge && <View style={styles.tabBadge} />}
+              </View>
             </TouchableOpacity>
           ))}
         </View>
       )}
 
-      {/* Content — extra bottom padding clears the EndSeason button */}
+      {/* Content */}
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
@@ -168,6 +213,26 @@ export default function ProvinceSheet({
                 onRecruit={(clientId) => onRecruitClient(province.id, clientId)}
               />
             )}
+            {activeTab === 'military' && (
+              <MilitaryTab
+                province={province}
+                family={family}
+                playerGravitas={playerGravitas}
+                playerDenarii={playerDenarii}
+                playerImperium={playerImperium}
+                commanderElection={commanderElection}
+                officerVolunteer={officerVolunteer}
+                campaignVotes={campaignVotes}
+                onStartCampaign={() => {}}
+                onCommitCampaignSeason={(pid, alloc) => onCommitCampaignSeason(pid, alloc)}
+                onResolveCampaignEvent={(pid, eid, oid) => onResolveCampaignEvent(pid, eid, oid)}
+                onNominateCommander={(pid, cid) => onNominateCommander(pid, cid)}
+                onVoteCommander={(lid, vote) => onVoteCommander(lid, vote)}
+                onSpeechCommander={(pid) => onSpeechCommander(pid)}
+                onVolunteerOfficer={(pid, charId) => onVolunteerOfficer(pid, charId)}
+                onResolveOfficerDecision={(pid, idx, risk) => onResolveOfficerDecision(pid, idx, risk)}
+              />
+            )}
           </>
         )}
       </ScrollView>
@@ -201,36 +266,26 @@ function OverviewTab({
   hasPlayerAmbassador: boolean;
   onSeekPosting: () => void;
 }) {
-  const relTier = getRelationshipTier(province.relationshipScore);
   const relLabel = getRelationshipLabel(province.relationshipScore);
   const relColour = getRelColour(province.relationshipScore);
 
   return (
     <View style={styles.overviewTab}>
-      {/* Flavour description */}
       <Text style={styles.flavorDesc}>{def.flavorDescription}</Text>
 
       <View style={styles.divider} />
 
-      {/* Relationship bar */}
       <Text style={styles.overviewSectionLabel}>RELATIONSHIP WITH ROME</Text>
       <View style={styles.relBarContainer}>
         <View style={styles.relBarBg}>
           <View
             style={[
               styles.relBarFill,
-              {
-                width: `${province.relationshipScore}%`,
-                backgroundColor: relColour,
-              },
+              { width: `${province.relationshipScore}%`, backgroundColor: relColour },
             ]}
           />
-          {/* Threshold markers at 15, 30, 50, 70, 85 */}
           {[15, 30, 50, 70, 85].map(threshold => (
-            <View
-              key={threshold}
-              style={[styles.thresholdMarker, { left: `${threshold}%` }]}
-            />
+            <View key={threshold} style={[styles.thresholdMarker, { left: `${threshold}%` }]} />
           ))}
         </View>
         <View style={styles.relBarLabels}>
@@ -240,16 +295,12 @@ function OverviewTab({
         </View>
       </View>
 
-      {/* Infrastructure */}
       <Text style={styles.overviewSectionLabel}>INFRASTRUCTURE</Text>
       <View style={styles.relBarBg}>
         <View
           style={[
             styles.relBarFill,
-            {
-              width: `${province.infrastructureRating}%`,
-              backgroundColor: COLORS.senate,
-            },
+            { width: `${province.infrastructureRating}%`, backgroundColor: COLORS.senate },
           ]}
         />
       </View>
@@ -257,7 +308,6 @@ function OverviewTab({
 
       <View style={styles.divider} />
 
-      {/* Role holder */}
       <Text style={styles.overviewSectionLabel}>CURRENT GOVERNOR</Text>
       {hasPlayerGovernor ? (
         <View style={styles.roleHolderCard}>
@@ -265,7 +315,11 @@ function OverviewTab({
             <Text style={styles.roleHolderIconText}>★</Text>
           </View>
           <View>
-            <Text style={styles.roleHolderName}>Your family member</Text>
+            <Text style={styles.roleHolderName}>
+              {province.playerGovernor
+                ? 'Family member governing'
+                : 'Your family member'}
+            </Text>
             <Text style={styles.roleHolderRole}>Governor · Player appointed</Text>
           </View>
         </View>
@@ -298,19 +352,27 @@ function OverviewTab({
 
       <View style={styles.divider} />
 
-      {/* Action buttons */}
-      {!hasPlayerGovernor && !hasPlayerAmbassador && (
-        <TouchableOpacity style={styles.actionButton} onPress={onSeekPosting} activeOpacity={0.75}>
-          <Text style={styles.actionButtonText}>
-            {def.status === 'incorporated' ? '⚖ Seek Governorship' : '✦ Seek Ambassador Posting'}
+      {/* Governor info — incorporated provinces */}
+      {def.status === 'incorporated' && !hasPlayerGovernor && (
+        <View style={styles.governorInfoBox}>
+          <Text style={styles.governorInfoText}>
+            🏛 Governorship is assigned by lot after a consular or praetorian term.
+            In your final season in office, you may attempt to influence the lot (Intrigus).
           </Text>
+        </View>
+      )}
+
+      {/* Ambassador posting button — unincorporated only */}
+      {def.status === 'unincorporated' && !hasPlayerAmbassador && (
+        <TouchableOpacity style={styles.actionButton} onPress={onSeekPosting} activeOpacity={0.75}>
+          <Text style={styles.actionButtonText}>✦ Seek Ambassador Posting</Text>
         </TouchableOpacity>
       )}
 
       {/* Revolt warning */}
       {province.revoltActive && (
         <View style={styles.revoltBanner}>
-          <Text style={styles.revoltText}>⚔ REVOLT ACTIVE — Military campaign required to suppress</Text>
+          <Text style={styles.revoltText}>⚔ REVOLT ACTIVE — See Military tab</Text>
         </View>
       )}
 
@@ -370,7 +432,6 @@ function PolicyTab({
     );
   }
 
-  // NPC governor — read-only with intelligence gate
   if (province.npcRoleHolder) {
     return (
       <PolicyBoard
@@ -385,7 +446,7 @@ function PolicyTab({
   return (
     <View style={styles.noPostingView}>
       <Text style={styles.noPostingText}>
-        No player posting in this province. Seek a governorship or ambassador role to access policy controls.
+        No player posting in this province. Seek an ambassador role to access policy controls.
       </Text>
     </View>
   );
@@ -439,9 +500,7 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   } as ViewStyle,
 
-  headerLeft: {
-    flex: 1,
-  } as ViewStyle,
+  headerLeft: { flex: 1 } as ViewStyle,
 
   provinceName: {
     color: COLORS.gold,
@@ -458,11 +517,7 @@ const styles = StyleSheet.create({
     gap: 6,
   } as ViewStyle,
 
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  } as ViewStyle,
+  statusDot: { width: 8, height: 8, borderRadius: 4 } as ViewStyle,
 
   statusLabel: {
     color: COLORS.dust,
@@ -471,9 +526,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   } as TextStyle,
 
-  closeButton: {
-    padding: SPACING.sm,
-  } as ViewStyle,
+  closeButton: { padding: SPACING.sm } as ViewStyle,
 
   closeText: {
     color: COLORS.dust,
@@ -498,6 +551,12 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.gold,
   } as ViewStyle,
 
+  tabLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  } as ViewStyle,
+
   tabText: {
     color: COLORS.dust,
     fontFamily: FONTS.ui,
@@ -510,12 +569,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   } as TextStyle,
 
-  content: {
-    flex: 1,
+  tabBadge: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: COLORS.crimson,
+    marginTop: -4,
   } as ViewStyle,
 
+  content: { flex: 1 } as ViewStyle,
+
   contentInner: {
-    paddingBottom: 140, // clears EndSeason button (≈64px) + seek button height + safe area
+    paddingBottom: 140,
   } as ViewStyle,
 
   // Heartland
@@ -524,10 +589,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   } as ViewStyle,
 
-  heartlandIcon: {
-    fontSize: 40,
-    marginBottom: SPACING.md,
-  } as TextStyle,
+  heartlandIcon: { fontSize: 40, marginBottom: SPACING.md } as TextStyle,
 
   heartlandTitle: {
     color: COLORS.gold,
@@ -547,9 +609,7 @@ const styles = StyleSheet.create({
   } as TextStyle,
 
   // Overview tab
-  overviewTab: {
-    padding: SPACING.md,
-  } as ViewStyle,
+  overviewTab: { padding: SPACING.md } as ViewStyle,
 
   flavorDesc: {
     color: COLORS.dust,
@@ -574,9 +634,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   } as TextStyle,
 
-  relBarContainer: {
-    marginBottom: SPACING.md,
-  } as ViewStyle,
+  relBarContainer: { marginBottom: SPACING.md } as ViewStyle,
 
   relBarBg: {
     height: 8,
@@ -589,10 +647,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   } as ViewStyle,
 
-  relBarFill: {
-    height: '100%',
-    borderRadius: 4,
-  } as ViewStyle,
+  relBarFill: { height: '100%', borderRadius: 4 } as ViewStyle,
 
   thresholdMarker: {
     position: 'absolute',
@@ -642,10 +697,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   } as ViewStyle,
 
-  roleHolderIconText: {
-    color: COLORS.gold,
-    fontSize: 14,
-  } as TextStyle,
+  roleHolderIconText: { color: COLORS.gold, fontSize: 14 } as TextStyle,
 
   roleHolderName: {
     color: COLORS.marble,
@@ -659,6 +711,23 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.ui,
     fontSize: 10,
     marginTop: 2,
+  } as TextStyle,
+
+  governorInfoBox: {
+    backgroundColor: '#1a1814',
+    borderRadius: 6,
+    padding: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: SPACING.sm,
+  } as ViewStyle,
+
+  governorInfoText: {
+    color: COLORS.dust,
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    lineHeight: 17,
+    fontStyle: 'italic',
   } as TextStyle,
 
   actionButton: {

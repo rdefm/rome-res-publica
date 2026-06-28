@@ -45,13 +45,14 @@ export interface CampaignState {
   id: string;
   provinceId: string;
   type: 'conquest' | 'defence' | 'suppression' | 'allied_support';
-  commanderCharacterId: string | null; // null = officer role (light system)
+  commanderCharacterId: string | null; // null = NPC commander (light officer system)
   campaignProgress: number;   // 0–100
   enemyStrength: number;      // 0–100
   turnsElapsed: number;
   localSupportBonus: boolean; // true if family Local Support ≥ 40 in province
   resolved: boolean;
   outcome: 'victory' | 'strategic_win' | 'stalemate' | 'defeat' | null;
+  activeEventId: string | null; // ID of a pending campaign event card, if any
 }
 
 export interface ProvinceAssetOwned {
@@ -63,6 +64,7 @@ export interface ProvinceAssetOwned {
 export interface ProvinceState {
   id: string;
   map: ProvinceMap;
+  status: ProvinceStatus; // mirrors ProvinceDefinition.status
 
   // Relationship with Rome (0–100). Heartland provinces always 100.
   relationshipScore: number;
@@ -104,6 +106,73 @@ export interface NpcRoleHolder {
   policy: GovernorPolicy; // only partially revealed without Local Support
 }
 
+// ─── Governor Assignment ──────────────────────────────────────────────────────
+
+/**
+ * A character (player family OR NPC clan leader) eligible to be assigned
+ * a governorship after completing a praetor or consul term.
+ */
+export interface GovernorCandidate {
+  characterId: string;
+  characterName: string;
+  clanId: string;
+  clanName: string;
+  isPlayerFamily: boolean;
+  martialSkill: number; // 0–10
+  eligibleOffices: string[];
+}
+
+/**
+ * Pending governor assignment — set when a character's term ends.
+ * If rigSucceeded, the player may choose the province.
+ * Otherwise the province is drawn at random and stored in assignedProvinceId.
+ */
+export interface PendingGovernorAssignment {
+  characterId: string;
+  characterName: string;
+  isPlayerFamily: boolean;
+  clanId: string;
+  rigAttempted: boolean;
+  rigSucceeded: boolean;
+  assignedProvinceId: string | null; // null until drawn or chosen
+}
+
+// ─── Commander Election ───────────────────────────────────────────────────────
+
+/**
+ * Active senate vote to elect a campaign commander.
+ * Fires at end-of-season when a campaign is triggered without a commander.
+ */
+export interface CommanderElectionState {
+  provinceId: string;
+  campaignType: CampaignState['type'];
+  candidates: GovernorCandidate[];
+  playerSupportedCandidateId: string | null;
+  playerSpeechBonus: number; // accumulated from speech actions
+  resolved: boolean;
+}
+
+// ─── Officer Volunteer ────────────────────────────────────────────────────────
+
+/**
+ * A family member who has volunteered as an officer in an active campaign.
+ * Uses the Light system: 3 decision-point events over the campaign duration.
+ */
+export interface OfficerVolunteerState {
+  campaignId: string;
+  provinceId: string;
+  characterId: string;
+  characterName: string;
+  decisionsResolved: number; // 0–3
+  successCount: number;
+  decisions: Array<{
+    decisionId: string;
+    tookRisk: boolean;
+    success: boolean;
+  }>;
+  resolved: boolean;
+}
+
 // ─── Province Definition (static data) ───────────────────────────────────────
 
 export interface ProvinceAssetDefinition {
@@ -133,10 +202,9 @@ export interface ProvincialClientDefinition {
   supportRequired: number;
   relationshipRequired: number;
   bonusDescription: string;
-  // Skill bonuses applied to assigned character each turn
   skillBonus?: Partial<{ rhetoric: number; auctoritas: number; martial: number; intrigus: number }>;
   resourceBonus?: { goldPerTurn?: number; gratiaPerTurn?: number };
-  specialAbility?: string; // ID of special action/mechanic this client unlocks
+  specialAbility?: string;
 }
 
 export interface ProvinceEventOption {
@@ -144,7 +212,7 @@ export interface ProvinceEventOption {
   label: string;
   cost?: { resource: string; amount: number };
   skillCheck?: { skill: string; difficulty: number };
-  successEffect: string; // applyEffectString-compatible
+  successEffect: string;
   failureEffect?: string;
   successText: string;
   failureText?: string;
@@ -157,7 +225,7 @@ export interface ProvinceEventDefinition {
   triggerCondition: 'governor' | 'ambassador' | 'any';
   minRelationship?: number;
   minLocalSupport?: number;
-  region?: string; // if set, only fires in this province
+  region?: string;
   options: ProvinceEventOption[];
 }
 
@@ -166,27 +234,21 @@ export interface ProvinceDefinition {
   name: string;
   latinName: string;
   map: ProvinceMap;
-  status: ProvinceStatus; // starting status
-  profile: string;        // one-line flavour text
-  flavorDescription: string; // longer Province Sheet description
+  status: ProvinceStatus;
+  profile: string;
+  flavorDescription: string;
 
-  // Starting stats
   startingRelationship: number;
   startingInfrastructure: number;
   startingLocalSupport: number;
 
-  // Output profile — base values before modifiers
   baseGoldOutput: number;
   baseImperiumOutput: number;
 
-  // Map node position (as % of image dimensions, for absolute positioning)
-  nodeX: number; // 0–1
-  nodeY: number; // 0–1
+  nodeX: number;
+  nodeY: number;
 
-  // Available provincial clients
   clientIds: string[];
-
-  // NPC governor starting state
   npcRoleHolder: NpcRoleHolder;
 }
 
@@ -234,7 +296,6 @@ export function getRelationshipOutputMultiplier(score: number): number {
   }
 }
 
-// Taxation notch → gold multiplier
 export const TAXATION_GOLD_MULT: Record<TaxationNotch, number> = {
   benevolent:    0.5,
   light:         1.0,
@@ -259,7 +320,6 @@ export const TAXATION_CORRUPTION_PER_TURN: Record<TaxationNotch, number> = {
   extortionate: 10,
 };
 
-// Security notch → Imperium base values
 export const SECURITY_IMPERIUM_BASE: Record<SecurityNotch, number> = {
   neglect:           0,
   light_patrol:      1,

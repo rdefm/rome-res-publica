@@ -10,7 +10,13 @@ import type { ActiveAmbition } from '../models/ambition';
 import type { LegacyObjective } from '../models/legacyObjective';
 import type { PatronTier } from '../models/patronLadder';
 import type { Trial } from '../models/trial';
-import type { ProvinceState, GovernorPolicy } from '../models/province';
+import type {
+  ProvinceState,
+  GovernorPolicy,
+  PendingGovernorAssignment,
+  CommanderElectionState,
+  OfficerVolunteerState,
+} from '../models/province';
 import { STARTING_FAMILY } from '../data/startingFamily';
 import { STARTING_CLANS } from '../data/startingClans';
 import { STARTING_BILLS } from '../data/billTemplates';
@@ -24,6 +30,17 @@ import {
 } from '../engine/provinceEngine';
 import { getProvinceAssetDefinition } from '../data/provinceAssets';
 import { getProvincialClientDef } from '../data/provincialClients';
+import {
+  attemptRigLot,
+  drawGovernorLot,
+  resolveCampaignSeason,
+  resolveCampaignOutcome,
+  resolveOfficerDecision,
+  resolveOfficerOutcome,
+} from '../engine/campaignEngine';
+import { getCampaignEventDef } from '../data/campaignEvents';
+import type { CampaignAllocation } from '../engine/campaignEngine';
+import type { CampaignState } from '../models/province';
 
 export interface LogEntry {
   id: string;
@@ -36,7 +53,7 @@ export interface GameState {
   // Time
   year: number;
   turnNumber: number;
-  seasonIndex: number; // 0=Spring 1=Summer 2=Autumn 3=Winter
+  seasonIndex: number;
 
   // Resources
   gravitas: number;
@@ -49,25 +66,21 @@ export interface GameState {
   laudatioActive: boolean;
   laudatioBonus: number;
 
-  // Faction standings (-100 to +100)
+  // Faction standings
   popularesRel: number;
   optimatesRel: number;
 
   // Rome-level stats
-  rome: {
-    stability: number;
-    plebs: number;
-    treasury: number;
-  };
+  rome: { stability: number; plebs: number; treasury: number };
 
   // Crisis
   crisisLevel: number;
 
-  // Family (Domus)
+  // Family
   family: Character[];
   selectedCharacterId: string;
 
-  // Senate (Curia)
+  // Senate
   bills: Bill[];
   _expandedBill: string | null;
   _expandedType: 'vote' | 'speech' | null;
@@ -87,26 +100,26 @@ export interface GameState {
   electionRivals: ElectionRival[];
   pendingAmbitionScopes: ('family' | 'character')[];
 
-  // Clientela Network
+  // Clientela
   clients: Client[];
 
-  // Assets (Feature 1)
+  // Assets
   ownedAssets: OwnedAsset[];
 
-  // Ambitions (Feature 3)
+  // Ambitions
   ambitions: ActiveAmbition[];
 
-  // Legacy Objectives (Feature 4)
+  // Legacy
   legacyObjectives: LegacyObjective[];
 
-  // Patron Ladder (Feature 7)
+  // Patron Ladder
   patronTier: PatronTier;
   lifetimeDignitas: number;
 
-  // Trials (Feature 6)
+  // Trials
   trialQueue: Trial[];
 
-  // Faction Reputation (Feature 2)
+  // Faction Reputation
   familyReputations: Record<string, number>;
 
   // Event queue
@@ -129,9 +142,20 @@ export interface GameState {
   seasonOverlayVisible: boolean;
   seasonOverlayEvents: string[];
 
-  // ── Provinciae ──────────────────────────────────────────────────────────
+  // ── Provinciae ──────────────────────────────────────────────────────────────
   provinces: ProvinceState[];
   lifetimeImperium: number;
+
+  // Governor lot system
+  pendingGovernorAssignment: PendingGovernorAssignment | null;
+  rigLotAvailable: boolean;
+
+  // Commander elections
+  pendingCommanderElection: CommanderElectionState | null;
+  activeCampaignVotes: Record<string, 'for' | 'against' | 'neutral'>;
+
+  // Officer volunteers
+  officerVolunteers: OfficerVolunteerState[];
 }
 
 export interface GameActions {
@@ -175,7 +199,7 @@ export interface GameActions {
   addClient: (client: Client) => void;
   removeClient: (clientId: string) => void;
 
-  // Assets (Feature 1)
+  // Assets
   purchaseAsset: (definitionId: string) => void;
   upgradeAsset: (definitionId: string) => void;
 
@@ -205,13 +229,31 @@ export interface GameActions {
   addLog: (text: string, type?: LogEntry['type']) => void;
   addCursusLog: (text: string, type?: LogEntry['type']) => void;
 
-  // ── Provinciae ────────────────────────────────────────────────────────
+  // ── Provinciae ─────────────────────────────────────────────────────────────
   updateProvincePolicy: (provinceId: string, policy: GovernorPolicy) => void;
   resolveAmbassadorAction: (provinceId: string, actionId: AmbassadorActionId) => void;
   purchaseProvinceAsset: (provinceId: string, assetId: string) => void;
   upgradeProvinceAsset: (provinceId: string, assetId: string) => void;
   recruitProvincialClient: (provinceId: string, clientId: string) => void;
   updateProvinces: (provinces: ProvinceState[]) => void;
+
+  // Governor lot
+  attemptRigTheLot: () => void;
+  chooseGovernorProvince: (provinceId: string) => void;
+  dismissGovernorAssignment: () => void;
+
+  // Commander election
+  nominateCommander: (provinceId: string, candidateId: string) => void;
+  voteForCommander: (leaderId: string, vote: 'for' | 'against') => void;
+  speechForCommander: (provinceId: string) => void;
+
+  // Military campaigns
+  commitCampaignSeason: (provinceId: string, allocation: CampaignAllocation) => void;
+  resolveCampaignEvent: (provinceId: string, eventId: string, optionId: string) => void;
+
+  // Officer volunteer
+  volunteerAsOfficer: (provinceId: string, characterId: string) => void;
+  resolveOfficerDecisionAction: (provinceId: string, decisionIndex: number, tookRisk: boolean) => void;
 }
 
 let _logId = 0;
@@ -287,8 +329,18 @@ export const INITIAL_STATE: GameState = {
   // Provinciae
   provinces: buildInitialProvinceStates(),
   lifetimeImperium: 0,
-};
 
+  // Governor lot
+  pendingGovernorAssignment: null,
+  rigLotAvailable: false,
+
+  // Commander elections
+  pendingCommanderElection: null,
+  activeCampaignVotes: {},
+
+  // Officer volunteers
+  officerVolunteers: [],
+};
 
 const SEASON_NAMES = ['Spring', 'Summer', 'Autumn', 'Winter'];
 
@@ -783,6 +835,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       relationship: 80,
       familyTrust: 100,
       officeId: null,
+      corruptionScore: 0,
       inheritedTraits: [],
       ambitionIds: [],
       reputationScores: {},
@@ -1022,4 +1075,320 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   },
 
   updateProvinces: (provinces) => set({ provinces }),
+
+  // ─── Governor Lot ────────────────────────────────────────────────────────────
+
+  attemptRigTheLot: () => {
+    const s = get();
+    const player = s.family.find(c => c.isPlayer);
+    if (!player) return;
+    const success = attemptRigLot(player.skills.intrigus);
+    const label = turnLabel(s);
+    const text = success
+      ? `Your agents have influenced the lot. Choose your province of appointment.`
+      : `The attempt to rig the lot failed. The province will be drawn at random.`;
+    set({
+      pendingGovernorAssignment: s.pendingGovernorAssignment
+        ? { ...s.pendingGovernorAssignment, rigAttempted: true, rigSucceeded: success }
+        : null,
+      log: [...s.log, mkLog(label, text, success ? 'good' : 'bad')],
+    });
+  },
+
+  chooseGovernorProvince: (provinceId) => {
+    const s = get();
+    if (!s.pendingGovernorAssignment) return;
+    const assignment = s.pendingGovernorAssignment;
+    const label = turnLabel(s);
+    set({
+      provinces: s.provinces.map(p =>
+        p.id !== provinceId ? p : {
+          ...p,
+          playerGovernor: {
+            characterId: assignment.characterId,
+            policy: { taxation: 'standard', security: 'standard_garrison', development: 'maintain' },
+            corruptionAccrued: 0,
+            turnsServed: 0,
+          },
+          npcRoleHolder: null,
+        }
+      ),
+      family: s.family.map(c =>
+        c.id === assignment.characterId ? { ...c, officeId: `governor_${provinceId}` } : c
+      ),
+      pendingGovernorAssignment: null,
+      rigLotAvailable: false,
+      log: [...s.log, mkLog(label,
+        `${assignment.characterName} appointed Governor of ${provinceId.replace(/_/g, ' ')}.`, 'good')],
+    });
+  },
+
+  dismissGovernorAssignment: () => set({ pendingGovernorAssignment: null, rigLotAvailable: false }),
+
+  // ─── Commander Election ──────────────────────────────────────────────────────
+
+  nominateCommander: (provinceId, candidateId) => {
+    const s = get();
+    if (!s.pendingCommanderElection) return;
+    const label = turnLabel(s);
+    set({
+      pendingCommanderElection: {
+        ...s.pendingCommanderElection,
+        playerSupportedCandidateId: candidateId,
+      },
+      log: [...s.log, mkLog(label,
+        `You declared support for a commander candidate for the ${provinceId.replace(/_/g, ' ')} campaign.`, 'neutral')],
+    });
+  },
+
+  voteForCommander: (leaderId, vote) => set(s => ({
+    activeCampaignVotes: { ...s.activeCampaignVotes, [leaderId]: vote },
+    campaignVotes: { ...s.campaignVotes, [leaderId]: vote },
+  })),
+
+  speechForCommander: (provinceId) => {
+    const s = get();
+    if (!s.pendingCommanderElection) return;
+    if (s.gravitas < 10) return;
+    const label = turnLabel(s);
+    set({
+      gravitas: s.gravitas - 10,
+      pendingCommanderElection: {
+        ...s.pendingCommanderElection,
+        playerSpeechBonus: s.pendingCommanderElection.playerSpeechBonus + 15,
+      },
+      log: [...s.log, mkLog(label,
+        `Speech delivered supporting your preferred commander for ${provinceId.replace(/_/g, ' ')}. (−10 Gravitas)`, 'neutral')],
+    });
+  },
+
+  // ─── Campaign Season Commit ──────────────────────────────────────────────────
+
+  commitCampaignSeason: (provinceId, allocation) => {
+    const s = get();
+    const province = s.provinces.find(p => p.id === provinceId);
+    if (!province?.activeCampaign) return;
+    const campaign = province.activeCampaign;
+    if (!campaign.commanderCharacterId || campaign.resolved) return;
+
+    const commander = s.family.find(c => c.id === campaign.commanderCharacterId);
+    const commanderMartial = commander?.skills.martial ?? 0;
+    const localSupportBonus = province.localSupport >= 40;
+
+    const result = resolveCampaignSeason(
+      campaign, allocation, commanderMartial, localSupportBonus, false
+    );
+
+    const newGold = Math.max(0, s.denarii - result.goldCost);
+    const newGravitas = Math.max(0, s.gravitas - result.gravitasCost);
+    const newImperium = s.imperium + result.imperiumGained;
+
+    const provinceRelDelta = allocation.morale === 'loot' ? -8 : 0;
+
+    const newProgress = Math.max(0, Math.min(100, campaign.campaignProgress + result.progressDelta));
+    const newEnemy = Math.max(0, Math.min(100, campaign.enemyStrength + result.enemyDelta));
+    const newTurns = campaign.turnsElapsed + 1;
+
+    const MAX_TURNS = 6;
+    const isTerminal =
+      newEnemy <= 0 || newProgress >= 100 || newProgress <= 0 || newTurns >= MAX_TURNS;
+
+    let updatedCampaign: CampaignState = {
+      ...campaign,
+      campaignProgress: newProgress,
+      enemyStrength: newEnemy,
+      turnsElapsed: newTurns,
+      activeEventId: result.eventCardId,
+    };
+
+    let bonusImperium = 0;
+    let bonusDignitas = 0;
+    let corruptionDelta = 0;
+    const extraLogs: string[] = [result.logMsg];
+
+    if (isTerminal) {
+      const resolution = resolveCampaignOutcome(updatedCampaign);
+      updatedCampaign = { ...updatedCampaign, resolved: true, outcome: resolution.outcome };
+      bonusImperium = resolution.imperiumBonus;
+      bonusDignitas = resolution.dignitasDelta;
+      corruptionDelta = resolution.corruptionDelta;
+      extraLogs.push(resolution.logMsg);
+    }
+
+    const label = turnLabel(s);
+    set({
+      provinces: s.provinces.map(p =>
+        p.id === provinceId
+          ? {
+              ...p,
+              activeCampaign: updatedCampaign,
+              relationshipScore: Math.max(0, Math.min(100, p.relationshipScore + provinceRelDelta)),
+            }
+          : p
+      ),
+      family: s.family.map(c =>
+        c.id === campaign.commanderCharacterId && corruptionDelta > 0
+          ? { ...c, corruptionScore: (c.corruptionScore ?? 0) + corruptionDelta }
+          : c
+      ),
+      denarii: newGold,
+      gravitas: newGravitas,
+      imperium: Math.max(0, newImperium + bonusImperium),
+      dignitas: s.dignitas + bonusDignitas,
+      lifetimeImperium: (s.lifetimeImperium ?? 0) + bonusImperium,
+      log: [...s.log, ...extraLogs.map(msg => mkLog(label, msg, 'neutral'))],
+    });
+  },
+
+  // ─── Campaign Event Resolution ────────────────────────────────────────────────
+
+  resolveCampaignEvent: (provinceId, eventId, optionId) => {
+    const s = get();
+    const province = s.provinces.find(p => p.id === provinceId);
+    if (!province?.activeCampaign) return;
+
+    const eventDef = getCampaignEventDef(eventId);
+    if (!eventDef) return;
+
+    const option = eventDef.options.find(o => o.id === optionId);
+    if (!option) return;
+
+    let success = true;
+    if (option.skillCheck) {
+      const commander = s.family.find(c => c.id === province.activeCampaign?.commanderCharacterId);
+      const skillValue = commander?.skills[option.skillCheck.skill as keyof typeof commander.skills] ?? 0;
+      const chance = Math.min(0.9, 0.3 + skillValue * 0.06);
+      success = Math.random() < chance;
+    }
+
+    const effect = success ? option.successEffect : (option.failureEffect ?? option.successEffect);
+    const goldCost = option.goldCost ?? 0;
+    const gravitasCost = option.gravitasCost ?? 0;
+
+    const campaign = province.activeCampaign!;
+    const newProgress = Math.max(0, Math.min(100, campaign.campaignProgress + (effect.progressDelta ?? 0)));
+    const newEnemy = Math.max(0, Math.min(100, campaign.enemyStrength + (effect.enemyDelta ?? 0)));
+
+    const label = turnLabel(s);
+    const logText = success
+      ? `Campaign event: ${option.successText}`
+      : `Campaign event: ${option.failureText ?? 'Outcome unfavourable.'}`;
+
+    set({
+      provinces: s.provinces.map(p =>
+        p.id !== provinceId ? p : {
+          ...p,
+          activeCampaign: {
+            ...campaign,
+            campaignProgress: newProgress,
+            enemyStrength: newEnemy,
+            activeEventId: null,
+          },
+          relationshipScore: Math.max(0, Math.min(100,
+            p.relationshipScore + (effect.relationshipDelta ?? 0)
+          )),
+        }
+      ),
+      denarii: Math.max(0, s.denarii - goldCost + (effect.goldDelta ?? 0)),
+      gravitas: Math.max(0, s.gravitas - gravitasCost),
+      log: [...s.log, mkLog(label, logText, success ? 'good' : 'bad')],
+    });
+  },
+
+  // ─── Officer Volunteer ────────────────────────────────────────────────────────
+
+  volunteerAsOfficer: (provinceId, characterId) => {
+    const s = get();
+    const province = s.provinces.find(p => p.id === provinceId);
+    if (!province?.activeCampaign) return;
+
+    const char = s.family.find(c => c.id === characterId);
+    if (!char) return;
+
+    if (s.officerVolunteers.some(v => v.characterId === characterId && !v.resolved)) return;
+
+    const volunteer: OfficerVolunteerState = {
+      campaignId: province.activeCampaign.id,
+      provinceId,
+      characterId,
+      characterName: char.name,
+      decisionsResolved: 0,
+      successCount: 0,
+      decisions: [],
+      resolved: false,
+    };
+
+    const label = turnLabel(s);
+    set({
+      officerVolunteers: [...s.officerVolunteers, volunteer],
+      family: s.family.map(c =>
+        c.id === characterId ? { ...c, officeId: `officer_${provinceId}` } : c
+      ),
+      log: [...s.log, mkLog(label,
+        `${char.name} volunteers as an officer in the ${provinceId.replace(/_/g, ' ')} campaign.`, 'neutral')],
+    });
+  },
+
+  resolveOfficerDecisionAction: (provinceId, decisionIndex, tookRisk) => {
+    const s = get();
+    const volunteerIdx = s.officerVolunteers.findIndex(
+      v => v.provinceId === provinceId && !v.resolved
+    );
+    if (volunteerIdx === -1) return;
+
+    const volunteer = s.officerVolunteers[volunteerIdx];
+    const char = s.family.find(c => c.id === volunteer.characterId);
+    // Decision 1 (index 1) uses intrigus; others use martial
+    const relevantSkill = decisionIndex === 1
+      ? (char?.skills.intrigus ?? 0)
+      : (char?.skills.martial ?? 0);
+
+    const { success, logMsg } = resolveOfficerDecision(decisionIndex, tookRisk, relevantSkill);
+
+    const updatedDecisions = [
+      ...volunteer.decisions,
+      { decisionId: `decision_${decisionIndex}`, tookRisk, success },
+    ];
+    const newSuccessCount = volunteer.successCount + (success ? 1 : 0);
+    const newResolved = updatedDecisions.length >= 3;
+
+    const updatedVolunteer: OfficerVolunteerState = {
+      ...volunteer,
+      decisions: updatedDecisions,
+      decisionsResolved: updatedDecisions.length,
+      successCount: newSuccessCount,
+      resolved: newResolved,
+    };
+
+    const newVolunteers = [...s.officerVolunteers];
+    newVolunteers[volunteerIdx] = updatedVolunteer;
+
+    const label = turnLabel(s);
+    const logs = [mkLog(label, logMsg, success ? 'good' : 'bad')];
+
+    let updatedFamily = s.family;
+    let imperiumGain = 0;
+
+    if (newResolved) {
+      const finalResult = resolveOfficerOutcome(newSuccessCount, char?.skills.martial ?? 0);
+      updatedFamily = s.family.map(c => {
+        if (c.id !== volunteer.characterId) return c;
+        const martialGain = Math.floor(finalResult.martialXpGain / 4);
+        return {
+          ...c,
+          skills: { ...c.skills, martial: Math.min(10, c.skills.martial + martialGain) },
+          officeId: null,
+        };
+      });
+      imperiumGain = finalResult.imperiumGained;
+      logs.push(mkLog(label, finalResult.logMsg, 'neutral'));
+    }
+
+    set({
+      officerVolunteers: newVolunteers,
+      family: updatedFamily,
+      imperium: s.imperium + imperiumGain,
+      log: [...s.log, ...logs],
+    });
+  },
 }));

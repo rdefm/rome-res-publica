@@ -151,6 +151,7 @@ export function buildInitialProvinceStates(): ProvinceState[] {
   return ITALY_PROVINCES.map(def => ({
     id: def.id,
     map: def.map,
+    status: def.status,          // ← added: mirrors ProvinceDefinition.status onto ProvinceState
     relationshipScore: def.startingRelationship,
     internalStability: def.id === 'latium' ? 100 : 70,
     infrastructureRating: def.startingInfrastructure,

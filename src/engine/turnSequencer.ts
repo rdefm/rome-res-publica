@@ -1,6 +1,7 @@
 import type { GameState } from '../state/gameStore';
 import type { Client, ClientType } from '../models/client';
 import type { EventInstance } from '../models/event';
+import type { CampaignState, PendingGovernorAssignment, CommanderElectionState } from '../models/province';
 import {
   calcResourceIncome,
   applyEffectString,
@@ -30,6 +31,11 @@ import { computePatronTier, processFavourCallIns } from './patronEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import { computeTotalAssetBonuses } from './assetEngine';
 import { tickAllProvinces } from './provinceEngine';
+import {
+  drawGovernorLot,
+  generateCommanderCandidates,
+  resolveCommanderElection,
+} from './campaignEngine';
 import { TRIAL_ACTIONS } from '../data/trialActions';
 import { EVENT_DEFS } from '../data/events';
 import { OFFICES } from '../data/offices';
@@ -102,13 +108,147 @@ export function processSeason(state: GameState): {
     }
   }
 
+  // 2b. Resolve pending commander election (votes close at end of season)
+  if (s.pendingCommanderElection && !s.pendingCommanderElection.resolved) {
+    const electionResult = resolveCommanderElection(s.pendingCommanderElection, s);
+    const winnerCandidate = s.pendingCommanderElection.candidates
+      .find(c => c.characterId === electionResult.winnerId);
+    const provinceId = s.pendingCommanderElection.provinceId;
+    const campaignType = s.pendingCommanderElection.campaignType;
+
+    const newCampaign: CampaignState = {
+      id: `campaign_${provinceId}_${s.turnNumber}`,
+      provinceId,
+      type: campaignType,
+      commanderCharacterId: winnerCandidate?.isPlayerFamily ? winnerCandidate.characterId : null,
+      campaignProgress: 10,
+      enemyStrength: 70,
+      turnsElapsed: 0,
+      localSupportBonus: false,
+      resolved: false,
+      outcome: null,
+      activeEventId: null,
+    };
+
+    s = {
+      ...s,
+      provinces: s.provinces.map(p =>
+        p.id === provinceId ? { ...p, activeCampaign: newCampaign } : p
+      ),
+      pendingCommanderElection: { ...s.pendingCommanderElection, resolved: true },
+      activeCampaignVotes: {},
+      campaignVotes: {},
+    };
+
+    events.push(electionResult.logMsg);
+
+    if (winnerCandidate?.isPlayerFamily) {
+      s = {
+        ...s,
+        family: s.family.map(c =>
+          c.id === winnerCandidate.characterId
+            ? { ...c, officeId: `commander_${provinceId}` }
+            : c
+        ),
+      };
+      events.push(
+        `${winnerCandidate.characterName} takes command. Open the Military tab in ` +
+        `${provinceId.replace('_', ' ')} to direct the campaign.`
+      );
+    }
+  }
+
   // 3. Tick office term
   if (s.currentOffice && s.officeSeasons > 0) {
     const newOfficeSeasons = s.officeSeasons - 1;
-    if (newOfficeSeasons === 0) {
+
+    // Final season in office — enable rig-the-lot for consul/praetor
+    if (newOfficeSeasons === 1 &&
+        (s.currentOffice === 'consul' || s.currentOffice === 'praetor')) {
+      s = { ...s, officeSeasons: newOfficeSeasons, rigLotAvailable: true };
+      events.push(
+        `Your term as ${OFFICES.find(o => o.id === s.currentOffice)?.name ?? ''} ends next season. ` +
+        `You may attempt to influence the provincial lot before your term concludes.`
+      );
+    } else if (newOfficeSeasons === 0) {
       const officeName = OFFICES.find((o) => o.id === s.currentOffice)?.name ?? '';
       events.push(`Your term as ${officeName} has ended.`);
-      s = { ...s, currentOffice: null, officeSeasons: 0 };
+
+      // Governor lot draw for consul/praetor
+      if (s.currentOffice === 'consul' || s.currentOffice === 'praetor') {
+        const player = s.family.find(c => c.isPlayer);
+        const eligibleProvinceIds = s.provinces
+          .filter(p => p.status === 'incorporated' && !p.playerGovernor && p.id !== 'latium')
+          .map(p => p.id);
+
+        if (eligibleProvinceIds.length > 0 && player) {
+          const baseAssignment: PendingGovernorAssignment = {
+            characterId: player.id,
+            characterName: player.name,
+            isPlayerFamily: true,
+            clanId: 'brutii',
+            rigAttempted: s.pendingGovernorAssignment?.rigAttempted ?? false,
+            rigSucceeded: s.pendingGovernorAssignment?.rigSucceeded ?? false,
+            assignedProvinceId: null,
+          };
+
+          if (baseAssignment.rigSucceeded) {
+            // Player gets to choose — UI will prompt them to pick
+            s = {
+              ...s,
+              currentOffice: null,
+              officeSeasons: 0,
+              rigLotAvailable: false,
+              pendingGovernorAssignment: baseAssignment,
+            };
+            events.push(
+              `The lot is to be drawn. Your influence holds — choose your province of appointment.`
+            );
+          } else {
+            // Draw randomly and assign immediately
+            const drawnProvinceId = drawGovernorLot(eligibleProvinceIds);
+            const drawnProvince = s.provinces.find(p => p.id === drawnProvinceId);
+            s = {
+              ...s,
+              currentOffice: null,
+              officeSeasons: 0,
+              rigLotAvailable: false,
+              pendingGovernorAssignment: { ...baseAssignment, assignedProvinceId: drawnProvinceId },
+              provinces: s.provinces.map(p =>
+                p.id === drawnProvinceId
+                  ? {
+                      ...p,
+                      playerGovernor: {
+                        characterId: player.id,
+                        policy: {
+                          taxation: 'standard' as const,
+                          security: 'standard_garrison' as const,
+                          development: 'maintain' as const,
+                        },
+                        corruptionAccrued: 0,
+                        turnsServed: 0,
+                      },
+                      npcRoleHolder: null,
+                    }
+                  : p
+              ),
+              family: s.family.map(c =>
+                c.id === player.id
+                  ? { ...c, officeId: `governor_${drawnProvinceId}` }
+                  : c
+              ),
+            };
+            events.push(
+              `The lot has been cast. ${player.name} is appointed Governor of ` +
+              `${(drawnProvince?.id ?? drawnProvinceId).replace(/_/g, ' ')}.`
+            );
+          }
+        } else {
+          s = { ...s, currentOffice: null, officeSeasons: 0, rigLotAvailable: false };
+        }
+      } else {
+        s = { ...s, currentOffice: null, officeSeasons: 0 };
+      }
     } else {
       s = { ...s, officeSeasons: newOfficeSeasons };
     }
@@ -219,6 +359,58 @@ export function processSeason(state: GameState): {
       events.push(
         `Provincial income: +${totalGoldDelta} Gold, +${totalImperiumDelta} Imperium from Italy.`
       );
+    }
+
+    // 9c-ii. Clear officeId on family members whose governorship just ended
+    // (provinceEngine removes playerGovernor from the province; we sync the character here)
+    const activeGovernorIds = new Set(
+      s.provinces
+        .filter(p => p.playerGovernor)
+        .map(p => p.playerGovernor!.characterId)
+    );
+    const familyNeedsSync = s.family.some(
+      c => c.officeId?.startsWith('governor_') && !activeGovernorIds.has(c.id)
+    );
+    if (familyNeedsSync) {
+      s = {
+        ...s,
+        family: s.family.map(c =>
+          c.officeId?.startsWith('governor_') && !activeGovernorIds.has(c.id)
+            ? { ...c, officeId: null }
+            : c
+        ),
+      };
+    }
+  }
+
+  // 9d. Trigger commander elections for provinces that need campaigns but lack one
+  if (!s.pendingCommanderElection || s.pendingCommanderElection.resolved) {
+    for (const province of s.provinces) {
+      const needsCampaign =
+        (province.revoltActive && !province.activeCampaign) ||
+        (province.warDeclarationAvailable && !province.activeCampaign);
+
+      if (needsCampaign) {
+        const campaignType: CampaignState['type'] =
+          province.revoltActive ? 'suppression' : 'conquest';
+        const candidates = generateCommanderCandidates(province.id, s);
+
+        const newElection: CommanderElectionState = {
+          provinceId: province.id,
+          campaignType,
+          candidates,
+          playerSupportedCandidateId: null,
+          playerSpeechBonus: 0,
+          resolved: false,
+        };
+
+        s = { ...s, pendingCommanderElection: newElection };
+        events.push(
+          `⚔ The Senate must elect a commander for the ${province.id.replace(/_/g, ' ')} ` +
+          `${campaignType} campaign. Open the Military tab to support your preferred candidate.`
+        );
+        break; // one election at a time
+      }
     }
   }
 

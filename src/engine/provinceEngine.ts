@@ -187,9 +187,26 @@ export function tickProvince(
       infrastructureRating: Math.max(0, Math.min(100, p.infrastructureRating + infraDelta)),
     };
 
-    // Reappointment check (4 turns = 1 year)
+    // Governor term check (4 turns = 1 year term)
+    if (p.playerGovernor.turnsServed >= 3) {
+      // Final season — warn the player
+      events.push(`⚖ ${def.name}: your governor's term ends this season. A new lot will be drawn after your next office concludes.`);
+    }
     if (p.playerGovernor.turnsServed >= 4) {
-      events.push(`Governor term ending in ${def.name} — seek reappointment or the province will revert to NPC control.`);
+      // Term expired — remove governor, carry corruption back to character,
+      // restore NPC placeholder so the province keeps ticking normally.
+      const exGovernorId = p.playerGovernor.characterId;
+      p = {
+        ...p,
+        playerGovernor: null,
+        npcRoleHolder: def.npcRoleHolder ?? {
+          name: 'Interim Prefect',
+          clanId: '',
+          trait: 'negligent',
+          policy: { taxation: 'standard', security: 'standard_garrison', development: 'maintain' },
+        },
+      };
+      events.push(`Governor term concluded in ${def.name}. The province reverts to senatorial control.`);
     }
   }
 
