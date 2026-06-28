@@ -7,12 +7,10 @@ import {
   Image,
 } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
-import type { ClientType, Client } from '../../models/client';
+import type { ClientType, Client, ClientBonus } from '../../models/client';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 // ─── Asset map ───────────────────────────────────────────────────────────────
-// Assets drop in without code changes once files exist in src/assets/images/.
-// The View fallback renders until then.
 
 const PORTRAIT_ASSETS: Record<ClientType, ReturnType<typeof require> | null> = {
   muscle: (() => {
@@ -32,103 +30,102 @@ const TYPE_CONFIG: Record<ClientType, {
   emoji: string;
   label: string;
   borderColor: string;
-  bonusText: string;
 }> = {
-  muscle: {
-    emoji: '🛡️',
-    label: 'MUSCLE',
-    borderColor: COLORS.crimson,
-    bonusText: 'Unlocks coercive options in certain events.',
-  },
-  publicSupport: {
-    emoji: '📣',
-    label: 'PUBLIC SUPPORT',
-    borderColor: COLORS.laurel,
-    bonusText: '+5% Gratia income per client per season.',
-  },
-  votingSway: {
-    emoji: '🗳️',
-    label: 'VOTING SWAY',
-    borderColor: COLORS.gold,
-    bonusText: '+1 vote per client during elections.',
-  },
+  muscle:        { emoji: '🛡️', label: 'MUSCLE',         borderColor: COLORS.crimson },
+  publicSupport: { emoji: '📣', label: 'PUBLIC SUPPORT',  borderColor: COLORS.laurel },
+  votingSway:    { emoji: '🗳️', label: 'VOTING SWAY',     borderColor: COLORS.gold },
 };
 
 const CLIENT_TYPE_ORDER: ClientType[] = ['muscle', 'publicSupport', 'votingSway'];
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// ─── Bonus pill labels ────────────────────────────────────────────────────────
 
-interface ClientPortraitProps {
-  client: Client;
-  borderColor: string;
-  type: ClientType;
-}
+const BONUS_LABELS: Record<keyof ClientBonus, string> = {
+  gold:               '🪙 Gold',
+  gratia:             '🤝 Gratia',
+  dignitas:           '⭐ Dignitas',
+  gravitas:           '⚖ Gravitas',
+  trialDefenseBonus:  '🛡 Defence',
+  corruptionShield:   '🔒 Corruption',
+  rhetoricalBonus:    '📜 Rhetoric',
+  martialBonus:       '⚔ Martial',
+};
 
-function ClientPortrait({ client, borderColor, type }: ClientPortraitProps) {
-  const asset = PORTRAIT_ASSETS[type];
+function BonusPills({ bonus }: { bonus: ClientBonus }) {
+  const entries = Object.entries(bonus) as [keyof ClientBonus, number][];
+  if (entries.length === 0) return null;
 
   return (
-    <View style={styles.clientCard}>
-      {asset ? (
-        <Image
-          source={asset}
-          style={[styles.portrait, { borderColor }]}
-          defaultSource={asset}
-        />
-      ) : (
-        <View style={[styles.portrait, styles.portraitFallback, { borderColor }]} />
-      )}
-      <Text style={styles.clientName} numberOfLines={1} ellipsizeMode="tail">
-        {client.name}
-      </Text>
+    <View style={styles.bonusPillRow}>
+      {entries.map(([key, value]) => (
+        <View key={key} style={styles.bonusPill}>
+          <Text style={styles.bonusPillText}>
+            {BONUS_LABELS[key]} +{value}
+          </Text>
+        </View>
+      ))}
     </View>
   );
 }
 
-interface TrackerRowProps {
-  type: ClientType;
-  clients: Client[];
+// ─── Client detail card ───────────────────────────────────────────────────────
+
+function ClientDetailCard({ client, borderColor }: { client: Client; borderColor: string }) {
+  const asset = PORTRAIT_ASSETS[client.type];
+
+  return (
+    <View style={[styles.clientDetailCard, { borderColor }]}>
+      {/* Portrait */}
+      <View style={[styles.portrait, { borderColor }]}>
+        {asset ? (
+          <Image source={asset} style={styles.portraitImage} />
+        ) : (
+          <View style={styles.portraitFallback} />
+        )}
+      </View>
+
+      {/* Info */}
+      <View style={styles.clientInfo}>
+        <Text style={styles.clientName} numberOfLines={1}>
+          {client.name}
+          {client.flavourTitle ? <Text style={styles.clientFlavourTitle}> · {client.flavourTitle}</Text> : null}
+        </Text>
+        {client.flavourText ? (
+          <Text style={styles.clientFlavourText} numberOfLines={2}>{client.flavourText}</Text>
+        ) : null}
+        <BonusPills bonus={client.bonus} />
+      </View>
+    </View>
+  );
 }
 
-function TrackerRow({ type, clients }: TrackerRowProps) {
+// ─── Tracker row ──────────────────────────────────────────────────────────────
+
+function TrackerRow({ type, clients }: { type: ClientType; clients: Client[] }) {
   const config = TYPE_CONFIG[type];
   const typeClients = clients.filter(c => c.type === type);
   const count = typeClients.length;
 
   return (
     <View style={styles.trackerRow}>
-      {/* Row header */}
       <View style={styles.rowHeader}>
-        <Text style={styles.rowLabel}>
-          {config.emoji} {config.label}
-        </Text>
+        <Text style={styles.rowLabel}>{config.emoji} {config.label}</Text>
         <Text style={styles.rowCount}>[{count}]</Text>
       </View>
 
-      {/* Horizontal client scroll */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.clientScrollContent}
-      >
-        {count === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>None yet</Text>
-          </View>
-        ) : (
-          typeClients.map(client => (
-            <ClientPortrait
-              key={client.id}
-              client={client}
-              borderColor={config.borderColor}
-              type={type}
-            />
-          ))
-        )}
-      </ScrollView>
-
-      {/* Passive bonus description */}
-      <Text style={styles.bonusText}>{config.bonusText}</Text>
+      {count === 0 ? (
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyText}>None yet</Text>
+        </View>
+      ) : (
+        typeClients.map(client => (
+          <ClientDetailCard
+            key={client.id}
+            client={client}
+            borderColor={config.borderColor}
+          />
+        ))
+      )}
     </View>
   );
 }
@@ -156,9 +153,7 @@ export default function ClientelaPanel() {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  scroll: {
-    flex: 1,
-  },
+  scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.md,
@@ -194,41 +189,80 @@ const styles = StyleSheet.create({
     color: COLORS.gold,
   },
 
-  // ── Client scroll ─────────────────────────────────────────────────────────
-  clientScrollContent: {
-    paddingHorizontal: SPACING.xs,
-    gap: SPACING.sm,
-  },
-
-  // ── Client card ────────────────────────────────────────────────────────────
-  clientCard: {
-    width: 72,
-    height: 90,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
+  // ── Client detail card ────────────────────────────────────────────────────
+  clientDetailCard: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.panelElevated,
+    borderWidth: 1,
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+    alignItems: 'flex-start',
   },
   portrait: {
-    width: 64,
-    height: 64,
+    width: 56,
+    height: 56,
     borderWidth: 2,
     borderRadius: RADIUS.sm,
+    overflow: 'hidden',
+    marginRight: SPACING.sm,
+    flexShrink: 0,
+  },
+  portraitImage: {
+    width: 56,
+    height: 56,
+    resizeMode: 'cover',
   },
   portraitFallback: {
-    backgroundColor: COLORS.panelElevated,
+    width: 56,
+    height: 56,
+    backgroundColor: COLORS.panelSurface,
+  },
+  clientInfo: {
+    flex: 1,
   },
   clientName: {
+    fontFamily: FONTS.display,
+    fontSize: 13,
+    color: COLORS.marble,
+    fontWeight: '600',
+  },
+  clientFlavourTitle: {
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    color: COLORS.dust,
+    fontWeight: 'normal',
+  },
+  clientFlavourText: {
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 11,
+    color: COLORS.dust,
+    marginTop: 2,
+  },
+
+  // ── Bonus pills ────────────────────────────────────────────────────────────
+  bonusPillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
     marginTop: 4,
+  },
+  bonusPill: {
+    backgroundColor: COLORS.laurel,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  bonusPillText: {
     fontFamily: FONTS.ui,
     fontSize: 10,
-    color: COLORS.dust,
-    textAlign: 'center',
-    width: 72,
+    color: COLORS.marble,
   },
 
   // ── Empty state ────────────────────────────────────────────────────────────
   emptyCard: {
-    width: 72,
-    height: 90,
+    height: 56,
     backgroundColor: COLORS.panelElevated,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -240,15 +274,6 @@ const styles = StyleSheet.create({
   emptyText: {
     fontFamily: FONTS.ui,
     fontSize: 10,
-    color: COLORS.dust,
-  },
-
-  // ── Bonus description ──────────────────────────────────────────────────────
-  bonusText: {
-    marginTop: SPACING.xs,
-    fontFamily: FONTS.body,
-    fontStyle: 'italic',
-    fontSize: 11,
     color: COLORS.dust,
   },
 });

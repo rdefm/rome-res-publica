@@ -5,6 +5,7 @@ import { parseEffect } from '../models/bill';
 import { generateClientName } from '../data/clientNames';
 import { computeTotalAssetBonuses } from './assetEngine';
 import { calcAssetGoldOutput, calcAssetDignitasOutput, calcAssetGratiaOutput } from './provinceEngine';
+import { buildClient, computeTotalClientBonuses } from './clientEngine';
 
 // ─── Options for applyEffectString ──────────────────────────────────────────
 
@@ -15,7 +16,6 @@ export interface ApplyEffectOptions {
 
 /**
  * Calculate seasonal resource income for the player character.
- * Returns deltas — caller applies them to the store.
  */
 export function calcResourceIncome(state: GameState): {
   gravitasIncome: number;
@@ -33,23 +33,20 @@ export function calcResourceIncome(state: GameState): {
     auctoritas * 2 - Math.floor(state.crisisLevel / 25) + state.laudatioBonus
   );
 
-  // NOTE: gratia_income_base intentionally uses 8 - Math.floor(crisisLevel / 30),
-  // not intrigus × 2 − crisis penalty. Do not change this formula.
   const gratia_income_base = Math.max(0, 8 - Math.floor(state.crisisLevel / 30));
 
-  // Public Support clients: each adds +5% of base Gratia income (floored)
   const publicSupportCount = state.clients.filter(c => c.type === 'publicSupport').length;
   const gratiaClientBonus = Math.floor(gratia_income_base * publicSupportCount * 0.05);
   const gratiaIncome = gratia_income_base + gratiaClientBonus;
 
-  // Domus asset passive bonuses (Patrimonium — ownedAssets)
+  // Domus asset passive bonuses
   const assetBonuses = computeTotalAssetBonuses(state.ownedAssets);
   const gravitasAssetBonus = assetBonuses.gravitas ?? 0;
   const dignitasAssetBonus = assetBonuses.dignitas ?? 0;
   const gratiaAssetBonus = assetBonuses.gratia ?? 0;
   const denariiDomusBonus = assetBonuses.gold ?? 0;
 
-  // Province asset passive bonuses — summed across all provinces
+  // Province asset passive bonuses
   const provinceDenariiBonus = state.provinces.reduce(
     (sum, p) => sum + calcAssetGoldOutput(p), 0
   );
@@ -60,26 +57,34 @@ export function calcResourceIncome(state: GameState): {
     (sum, p) => sum + calcAssetGratiaOutput(p), 0
   );
 
+  // Client bonus income (flat per-season bonuses from individual client rolls)
+  const clientBonuses = computeTotalClientBonuses(state.clients);
+  const clientGoldBonus     = clientBonuses.gold     ?? 0;
+  const clientGratiaBonus   = clientBonuses.gratia   ?? 0;
+  const clientDignitasBonus = clientBonuses.dignitas ?? 0;
+  const clientGravitasBonus = clientBonuses.gravitas ?? 0;
+
   return {
-    gravitasIncome: gravitasIncome + gravitasAssetBonus,
-    dignitasIncome: dignitasIncome + dignitasAssetBonus + provinceDignitasBonus,
-    gratiaIncome: gratiaIncome + gratiaAssetBonus + provinceGratiaBonus,
-    denariiIncome: denariiDomusBonus + provinceDenariiBonus,
+    gravitasIncome: gravitasIncome + gravitasAssetBonus + clientGravitasBonus,
+    dignitasIncome: dignitasIncome + dignitasAssetBonus + provinceDignitasBonus + clientDignitasBonus,
+    gratiaIncome: gratiaIncome + gratiaAssetBonus + provinceGratiaBonus + clientGratiaBonus,
+    denariiIncome: denariiDomusBonus + provinceDenariiBonus + clientGoldBonus,
   };
 }
 
 /**
  * Apply effect string to state. Returns a partial state update.
  *
- * Effect string format:
- *   - Standard resource effects:  'key+N' or 'key-N', pipe-separated for multiple
- *   - Client effects use a colon: 'addClient:muscle', 'removeClient:votingSway'
- *
- * Client effects return special keys _addClient / _removeClient in the patch.
- * The caller (resolveEvent in gameStore.ts) must handle these separately.
- *
- * The options param is optional — all existing callers that pass only (effectStr, state)
- * remain valid with no changes required.
+ * Supported tokens:
+ *   - Standard resources:     'key+N' or 'key-N'
+ *   - Client add (old style): 'addClient:TYPE'
+ *   - Client add (new style): 'addClient:TYPE:FLAVOUR_TITLE:NAME'
+ *   - Client remove:          'removeClient:TYPE'
+ *   - Blackmail:              'blackmail:LEADER_ID'  — sets leader.blackmail = true
+ *   - Skill grant (player):   'rhetoric+N', 'martial+N', 'auctoritas+N', 'intrigus+N'
+ *   - Skill grant (youngest): 'rhetoric+N' (see note in event spec for youngest resolution)
+ *   - Martial bonus:          'martialBonus+N'  — increments player martial skill
+ *   - NPC dignitas:           'npcDignitas:CLAN_ID:+VALUE'  — no-op, logged only
  */
 export function applyEffectString(
   effectStr: string,
@@ -88,35 +93,48 @@ export function applyEffectString(
 ): Partial<GameState> & { _addClient?: Client; _removeClient?: string } {
   const { previewClientName, instance } = options ?? {};
 
-  // Split on pipe to handle multi-effect strings (e.g. 'gravitas+2|denarii-10')
   const segments = effectStr.split('|').map(s => s.trim()).filter(Boolean);
 
   const patch: Partial<GameState> & { _addClient?: Client; _removeClient?: string } = {};
 
   for (const segment of segments) {
-    // Client effect: colon-separated, e.g. 'addClient:muscle'
+    // ── Colon-separated effect tokens ──────────────────────────────────────────
     if (segment.includes(':')) {
-      const [key, val] = segment.split(':');
+      const parts = segment.split(':');
+      const key = parts[0];
 
       if (key === 'addClient') {
-        const clientType = val as ClientType;
-        // Name resolution: caller passes previewClientName for Class A events.
-        // Fall back to generating a new name only if no preview name was provided.
-        const name = previewClientName ?? generateClientName(clientType, state.clients);
-        const newClient: Client = {
-          id: `client-${Date.now()}`,
-          name,
-          type: clientType,
-          acquiredTurn: state.turnNumber,
-        };
-        patch._addClient = newClient;
+        if (parts.length >= 4) {
+          // New format: addClient:TYPE:FLAVOUR_TITLE:NAME
+          const [, type, flavourTitle, name] = parts as [string, ClientType, string, string];
+          const newClient = buildClient(
+            `client-${Date.now()}`,
+            name,
+            type,
+            flavourTitle,
+            'Joined your household after the events of this season.',
+            state.turnNumber,
+          );
+          patch._addClient = newClient;
+        } else {
+          // Legacy format: addClient:TYPE (Class A events — name from previewClientName)
+          const clientType = parts[1] as ClientType;
+          const name = previewClientName ?? generateClientName(clientType, state.clients);
+          const newClient = buildClient(
+            `client-${Date.now()}`,
+            name,
+            clientType,
+            'Client',                    // generic title for legacy-style acquisition
+            'Met through circumstance.',
+            state.turnNumber,
+          );
+          patch._addClient = newClient;
+        }
         continue;
       }
 
       if (key === 'removeClient') {
-        const clientType = val as ClientType;
-        // For Class B/C events: instance.clientName is set — remove that specific client.
-        // Fallback: remove the oldest client of that type.
+        const clientType = parts[1] as ClientType;
         const target = instance?.clientName
           ? state.clients.find(c => c.name === instance.clientName && c.type === clientType)
           : state.clients
@@ -126,11 +144,64 @@ export function applyEffectString(
         continue;
       }
 
-      // Unknown colon-key — skip silently
+      if (key === 'blackmail') {
+        // Set leader.blackmail = true for matching leader across all clans
+        const leaderId = parts[1];
+        const updatedClans = (state.clans ?? []).map(clan => ({
+          ...clan,
+          leaders: clan.leaders.map(leader =>
+            leader.id === leaderId ? { ...leader, blackmail: true } : leader
+          ),
+        }));
+        patch.clans = updatedClans;
+        continue;
+      }
+
+      if (key === 'npcDignitas') {
+        // No-op — future NPC power tracking hook. Log string is passed through.
+        // e.g. npcDignitas:cornelii-clan:+10
+        console.log(`[npcDignitas] ${parts[1]} gains ${parts[2]} Dignitas (no-op)`);
+        continue;
+      }
+
+      // Unknown colon-key — skip
       continue;
     }
 
-    // Standard effect: parse via existing parseEffect utility
+    // ── Skill grant tokens ────────────────────────────────────────────────────
+    // rhetoric+N, auctoritas+N, martial+N, intrigus+N, martialBonus+N
+    const skillGrantMatch = segment.match(/^(rhetoric|auctoritas|martial|intrigus|martialBonus)([+-]\d+)$/);
+    if (skillGrantMatch) {
+      const [, skillKey, deltaStr] = skillGrantMatch;
+      const delta = parseInt(deltaStr, 10);
+      const resolvedKey = skillKey === 'martialBonus' ? 'martial' : skillKey;
+
+      // rhetoric+N — applied to youngest non-player family member (spec §10)
+      // all others — applied to player character
+      const updatedFamily = (patch.family ?? state.family).map(char => {
+        if (skillKey === 'rhetoric') {
+          // youngest non-player
+          const nonPlayers = (patch.family ?? state.family).filter(c => !c.isPlayer);
+          const youngest = nonPlayers.sort((a, b) => a.age - b.age)[0];
+          const targetId = youngest?.id ?? state.family.find(c => c.isPlayer)?.id;
+          if (char.id !== targetId) return char;
+        } else {
+          // player only
+          if (!char.isPlayer) return char;
+        }
+        return {
+          ...char,
+          skills: {
+            ...char.skills,
+            [resolvedKey]: Math.max(0, (char.skills[resolvedKey as keyof typeof char.skills] ?? 0) + delta),
+          },
+        };
+      });
+      patch.family = updatedFamily;
+      continue;
+    }
+
+    // ── Standard resource effects ─────────────────────────────────────────────
     const effects = parseEffect(segment);
 
     for (const { key, delta } of effects) {
@@ -145,12 +216,21 @@ export function applyEffectString(
           patch.gratia = Math.max(0, (patch.gratia ?? state.gratia) + delta);
           break;
         case 'denarii':
+        case 'gold':
           patch.denarii = Math.max(0, (patch.denarii ?? state.denarii) + delta);
           break;
         case 'crisis':
           patch.crisisLevel = Math.min(
             100,
             Math.max(0, (patch.crisisLevel ?? state.crisisLevel) + delta)
+          );
+          break;
+        case 'corruption':
+          // Increment player corruption score
+          patch.family = (patch.family ?? state.family).map(c =>
+            c.isPlayer
+              ? { ...c, corruptionScore: Math.min(100, Math.max(0, (c.corruptionScore ?? 0) + delta)) }
+              : c
           );
           break;
         case 'popularesRel':
@@ -169,31 +249,30 @@ export function applyEffectString(
           patch.rome = {
             ...state.rome,
             ...patch.rome,
-            stability: Math.min(
-              100,
-              Math.max(0, ((patch.rome ?? state.rome).stability) + delta)
-            ),
+            stability: Math.min(100, Math.max(0, ((patch.rome ?? state.rome).stability) + delta)),
           };
           break;
         case 'plebs':
           patch.rome = {
             ...state.rome,
             ...patch.rome,
-            plebs: Math.min(
-              100,
-              Math.max(0, ((patch.rome ?? state.rome).plebs) + delta)
-            ),
+            plebs: Math.min(100, Math.max(0, ((patch.rome ?? state.rome).plebs) + delta)),
           };
           break;
         case 'treasury':
           patch.rome = {
             ...state.rome,
             ...patch.rome,
-            treasury: Math.min(
-              100,
-              Math.max(0, ((patch.rome ?? state.rome).treasury) + delta)
-            ),
+            treasury: Math.min(100, Math.max(0, ((patch.rome ?? state.rome).treasury) + delta)),
           };
+          break;
+        case 'imperium':
+          // Imperium — stored on player character; no-op if field doesn't exist
+          patch.family = (patch.family ?? state.family).map(c =>
+            c.isPlayer
+              ? { ...c, imperium: Math.max(0, ((c as any).imperium ?? 0) + delta) }
+              : c
+          );
           break;
       }
     }
@@ -247,7 +326,7 @@ export function calcCrisisEscalation(
 }
 
 /**
- * Relationship drift on clan leaders — political entropy.
+ * Relationship drift on clan leaders.
  */
 export function applyRelationshipDrift(state: GameState): GameState['clans'] {
   return state.clans.map((clan) => ({

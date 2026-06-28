@@ -1,5 +1,5 @@
 import type { GameState } from '../state/gameStore';
-import type { EventCondition, ConditionOperator, EventDef } from '../models/event';
+import type { EventCondition, ConditionOperator, EventDef, EventChoice } from '../models/event';
 import type { ClientType } from '../models/client';
 
 // ─── Operator evaluator ──────────────────────────────────────────────────────
@@ -25,25 +25,35 @@ export function evalCondition(cond: EventCondition, state: GameState): boolean {
     case 'hasClient': {
       return state.clients.some(c => c.type === cond.clientType);
     }
+    case 'resource': {
+      const val = (state as any)[cond.key] ?? 0;
+      return evalOp(val, cond.op, cond.value);
+    }
+    case 'rome': {
+      const val = (state.rome as any)[cond.key] ?? 0;
+      return evalOp(val, cond.op, cond.value);
+    }
+    case 'season': {
+      return state.seasonIndex === cond.index;
+    }
+    case 'office': {
+      const player = state.family.find(c => c.isPlayer);
+      const held = (player as any)?.heldOffice ?? null;
+      return held === cond.held;
+    }
   }
 }
 
 // ─── Full event eligibility check ────────────────────────────────────────────
 
-/**
- * Returns true if all conditions on the event def are met by the current state.
- * Events with an empty conditions array are always eligible.
- */
 export function isEventEligible(def: EventDef, state: GameState): boolean {
+  // weight: 0 events are fired only via nextEventId branching — never randomly
+  if (def.weight === 0) return false;
   return def.conditions.every(cond => evalCondition(cond, state));
 }
 
 // ─── Weighted random selection ────────────────────────────────────────────────
 
-/**
- * Pick one eligible event definition at random, weighted by def.weight.
- * Returns undefined if no eligible events exist.
- */
 export function pickRandomEvent(
   defs: EventDef[],
   state: GameState
@@ -59,6 +69,40 @@ export function pickRandomEvent(
     if (roll <= 0) return def;
   }
 
-  // Floating-point safety fallback
   return eligible[eligible.length - 1];
+}
+
+// ─── Choice resolution ────────────────────────────────────────────────────────
+
+export interface ResolveChoiceResult {
+  effectStr: string;
+  succeeded: boolean;
+  nextEventId?: string;
+}
+
+export function resolveEventChoice(
+  choice: EventChoice,
+  state: GameState
+): ResolveChoiceResult {
+  // Determine if skill check succeeded
+  let succeeded = true;
+  if (choice.skillCheck) {
+    const player = state.family.find(c => c.isPlayer);
+    const skillVal = (player?.skills as any)?.[choice.skillCheck.skill] ?? 0;
+    succeeded = skillVal >= choice.skillCheck.difficulty;
+  }
+
+  // Branching — any nextEventId field takes priority over applying effects
+  if (choice.nextEventId) {
+    return { effectStr: '', succeeded, nextEventId: choice.nextEventId };
+  }
+  if (choice.nextEventIdOnSuccess && succeeded) {
+    return { effectStr: '', succeeded, nextEventId: choice.nextEventIdOnSuccess };
+  }
+  if (choice.nextEventIdOnFailure && !succeeded) {
+    return { effectStr: '', succeeded, nextEventId: choice.nextEventIdOnFailure };
+  }
+
+  const effectStr = succeeded ? choice.successEffect : choice.failureEffect;
+  return { effectStr, succeeded };
 }

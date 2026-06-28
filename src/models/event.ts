@@ -8,14 +8,19 @@ export type ConditionOperator = 'gt' | 'lt' | 'gte' | 'lte' | 'eq';
 
 export type EventCondition =
   | { type: 'clientCount'; clientType: ClientType; op: ConditionOperator; value: number }
-  | { type: 'hasClient'; clientType: ClientType };
+  | { type: 'hasClient'; clientType: ClientType }
+  // New condition types added for Part 2 events:
+  | { type: 'resource'; key: 'dignitas' | 'gratia' | 'gravitas' | 'denarii' | 'crisisLevel'; op: ConditionOperator; value: number }
+  | { type: 'rome'; key: 'stability' | 'plebs' | 'treasury'; op: ConditionOperator; value: number }
+  | { type: 'season'; index: 0 | 1 | 2 | 3 }   // 0=Spring 1=Summer 2=Autumn 3=Winter
+  | { type: 'office'; held: string };            // matches heldOffice id in player character
 
 // ─── Skill check ─────────────────────────────────────────────────────────────
 
 export interface SkillCheck {
   characterId: string; // 'player' resolves to the isPlayer character
   skill: 'rhetoric' | 'auctoritas' | 'martial' | 'intrigus';
-  difficulty: number;  // player skill must be >= this to succeed
+  difficulty: number;
 }
 
 // ─── Event choice ─────────────────────────────────────────────────────────────
@@ -24,11 +29,14 @@ export interface EventChoice {
   id: string;
   label: string;
   skillCheck?: SkillCheck;
-  successEffect: string;  // pipe-separated effect string, e.g. 'gravitas+2|denarii-10'
-  failureEffect: string;  // applied when skillCheck fails; empty string = no effect
+  successEffect: string;
+  failureEffect: string;
   requiresClient?: ClientType;
-  // If set, this choice button is disabled when the player holds 0 clients of that type.
-  // Used to gate coercive options on having Muscle clients available.
+  // Branching — if set, fires a follow-up event rather than applying effects directly.
+  // successEffect and failureEffect are ignored when any nextEventId field is set.
+  nextEventId?: string;           // always branch to this event regardless of skill check
+  nextEventIdOnSuccess?: string;  // branch here on skill check success
+  nextEventIdOnFailure?: string;  // branch here on skill check failure
 }
 
 // ─── Event definition ────────────────────────────────────────────────────────
@@ -36,20 +44,19 @@ export interface EventChoice {
 export interface EventDef {
   id: string;
   title: string;
-  bodyText: string;       // may contain {clientName} and {clientType} placeholders
-  imageKey: string;       // key into the asset map
+  bodyText: string;
+  imageKey: string;
   conditions: EventCondition[];
-  weight: number;         // relative probability weight for random selection
+  weight: number;
   choices: EventChoice[];
 }
 
 // ─── Event instance ──────────────────────────────────────────────────────────
-// Created by turnSequencer when an event fires; stored in pendingEvents queue.
 
 export interface EventInstance {
   defId: string;
   firedAtTurn: number;
   targetCharacterId: string;
-  clientName?: string;    // name of the specific existing client involved (Class B and C only)
-  clientType?: ClientType; // type of that client
+  clientName?: string;
+  clientType?: ClientType;
 }

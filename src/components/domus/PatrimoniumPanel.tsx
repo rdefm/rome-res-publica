@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Image,
 } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import { ASSET_DEFINITIONS } from '../../data/assetDefinitions';
@@ -55,8 +54,6 @@ function AssetCard({ def, onPress }: { def: AssetDefinition; onPress: () => void
   const currentTier = owned?.currentTier ?? null;
   const isMaxTier = currentTier === 3;
   const catColor = CATEGORY_COLORS[def.category] ?? COLORS.gold;
-  const source = ASSET_IMAGES[def.id];
-
   const tierStars = currentTier ? TIER_STARS[currentTier - 1] : null;
   const tierLabel = currentTier ? def.tiers[currentTier - 1].label : null;
 
@@ -73,20 +70,7 @@ function AssetCard({ def, onPress }: { def: AssetDefinition; onPress: () => void
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.75}>
       <ParchmentCard contentStyle={styles.cardInner} selected={!!owned} style={{ borderColor: owned ? catColor : 'transparent', borderWidth: owned ? 1 : 0 }}>
-      {/* Left — square image */}
-      <View style={styles.cardImageWrap}>
-        {source ? (
-          <Image
-            source={source}
-            style={[styles.cardImage, { borderColor: catColor }]}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={[styles.cardImage, styles.cardImageFallback, { borderColor: catColor }]} />
-        )}
-      </View>
-
-      {/* Right — info column */}
+      {/* Info column — images shown in modal only */}
       <View style={styles.cardInfo}>
         {/* Name + tier stars */}
         <View style={styles.cardNameRow}>
@@ -181,8 +165,6 @@ export default function PatrimoniumPanel() {
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
-const CARD_IMAGE_SIZE = 110;
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -221,7 +203,7 @@ const styles = StyleSheet.create({
   },
 
   // ── Card ───────────────────────────────────────────────────────────────────
-  cardInner: { flexDirection: 'row', alignItems: 'center' },
+  cardInner: { flexDirection: 'column' },
   card: {
     flexDirection: 'row',
     backgroundColor: 'transparent',
@@ -232,25 +214,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  // ── Left image block ───────────────────────────────────────────────────────
-  cardImageWrap: {
-    width: CARD_IMAGE_SIZE,
-    overflow: 'hidden',
-    borderTopLeftRadius: 16,
-    borderBottomLeftRadius: 16,
-  },
-  cardImage: {
-    width: CARD_IMAGE_SIZE,
-    height: '100%',
-    borderRightWidth: 2,
-    borderTopLeftRadius: 16,
-    borderBottomLeftRadius: 16,
-  },
-  cardImageFallback: {
-    backgroundColor: 'transparent',
-  },
-
-  // ── Right info column ──────────────────────────────────────────────────────
+  // ── Info column ────────────────────────────────────────────────────────────
   cardInfo: {
     flex: 1,
     padding: SPACING.sm,

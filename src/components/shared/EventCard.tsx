@@ -18,6 +18,9 @@ const EVENT_IMAGES: Record<string, ReturnType<typeof require> | null> = {
   'portrait-paterfamilias': (() => {
     try { return require('../../assets/images/portrait-paterfamilias.png'); } catch { return null; }
   })(),
+  'marius-plumber': (() => {
+    try { return require('../../assets/images/marius-plumber.png'); } catch { return null; }
+  })(),
 };
 
 // ─── Client type label map ────────────────────────────────────────────────────
@@ -122,7 +125,7 @@ function ChoiceButton({
         disabled={isDisabledByClient}
         activeOpacity={0.75}
       >
-        <Text style={styles.choiceLabel}>{choice.label}</Text>
+        <Text style={styles.choiceLabel}>{choice.label || 'Acknowledge'}</Text>
         {hasSkillCheck && (
           <Text style={styles.skillCheckHint}>
             {choice.skillCheck!.skill} ≥ {choice.skillCheck!.difficulty}

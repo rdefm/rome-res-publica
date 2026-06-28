@@ -1,6 +1,7 @@
 import type { Trial, TrialCharge, TrialOutcome } from '../models/trial';
 import type { GameState } from '../state/gameStore';
 import { computeTotalAssetBonuses } from './assetEngine';
+import { computeTotalClientBonuses } from './clientEngine';
 
 // ─── Build a new trial ────────────────────────────────────────────────────────
 
@@ -10,7 +11,8 @@ export function buildTrial(
   charge: TrialCharge,
   accuserIntrigus: number,
   accusedCorruptionScore: number,
-  assetTrialDefenseBonus: number = 0
+  assetTrialDefenseBonus: number = 0,
+  clientTrialDefenseBonus: number = 0
 ): Trial {
   const prosecutionStrength = Math.min(100,
     accuserIntrigus * 2 + accusedCorruptionScore / 2
@@ -21,7 +23,7 @@ export function buildTrial(
     accusedCharacterId,
     accusingClanId,
     charge,
-    defenseStrength: Math.min(100, 20 + assetTrialDefenseBonus),
+    defenseStrength: Math.min(100, 20 + assetTrialDefenseBonus + clientTrialDefenseBonus),
     prosecutionStrength,
     turnsRemaining: 4,
     resolved: false,
@@ -29,11 +31,35 @@ export function buildTrial(
   };
 }
 
+/**
+ * Build a trial using full game state — resolves both asset and client defense bonuses.
+ */
+export function buildTrialFromState(
+  accusedCharacterId: string,
+  accusingClanId: string,
+  charge: TrialCharge,
+  accuserIntrigus: number,
+  accusedCorruptionScore: number,
+  state: GameState
+): Trial {
+  const assetBonuses = computeTotalAssetBonuses(state.ownedAssets);
+  const clientBonuses = computeTotalClientBonuses(state.clients);
+  return buildTrial(
+    accusedCharacterId,
+    accusingClanId,
+    charge,
+    accuserIntrigus,
+    accusedCorruptionScore,
+    assetBonuses.trialDefenseBonus ?? 0,
+    clientBonuses.trialDefenseBonus ?? 0,
+  );
+}
+
 // ─── Resolve a trial ──────────────────────────────────────────────────────────
 
 export function resolveTrial(trial: Trial): TrialOutcome {
   const margin = trial.defenseStrength - trial.prosecutionStrength;
-  const roll = Math.random() * 40 - 20; // −20 to +20 noise
+  const roll = Math.random() * 40 - 20;
   const net = margin + roll;
 
   if (net > 30)  return 'acquitted';
@@ -62,33 +88,25 @@ export const OUTCOME_CONSEQUENCES: Record<TrialOutcome, {
 
 // ─── Passive trial trigger check ──────────────────────────────────────────────
 
-/**
- * Returns a charge if a trial should be triggered this season, or null.
- * Called from turnSequencer after all other steps.
- */
 export function shouldTriggerTrial(state: GameState): {
   charge: TrialCharge;
   accusedId: string;
   accusingClanId: string;
 } | null {
-  // Only one active trial at a time
   if (state.trialQueue.some(t => !t.resolved)) return null;
 
   const player = state.family.find(c => c.isPlayer);
   if (!player) return null;
 
-  // Need a hostile or rival clan to prosecute
   const accusingClan = state.clans.find(
     c => c.standing === 'hostile' || c.standing === 'rival'
   );
   if (!accusingClan) return null;
 
-  // Corruption charge — player corruptionScore > 60, 20% chance
   if (player.corruptionScore > 60 && Math.random() < 0.20) {
     return { charge: 'corruption', accusedId: player.id, accusingClanId: accusingClan.id };
   }
 
-  // Treason charge — crisis > 80, 10% chance
   if (state.crisisLevel > 80 && Math.random() < 0.10) {
     return { charge: 'treason', accusedId: player.id, accusingClanId: accusingClan.id };
   }
@@ -98,11 +116,6 @@ export function shouldTriggerTrial(state: GameState): {
 
 // ─── Corruption accumulation ──────────────────────────────────────────────────
 
-/**
- * Returns updated corruptionScore for a character after seasonal drift.
- * - Passive gain when crisisLevel > 50: +2/season (reduced by corruptionShield)
- * - Natural decay when corruptionScore > 0 and crisis is low: -1/season
- */
 export function tickCorruption(
   currentScore: number,
   crisisLevel: number,
@@ -112,6 +125,5 @@ export function tickCorruption(
     const gain = Math.max(0, 2 - corruptionShield);
     return Math.min(100, currentScore + gain);
   }
-  // Natural decay when crisis is calm
   return Math.max(0, currentScore - 1);
 }

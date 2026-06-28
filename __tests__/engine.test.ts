@@ -53,6 +53,7 @@ const makeState = (overrides = {}) => ({
   campaigning: null,
   campaignVotes: {},
   electionRivals: [],
+  provinces: [],
   pendingEvents: [],
   activeEvent: null,
   log: [],
