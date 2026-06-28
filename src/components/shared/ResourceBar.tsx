@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
   endBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.crimsonDeep,
+    backgroundColor: '#3a2a0e',
     borderWidth: 1,
     borderColor: COLORS.gold,
     borderRadius: 4,
