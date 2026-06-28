@@ -201,6 +201,9 @@ export interface GameActions {
   resolveEvent: (choiceId: string, previewClientName?: string) => void;
   dismissEvent: () => void;
 
+  // App flow
+  startGame: (mode: 'senator' | 'debug') => void;
+
   // Log
   addLog: (text: string, type?: LogEntry['type']) => void;
   addCursusLog: (text: string, type?: LogEntry['type']) => void;
@@ -287,6 +290,9 @@ export const INITIAL_STATE: GameState = {
   // Provinciae
   provinces: buildInitialProvinceStates(),
   lifetimeImperium: 0,
+
+  gameStarted: false,
+  debugMode: false,
 };
 
 
@@ -300,6 +306,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   ...INITIAL_STATE,
 
   // ─── Turn ────────────────────────────────────────────────────────────────────
+
+  startGame: (mode) => {
+    set({
+      ...INITIAL_STATE,
+      gameStarted: true,
+      debugMode: mode === 'debug',
+    });
+  },
 
   endSeason: () => {
     const s = get();

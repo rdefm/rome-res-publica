@@ -4,8 +4,6 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, StyleSheet, View } from 'react-native';
-import { useFonts } from 'expo-font';
-import * as SplashScreen from 'expo-splash-screen';
 
 import DomusScreen from './src/screens/DomusScreen';
 import ForumScreen from './src/screens/ForumScreen';
@@ -17,9 +15,9 @@ import EventModal from './src/components/shared/EventModal';
 import AmbitionSelectionModal from './src/components/shared/AmbitionSelectionModal';
 import BirthNamingModal from './src/components/domus/BirthNamingModal';
 import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle } from './src/components/shared/TabBar';
+import StartMenuScreen from './src/screens/StartMenuScreen';
 import { COLORS } from './src/utils/theme';
-
-SplashScreen.preventAutoHideAsync();
+import { useGameStore } from './src/state/gameStore';
 
 const Tab = createBottomTabNavigator();
 
@@ -62,6 +60,7 @@ function AppNavigator() {
         headerShown: false,
         tabBarIcon: ({ focused }) => renderTabIcon(route.name, focused),
         tabBarLabel: () => null,
+        // Single Image covers the full bar — no per-item background needed
         tabBarBackground: () => <TabBarBackground height={barHeight} />,
         tabBarStyle: {
           ...tabBarStyle,
@@ -87,33 +86,31 @@ function AppNavigator() {
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
+function GameRoot() {
+  const { gameStarted, startGame } = useGameStore();
+
+  if (!gameStarted) {
+    return <StartMenuScreen onStart={startGame} />;
+  }
+
+  return (
+    <NavigationContainer>
+      <View style={styles.root}>
+        <StatusBar style="light" backgroundColor={COLORS.bg} />
+        <ResourceBar />
+        <AppNavigator />
+        <EventModal />
+        <AmbitionSelectionModal />
+      </View>
+    </NavigationContainer>
+  );
+}
+
 export default function App() {
-  const [fontsLoaded, fontError] = useFonts({
-    'Cinzel-Regular': require('./src/assets/fonts/Cinzel-Regular.ttf'),
-    'Cinzel-Bold':    require('./src/assets/fonts/Cinzel-Bold.ttf'),
-  });
-
-  const onLayoutRootView = React.useCallback(async () => {
-    if (fontsLoaded || fontError) {
-      await SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded, fontError]);
-
-  // Don't render until fonts are ready — avoids flash of wrong font
-  if (!fontsLoaded && !fontError) return null;
-
   return (
     <ErrorBoundary>
       <SafeAreaProvider>
-        <NavigationContainer>
-          <View style={styles.root} onLayout={onLayoutRootView}>
-            <StatusBar style="light" backgroundColor={COLORS.bg} />
-            <ResourceBar />
-            <AppNavigator />
-            <EventModal />
-            <AmbitionSelectionModal />
-          </View>
-        </NavigationContainer>
+        <GameRoot />
       </SafeAreaProvider>
     </ErrorBoundary>
   );

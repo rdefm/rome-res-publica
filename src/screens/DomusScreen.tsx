@@ -17,6 +17,7 @@ import DomesticDirectivesTray from '../components/domus/DomesticDirectivesTray';
 import LegatumPanel from '../components/domus/LegatumPanel';
 import ClientelaPanel from '../components/domus/ClientelaPanel';
 import PatrimoniumPanel from '../components/domus/PatrimoniumPanel';
+import DebugPanel from '../components/shared/DebugPanel';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 
@@ -31,7 +32,7 @@ const SECTIONS: { key: DomusSection; label: string }[] = [
 ];
 
 export default function DomusScreen() {
-  const { family, selectedCharacterId, selectCharacter } = useGameStore();
+  const { family, selectedCharacterId, selectCharacter, debugMode } = useGameStore();
   const [modalChar, setModalChar] = useState<string | null>(null);
   const [openSection, setOpenSection] = useState<DomusSection | null>('familias');
 
@@ -111,10 +112,11 @@ export default function DomusScreen() {
             );
           })}
 
+          {debugMode && <DebugPanel />}
           <View style={{ height: CONTENT_PADDING_BOTTOM }} />
         </ScrollView>
 
-          <SeasonOverlay />
+
 
         {modalCharObj && (
           <CharacterActionModal
