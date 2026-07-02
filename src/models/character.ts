@@ -1,3 +1,5 @@
+import { TroopUnit } from './troop';
+
 export type PersonalityTrait = 'aggressive' | 'content' | 'ambitious' | 'cautious';
 export type AmbitionType = 'gain_dignitas' | 'protect_family' | 'personal_power';
 
@@ -31,7 +33,11 @@ export interface Character {
   ambitionIds: string[];                        // active ambition IDs (Feature 3)
   reputationScores: Record<string, number>;     // clanId → -100 to 100 (Feature 2)
 
-  // Imperium fields (military chunks add raisedLegions/veterans in Chunk H)
+  // Imperium fields
   formalImperium: number;    // 0–3, set by office engine when character holds magistracy
-  militaryImperium: number;  // 0–3, derived from personal troop base (calculated in military chunks)
+  militaryImperium: number;  // 0–3, derived from personal troop base (calculated in troopEngine)
+
+  // Military fields (Chunk H)
+  raisedLegions: TroopUnit[];  // Personal legions raised by this character. Persist across postings.
+  veterans: TroopUnit[];        // Veterans from survived campaigns. Never lost between postings.
 }

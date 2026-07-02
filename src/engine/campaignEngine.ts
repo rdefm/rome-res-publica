@@ -5,6 +5,8 @@
 import type { CampaignState, CommanderElectionState, GovernorCandidate } from '../models/province';
 import type { GameState } from '../state/gameStore';
 import type { Character } from '../models/character';
+import type { TroopUnit } from '../models/troop';
+import { calcEffectiveForce, promoteVeterans } from './troopEngine';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,18 +25,18 @@ export interface CampaignSeasonResult {
   enemyDelta: number;
   goldCost: number;
   fidesCost: number;
-  imperiumGained: number;
   eventCardId: string | null;
   logMsg: string;
 }
 
 export interface CampaignResolution {
-  outcome: 'victory' | 'strategic_win' | 'stalemate' | 'defeat';
-  imperiumBonus: number;
+  outcome: 'decisive_victory' | 'victory' | 'pyrrhic' | 'defeat' | 'catastrophic';
   dignitasDelta: number;
   corruptionDelta: number;
   relationshipDelta: number;
   triumphAvailable: boolean;
+  updatedTroops: TroopUnit[];   // troop state after campaign outcome applied
+  catastrophic: boolean;         // true when defeat margin < −30
   logMsg: string;
 }
 
@@ -75,7 +77,8 @@ export function resolveCampaignSeason(
   campaign: CampaignState,
   allocation: CampaignAllocation,
   commanderMartial: number,  // 0–10
-  localSupportBonus: boolean,
+  commanderTroops: TroopUnit[],
+  localSupportForPlayer: number,
   hasNumidianCavalryClient: boolean,
 ): CampaignSeasonResult {
   let progressDelta = 0;
@@ -142,23 +145,17 @@ export function resolveCampaignSeason(
       break;
   }
 
-  // ── Martial skill multiplier ───────────────────────────────────────────────
-  // commanderMartial 0–10 → 0–50% bonus to progress
-  const martialMult = 1 + (commanderMartial * 0.05);
-  progressDelta = Math.round(progressDelta * martialMult);
-
-  // ── Local Support bonus ────────────────────────────────────────────────────
-  if (localSupportBonus) {
-    progressDelta += 15;
-  }
+  // ── Effective force multiplier ────────────────────────────────────────────
+  // Replaces the old martialMult + localSupportBonus system.
+  // effectiveForce combines troop strength, commander martial, and local support.
+  const effectiveForce = calcEffectiveForce(commanderTroops, commanderMartial, localSupportForPlayer);
+  const forceMult = effectiveForce / 10;  // normalise to a 0–N multiplier
+  progressDelta = Math.round(progressDelta * forceMult);
 
   // ── Risk roll: chance of enemy counter-push ────────────────────────────────
   if (riskFactor > 0 && Math.random() * 100 < riskFactor) {
     enemyDelta += rand(5, 15);
   }
-
-  // ── Imperium gain: security-equivalent base of 2/season for commanders ─────
-  const imperiumGained = Math.round(2 * (1 + commanderMartial / 100));
 
   // ── Event card ────────────────────────────────────────────────────────────
   // ~30% chance per season; weight table handled in data/campaignEvents.ts
@@ -176,7 +173,6 @@ export function resolveCampaignSeason(
     enemyDelta,
     goldCost,
     fidesCost,
-    imperiumGained,
     eventCardId,
     logMsg: logParts.join(', '),
   };
@@ -185,51 +181,70 @@ export function resolveCampaignSeason(
 // ─── Medium Campaign: Final Resolution ───────────────────────────────────────
 
 /**
- * Called when a campaign reaches its terminal condition (Progress=100, Enemy=0,
- * or turn limit exceeded). Produces the final outcome and state deltas.
+ * Called when a campaign reaches its terminal condition. Produces the final
+ * outcome and state deltas based on the margin between effective force and
+ * enemy strength, with ±15 random noise.
  */
-export function resolveCampaignOutcome(campaign: CampaignState): CampaignResolution {
+export function resolveCampaignOutcome(
+  campaign: CampaignState,
+  effectiveForce: number,
+  commanderTroops: TroopUnit[],
+): CampaignResolution {
   let outcome: CampaignResolution['outcome'];
-  let imperiumBonus = 0;
   let dignitasDelta = 0;
   let corruptionDelta = 0;
   let relationshipDelta = 0;
   let triumphAvailable = false;
+  let catastrophic = false;
 
-  const enemyDefeated = campaign.enemyStrength <= 0;
-  const progressComplete = campaign.campaignProgress >= 100;
+  const noise = (Math.random() * 30) - 15;  // ±15 random noise
+  const margin = effectiveForce - campaign.enemyStrength + noise;
 
-  if (enemyDefeated) {
-    outcome = 'victory';
-    imperiumBonus = 30;
+  if (margin > 30) {
+    outcome = 'decisive_victory';
     dignitasDelta = 20;
     relationshipDelta = 15;
     triumphAvailable = true;
-  } else if (progressComplete) {
-    outcome = 'strategic_win';
-    imperiumBonus = 15;
+  } else if (margin >= 10) {
+    outcome = 'victory';
     dignitasDelta = 10;
     relationshipDelta = 8;
-  } else if (campaign.campaignProgress <= 0) {
+  } else if (margin >= 0) {
+    outcome = 'pyrrhic';
+    dignitasDelta = 2;
+    relationshipDelta = 3;
+  } else if (margin >= -30) {
     outcome = 'defeat';
-    corruptionDelta = 20;
     dignitasDelta = -15;
+    corruptionDelta = 10;
     relationshipDelta = -10;
   } else {
-    // Turn limit with both bars alive = stalemate
-    outcome = 'stalemate';
-    corruptionDelta = 5;
+    outcome = 'catastrophic';
+    dignitasDelta = -25;
+    corruptionDelta = 20;
+    relationshipDelta = -20;
+    catastrophic = true;
   }
 
-  const outcomeLabels: Record<string, string> = {
-    victory:       '⚔ VICTORY! The enemy is broken.',
-    strategic_win: '⚔ Strategic Victory. Objectives secured.',
-    stalemate:     '⚔ Stalemate. The campaign ends without decision.',
-    defeat:        '⚔ DEFEAT. Your forces are routed.',
+  // Map CampaignResolution outcome to promoteVeterans outcome type
+  const veteranOutcome: Parameters<typeof promoteVeterans>[1] =
+    outcome === 'decisive_victory' ? 'decisive_victory'
+    : outcome === 'victory'        ? 'victory'
+    : outcome === 'pyrrhic'        ? 'pyrrhic'
+    : outcome === 'catastrophic'   ? 'catastrophic'
+    : 'defeat';
+
+  const updatedTroops = promoteVeterans(commanderTroops, veteranOutcome);
+
+  const outcomeLabels: Record<CampaignResolution['outcome'], string> = {
+    decisive_victory: '⚔ DECISIVE VICTORY! The enemy is utterly broken.',
+    victory:          '⚔ Victory. The campaign objectives are secured.',
+    pyrrhic:          '⚔ Pyrrhic Victory. Objectives met — at great cost.',
+    defeat:           '⚔ DEFEAT. Your forces are routed.',
+    catastrophic:     '⚔ CATASTROPHE. Your army is destroyed.',
   };
 
   const rewardParts: string[] = [];
-  if (imperiumBonus > 0) rewardParts.push(`+${imperiumBonus} Imperium`);
   if (dignitasDelta > 0) rewardParts.push(`+${dignitasDelta} Dignitas`);
   if (dignitasDelta < 0) rewardParts.push(`${dignitasDelta} Dignitas`);
   if (corruptionDelta > 0) rewardParts.push(`+${corruptionDelta} Corruption`);
@@ -237,11 +252,12 @@ export function resolveCampaignOutcome(campaign: CampaignState): CampaignResolut
 
   return {
     outcome,
-    imperiumBonus,
     dignitasDelta,
     corruptionDelta,
     relationshipDelta,
     triumphAvailable,
+    updatedTroops,
+    catastrophic,
     logMsg: `${outcomeLabels[outcome]}${rewardParts.length ? ' — ' + rewardParts.join(', ') : ''}`,
   };
 }

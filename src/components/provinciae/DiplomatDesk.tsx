@@ -10,7 +10,7 @@ interface ActionDef {
   id: AmbassadorActionId;
   label: string;
   cost: string;
-  costResource: 'gratia' | 'denarii';
+  costResource: 'fides' | 'denarii';
   costAmount: number;
   description: string;
   requiresSupport?: number;
@@ -20,8 +20,8 @@ const AMBASSADOR_ACTIONS: ActionDef[] = [
   {
     id: 'build_rapport',
     label: 'Build Personal Rapport',
-    cost: '15 Gratia',
-    costResource: 'gratia',
+    cost: '15 Fides',
+    costResource: 'fides',
     costAmount: 15,
     description: '+4 Relationship · +5 Local Support · +4 Personal Rapport',
   },
@@ -36,16 +36,16 @@ const AMBASSADOR_ACTIONS: ActionDef[] = [
   {
     id: 'intelligence_gathering',
     label: 'Intelligence Gathering',
-    cost: '10 Gratia',
-    costResource: 'gratia',
+    cost: '10 Fides',
+    costResource: 'fides',
     costAmount: 10,
     description: 'Reveals one NPC intelligence slot. Usable as Forum blackmail.',
   },
   {
     id: 'seek_local_client',
     label: 'Seek Local Client',
-    cost: '20 Gratia',
-    costResource: 'gratia',
+    cost: '20 Fides',
+    costResource: 'fides',
     costAmount: 20,
     description: 'Attempt to recruit a Provincial Client. Requires Local Support threshold.',
     requiresSupport: 30,
@@ -53,8 +53,8 @@ const AMBASSADOR_ACTIONS: ActionDef[] = [
   {
     id: 'cultural_exchange',
     label: 'Arrange Cultural Exchange',
-    cost: '15 Gratia',
-    costResource: 'gratia',
+    cost: '15 Fides',
+    costResource: 'fides',
     costAmount: 15,
     description: 'Queues a region-specific event card. +Local Support.',
   },
@@ -65,7 +65,7 @@ const AMBASSADOR_ACTIONS: ActionDef[] = [
 interface DiplomatDeskProps {
   province: ProvinceState;
   ambassador: AmbassadorState;
-  playerGratia: number;
+  playerFides: number;
   playerDenarii: number;
   onAction: (actionId: AmbassadorActionId) => void;
 }
@@ -73,13 +73,13 @@ interface DiplomatDeskProps {
 export default function DiplomatDesk({
   province,
   ambassador,
-  playerGratia,
+  playerFides,
   playerDenarii,
   onAction,
 }: DiplomatDeskProps) {
 
   function canAfford(action: ActionDef): boolean {
-    if (action.costResource === 'gratia') return playerGratia >= action.costAmount;
+    if (action.costResource === 'fides') return playerFides >= action.costAmount;
     return playerDenarii >= action.costAmount;
   }
 
@@ -155,7 +155,7 @@ export default function DiplomatDesk({
                 {!supported
                   ? `Requires ${action.requiresSupport} Local Support (have ${province.localSupport})`
                   : !affordable && !used
-                  ? `Insufficient ${action.costResource === 'gratia' ? 'Gratia' : 'Gold'}`
+                  ? `Insufficient ${action.costResource === 'fides' ? 'Fides' : 'Gold'}`
                   : used
                   ? 'Used this season'
                   : action.description

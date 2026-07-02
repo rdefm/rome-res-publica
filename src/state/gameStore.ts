@@ -11,6 +11,13 @@ import type { LegacyObjective } from '../models/legacyObjective';
 import type { PatronTier } from '../models/patronLadder';
 import type { Trial } from '../models/trial';
 import type { ProvinceState, GovernorPolicy } from '../models/province';
+import type { TroopUnit } from '../models/troop';
+import type { SenateResponseState } from '../engine/senateResponseEngine';
+import { calcLevyCost } from '../engine/troopEngine';
+import {
+  calcConsularArmyStrength,
+  calcConsularArmyArrivalTurn,
+} from '../engine/senateResponseEngine';
 import { STARTING_FAMILY } from '../data/startingFamily';
 import { STARTING_CLANS } from '../data/startingClans';
 import { STARTING_BILLS } from '../data/billTemplates';
@@ -130,6 +137,9 @@ export interface GameState {
   // ── Provinciae ──────────────────────────────────────────────────────────
   provinces: ProvinceState[];
   lifetimeImperium: number;
+
+  // ── Military (Chunk M) ──────────────────────────────────────────────────
+  senateResponse: SenateResponseState | null;
 }
 
 export interface GameActions {
@@ -217,6 +227,12 @@ export interface GameActions {
   upgradeProvinceAsset: (provinceId: string, assetId: string) => void;
   recruitProvincialClient: (provinceId: string, clientId: string) => void;
   updateProvinces: (provinces: ProvinceState[]) => void;
+
+  // ── Military (Chunk M) ──────────────────────────────────────────────────
+  raiseLevy: (characterId: string, musterProvinceId: string) => void;
+  musterVeterans: (characterId: string) => void;
+  disbandTroops: (characterId: string, troopIds: string[]) => void;
+  updateLocalSupportForPlayer: (provinceId: string, delta: number) => void;
 }
 
 let _logId = 0;
@@ -290,6 +306,9 @@ export const INITIAL_STATE: GameState = {
   // Provinciae
   provinces: buildInitialProvinceStates(),
   lifetimeImperium: 0,
+
+  // Military (Chunk M)
+  senateResponse: null,
 
   gameStarted: false,
   debugMode: false,
@@ -836,9 +855,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       relationship: 80,
       familyTrust: 100,
       officeId: null,
+      corruptionScore: 0,
       inheritedTraits: [],
       ambitionIds: [],
       reputationScores: {},
+      formalImperium: 0,
+      militaryImperium: 0,
+      raisedLegions: [],
+      veterans: [],
     };
 
     const child = applyTraitModifiers(baseChild, inheritedTraits);
@@ -1087,4 +1111,101 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   },
 
   updateProvinces: (provinces) => set({ provinces }),
+
+  // ── Military Actions (Chunk M) ───────────────────────────────────────────────
+
+  raiseLevy: (characterId, musterProvinceId) => {
+    const s = get();
+    if (musterProvinceId === 'latium') return;
+
+    const character = s.family.find(c => c.id === characterId);
+    if (!character) return;
+
+    // senateAuthorised = character currently holds a formal office
+    const senateAuthorised = !!character.officeId;
+    const cost = calcLevyCost(60, s.crisisLevel, senateAuthorised);
+    if (s.denarii < cost) return;
+
+    const newTroop: TroopUnit = {
+      id:                `troop-${Date.now()}`,
+      type:              'raised',
+      strength:          4,
+      campaignsSurvived: 0,
+      yearsInactive:     0,
+      bondToCommander:   50,
+      musterProvinceId,
+    };
+
+    const updatedFamily = s.family.map(c =>
+      c.id === characterId
+        ? { ...c, raisedLegions: [...c.raisedLegions, newTroop] }
+        : c
+    );
+
+    // Initialise Senate response tracking for the first unsanctioned levy.
+    // Condition: character holds no formalImperium AND had no prior raised legions.
+    const isFirstUnsanctionedLevy = !character.formalImperium && character.raisedLegions.length === 0 && !senateAuthorised;
+    const senateResponse: SenateResponseState | null = isFirstUnsanctionedLevy
+      ? {
+          active:                    true,
+          seasonDetected:            s.turnNumber,
+          phase:                     null,
+          musterProvinceId,
+          consularArmyStrength:      calcConsularArmyStrength(s.crisisLevel, character.militaryImperium),
+          debateSuppressed:          false,
+          consularArmyArrivesOnTurn: calcConsularArmyArrivalTurn(s.turnNumber, musterProvinceId),
+        }
+      : s.senateResponse;
+
+    const label = turnLabel(s);
+    set({
+      denarii:        s.denarii - cost,
+      family:         updatedFamily,
+      senateResponse,
+      log: [...s.log, mkLog(label, `${character.name} raises a legion in ${musterProvinceId}. (−${cost} Denarii)`, 'neutral')],
+    });
+  },
+
+  musterVeterans: (characterId) => {
+    const s = get();
+    const character = s.family.find(c => c.id === characterId);
+    if (!character || character.veterans.length === 0) return;
+
+    // Always unsanctioned cost basis (personal troops called back to service)
+    const cost = calcLevyCost(30, s.crisisLevel, false);
+    if (s.denarii < cost) return;
+
+    const updatedFamily = s.family.map(c =>
+      c.id === characterId
+        ? { ...c, veterans: c.veterans.map(v => ({ ...v, yearsInactive: 0 })) }
+        : c
+    );
+
+    const label = turnLabel(s);
+    set({
+      denarii: s.denarii - cost,
+      family:  updatedFamily,
+      log: [...s.log, mkLog(label, `${character.name} musters veterans back to service. (−${cost} Denarii)`, 'neutral')],
+    });
+  },
+
+  disbandTroops: (characterId, troopIds) => {
+    set(s => ({
+      family: s.family.map(c =>
+        c.id === characterId
+          ? { ...c, raisedLegions: c.raisedLegions.filter(t => !troopIds.includes(t.id)) }
+          : c
+      ),
+    }));
+  },
+
+  updateLocalSupportForPlayer: (provinceId, delta) => {
+    set(s => ({
+      provinces: s.provinces.map(p =>
+        p.id === provinceId
+          ? { ...p, localSupport: Math.min(100, Math.max(0, p.localSupport + delta)) }
+          : p
+      ),
+    }));
+  },
 }));

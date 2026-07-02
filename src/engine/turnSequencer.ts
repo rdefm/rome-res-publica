@@ -36,6 +36,8 @@ import { computePatronTier, processFavourCallIns } from './patronEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import { computeTotalAssetBonuses } from './assetEngine';
 import { tickAllProvinces } from './provinceEngine';
+import { applyTroopAttrition, calcMilitaryImperium } from './troopEngine';
+import { tickSenateResponse } from './senateResponseEngine';
 import { TRIAL_ACTIONS } from '../data/trialActions';
 import { EVENT_DEFS } from '../data/events';
 import { OFFICES } from '../data/offices';
@@ -320,6 +322,33 @@ export function processSeason(state: GameState): {
     for (const m of sMilestones) {
       events.push(`Legacy milestone: "${m.label}" — permanent bonus unlocked.`);
     }
+  }
+
+  // 9d. Troop attrition — age inactive veterans for all family members
+  {
+    const updatedFamily = s.family.map(c => {
+      if ((c.veterans ?? []).length === 0) return c;
+      return { ...c, veterans: applyTroopAttrition(c.veterans, 1) };
+    });
+    s = { ...s, family: updatedFamily };
+  }
+
+  // 9e. Recalculate militaryImperium from current troop state
+  {
+    const updatedFamily = s.family.map(c => {
+      const allTroops = [...(c.raisedLegions ?? []), ...(c.veterans ?? [])];
+      const militaryImperium = calcMilitaryImperium(allTroops);
+      if (militaryImperium === c.militaryImperium) return c;
+      return { ...c, militaryImperium };
+    });
+    s = { ...s, family: updatedFamily };
+  }
+
+  // 9f. Senate response tick — advance crisis phase if an unsanctioned levy is active
+  if ((s as any).senateResponse?.active) {
+    const playerCharacterId = s.family.find(c => c.isPlayer)?.id ?? 'pc-1';
+    const patch = tickSenateResponse(s as any, playerCharacterId);
+    s = { ...s, ...patch };
   }
 
   // 10. Age family members

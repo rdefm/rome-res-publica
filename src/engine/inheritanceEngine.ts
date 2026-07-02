@@ -100,10 +100,10 @@ export function applyTraitModifiers(
     const trait = TRAIT_DEFINITIONS.find(t => t.id === id);
     if (!trait?.skillModifiers) continue;
     const sm = trait.skillModifiers;
-    updated.skills.rhetoric   = Math.max(0, Math.min(10, updated.skills.rhetoric   + (sm.rhetoric   ?? 0)));
-    updated.skills.auctoritas = Math.max(0, Math.min(10, updated.skills.auctoritas + (sm.auctoritas ?? 0)));
-    updated.skills.martial    = Math.max(0, Math.min(10, updated.skills.martial    + (sm.martial    ?? 0)));
-    updated.skills.intrigus   = Math.max(0, Math.min(10, updated.skills.intrigus   + (sm.intrigus   ?? 0)));
+    // auctoritas removed — CharacterSkills now has only rhetoric, martial, intrigus
+    updated.skills.rhetoric = Math.max(0, Math.min(10, updated.skills.rhetoric + (sm.rhetoric ?? 0)));
+    updated.skills.martial  = Math.max(0, Math.min(10, updated.skills.martial  + (sm.martial  ?? 0)));
+    updated.skills.intrigus = Math.max(0, Math.min(10, updated.skills.intrigus + (sm.intrigus ?? 0)));
   }
 
   updated.inheritedTraits = traitIds;

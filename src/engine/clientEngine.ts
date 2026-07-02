@@ -9,35 +9,35 @@ interface BonusOption {
 
 const BONUS_POOL: Record<ClientType, BonusOption[]> = {
   muscle: [
-    { bonus: { martialBonus: 2 },       weight: 30 },
-    { bonus: { trialDefenseBonus: 5 },  weight: 25 },
-    { bonus: { corruptionShield: 3 },   weight: 20 },
-    { bonus: { gratia: 2 },             weight: 15 },
-    { bonus: { dignitas: 2 },           weight: 10 },
+    { bonus: { martialBonus: 2 },         weight: 30 },
+    { bonus: { trialDefenseBonus: 5 },    weight: 25 },
+    { bonus: { corruptionShield: 3 },     weight: 20 },
+    { bonus: { fides: 2 },                weight: 15 },
+    { bonus: { lifetimeDignitas: 2 },     weight: 10 },
   ],
   publicSupport: [
-    { bonus: { dignitas: 3 },           weight: 30 },
-    { bonus: { gratia: 3 },             weight: 25 },
-    { bonus: { gold: 4 },               weight: 20 },
-    { bonus: { gravitas: 2 },           weight: 15 },
-    { bonus: { corruptionShield: 2 },   weight: 10 },
+    { bonus: { lifetimeDignitas: 3 },     weight: 30 },
+    { bonus: { fides: 3 },                weight: 25 },
+    { bonus: { gold: 4 },                 weight: 20 },
+    { bonus: { fides: 2 },                weight: 15 },
+    { bonus: { corruptionShield: 2 },     weight: 10 },
   ],
   votingSway: [
-    { bonus: { gratia: 4 },             weight: 30 },
-    { bonus: { gravitas: 3 },           weight: 25 },
-    { bonus: { rhetoricalBonus: 2 },    weight: 20 },
-    { bonus: { trialDefenseBonus: 4 },  weight: 15 },
-    { bonus: { dignitas: 2 },           weight: 10 },
+    { bonus: { fides: 4 },                weight: 30 },
+    { bonus: { fides: 3 },                weight: 25 },
+    { bonus: { rhetoricalBonus: 2 },      weight: 20 },
+    { bonus: { trialDefenseBonus: 4 },    weight: 15 },
+    { bonus: { lifetimeDignitas: 2 },     weight: 10 },
   ],
 };
 
 const SECONDARY_BONUS_POOL: BonusOption[] = [
-  { bonus: { gold: 2 },               weight: 25 },
-  { bonus: { gratia: 1 },             weight: 20 },
-  { bonus: { trialDefenseBonus: 3 },  weight: 20 },
-  { bonus: { corruptionShield: 2 },   weight: 15 },
-  { bonus: { dignitas: 1 },           weight: 10 },
-  { bonus: { gravitas: 1 },           weight: 10 },
+  { bonus: { gold: 2 },                   weight: 25 },
+  { bonus: { fides: 1 },                  weight: 20 },
+  { bonus: { trialDefenseBonus: 3 },      weight: 20 },
+  { bonus: { corruptionShield: 2 },       weight: 15 },
+  { bonus: { lifetimeDignitas: 1 },       weight: 10 },
+  { bonus: { fides: 1 },                  weight: 10 },
 ];
 
 // ─── Weighted random picker ───────────────────────────────────────────────────

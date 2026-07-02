@@ -25,9 +25,13 @@ import DiplomatDesk from './DiplomatDesk';
 import ProvinceAssetGrid from './ProvinceAssetGrid';
 import ProvincialClientCard from './ProvincialClientCard';
 import MilitaryTab from './MilitaryTab';
+import MusterPickerModal from './MusterPickerModal';
 import type { AmbassadorActionId } from '../../engine/provinceEngine';
 import type { Character } from '../../models/character';
+import type { TroopUnit } from '../../models/troop';
 import type { CampaignAllocation } from '../../engine/campaignEngine';
+import { calcTotalImperium } from '../../engine/troopEngine';
+import { useGameStore } from '../../state/gameStore';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.72;
@@ -92,6 +96,7 @@ export default function ProvinceSheet({
   onResolveOfficerDecision,
 }: ProvinceSheetProps) {
   const [activeTab, setActiveTab] = useState<SheetTab>('overview');
+  const [musterPickerVisible, setMusterPickerVisible] = useState(false);
   const def = getProvinceDefinition(province.id);
   if (!def) return null;
 
@@ -99,6 +104,17 @@ export default function ProvinceSheet({
   const hasPlayerGovernor = !!province.playerGovernor;
   const hasPlayerAmbassador = !!province.playerAmbassador;
   const relationshipTier = getRelationshipTier(province.relationshipScore);
+
+  // Military section: find the relevant player character for this province.
+  // Prefer the active governor; fall back to any family member with troops here.
+  // @ts-ignore — musterVeterans added in Chunk M
+  const musterVeterans = useGameStore(s => s.musterVeterans);
+  const governorCharId = province.playerGovernor?.characterId;
+  const militaryCharacter: Character | null =
+    (governorCharId ? family.find(c => c.id === governorCharId) : null)
+    ?? family.find(c => c.raisedLegions?.some((t: TroopUnit) => t.musterProvinceId === province.id))
+    ?? null;
+  const showMilitarySection = !!militaryCharacter;
 
   // Military tab badge — show dot if active campaign or pending election
   const hasMilitaryActivity =
@@ -212,31 +228,258 @@ export default function ProvinceSheet({
               />
             )}
             {activeTab === 'military' && (
-              <MilitaryTab
-                province={province}
-                family={family}
-                playerFides={playerFides}
-                playerDenarii={playerDenarii}
-                playerImperium={playerImperium}
-                commanderElection={commanderElection}
-                officerVolunteer={officerVolunteer}
-                campaignVotes={campaignVotes}
-                onStartCampaign={() => {}}
-                onCommitCampaignSeason={(pid, alloc) => onCommitCampaignSeason(pid, alloc)}
-                onResolveCampaignEvent={(pid, eid, oid) => onResolveCampaignEvent(pid, eid, oid)}
-                onNominateCommander={(pid, cid) => onNominateCommander(pid, cid)}
-                onVoteCommander={(lid, vote) => onVoteCommander(lid, vote)}
-                onSpeechCommander={(pid) => onSpeechCommander(pid)}
-                onVolunteerOfficer={(pid, charId) => onVolunteerOfficer(pid, charId)}
-                onResolveOfficerDecision={(pid, idx, risk) => onResolveOfficerDecision(pid, idx, risk)}
-              />
+              <>
+                <MilitaryTab
+                  province={province}
+                  family={family}
+                  playerFides={playerFides}
+                  playerDenarii={playerDenarii}
+                  playerImperium={playerImperium}
+                  commanderElection={commanderElection}
+                  officerVolunteer={officerVolunteer}
+                  campaignVotes={campaignVotes}
+                  onStartCampaign={() => {}}
+                  onCommitCampaignSeason={(pid, alloc) => onCommitCampaignSeason(pid, alloc)}
+                  onResolveCampaignEvent={(pid, eid, oid) => onResolveCampaignEvent(pid, eid, oid)}
+                  onNominateCommander={(pid, cid) => onNominateCommander(pid, cid)}
+                  onVoteCommander={(lid, vote) => onVoteCommander(lid, vote)}
+                  onSpeechCommander={(pid) => onSpeechCommander(pid)}
+                  onVolunteerOfficer={(pid, charId) => onVolunteerOfficer(pid, charId)}
+                  onResolveOfficerDecision={(pid, idx, risk) => onResolveOfficerDecision(pid, idx, risk)}
+                />
+
+                {showMilitarySection && militaryCharacter && (
+                  <PersonalMilitarySection
+                    province={province}
+                    character={militaryCharacter}
+                    onRaiseLegion={() => setMusterPickerVisible(true)}
+                    onMusterVeterans={() => musterVeterans(militaryCharacter.id)}
+                  />
+                )}
+              </>
             )}
           </>
         )}
       </ScrollView>
+
+      {/* Personal legion muster picker */}
+      {militaryCharacter && (
+        <MusterPickerModal
+          visible={musterPickerVisible}
+          onClose={() => setMusterPickerVisible(false)}
+          characterId={militaryCharacter.id}
+        />
+      )}
     </View>
   );
 }
+
+// ─── Personal Military Section ─────────────────────────────────────────────────
+
+interface PersonalMilitarySectionProps {
+  province: ProvinceState;
+  character: Character;
+  onRaiseLegion: () => void;
+  onMusterVeterans: () => void;
+}
+
+function PersonalMilitarySection({
+  province,
+  character,
+  onRaiseLegion,
+  onMusterVeterans,
+}: PersonalMilitarySectionProps) {
+  const totalImperium = calcTotalImperium(
+    character.formalImperium,
+    character.militaryImperium,
+  );
+
+  const troopsHere = (character.raisedLegions ?? []).filter(
+    (t: TroopUnit) => t.musterProvinceId === province.id,
+  );
+
+  const canRaise = totalImperium > 0;
+  const hasVeterans = (character.veterans ?? []).length > 0;
+
+  return (
+    <View style={milStyles.section}>
+      {/* Section heading */}
+      <View style={milStyles.sectionHeader}>
+        <Text style={milStyles.sectionTitle}>PERSONAL LEGIONS</Text>
+      </View>
+
+      {/* Local Support stat bar */}
+      <Text style={milStyles.statLabel}>LOCAL SUPPORT</Text>
+      <View style={milStyles.barTrack}>
+        <View
+          style={[
+            milStyles.barFill,
+            {
+              width: `${Math.min(100, province.localSupport)}%` as any,
+              backgroundColor: COLORS.gold,
+            },
+          ]}
+        />
+      </View>
+      <Text style={milStyles.statValue}>{province.localSupport} / 100</Text>
+
+      {/* Stationed troops */}
+      {troopsHere.length > 0 ? (
+        <>
+          <Text style={milStyles.statLabel}>STATIONED TROOPS</Text>
+          {troopsHere.map((t: TroopUnit) => (
+            <View key={t.id} style={milStyles.troopRow}>
+              <Text style={milStyles.troopType}>
+                {t.type.replace(/_/g, ' ').toUpperCase()}
+              </Text>
+              <Text style={milStyles.troopStrength}>STR {t.strength}</Text>
+            </View>
+          ))}
+        </>
+      ) : (
+        <Text style={milStyles.noTroopsText}>No legions stationed here.</Text>
+      )}
+
+      {/* Raise Legion button */}
+      <TouchableOpacity
+        style={[milStyles.actionButton, !canRaise && milStyles.actionButtonDisabled]}
+        onPress={onRaiseLegion}
+        disabled={!canRaise}
+        activeOpacity={0.75}
+      >
+        <Text style={[milStyles.actionButtonText, !canRaise && milStyles.actionButtonTextDisabled]}>
+          {canRaise ? '⚔ Raise a Legion' : '⚔ Raise a Legion (requires Imperium)'}
+        </Text>
+      </TouchableOpacity>
+
+      {/* Muster Veterans button — only if veterans exist */}
+      {hasVeterans && (
+        <TouchableOpacity
+          style={milStyles.actionButton}
+          onPress={onMusterVeterans}
+          activeOpacity={0.75}
+        >
+          <Text style={milStyles.actionButtonText}>
+            ★ Muster Veterans ({character.veterans.length})
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+const milStyles = StyleSheet.create({
+  section: {
+    marginTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    padding: SPACING.md,
+  } as ViewStyle,
+
+  sectionHeader: {
+    marginBottom: SPACING.sm,
+  } as ViewStyle,
+
+  sectionTitle: {
+    color: COLORS.dust,
+    fontFamily: FONTS.ui,
+    fontSize: 9,
+    letterSpacing: 1,
+  } as TextStyle,
+
+  statLabel: {
+    color: COLORS.dust,
+    fontFamily: FONTS.ui,
+    fontSize: 9,
+    letterSpacing: 1,
+    marginBottom: 4,
+  } as TextStyle,
+
+  barTrack: {
+    height: 6,
+    backgroundColor: '#1a1410',
+    borderRadius: 3,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 4,
+  } as ViewStyle,
+
+  barFill: {
+    height: '100%',
+    borderRadius: 3,
+  } as ViewStyle,
+
+  statValue: {
+    color: COLORS.dust,
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    marginBottom: SPACING.sm,
+  } as TextStyle,
+
+  noTroopsText: {
+    color: COLORS.dust,
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginBottom: SPACING.sm,
+  } as TextStyle,
+
+  troopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+    paddingHorizontal: SPACING.sm,
+    backgroundColor: '#1a1814',
+    borderRadius: 4,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  } as ViewStyle,
+
+  troopType: {
+    color: COLORS.marble,
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    letterSpacing: 0.5,
+    fontWeight: '600',
+  } as TextStyle,
+
+  troopStrength: {
+    color: COLORS.gold,
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    fontWeight: '700',
+  } as TextStyle,
+
+  actionButton: {
+    backgroundColor: '#1a3018',
+    borderRadius: 6,
+    padding: SPACING.sm,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.laurel,
+    marginTop: SPACING.sm,
+  } as ViewStyle,
+
+  actionButtonDisabled: {
+    backgroundColor: '#1a1a18',
+    borderColor: COLORS.border,
+  } as ViewStyle,
+
+  actionButtonText: {
+    color: COLORS.laurel,
+    fontFamily: FONTS.ui,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  } as TextStyle,
+
+  actionButtonTextDisabled: {
+    color: COLORS.dust,
+  } as TextStyle,
+});
 
 // ─── Sub-views ────────────────────────────────────────────────────────────────
 
