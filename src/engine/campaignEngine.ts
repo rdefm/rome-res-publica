@@ -22,7 +22,7 @@ export interface CampaignSeasonResult {
   progressDelta: number;
   enemyDelta: number;
   goldCost: number;
-  gravitasCost: number;
+  fidesCost: number;
   imperiumGained: number;
   eventCardId: string | null;
   logMsg: string;
@@ -81,7 +81,7 @@ export function resolveCampaignSeason(
   let progressDelta = 0;
   let enemyDelta = 0;
   let goldCost = 0;
-  let gravitasCost = 0;
+  let fidesCost = 0;
   let riskFactor = 0;
 
   // ── Manpower ──────────────────────────────────────────────────────────────
@@ -133,7 +133,7 @@ export function resolveCampaignSeason(
       progressDelta += 15;
       break;
     case 'rally':
-      gravitasCost += 10;
+      fidesCost += 10;
       progressDelta += 10;
       break;
     case 'loot':
@@ -166,7 +166,7 @@ export function resolveCampaignSeason(
 
   const logParts: string[] = [];
   if (goldCost > 0) logParts.push(`−${goldCost} Gold`);
-  if (gravitasCost > 0) logParts.push(`−${gravitasCost} Gravitas`);
+  if (fidesCost > 0) logParts.push(`−${fidesCost} Fides`);
   logParts.push(`Progress +${progressDelta}`);
   if (enemyDelta < 0) logParts.push(`Enemy −${Math.abs(enemyDelta)}`);
   if (enemyDelta > 0) logParts.push(`Enemy +${enemyDelta}`);
@@ -175,7 +175,7 @@ export function resolveCampaignSeason(
     progressDelta,
     enemyDelta,
     goldCost,
-    gravitasCost,
+    fidesCost,
     imperiumGained,
     eventCardId,
     logMsg: logParts.join(', '),

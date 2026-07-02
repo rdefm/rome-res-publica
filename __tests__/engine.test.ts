@@ -13,24 +13,22 @@ const makeState = (overrides = {}) => ({
   year: -264,
   turnNumber: 1,
   seasonIndex: 0,
-  gravitas: 20,
-  dignitas: 20,
-  gratia: 30,
+  fides: 30,
   denarii: 200,
   imperium: 0,
-  laudatioActive: false,
-  laudatioBonus: 0,
+  lifetimeDignitas: 0,
   popularesRel: 0,
   optimatesRel: 0,
-  rome: { stability: 70, plebs: 60, treasury: 50 },
+  rome: { stability: 50, plebs: 50, treasury: 50 },
   crisisLevel: 0,
   family: [
     {
       id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 42,
-      skills: { rhetoric: 6, auctoritas: 7, martial: 3, intrigus: 4 },
+      skills: { rhetoric: 6, martial: 3, intrigus: 4 },
       traits: ['ambitious'],
       ambition: { type: 'gain_dignitas', priority: 0.7 },
       relationship: 100, familyTrust: 100,
+      officeId: null,
       inheritedTraits: [],
       ambitionIds: [],
       reputationScores: {},
@@ -67,29 +65,46 @@ const makeState = (overrides = {}) => ({
 
 // ─── Resource Engine ─────────────────────────────────────────────────────────
 describe('calcResourceIncome', () => {
-  test('gravitas = rhetoric × 2 at no crisis', () => {
+  test('fides = rhetoric × 2 at no crisis, before multipliers', () => {
     const s = makeState({ crisisLevel: 0 });
-    const { gravitasIncome } = calcResourceIncome(s as any);
-    expect(gravitasIncome).toBe(12); // rhetoric 6 × 2
-  });
-  test('dignitas includes laudatioBonus', () => {
-    const s = makeState({ crisisLevel: 0, laudatioActive: true, laudatioBonus: 3 });
-    const { dignitasIncome } = calcResourceIncome(s as any);
-    expect(dignitasIncome).toBe(7 * 2 + 3); // auctoritas 7 × 2 + 3
+    const { fidesIncome } = calcResourceIncome(s as any);
+    expect(fidesIncome).toBe(12); // rhetoric 6 × 2
   });
   test('income floors at 0 under heavy crisis', () => {
     const s = makeState({ crisisLevel: 100 });
-    const { gravitasIncome, dignitasIncome, gratiaIncome } = calcResourceIncome(s as any);
-    expect(gravitasIncome).toBeGreaterThanOrEqual(0);
-    expect(dignitasIncome).toBeGreaterThanOrEqual(0);
-    expect(gratiaIncome).toBeGreaterThanOrEqual(0);
+    const { fidesIncome } = calcResourceIncome(s as any);
+    expect(fidesIncome).toBeGreaterThanOrEqual(0);
   });
-  test('crisis level 20 reduces gravitas by 1', () => {
+  test('crisis level 20 reduces fides by 1', () => {
     const s0 = makeState({ crisisLevel: 0 });
     const s20 = makeState({ crisisLevel: 20 });
-    const { gravitasIncome: g0 } = calcResourceIncome(s0 as any);
-    const { gravitasIncome: g20 } = calcResourceIncome(s20 as any);
-    expect(g0 - g20).toBe(1);
+    const { fidesIncome: f0 } = calcResourceIncome(s0 as any);
+    const { fidesIncome: f20 } = calcResourceIncome(s20 as any);
+    expect(f0 - f20).toBe(1);
+  });
+  test('fides income includes office held bonus', () => {
+    const s = makeState({ crisisLevel: 0 });
+    s.family[0].officeId = 'aedile';
+    const { fidesIncome } = calcResourceIncome(s as any);
+    // base: rhetoric 6 × 2 = 12, aedile office bonus = +5
+    expect(fidesIncome).toBe(12 + 5);
+  });
+  test('fides income includes allied clan leader bonus', () => {
+    const s = makeState({
+      crisisLevel: 0,
+      clans: [
+        {
+          id: 'clan-1',
+          name: 'Cornelii',
+          leaders: [
+            { id: 'leader-1', name: 'Lucius', relationship: 70 },
+          ],
+        },
+      ],
+    });
+    const { fidesIncome } = calcResourceIncome(s as any);
+    // base: rhetoric 6 × 2 = 12, allied leader (relationship >= 60) = +2
+    expect(fidesIncome).toBe(12 + 2);
   });
 });
 
@@ -98,13 +113,13 @@ describe('getCrisisInfo', () => {
   test('0 crisis = Pax Romana, no penalties', () => {
     const info = getCrisisInfo(0);
     expect(info.title).toBe('Pax Romana');
-    expect(info.gravitasPenalty).toBe(0);
+    expect(info.fidesPenalty).toBe(0);
     expect(info.dignitasPenalty).toBe(0);
   });
   test('80+ crisis = EXISTENTIAL THREAT', () => {
     const info = getCrisisInfo(80);
     expect(info.title).toBe('EXISTENTIAL THREAT');
-    expect(info.gravitasPenalty).toBe(5);
+    expect(info.fidesPenalty).toBe(5);
     expect(info.dignitasPenalty).toBe(4);
   });
   test('crisis tiers are continuous and ascending', () => {
@@ -164,7 +179,7 @@ describe('calcRomeStats', () => {
 // ─── Bill Effect Parsing ─────────────────────────────────────────────────────
 describe('parseEffect', () => {
   test('parses single effect', () => {
-    expect(parseEffect('dignitas+8')).toEqual([{ key: 'dignitas', delta: 8 }]);
+    expect(parseEffect('lifetimeDignitas+8')).toEqual([{ key: 'lifetimeDignitas', delta: 8 }]);
   });
   test('parses multiple pipe-separated effects', () => {
     const result = parseEffect('stability+5|crisis-3');
@@ -181,10 +196,11 @@ describe('parseEffect', () => {
 describe('scoreAction', () => {
   const aggressiveChar = {
     id: 'npc-son', name: 'Gaius', role: 'son' as const, isPlayer: false, age: 17,
-    skills: { rhetoric: 3, auctoritas: 2, martial: 5, intrigus: 2 },
+    skills: { rhetoric: 3, martial: 5, intrigus: 2 },
     traits: ['aggressive' as const],
     ambition: { type: 'personal_power' as const, priority: 0.5 },
     relationship: 70, familyTrust: 90,
+    officeId: null,
     inheritedTraits: [],
     ambitionIds: [],
     reputationScores: {},

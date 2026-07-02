@@ -75,7 +75,7 @@ export default function CharacterCard({ character, selected, onPress }: Characte
               ))}
             </View>
             <Text style={styles.stats}>
-              {(['rhetoric', 'auctoritas', 'martial', 'intrigus'] as const)
+              {(['rhetoric', 'martial', 'intrigus'] as const)
                 .map(sk => `${sk.slice(0, 3).toUpperCase()} ${character.skills[sk]}`)
                 .join('  ')}
             </Text>

@@ -56,7 +56,7 @@ const fab = StyleSheet.create({
   labelWrap: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   lockIcon: { fontSize: 11, marginRight: 2 },
   label: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 14, fontWeight: '600', flex: 1 },
-  cost: { color: COLORS.gratiaColor, fontFamily: FONTS.ui, fontSize: 12, fontWeight: '700' },
+  cost: { color: COLORS.fidesColor, fontFamily: FONTS.ui, fontSize: 12, fontWeight: '700' },
   desc: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 2 },
 });
 
@@ -64,7 +64,7 @@ const fab = StyleSheet.create({
 
 function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: string }) {
   const {
-    gratia, campaigning, campaignVotes, familyReputations,
+    fides, campaigning, campaignVotes, familyReputations,
     buyInfluence, inviteToDinner, forgeAlliance, arrangeMarriageForum,
     gatherIntelligence, canvassForVotes,
   } = useGameStore();
@@ -97,49 +97,49 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
       <View style={ld.actions}>
         <ForumActionBtn
           label="Buy Influence"
-          cost="8 Gratia"
+          cost="8 Fides"
           desc="Relationship +. Reputation +5."
-          disabled={gratia < 8}
+          disabled={fides < 8}
           onPress={() => buyInfluence(leader.id)}
         />
         <ForumActionBtn
           label="Invite to Dinner"
-          cost="12 Gratia"
+          cost="12 Fides"
           desc="Relationship +, Favour +. Reputation +3."
-          disabled={gratia < 12}
+          disabled={fides < 12}
           onPress={() => inviteToDinner(leader.id)}
         />
         <ForumActionBtn
           label="Forge Alliance"
-          cost="20 Gratia"
+          cost="20 Fides"
           desc="Requires Rel ≥ 30. 2-season alliance. Reputation +5."
-          disabled={gratia < 20 || leader.relationship < 30}
+          disabled={fides < 20 || leader.relationship < 30}
           onPress={() => forgeAlliance(leader.id)}
         />
         <ForumActionBtn
           label="Arrange Marriage"
-          cost="18 Gratia"
+          cost="18 Fides"
           desc="Requires Rel ≥ 20. Standing improves. Reputation +15."
-          disabled={gratia < 18 || leader.relationship < 20}
+          disabled={fides < 18 || leader.relationship < 20}
           locked={allianceMarriageLocked}
           lockReason={allianceMarriageLockReason}
           onPress={() => arrangeMarriageForum(leader.id)}
         />
         <ForumActionBtn
           label={leader.blackmail ? 'Counter Blackmail' : 'Gather Intelligence'}
-          cost="6 Gratia"
+          cost="6 Fides"
           desc={leader.blackmail
             ? 'Neutralise leverage they hold.'
             : '50% chance to acquire leverage. Reputation -20 if successful.'}
-          disabled={gratia < 6}
+          disabled={fides < 6}
           onPress={() => gatherIntelligence(leader.id)}
         />
         {campaigning && (
           <ForumActionBtn
             label={canvassed ? `Canvassed: ${campaignVotes[leader.id]}` : 'Canvass for Votes'}
-            cost="6 Gratia"
+            cost="6 Fides"
             desc="One chance per leader per campaign."
-            disabled={gratia < 6 || canvassed}
+            disabled={fides < 6 || canvassed}
             onPress={() => canvassForVotes(leader.id)}
           />
         )}

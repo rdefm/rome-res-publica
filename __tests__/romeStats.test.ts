@@ -9,67 +9,85 @@ import { calcRomeStatVoteModifier, buildRepealBill } from '../src/data/billTempl
 import type { Bill, ActiveLaw } from '../src/models/bill';
 
 // ─── calcRomeStatModifiers ────────────────────────────────────────────────────
+// gravitasDelta (stability) and gratiaDelta (plebs) are merged into a single
+// fidesDelta. Stability and plebs bands are tested separately below, then a
+// combined test confirms the two contributions sum correctly.
 
 describe('calcRomeStatModifiers — stability bands', () => {
-  test('0–19 Instability: gravitas −2, multiplier 1.5', () => {
+  test('0–19 Instability: fides −2, multiplier 1.5', () => {
     const m = calcRomeStatModifiers({ stability: 10, plebs: 50, treasury: 50 });
-    expect(m.gravitasDelta).toBe(-2);
+    // plebs=50 (Content band) contributes 0, so fidesDelta isolates stability's effect
+    expect(m.fidesDelta).toBe(-2);
     expect(m.crisisEscalationMultiplier).toBe(1.5);
     expect(m.stabilityLabel).toBe('Instability');
   });
-  test('20–39 Fragile: gravitas −1, multiplier 1.25', () => {
+  test('20–39 Fragile: fides −1, multiplier 1.25', () => {
     const m = calcRomeStatModifiers({ stability: 30, plebs: 50, treasury: 50 });
-    expect(m.gravitasDelta).toBe(-1);
+    expect(m.fidesDelta).toBe(-1);
     expect(m.crisisEscalationMultiplier).toBe(1.25);
     expect(m.stabilityLabel).toBe('Fragile');
   });
   test('40–69 Stable: no modifier', () => {
     const m = calcRomeStatModifiers({ stability: 55, plebs: 50, treasury: 50 });
-    expect(m.gravitasDelta).toBe(0);
+    expect(m.fidesDelta).toBe(0);
     expect(m.crisisEscalationMultiplier).toBe(1.0);
     expect(m.stabilityLabel).toBe('Stable');
   });
-  test('70–84 Cohesive: gravitas +1', () => {
+  test('70–84 Cohesive: fides +1', () => {
     const m = calcRomeStatModifiers({ stability: 75, plebs: 50, treasury: 50 });
-    expect(m.gravitasDelta).toBe(1);
+    expect(m.fidesDelta).toBe(1);
     expect(m.stabilityLabel).toBe('Cohesive');
   });
-  test('85–100 Pax Interna: gravitas +2, multiplier 0.85', () => {
+  test('85–100 Pax Interna: fides +2, multiplier 0.85', () => {
     const m = calcRomeStatModifiers({ stability: 90, plebs: 50, treasury: 50 });
-    expect(m.gravitasDelta).toBe(2);
+    expect(m.fidesDelta).toBe(2);
     expect(m.crisisEscalationMultiplier).toBe(0.85);
     expect(m.stabilityLabel).toBe('Pax Interna');
   });
 });
 
 describe('calcRomeStatModifiers — plebs bands', () => {
-  test('0–19 Rioting: gratia −3, crisis +3, label Rioting', () => {
+  test('0–19 Rioting: fides −3, crisis +3, label Rioting', () => {
     const m = calcRomeStatModifiers({ stability: 50, plebs: 10, treasury: 50 });
-    expect(m.gratiaDelta).toBe(-3);
+    // stability=50 (Stable band) contributes 0, so fidesDelta isolates plebs' effect
+    expect(m.fidesDelta).toBe(-3);
     expect(m.plebsCrisisBonus).toBe(3);
     expect(m.plebsLabel).toBe('Rioting');
   });
-  test('20–39 Restless: gratia −1', () => {
+  test('20–39 Restless: fides −1', () => {
     const m = calcRomeStatModifiers({ stability: 50, plebs: 30, treasury: 50 });
-    expect(m.gratiaDelta).toBe(-1);
+    expect(m.fidesDelta).toBe(-1);
     expect(m.plebsLabel).toBe('Restless');
   });
   test('40–69 Content: no modifier', () => {
     const m = calcRomeStatModifiers({ stability: 50, plebs: 55, treasury: 50 });
-    expect(m.gratiaDelta).toBe(0);
+    expect(m.fidesDelta).toBe(0);
     expect(m.plebsCrisisBonus).toBe(0);
     expect(m.plebsLabel).toBe('Content');
   });
-  test('70–84 Supportive: gratia +1', () => {
+  test('70–84 Supportive: fides +1', () => {
     const m = calcRomeStatModifiers({ stability: 50, plebs: 75, treasury: 50 });
-    expect(m.gratiaDelta).toBe(1);
+    expect(m.fidesDelta).toBe(1);
     expect(m.plebsLabel).toBe('Supportive');
   });
-  test('85–100 Euphoric: gratia +2, patron call-ins waived', () => {
+  test('85–100 Euphoric: fides +2, patron call-ins waived', () => {
     const m = calcRomeStatModifiers({ stability: 50, plebs: 90, treasury: 50 });
-    expect(m.gratiaDelta).toBe(2);
+    expect(m.fidesDelta).toBe(2);
     expect(m.patronFavourWaived).toBe(true);
     expect(m.plebsLabel).toBe('Euphoric');
+  });
+});
+
+describe('calcRomeStatModifiers — combined stability + plebs', () => {
+  test('fidesDelta sums stability and plebs contributions together', () => {
+    // Pax Interna (stability 90 → +2) + Euphoric (plebs 90 → +2) = +4
+    const m = calcRomeStatModifiers({ stability: 90, plebs: 90, treasury: 50 });
+    expect(m.fidesDelta).toBe(4);
+  });
+  test('opposing contributions partially cancel', () => {
+    // Instability (stability 10 → −2) + Euphoric (plebs 90 → +2) = 0
+    const m = calcRomeStatModifiers({ stability: 10, plebs: 90, treasury: 50 });
+    expect(m.fidesDelta).toBe(0);
   });
 });
 
@@ -134,7 +152,7 @@ describe('calcRomeStatVoteModifier', () => {
   const baseRome = { stability: 50, plebs: 50, treasury: 50 };
 
   test('neutral bill at baseline rome: modifier 0', () => {
-    const bill: Partial<Bill> = { type: 'neutral', passEffect: 'gravitas+3' };
+    const bill: Partial<Bill> = { type: 'neutral', passEffect: 'fides+3' };
     expect(calcRomeStatVoteModifier(bill as Bill, baseRome)).toBe(0);
   });
 
@@ -146,7 +164,7 @@ describe('calcRomeStatVoteModifier', () => {
   });
 
   test('optimates bill at high plebs: negative modifier', () => {
-    const bill: Partial<Bill> = { type: 'optimates', passEffect: 'gravitas+3' };
+    const bill: Partial<Bill> = { type: 'optimates', passEffect: 'fides+3' };
     const rome = { stability: 50, plebs: 80, treasury: 50 };
     const mod = calcRomeStatVoteModifier(bill as Bill, rome);
     expect(mod).toBeLessThan(0);

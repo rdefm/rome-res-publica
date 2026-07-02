@@ -14,9 +14,13 @@ export const COLORS = {
   purple:        '#6a3d8f',
   amber:         '#d4a017',
   // Resource colours
+  denariiColor:  '#d4a017',
+  fidesColor:        '#c9a84c',   // gold — the Fides resource colour
+  lifetimeDignColor: '#a8c4d4',   // blue — Dignitas display in Domus
+  // Deprecated — kept for now, may still be referenced in untouched files.
+  // Will be removed in the G5 verification pass once confirmed unused.
   dignitasColor: '#a8c4d4',
   gratiaColor:   '#6a3d8f',
-  denariiColor:  '#d4a017',
   gravitasColor: '#c9a84c',
   // Chunk 7 tokens (previously hardcoded in EndSeasonButton / OfficeRung)
   goldBronze:    '#a07840',

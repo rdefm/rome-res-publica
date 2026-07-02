@@ -15,10 +15,9 @@ interface Props {
 }
 
 const SKILL_LABELS: Record<string, string> = {
-  rhetoric:   'Rhetoric',
-  auctoritas: 'Auctoritas',
-  martial:    'Martial',
-  intrigus:   'Intrigus',
+  rhetoric: 'Rhetoric',
+  martial:  'Martial',
+  intrigus: 'Intrigus',
 };
 
 // ─── Ambition tracker (player) ────────────────────────────────────────────────
@@ -199,14 +198,12 @@ const tb = StyleSheet.create({
   detailMods:         { color: COLORS.laurel, fontFamily: FONTS.ui, fontSize: 11 },
 });
 
-// ─── Action button (parchment-styled) ────────────────────────────────────────
+// ─── Action button ────────────────────────────────────────────────────────────
 
-function ActionButton({ label, cost, desc, disabled, onPress, resource }: {
+function ActionButton({ label, cost, desc, disabled, onPress }: {
   label: string; cost: string; desc: string;
   disabled: boolean; onPress: () => void;
-  resource: 'gravitas' | 'dignitas';
 }) {
-  const resColor = resource === 'gravitas' ? COLORS.gravitasColor : PARCHMENT.gold;
   return (
     <TouchableOpacity
       style={[styles.actionBtn, disabled && styles.actionBtnDisabled]}
@@ -216,7 +213,7 @@ function ActionButton({ label, cost, desc, disabled, onPress, resource }: {
     >
       <View style={styles.actionRow}>
         <Text style={styles.actionLabel}>{label}</Text>
-        <Text style={[styles.actionCost, { color: resColor }]}>{cost}</Text>
+        <Text style={styles.actionCost}>{cost}</Text>
       </View>
       <Text style={styles.actionDesc}>{desc}</Text>
     </TouchableOpacity>
@@ -226,7 +223,7 @@ function ActionButton({ label, cost, desc, disabled, onPress, resource }: {
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 export default function CharacterActionModal({ character, visible, onClose }: Props) {
-  const { gravitas, dignitas, trainCharacter } = useGameStore();
+  const { fides, trainCharacter } = useGameStore();
   const [selectedSkill, setSelectedSkill] = useState<keyof Character['skills']>('rhetoric');
 
   function doAction(skillKey: keyof Character['skills'], cost: number) {
@@ -243,8 +240,20 @@ export default function CharacterActionModal({ character, visible, onClose }: Pr
     >
       {character.isPlayer ? (
         <>
-          <ActionButton label="Study Rhetoric"        cost="5 Gravitas" desc="70% chance: Rhetoric +1"    disabled={gravitas < 5} onPress={() => doAction('rhetoric',   5)} resource="gravitas" />
-          <ActionButton label="Attend Senate Sessions" cost="5 Gravitas" desc="70% chance: Auctoritas +1" disabled={gravitas < 5} onPress={() => doAction('auctoritas', 5)} resource="gravitas" />
+          <ActionButton
+            label="Study Rhetoric"
+            cost="5 Fides"
+            desc="70% chance: Rhetoric +1"
+            disabled={fides < 5}
+            onPress={() => doAction('rhetoric', 5)}
+          />
+          <ActionButton
+            label="Military Drills"
+            cost="5 Fides"
+            desc="70% chance: Martial +1"
+            disabled={fides < 5}
+            onPress={() => doAction('martial', 5)}
+          />
           <TraitBadges character={character} />
           <PlayerAmbitionTracker characterId={character.id} />
         </>
@@ -264,9 +273,27 @@ export default function CharacterActionModal({ character, visible, onClose }: Pr
               </TouchableOpacity>
             ))}
           </View>
-          <ActionButton label="Hire a Tutor"     cost="8 Dignitas" desc={`60% chance: ${SKILL_LABELS[selectedSkill]} +1`}           disabled={dignitas < 8} onPress={() => doAction(selectedSkill, 8)} resource="dignitas" />
-          <ActionButton label="Military Training" cost="6 Dignitas" desc="65% chance: Martial +1. Relationship +5."                  disabled={dignitas < 6} onPress={() => doAction('martial',    6)} resource="dignitas" />
-          <ActionButton label="Assign to Patron"  cost="4 Dignitas" desc="50% chance: Rhetoric or Auctoritas +1 (random)"           disabled={dignitas < 4} onPress={() => doAction(Math.random() < 0.5 ? 'rhetoric' : 'auctoritas', 4)} resource="dignitas" />
+          <ActionButton
+            label="Hire a Tutor"
+            cost="8 Fides"
+            desc={`60% chance: ${SKILL_LABELS[selectedSkill]} +1`}
+            disabled={fides < 8}
+            onPress={() => doAction(selectedSkill, 8)}
+          />
+          <ActionButton
+            label="Military Training"
+            cost="6 Fides"
+            desc="65% chance: Martial +1. Relationship +5."
+            disabled={fides < 6}
+            onPress={() => doAction('martial', 6)}
+          />
+          <ActionButton
+            label="Assign to Patron"
+            cost="4 Fides"
+            desc="50% chance: Rhetoric or Intrigus +1 (random)"
+            disabled={fides < 4}
+            onPress={() => doAction(Math.random() < 0.5 ? 'rhetoric' : 'intrigus', 4)}
+          />
           <TraitBadges character={character} />
           <NpcAmbitionDisplay character={character} />
         </>
@@ -339,6 +366,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.ui,
     fontSize: 12,
     fontWeight: '700',
+    color: COLORS.fidesColor,
   },
   actionDesc: {
     color: PARCHMENT.body,

@@ -2,9 +2,8 @@ export type ClientType = 'muscle' | 'publicSupport' | 'votingSway';
 
 export interface ClientBonus {
   gold?: number;
-  gratia?: number;
-  dignitas?: number;
-  gravitas?: number;
+  fides?: number;
+  lifetimeDignitas?: number;
   trialDefenseBonus?: number;
   corruptionShield?: number;
   rhetoricalBonus?: number;

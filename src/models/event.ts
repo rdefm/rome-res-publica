@@ -9,8 +9,7 @@ export type ConditionOperator = 'gt' | 'lt' | 'gte' | 'lte' | 'eq';
 export type EventCondition =
   | { type: 'clientCount'; clientType: ClientType; op: ConditionOperator; value: number }
   | { type: 'hasClient'; clientType: ClientType }
-  // New condition types added for Part 2 events:
-  | { type: 'resource'; key: 'dignitas' | 'gratia' | 'gravitas' | 'denarii' | 'crisisLevel'; op: ConditionOperator; value: number }
+  | { type: 'resource'; key: 'fides' | 'lifetimeDignitas' | 'denarii' | 'crisisLevel'; op: ConditionOperator; value: number }
   | { type: 'rome'; key: 'stability' | 'plebs' | 'treasury'; op: ConditionOperator; value: number }
   | { type: 'season'; index: 0 | 1 | 2 | 3 }   // 0=Spring 1=Summer 2=Autumn 3=Winter
   | { type: 'office'; held: string };            // matches heldOffice id in player character
@@ -19,7 +18,7 @@ export type EventCondition =
 
 export interface SkillCheck {
   characterId: string; // 'player' resolves to the isPlayer character
-  skill: 'rhetoric' | 'auctoritas' | 'martial' | 'intrigus';
+  skill: 'rhetoric' | 'martial' | 'intrigus';
   difficulty: number;
 }
 

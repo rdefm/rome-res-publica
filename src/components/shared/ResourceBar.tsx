@@ -3,25 +3,25 @@ import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGameStore } from '../../state/gameStore';
 import { getCrisisColour } from '../../engine/crisisEngine';
+import { calcResourceIncome } from '../../engine/resourceEngine';
 import SettingsModal from './SettingsModal';
 import { COLORS, FONTS, SPACING, RESOURCE_BAR_HEIGHT } from '../../utils/theme';
 
+// Fides icon: reusing icon-gratia.png (clasped hands) until a dedicated
+// icon-fides.png asset is provided.
 const RESOURCE_ICONS = {
-  dignitas: require('../../assets/images/icon-dignitas.png'),
-  gratia:   require('../../assets/images/icon-gratia.png'),
-  denarii:  require('../../assets/images/icon-denarii.png'),
-  gravitas: require('../../assets/images/icon-gravitas.png'),
+  fides:   require('../../assets/images/icon-gratia.png'),
+  denarii: require('../../assets/images/icon-denarii.png'),
 };
 
 const RESOURCE_TINTS = {
-  dignitas: COLORS.dignitasColor,
-  gratia:   COLORS.gratiaColor,
-  denarii:  COLORS.denariiColor,
-  gravitas: COLORS.marble,
+  fides:   COLORS.fidesColor,
+  denarii: COLORS.denariiColor,
 };
 
-function ResourceItem({ value, tintColor, icon }: {
+function ResourceItem({ value, projectedIncome, tintColor, icon }: {
   value: number;
+  projectedIncome: number;
   tintColor: string;
   icon: ReturnType<typeof require>;
 }) {
@@ -29,16 +29,21 @@ function ResourceItem({ value, tintColor, icon }: {
     <View style={styles.resourceItem}>
       <Image source={icon} style={[styles.resourceIcon, { tintColor }]} />
       <Text style={[styles.resourceValue, { color: tintColor }]}>{value}</Text>
+      <Text style={styles.resourceProjected}>
+        {projectedIncome >= 0 ? '+' : ''}{projectedIncome}
+      </Text>
     </View>
   );
 }
 
 export default function ResourceBar() {
+  const state = useGameStore();
   const {
-    gravitas, dignitas, gratia, denarii,
+    fides, denarii,
     crisisLevel, year, seasonIndex,
     endSeason, seasonOverlayVisible,
-  } = useGameStore();
+  } = state;
+  const { fidesIncome, denariiIncome } = calcResourceIncome(state);
   const insets = useSafeAreaInsets();
   const SEASON_NAMES = ['Spring', 'Summer', 'Autumn', 'Winter'];
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -58,10 +63,18 @@ export default function ResourceBar() {
 
         {/* Centre — resources */}
         <View style={styles.resources}>
-          <ResourceItem value={dignitas} icon={RESOURCE_ICONS.dignitas} tintColor={RESOURCE_TINTS.dignitas} />
-          <ResourceItem value={gratia}   icon={RESOURCE_ICONS.gratia}   tintColor={RESOURCE_TINTS.gratia} />
-          <ResourceItem value={denarii}  icon={RESOURCE_ICONS.denarii}  tintColor={RESOURCE_TINTS.denarii} />
-          <ResourceItem value={gravitas} icon={RESOURCE_ICONS.gravitas} tintColor={RESOURCE_TINTS.gravitas} />
+          <ResourceItem
+            value={fides}
+            projectedIncome={fidesIncome}
+            icon={RESOURCE_ICONS.fides}
+            tintColor={RESOURCE_TINTS.fides}
+          />
+          <ResourceItem
+            value={denarii}
+            projectedIncome={denariiIncome}
+            icon={RESOURCE_ICONS.denarii}
+            tintColor={RESOURCE_TINTS.denarii}
+          />
         </View>
 
         {/* Right — single unified box: date on left, divider, END SEASON on right */}
@@ -117,6 +130,8 @@ const styles = StyleSheet.create({
   resourceItem: {
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 4,
   },
   resourceIcon: {
     width: 20,
@@ -127,6 +142,11 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.ui,
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  resourceProjected: {
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    color: COLORS.dust,
   },
 
   // Single unified rectangle — date | divider | END SEASON

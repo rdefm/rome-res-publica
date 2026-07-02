@@ -7,7 +7,7 @@ export const STARTING_FAMILY: Character[] = [
     role: 'paterfamilias',
     isPlayer: true,
     age: 42,
-    skills: { rhetoric: 6, auctoritas: 7, martial: 3, intrigus: 4 },
+    skills: { rhetoric: 6, martial: 3, intrigus: 4 },
     traits: ['ambitious'],
     ambition: { type: 'gain_dignitas', priority: 0.7 },
     relationship: 100,
@@ -18,6 +18,8 @@ export const STARTING_FAMILY: Character[] = [
     // Migrated from old ambition.type: 'gain_dignitas' → 'wealthy_house'
     ambitionIds: ['wealthy_house'],
     reputationScores: {},
+    formalImperium: 0,
+    militaryImperium: 0,
   },
   {
     id: 'npc-wife',
@@ -25,7 +27,7 @@ export const STARTING_FAMILY: Character[] = [
     role: 'spouse',
     isPlayer: false,
     age: 38,
-    skills: { rhetoric: 5, auctoritas: 4, martial: 0, intrigus: 6 },
+    skills: { rhetoric: 5, martial: 0, intrigus: 6 },
     traits: ['content'],
     ambition: { type: 'protect_family', priority: 0.8 },
     relationship: 80,
@@ -36,6 +38,8 @@ export const STARTING_FAMILY: Character[] = [
     // Migrated from old ambition.type: 'protect_family' → 'survive_dynasty'
     ambitionIds: ['survive_dynasty'],
     reputationScores: {},
+    formalImperium: 0,
+    militaryImperium: 0,
   },
   {
     id: 'npc-son',
@@ -43,7 +47,7 @@ export const STARTING_FAMILY: Character[] = [
     role: 'son',
     isPlayer: false,
     age: 17,
-    skills: { rhetoric: 3, auctoritas: 2, martial: 5, intrigus: 2 },
+    skills: { rhetoric: 3, martial: 5, intrigus: 2 },
     traits: ['aggressive'],
     ambition: { type: 'personal_power', priority: 0.5 },
     relationship: 70,
@@ -54,6 +58,8 @@ export const STARTING_FAMILY: Character[] = [
     // Migrated from old ambition.type: 'personal_power' → 'first_consul'
     ambitionIds: ['first_consul'],
     reputationScores: {},
+    formalImperium: 0,
+    militaryImperium: 0,
   },
   {
     id: 'npc-daughter',
@@ -61,7 +67,7 @@ export const STARTING_FAMILY: Character[] = [
     role: 'daughter',
     isPlayer: false,
     age: 15,
-    skills: { rhetoric: 4, auctoritas: 3, martial: 0, intrigus: 5 },
+    skills: { rhetoric: 4, martial: 0, intrigus: 5 },
     traits: ['cautious'],
     ambition: null,
     relationship: 75,
@@ -71,5 +77,7 @@ export const STARTING_FAMILY: Character[] = [
     inheritedTraits: [],
     ambitionIds: [],
     reputationScores: {},
+    formalImperium: 0,
+    militaryImperium: 0,
   },
 ];

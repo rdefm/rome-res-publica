@@ -52,11 +52,11 @@ const ROME_STAT_CONFIG: Record<RomeStat, {
     color: COLORS.laurel,
     ticks: [20, 40, 70, 85],
     thresholds: [
-      { range: '0–19',   label: 'Instability', effects: 'Crisis escalation ×1.5 · Gravitas −2/season' },
-      { range: '20–39',  label: 'Fragile',      effects: 'Crisis escalation ×1.25 · Gravitas −1/season' },
+      { range: '0–19',   label: 'Instability', effects: 'Crisis escalation ×1.5 · Fides −2/season' },
+      { range: '20–39',  label: 'Fragile',      effects: 'Crisis escalation ×1.25 · Fides −1/season' },
       { range: '40–69',  label: 'Stable',       effects: 'No modifier (baseline)' },
-      { range: '70–84',  label: 'Cohesive',     effects: 'Gravitas +1/season' },
-      { range: '85–100', label: 'Pax Interna',  effects: 'Gravitas +2/season · Crisis escalation ×0.85' },
+      { range: '70–84',  label: 'Cohesive',     effects: 'Fides +1/season' },
+      { range: '85–100', label: 'Pax Interna',  effects: 'Fides +2/season · Crisis escalation ×0.85' },
     ],
   },
   plebs: {
@@ -64,11 +64,11 @@ const ROME_STAT_CONFIG: Record<RomeStat, {
     color: COLORS.purple,
     ticks: [20, 40, 70, 85],
     thresholds: [
-      { range: '0–19',   label: 'Rioting',    effects: 'Gratia −3/season · Crisis +3/season autonomous · 20% grain riot chance' },
-      { range: '20–39',  label: 'Restless',   effects: 'Gratia −1/season · 10% grain riot chance' },
+      { range: '0–19',   label: 'Rioting',    effects: 'Fides −3/season · Crisis +3/season autonomous · 20% grain riot chance' },
+      { range: '20–39',  label: 'Restless',   effects: 'Fides −1/season · 10% grain riot chance' },
       { range: '40–69',  label: 'Content',    effects: 'No modifier (baseline)' },
-      { range: '70–84',  label: 'Supportive', effects: 'Gratia +1/season · Populist bills +5 support' },
-      { range: '85–100', label: 'Euphoric',   effects: 'Gratia +2/season · Populist bills +10 support · Patron call-ins waived' },
+      { range: '70–84',  label: 'Supportive', effects: 'Fides +1/season · Populist bills +5 support' },
+      { range: '85–100', label: 'Euphoric',   effects: 'Fides +2/season · Populist bills +10 support · Patron call-ins waived' },
     ],
   },
   treasury: {
@@ -164,7 +164,7 @@ const OUTCOME_COLORS: Record<string, string> = {
 };
 
 function TrialBanner() {
-  const { trialQueue, family, clans, ownedAssets, denarii, gratia, gravitas, takeTrialAction } = useGameStore();
+  const { trialQueue, family, clans, ownedAssets, denarii, fides, takeTrialAction } = useGameStore();
   const [expanded, setExpanded] = useState(false);
   const activeTrial = trialQueue.find(t => !t.resolved);
 
@@ -183,7 +183,7 @@ function TrialBanner() {
   const accused = family.find(c => c.id === activeTrial.accusedCharacterId);
   const clan = clans.find(c => c.id === activeTrial.accusingClanId);
   const unlockedAssetActions = getUnlockedAssetActions(ownedAssets);
-  const resources: Record<string, number> = { denarii, gratia, gravitas };
+  const resources: Record<string, number> = { denarii, fides };
 
   return (
     <View style={tb.container}>
@@ -215,7 +215,7 @@ function TrialBanner() {
             const needsAsset = action.requiresAssetAction && !unlockedAssetActions.includes(action.requiresAssetAction);
             const canAfford = resources[action.cost.resource] >= action.cost.amount;
             const disabled = alreadyUsed || !!needsAsset || !canAfford;
-            const resourceLabel = action.cost.resource === 'denarii' ? 'Denarii' : action.cost.resource === 'gratia' ? 'Gratia' : 'Gravitas';
+            const resourceLabel = action.cost.resource === 'denarii' ? 'Denarii' : 'Fides';
             return (
               <TouchableOpacity key={action.id} style={[tb.actionBtn, disabled && tb.actionBtnDisabled]} disabled={disabled} onPress={() => takeTrialAction(activeTrial.id, action.id)} activeOpacity={0.75}>
                 <View style={tb.actionRow}>
@@ -258,7 +258,7 @@ const tb = StyleSheet.create({
 // ─── Bill card ────────────────────────────────────────────────────────────────
 
 function BillCard({ bill }: { bill: Bill }) {
-  const { rome, gravitas, expandBill, _expandedBill, _expandedType, voteBill, speechBill, filibusterBill } = useGameStore();
+  const { rome, fides, expandBill, _expandedBill, _expandedType, voteBill, speechBill, filibusterBill } = useGameStore();
   const isExpandedVote = _expandedBill === bill.id && _expandedType === 'vote';
   const isExpandedSpeech = _expandedBill === bill.id && _expandedType === 'speech';
 
@@ -267,8 +267,8 @@ function BillCard({ bill }: { bill: Bill }) {
   const supportVerdict = effectiveSupport > 0 ? 'Likely to pass' : effectiveSupport < -20 ? 'Likely to fail' : 'Too close to call';
   const verdictColor = effectiveSupport > 0 ? COLORS.laurel : effectiveSupport < -20 ? COLORS.crimson : COLORS.gold;
 
-  const voteGravitasCost = bill.voteGravitasCost ?? 4;
-  const speechGravitasCost = bill.speechGravitasCost ?? 6;
+  const voteFidesCost = bill.voteGravitasCost ?? 4;
+  const speechFidesCost = bill.speechGravitasCost ?? 6;
 
   return (
     <View style={bstyle.card}>
@@ -306,34 +306,34 @@ function BillCard({ bill }: { bill: Bill }) {
       <View style={bstyle.actions}>
         <TouchableOpacity style={[bstyle.actionBtn, isExpandedVote && bstyle.actionBtnActive]} onPress={() => expandBill(bill.id, 'vote')}>
           <Text style={bstyle.actionLabel}>VOTE</Text>
-          <Text style={bstyle.actionCost}>-{voteGravitasCost} ⚖️</Text>
+          <Text style={bstyle.actionCost}>-{voteFidesCost} 🤝</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[bstyle.actionBtn, isExpandedSpeech && bstyle.actionBtnActive]} onPress={() => expandBill(bill.id, 'speech')}>
           <Text style={bstyle.actionLabel}>SPEECH</Text>
-          <Text style={bstyle.actionCost}>-{speechGravitasCost} ⚖️</Text>
+          <Text style={bstyle.actionCost}>-{speechFidesCost} 🤝</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[bstyle.actionBtn, gravitas < 8 && bstyle.actionBtnDisabled]} onPress={() => filibusterBill(bill.id)} disabled={gravitas < 8}>
+        <TouchableOpacity style={[bstyle.actionBtn, fides < 8 && bstyle.actionBtnDisabled]} onPress={() => filibusterBill(bill.id)} disabled={fides < 8}>
           <Text style={bstyle.actionLabel}>FILIBUSTER</Text>
-          <Text style={bstyle.actionCost}>-8 ⚖️</Text>
+          <Text style={bstyle.actionCost}>-8 🤝</Text>
         </TouchableOpacity>
       </View>
 
       {isExpandedVote && (
         <View style={bstyle.expanded}>
-          <TouchableOpacity style={[bstyle.subBtn, { borderColor: COLORS.laurel }, gravitas < voteGravitasCost && bstyle.actionBtnDisabled]} onPress={() => voteBill(bill.id, 'vote_for')} disabled={gravitas < voteGravitasCost}>
+          <TouchableOpacity style={[bstyle.subBtn, { borderColor: COLORS.laurel }, fides < voteFidesCost && bstyle.actionBtnDisabled]} onPress={() => voteBill(bill.id, 'vote_for')} disabled={fides < voteFidesCost}>
             <Text style={[bstyle.subBtnLabel, { color: COLORS.laurel }]}>Vote For (+{bill.voteForSupport ?? 15} support)</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[bstyle.subBtn, { borderColor: COLORS.crimson }, gravitas < voteGravitasCost && bstyle.actionBtnDisabled]} onPress={() => voteBill(bill.id, 'vote_against')} disabled={gravitas < voteGravitasCost}>
+          <TouchableOpacity style={[bstyle.subBtn, { borderColor: COLORS.crimson }, fides < voteFidesCost && bstyle.actionBtnDisabled]} onPress={() => voteBill(bill.id, 'vote_against')} disabled={fides < voteFidesCost}>
             <Text style={[bstyle.subBtnLabel, { color: COLORS.crimson }]}>Vote Against (−{Math.abs(bill.voteAgainstSupport ?? 15)} support)</Text>
           </TouchableOpacity>
         </View>
       )}
       {isExpandedSpeech && (
         <View style={bstyle.expanded}>
-          <TouchableOpacity style={[bstyle.subBtn, { borderColor: COLORS.laurel }, gravitas < speechGravitasCost && bstyle.actionBtnDisabled]} onPress={() => speechBill(bill.id, 'for')} disabled={gravitas < speechGravitasCost}>
+          <TouchableOpacity style={[bstyle.subBtn, { borderColor: COLORS.laurel }, fides < speechFidesCost && bstyle.actionBtnDisabled]} onPress={() => speechBill(bill.id, 'for')} disabled={fides < speechFidesCost}>
             <Text style={[bstyle.subBtnLabel, { color: COLORS.laurel }]}>Speak in Favour</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[bstyle.subBtn, { borderColor: COLORS.crimson }, gravitas < speechGravitasCost && bstyle.actionBtnDisabled]} onPress={() => speechBill(bill.id, 'against')} disabled={gravitas < speechGravitasCost}>
+          <TouchableOpacity style={[bstyle.subBtn, { borderColor: COLORS.crimson }, fides < speechFidesCost && bstyle.actionBtnDisabled]} onPress={() => speechBill(bill.id, 'against')} disabled={fides < speechFidesCost}>
             <Text style={[bstyle.subBtnLabel, { color: COLORS.crimson }]}>Speak Against</Text>
           </TouchableOpacity>
         </View>
@@ -362,7 +362,7 @@ const bstyle = StyleSheet.create({
   actionBtnActive: { borderColor: COLORS.gold, backgroundColor: COLORS.goldDim + '22' },
   actionBtnDisabled: { opacity: 0.4 },
   actionLabel: { color: COLORS.marble, fontFamily: FONTS.ui, fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
-  actionCost: { color: COLORS.gravitasColor, fontFamily: FONTS.ui, fontSize: 9, marginTop: 1 },
+  actionCost: { color: COLORS.fidesColor, fontFamily: FONTS.ui, fontSize: 9, marginTop: 1 },
   expanded: { marginTop: 8, gap: 6 },
   subBtn: { borderWidth: 1, borderRadius: RADIUS.sm, padding: SPACING.sm, minHeight: 44, justifyContent: 'center' },
   subBtnLabel: { fontFamily: FONTS.display, fontSize: 14, fontWeight: '600', textAlign: 'center' },
@@ -371,9 +371,9 @@ const bstyle = StyleSheet.create({
 // ─── Active Law card ──────────────────────────────────────────────────────────
 
 function ActiveLawCard({ law }: { law: ActiveLaw }) {
-  const { proposeRepeal, gravitas, bills, turnNumber } = useGameStore();
+  const { proposeRepeal, fides, bills, turnNumber } = useGameStore();
   const repealAlreadyActive = bills.some(b => b.type === 'repeal' && b.repeals === law.billId);
-  const canRepeal = law.repealable && !repealAlreadyActive && gravitas >= 10;
+  const canRepeal = law.repealable && !repealAlreadyActive && fides >= 10;
 
   const seasonsLeft = law.expiresOnTurn !== undefined ? law.expiresOnTurn - turnNumber : null;
 
@@ -393,7 +393,7 @@ function ActiveLawCard({ law }: { law: ActiveLaw }) {
           disabled={!canRepeal}
         >
           <Text style={alc.repealLabel}>
-            {repealAlreadyActive ? 'Repeal pending' : 'Propose Repeal (−10 ⚖️)'}
+            {repealAlreadyActive ? 'Repeal pending' : 'Propose Repeal (−10 🤝)'}
           </Text>
         </TouchableOpacity>
       )}
@@ -415,7 +415,7 @@ const alc = StyleSheet.create({
 // ─── Submit bill modal ────────────────────────────────────────────────────────
 
 function SubmitBillModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const { bills, submitBill, gravitas, crisisLevel, rome } = useGameStore();
+  const { bills, submitBill, fides, crisisLevel, rome } = useGameStore();
   const existing = new Set(bills.map(b => b.name));
 
   const available = ALL_BILL_TEMPLATES.filter(t => {
@@ -440,15 +440,15 @@ function SubmitBillModal({ visible, onClose }: { visible: boolean; onClose: () =
       <View style={modal.sheet}>
         <View style={modal.handle} />
         <Text style={modal.title}>Submit a Bill</Text>
-        <Text style={modal.cost}>Cost: 10 Gravitas</Text>
+        <Text style={modal.cost}>Cost: 10 Fides</Text>
         <ScrollView>
           {available.map((t, i) => {
             const romeMod = calcRomeStatVoteModifier(t as Bill, rome);
             return (
               <TouchableOpacity
                 key={i}
-                style={[modal.item, gravitas < 10 && modal.itemDisabled]}
-                disabled={gravitas < 10}
+                style={[modal.item, fides < 10 && modal.itemDisabled]}
+                disabled={fides < 10}
                 onPress={() => { submitBill(t as any); onClose(); }}
               >
                 <View style={modal.itemHeader}>
@@ -475,7 +475,7 @@ const modal = StyleSheet.create({
   sheet: { backgroundColor: COLORS.panelSurface, borderTopColor: COLORS.border, borderTopWidth: 1, borderTopLeftRadius: 12, borderTopRightRadius: 12, padding: SPACING.md, paddingBottom: SPACING.xl, maxHeight: '75%' },
   handle: { width: 40, height: 4, backgroundColor: COLORS.border, borderRadius: 2, alignSelf: 'center', marginBottom: SPACING.md },
   title: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 18, fontWeight: '700', textAlign: 'center' },
-  cost: { color: COLORS.gravitasColor, fontFamily: FONTS.ui, fontSize: 12, textAlign: 'center', marginBottom: SPACING.md },
+  cost: { color: COLORS.fidesColor, fontFamily: FONTS.ui, fontSize: 12, textAlign: 'center', marginBottom: SPACING.md },
   item: { backgroundColor: COLORS.panelElevated, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.sm },
   itemDisabled: { opacity: 0.4 },
   itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
@@ -491,7 +491,7 @@ const modal = StyleSheet.create({
 // ─── CuriaScreen ──────────────────────────────────────────────────────────────
 
 export default function CuriaScreen() {
-  const { rome, crisisLevel, bills, activeLaws, gravitas, turnNumber } = useGameStore();
+  const { rome, crisisLevel, bills, activeLaws, fides, turnNumber } = useGameStore();
   const [submitVisible, setSubmitVisible] = useState(false);
   const [activeLawsExpanded, setActiveLawsExpanded] = useState(true);
   const [romeStatModal, setRomeStatModal] = useState<RomeStat | null>(null);
@@ -540,9 +540,9 @@ export default function CuriaScreen() {
         <View style={[styles.panel, { borderColor: crisisColor }]}>
           <Text style={[styles.crisisTitle, { color: crisisColor }]}>{crisis.title}</Text>
           <Text style={styles.crisisNarr}>{crisis.narrative}</Text>
-          {crisis.gravitasPenalty > 0 && (
+          {crisis.fidesPenalty > 0 && (
             <Text style={styles.crisisPenalty}>
-              Penalties: −{crisis.gravitasPenalty} Gravitas/season
+              Penalties: −{crisis.fidesPenalty} Fides/season
               {crisis.dignitasPenalty > 0 ? `, −${crisis.dignitasPenalty} Dignitas/season` : ''}
             </Text>
           )}
@@ -556,12 +556,12 @@ export default function CuriaScreen() {
         <View style={styles.billsHeader}>
           <Text style={styles.sectionLabel}>LEGES — ACTIVE BILLS</Text>
           <TouchableOpacity
-            style={[styles.submitBtn, gravitas < 10 && styles.submitBtnDisabled]}
+            style={[styles.submitBtn, fides < 10 && styles.submitBtnDisabled]}
             onPress={() => setSubmitVisible(true)}
-            disabled={gravitas < 10}
+            disabled={fides < 10}
           >
             <Text style={styles.submitBtnLabel}>+ Submit Bill</Text>
-            <Text style={styles.submitBtnCost}>−10 ⚖️</Text>
+            <Text style={styles.submitBtnCost}>−10 🤝</Text>
           </TouchableOpacity>
         </View>
 
@@ -623,7 +623,7 @@ const styles = StyleSheet.create({
   submitBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.panelElevated, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.sm, paddingVertical: 6 },
   submitBtnDisabled: { opacity: 0.4 },
   submitBtnLabel: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 13, fontWeight: '600' },
-  submitBtnCost: { color: COLORS.gravitasColor, fontFamily: FONTS.ui, fontSize: 11 },
+  submitBtnCost: { color: COLORS.fidesColor, fontFamily: FONTS.ui, fontSize: 11 },
   emptyText: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 13, textAlign: 'center', marginTop: SPACING.lg },
   activeLawsSection: { marginTop: SPACING.md },
   chevron: { color: COLORS.dust, fontSize: 14 },

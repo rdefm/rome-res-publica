@@ -52,7 +52,7 @@ export function buildRepealBill(law: ActiveLaw): Bill {
     .find(t => t.id === law.billId);
 
   // Build inverted pass effect — flip sign on rome stats only
-  const REVERSIBLE_KEYS = new Set(['stability', 'plebs', 'treasury', 'gravitas', 'dignitas', 'gratia', 'plebs']);
+  const REVERSIBLE_KEYS = new Set(['stability', 'plebs', 'treasury', 'fides', 'lifetimeDignitas']);
   const originalEffects = parseEffect(template?.passEffect ?? '');
   const repealPassParts = originalEffects
     .filter(e => REVERSIBLE_KEYS.has(e.key))
@@ -82,7 +82,7 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     desc: 'Road maintenance and expansion across the Republic.',
     type: 'economic',
     support: 15, turnsLeft: 3,
-    passEffect: 'stability+5|dignitas+4', failEffect: 'crisis+3',
+    passEffect: 'stability+5|lifetimeDignitas+4', failEffect: 'crisis+3',
     repealable: false,
   },
   {
@@ -91,7 +91,7 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     desc: 'Codifies age requirements for magistracies.',
     type: 'constitutional',
     support: -10, turnsLeft: 4,
-    passEffect: 'gravitas+6', failEffect: 'dignitas-3',
+    passEffect: 'fides+6', failEffect: 'lifetimeDignitas-3',
     repealable: false,
   },
   {
@@ -109,7 +109,7 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     desc: 'Emergency war powers authorization for the consuls.',
     type: 'military',
     support: -20, turnsLeft: 2,
-    passEffect: 'crisis-12|gravitas+5', failEffect: 'crisis+10',
+    passEffect: 'crisis-12|fides+5', failEffect: 'crisis+10',
     repealable: false,
   },
   {
@@ -118,7 +118,7 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     desc: 'Grants citizenship rights to select allied communities.',
     type: 'constitutional',
     support: 5, turnsLeft: 4,
-    passEffect: 'stability+10|dignitas+6|crisis-6', failEffect: 'crisis+8|dignitas-4',
+    passEffect: 'stability+10|lifetimeDignitas+6|crisis-6', failEffect: 'crisis+8|lifetimeDignitas-4',
     repealable: false,
   },
   {
@@ -127,7 +127,7 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     desc: 'Restricts luxury expenditure among the senatorial class.',
     type: 'optimates',
     support: -25, turnsLeft: 3,
-    passEffect: 'gravitas+8|dignitas+3', failEffect: 'gravitas-3',
+    passEffect: 'fides+8|lifetimeDignitas+3', failEffect: 'fides-3',
     repealable: true,
   },
   {
@@ -172,7 +172,7 @@ export const AUTO_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> 
     desc: 'Emergency decree granting consuls extraordinary powers.',
     type: 'emergency',
     support: -20, turnsLeft: 2,
-    passEffect: 'crisis-15|gravitas+5', failEffect: 'crisis+5',
+    passEffect: 'crisis-15|fides+5', failEffect: 'crisis+5',
     repealable: false,
   },
   {
@@ -181,7 +181,7 @@ export const AUTO_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> 
     desc: 'Protections against arbitrary punishment of citizens.',
     type: 'constitutional',
     support: 10, turnsLeft: 4,
-    passEffect: 'dignitas+6', failEffect: 'dignitas-3',
+    passEffect: 'lifetimeDignitas+6', failEffect: 'lifetimeDignitas-3',
     repealable: false,
   },
 ];
@@ -202,7 +202,7 @@ export const STARTING_BILLS: Bill[] = [
     desc: 'Authorization of war funding against Carthage.',
     type: 'military',
     support: -30, turnsLeft: 2,
-    passEffect: 'crisis-10|gravitas+4', failEffect: 'crisis+12',
+    passEffect: 'crisis-10|fides+4', failEffect: 'crisis+12',
     repealable: false,
   },
   {
@@ -278,7 +278,7 @@ export const HISTORICAL_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmit
     support: 15, turnsLeft: 4,
     duration: 40, renewable: true,
     renewalFlavour: 'The right of appeal has lapsed. The Senate must renew the Lex Valeria or Rome\'s citizens stand unprotected.',
-    passEffect: 'stability+10|plebs+8|dignitas+4', failEffect: 'stability-5|plebs-4|crisis+3',
+    passEffect: 'stability+10|plebs+8|lifetimeDignitas+4', failEffect: 'stability-5|plebs-4|crisis+3',
     repealable: false,
   },
   {

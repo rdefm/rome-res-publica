@@ -39,15 +39,9 @@ export interface GameState {
   seasonIndex: number; // 0=Spring 1=Summer 2=Autumn 3=Winter
 
   // Resources
-  gravitas: number;
-  dignitas: number;
-  gratia: number;
+  fides: number;
   denarii: number;
   imperium: number;
-
-  // Laudatio
-  laudatioActive: boolean;
-  laudatioBonus: number;
 
   // Faction standings (-100 to +100)
   popularesRel: number;
@@ -122,7 +116,7 @@ export interface GameState {
     suggestedName: string;
     role: 'son' | 'daughter';
     inheritedTraits: string[];
-    baseSkills: { rhetoric: number; auctoritas: number; martial: number; intrigus: number };
+    baseSkills: { rhetoric: number; martial: number; intrigus: number };
   } | null;
 
   // Log
@@ -144,7 +138,7 @@ export interface GameActions {
   dismissSeasonOverlay: () => void;
 
   // Resources
-  spendResource: (resource: 'gravitas' | 'dignitas' | 'gratia' | 'denarii', amount: number) => void;
+  spendResource: (resource: 'fides' | 'denarii', amount: number) => void;
 
   // Domus
   selectCharacter: (id: string) => void;
@@ -239,14 +233,9 @@ export const INITIAL_STATE: GameState = {
   turnNumber: 1,
   seasonIndex: 0,
 
-  gravitas: 20,
-  dignitas: 20,
-  gratia: 30,
+  fides: 30,
   denarii: 200,
   imperium: 0,
-
-  laudatioActive: false,
-  laudatioBonus: 0,
 
   popularesRel: 0,
   optimatesRel: 0,
@@ -320,7 +309,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   proposeRepeal: (lawId) => {
     const s = get();
-    if (s.gravitas < 10) return;
+    if (s.fides < 10) return;
     const law = (s.activeLaws ?? []).find(l => l.billId === lawId);
     if (!law || !law.repealable) return;
     const repealAlreadyActive = s.bills.some(b => b.type === 'repeal' && b.repeals === lawId);
@@ -329,7 +318,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const repealBill = buildRepealBill(law);
     const label = turnLabel(s);
     set({
-      gravitas: s.gravitas - 10,
+      fides: s.fides - 10,
       bills: [...s.bills, repealBill],
       log: [...s.log, mkLog(label, `Abrogatio proposed: ${law.name}.`, 'neutral')],
     });
@@ -380,7 +369,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   trainCharacter: (characterId, skill, cost) => {
     const s = get();
-    if (s.dignitas < cost) return;
+    if (s.fides < cost) return;
     const char = s.family.find((c) => c.id === characterId);
     if (!char) return;
     const roll = Math.random();
@@ -388,7 +377,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const label = turnLabel(s);
     if (success) {
       set({
-        dignitas: s.dignitas - cost,
+        fides: s.fides - cost,
         family: s.family.map((c) =>
           c.id === characterId
             ? { ...c, skills: { ...c.skills, [skill]: c.skills[skill] + 1 } }
@@ -398,7 +387,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       });
     } else {
       set({
-        dignitas: s.dignitas - cost,
+        fides: s.fides - cost,
         log: [...s.log, mkLog(label, `${char.name}'s training yields no progress this season.`, 'neutral')],
       });
     }
@@ -406,13 +395,12 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   commissionLaudatio: () => {
     const s = get();
-    if (s.dignitas < 10) return;
+    if (s.fides < 10) return;
     const label = turnLabel(s);
     set({
-      dignitas: s.dignitas - 10,
-      laudatioActive: true,
-      laudatioBonus: (s.laudatioBonus || 0) + 2,
-      log: [...s.log, mkLog(label, 'A laudatio commissioned. Recurring Dignitas income increases.', 'good')],
+      fides: s.fides - 10,
+      lifetimeDignitas: s.lifetimeDignitas + 10,
+      log: [...s.log, mkLog(label, 'A laudatio commissioned. Lifetime Dignitas +10.', 'good')],
     });
   },
 
@@ -428,10 +416,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   arrangeMarriageDomus: () => {
     const s = get();
-    if (s.dignitas < 15) return;
+    if (s.fides < 15) return;
     const label = turnLabel(s);
     set({
-      dignitas: s.dignitas - 15,
+      fides: s.fides - 15,
       log: [...s.log, mkLog(label, 'Marriage arranged within the family.', 'neutral')],
     });
   },
@@ -445,14 +433,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const s = get();
     const bill = s.bills.find((b) => b.id === billId);
     if (!bill) return;
-    const voteGravitasCost = bill.voteGravitasCost ?? 4;
-    if (s.gravitas < voteGravitasCost) return;
+    const voteFidesCost = bill.voteGravitasCost ?? 4;
+    if (s.fides < voteFidesCost) return;
     const delta = vote === 'vote_for'
       ? (bill.voteForSupport ?? 15)
       : (bill.voteAgainstSupport ?? -15);
     const label = turnLabel(s);
     set({
-      gravitas: s.gravitas - voteGravitasCost,
+      fides: s.fides - voteFidesCost,
       bills: s.bills.map((b) =>
         b.id === billId ? { ...b, support: b.support + delta } : b
       ),
@@ -466,8 +454,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const s = get();
     const bill = s.bills.find((b) => b.id === billId);
     if (!bill) return;
-    const speechGravitasCost = bill.speechGravitasCost ?? 6;
-    if (s.gravitas < speechGravitasCost) return;
+    const speechFidesCost = bill.speechGravitasCost ?? 6;
+    if (s.fides < speechFidesCost) return;
     const player = s.family.find((c) => c.isPlayer);
     const rhetoric = player?.skills.rhetoric ?? 0;
     const roll = Math.random();
@@ -479,7 +467,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       : 0;
     const label = turnLabel(s);
     set({
-      gravitas: s.gravitas - speechGravitasCost,
+      fides: s.fides - speechFidesCost,
       bills: s.bills.map((b) =>
         b.id === billId ? { ...b, support: b.support + delta } : b
       ),
@@ -502,10 +490,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const s = get();
     const bill = s.bills.find((b) => b.id === billId);
     if (!bill) return;
-    if (s.gravitas < 8) return;
+    if (s.fides < 8) return;
     const label = turnLabel(s);
     set({
-      gravitas: s.gravitas - 8,
+      fides: s.fides - 8,
       bills: s.bills.map((b) =>
         b.id === billId ? { ...b, turnsLeft: b.turnsLeft + 1 } : b
       ),
@@ -517,11 +505,11 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   submitBill: (template) => {
     const s = get();
-    if (s.gravitas < 10) return;
+    if (s.fides < 10) return;
     const newBill: Bill = { ...template, id: `player-bill-${Date.now()}` };
     const label = turnLabel(s);
     set({
-      gravitas: s.gravitas - 10,
+      fides: s.fides - 10,
       bills: [...s.bills, newBill],
       log: [...s.log, mkLog(label, `${newBill.name} tabled in the Senate.`, 'neutral')],
     });
@@ -534,10 +522,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   buyInfluence: (leaderId) => {
     const s = get();
-    if (s.gratia < 10) return;
+    if (s.fides < 10) return;
     const label = turnLabel(s);
     set({
-      gratia: s.gratia - 10,
+      fides: s.fides - 10,
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
@@ -566,10 +554,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   forgeAlliance: (leaderId) => {
     const s = get();
-    if (s.gratia < 20) return;
+    if (s.fides < 20) return;
     const label = turnLabel(s);
     set({
-      gratia: s.gratia - 20,
+      fides: s.fides - 20,
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
@@ -582,10 +570,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   arrangeMarriageForum: (leaderId) => {
     const s = get();
-    if (s.dignitas < 20) return;
+    if (s.fides < 20) return;
     const label = turnLabel(s);
     set({
-      dignitas: s.dignitas - 20,
+      fides: s.fides - 20,
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
@@ -598,10 +586,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   gatherIntelligence: (leaderId) => {
     const s = get();
-    if (s.gratia < 8) return;
+    if (s.fides < 8) return;
     const label = turnLabel(s);
     set({
-      gratia: s.gratia - 8,
+      fides: s.fides - 8,
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
@@ -614,10 +602,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   canvassForVotes: (leaderId) => {
     const s = get();
-    if (s.gratia < 12) return;
+    if (s.fides < 12) return;
     const label = turnLabel(s);
     set({
-      gratia: s.gratia - 12,
+      fides: s.fides - 12,
       campaignVotes: { ...s.campaignVotes, [leaderId]: 'for' },
       log: [...s.log, mkLog(label, 'Canvassing complete. Clan leader support secured.', 'good')],
     });
@@ -980,10 +968,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const rp = result.resourcePatch;
 
     set({
-      ...(rp.gratia  !== undefined ? { gratia:  Math.max(0, s.gratia  + rp.gratia)  } : {}),
+      ...(rp.fides   !== undefined ? { fides:   Math.max(0, s.fides   + rp.fides)   } : {}),
       ...(rp.denarii !== undefined ? { denarii: Math.max(0, s.denarii + rp.denarii) } : {}),
-      ...(rp.dignitas !== undefined ? { dignitas: Math.max(0, s.dignitas + rp.dignitas) } : {}),
-      ...(rp.gravitas !== undefined ? { gravitas: Math.max(0, s.gravitas + rp.gravitas) } : {}),
       provinces: s.provinces.map(p =>
         p.id === provinceId
           ? {
@@ -1081,7 +1067,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
     if (s.clients.some(c => (c as any).provincialClientDefId === clientId)) return;
 
-    if (s.gratia < 20) return;
+    if (s.fides < 20) return;
 
     const label = turnLabel(s);
     const newClient = {
@@ -1095,7 +1081,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
     set({
       clients: [...s.clients, newClient as any],
-      gratia: s.gratia - 20,
+      fides: s.fides - 20,
       log: [...s.log, mkLog(label, `${clientDef.name} joins the Brutii as a provincial client.`, 'good')],
     });
   },

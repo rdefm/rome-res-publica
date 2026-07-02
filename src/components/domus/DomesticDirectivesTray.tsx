@@ -6,7 +6,7 @@ import ParchmentCard, { PARCHMENT_TEXT } from '../shared/ParchmentCard';
 
 export default function DomesticDirectivesTray() {
   const {
-    dignitas, laudatioActive, laudatioBonus,
+    fides,
     commissionLaudatio, performAdrogatio, arrangeMarriageDomus,
   } = useGameStore();
 
@@ -16,41 +16,33 @@ export default function DomesticDirectivesTray() {
 
       <DirectiveButton
         label="Commission Laudatio"
-        cost="12 Dignitas"
-        desc={
-          laudatioActive
-            ? `Active — +${laudatioBonus} Dignitas/season`
-            : 'Establish a recurring ancestral praise — Dignitas income +3/season'
-        }
-        badge={laudatioActive ? `+${laudatioBonus}/yr` : undefined}
-        disabled={dignitas < 12}
+        cost="10 Fides"
+        desc="Honour your ancestors with a public eulogy. Lifetime Dignitas +10."
+        disabled={fides < 10}
         onPress={commissionLaudatio}
-        resource="dignitas"
       />
 
       <DirectiveButton
         label="Adrogatio — Adopt Talent"
-        cost="15 Dignitas"
+        cost="50 Denarii"
         desc="Adopt a high-skill commoner. Family trust suffers."
-        disabled={dignitas < 15}
+        disabled={fides < 0} // cost is denarii — guard handled in store; never disabled by fides
         onPress={performAdrogatio}
-        resource="dignitas"
       />
 
       <DirectiveButton
         label="Arrange Marriage"
-        cost="10 Dignitas"
+        cost="15 Fides"
         desc="Strengthen family bonds through a strategic match. Relationship +15."
-        disabled={dignitas < 10}
+        disabled={fides < 15}
         onPress={arrangeMarriageDomus}
-        resource="dignitas"
       />
     </View>
   );
 }
 
 function DirectiveButton({
-  label, cost, desc, disabled, onPress, badge, resource,
+  label, cost, desc, disabled, onPress, badge,
 }: {
   label: string;
   cost: string;
@@ -58,10 +50,7 @@ function DirectiveButton({
   disabled: boolean;
   onPress: () => void;
   badge?: string;
-  resource: 'dignitas' | 'gravitas';
 }) {
-  const costColor = resource === 'dignitas' ? COLORS.dignitasColor : COLORS.gravitasColor;
-
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -78,7 +67,7 @@ function DirectiveButton({
                 <Text style={styles.badgeText}>{badge}</Text>
               </View>
             )}
-            <Text style={[styles.cost, { color: costColor }]}>{cost}</Text>
+            <Text style={styles.cost}>{cost}</Text>
           </View>
         </View>
         <Text style={styles.desc}>{desc}</Text>
@@ -124,6 +113,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.ui,
     fontSize: 12,
     fontWeight: '700',
+    color: COLORS.fidesColor,
   },
   badge: {
     backgroundColor: COLORS.laurel + '33',

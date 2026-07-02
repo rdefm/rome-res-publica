@@ -4,19 +4,30 @@ import type { EventInstance } from '../models/event';
 import { parseEffect } from '../models/bill';
 import { generateClientName } from '../data/clientNames';
 import { computeTotalAssetBonuses } from './assetEngine';
-import { calcAssetGoldOutput, calcAssetDignitasOutput, calcAssetGratiaOutput } from './provinceEngine';
+import { calcAssetGoldOutput } from './provinceEngine';
 import { buildClient, computeTotalClientBonuses } from './clientEngine';
+import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 
 export interface ApplyEffectOptions {
   previewClientName?: string;
   instance?: EventInstance | null;
 }
 
+// ─── Office Fides bonus lookup ────────────────────────────────────────────────
+// offices.ts does not carry a fidesBonusPerSeason field, so we maintain
+// the lookup here per the spec.
+
+const OFFICE_FIDES_BONUS: Record<string, number> = {
+  quaestor: 3,
+  aedile:   5,
+  praetor:  7,
+  consul:   12,
+};
+
 // ─── Rome stat modifiers ──────────────────────────────────────────────────────
 
 export interface RomeStatModifiers {
-  gravitasDelta: number;
-  gratiaDelta: number;
+  fidesDelta: number;
   denariDelta: number;
   crisisEscalationMultiplier: number;
   crisisAbsorption: number;
@@ -30,51 +41,53 @@ export interface RomeStatModifiers {
 /**
  * Compute all passive modifiers from the three Rome stats.
  * Called once per season in calcResourceIncome and turnSequencer.
+ *
+ * gravitasDelta (stability) and gratiaDelta (plebs) are merged into fidesDelta.
  */
 export function calcRomeStatModifiers(rome: GameState['rome']): RomeStatModifiers {
   const { stability, plebs, treasury } = rome;
 
-  // ── Stability ──────────────────────────────────────────────────────────────
-  let gravitasFromStability = 0;
+  // ── Stability → Fides contribution ────────────────────────────────────────
+  let fidesFromStability = 0;
   let crisisMultiplier = 1.0;
   let stabilityLabel = 'Stable';
   if (stability < 20) {
-    gravitasFromStability = -2;
+    fidesFromStability = -2;
     crisisMultiplier = 1.5;
     stabilityLabel = 'Instability';
   } else if (stability < 40) {
-    gravitasFromStability = -1;
+    fidesFromStability = -1;
     crisisMultiplier = 1.25;
     stabilityLabel = 'Fragile';
   } else if (stability < 70) {
     stabilityLabel = 'Stable';
   } else if (stability < 85) {
-    gravitasFromStability = +1;
+    fidesFromStability = +1;
     stabilityLabel = 'Cohesive';
   } else {
-    gravitasFromStability = +2;
+    fidesFromStability = +2;
     crisisMultiplier = 0.85;
     stabilityLabel = 'Pax Interna';
   }
 
-  // ── Plebs ──────────────────────────────────────────────────────────────────
-  let gratiaFromPlebs = 0;
+  // ── Plebs → Fides contribution ─────────────────────────────────────────────
+  let fidesFromPlebs = 0;
   let plebsCrisisBonus = 0;
   let plebsLabel = 'Content';
   if (plebs < 20) {
-    gratiaFromPlebs = -3;
+    fidesFromPlebs = -3;
     plebsCrisisBonus = 3;
     plebsLabel = 'Rioting';
   } else if (plebs < 40) {
-    gratiaFromPlebs = -1;
+    fidesFromPlebs = -1;
     plebsLabel = 'Restless';
   } else if (plebs < 70) {
     plebsLabel = 'Content';
   } else if (plebs < 85) {
-    gratiaFromPlebs = +1;
+    fidesFromPlebs = +1;
     plebsLabel = 'Supportive';
   } else {
-    gratiaFromPlebs = +2;
+    fidesFromPlebs = +2;
     plebsLabel = 'Euphoric';
   }
 
@@ -99,8 +112,7 @@ export function calcRomeStatModifiers(rome: GameState['rome']): RomeStatModifier
   }
 
   return {
-    gravitasDelta: gravitasFromStability,
-    gratiaDelta: gratiaFromPlebs,
+    fidesDelta: fidesFromStability + fidesFromPlebs,
     denariDelta: denariFromTreasury,
     crisisEscalationMultiplier: crisisMultiplier,
     crisisAbsorption,
@@ -115,46 +127,70 @@ export function calcRomeStatModifiers(rome: GameState['rome']): RomeStatModifier
 // ─── Resource income ──────────────────────────────────────────────────────────
 
 export function calcResourceIncome(state: GameState): {
-  gravitasIncome: number;
-  dignitasIncome: number;
-  gratiaIncome: number;
+  fidesIncome: number;
   denariiIncome: number;
 } {
-  const player = state.family.find((c) => c.isPlayer);
-  const rhetoric = player?.skills.rhetoric ?? 0;
-  const auctoritas = player?.skills.auctoritas ?? 0;
+  const paterfamilias = state.family.find((c) => c.isPlayer);
 
-  const romeMods = calcRomeStatModifiers(state.rome);
+  // Step 1: Base skill income
+  const baseIncome = (paterfamilias?.skills.rhetoric ?? 0) * 2;
 
-  const gravitasIncome = Math.max(0,
-    rhetoric * 2
-    - Math.floor(state.crisisLevel / 20)
-    + romeMods.gravitasDelta
-  );
-  const dignitasIncome = Math.max(0,
-    auctoritas * 2
-    - Math.floor(state.crisisLevel / 25)
-    + state.laudatioBonus
-  );
+  // Step 2: Patron tier multiplier
+  const patronMultiplier =
+    PATRON_TIER_DEFINITIONS[state.patronTier]?.passiveBonus.fidesMultiplier ?? 1.0;
 
-  const gratia_income_base = Math.max(0, 8 - Math.floor(state.crisisLevel / 30));
-  const publicSupportCount = state.clients.filter(c => c.type === 'publicSupport').length;
-  const gratiaClientBonus = Math.floor(gratia_income_base * publicSupportCount * 0.05);
-  const gratiaIncome = gratia_income_base + gratiaClientBonus + romeMods.gratiaDelta;
+  // Step 3: Office income
+  const officeIncome = state.family
+    .filter(c => c.isPlayer && c.officeId)
+    .reduce((sum, c) => sum + (OFFICE_FIDES_BONUS[c.officeId!] ?? 0), 0);
 
-  const assetBonuses = computeTotalAssetBonuses(state.ownedAssets);
+  // Step 4: Clan leader relationship income
+  let clanFidesIncome = 0;
+  for (const clan of state.clans) {
+    for (const leader of clan.leaders) {
+      if (leader.relationship >= 60)      clanFidesIncome += 2;
+      else if (leader.relationship >= 30) clanFidesIncome += 1;
+      else if (leader.relationship < 0)   clanFidesIncome -= 1;
+    }
+  }
+
+  // Step 5: Client bonuses
   const clientBonuses = computeTotalClientBonuses(state.clients);
+  const clientFides = clientBonuses.fides ?? 0;
 
-  const provinceDenariiBonus = state.provinces.reduce((sum, p) => sum + calcAssetGoldOutput(p), 0);
-  const provinceDignitasBonus = state.provinces.reduce((sum, p) => sum + calcAssetDignitasOutput(p), 0);
-  const provinceGratiaBonus = state.provinces.reduce((sum, p) => sum + calcAssetGratiaOutput(p), 0);
+  // Step 6: Asset bonuses
+  const assetBonuses = computeTotalAssetBonuses(state.ownedAssets);
+  const assetFides = assetBonuses.fides ?? 0;
 
-  return {
-    gravitasIncome: gravitasIncome + (assetBonuses.gravitas ?? 0) + (clientBonuses.gravitas ?? 0),
-    dignitasIncome: dignitasIncome + (assetBonuses.dignitas ?? 0) + provinceDignitasBonus + (clientBonuses.dignitas ?? 0),
-    gratiaIncome: Math.max(0, gratiaIncome + (assetBonuses.gratia ?? 0) + provinceGratiaBonus + (clientBonuses.gratia ?? 0)),
-    denariiIncome: (assetBonuses.gold ?? 0) + provinceDenariiBonus + (clientBonuses.gold ?? 0) + romeMods.denariDelta,
-  };
+  // Step 7: Rome stat modifier
+  const romeMods = calcRomeStatModifiers(state.rome);
+  const romeStatFides = romeMods.fidesDelta;
+
+  // Step 8: Crisis penalty
+  const crisisPenalty = Math.floor(state.crisisLevel / 20);
+
+  // Final Fides income
+  const fidesIncome = Math.max(0,
+    Math.round(baseIncome * patronMultiplier)
+    + officeIncome
+    + clanFidesIncome
+    + clientFides
+    + assetFides
+    + romeStatFides
+    - crisisPenalty
+  );
+
+  // Denarii income — assets + province gold output + client gold + treasury mod
+  const provinceDenariiBonus = state.provinces.reduce(
+    (sum, p) => sum + calcAssetGoldOutput(p), 0
+  );
+  const denariiIncome =
+    (assetBonuses.gold ?? 0)
+    + provinceDenariiBonus
+    + (clientBonuses.gold ?? 0)
+    + romeMods.denariDelta;
+
+  return { fidesIncome, denariiIncome };
 }
 
 // ─── Effect string ────────────────────────────────────────────────────────────
@@ -196,7 +232,9 @@ export function applyEffectString(
         const leaderId = parts[1];
         patch.clans = (state.clans ?? []).map(clan => ({
           ...clan,
-          leaders: clan.leaders.map(leader => leader.id === leaderId ? { ...leader, blackmail: true } : leader),
+          leaders: clan.leaders.map(leader =>
+            leader.id === leaderId ? { ...leader, blackmail: true } : leader
+          ),
         }));
         continue;
       }
@@ -208,7 +246,7 @@ export function applyEffectString(
     }
 
     // Skill grants
-    const skillGrantMatch = segment.match(/^(rhetoric|auctoritas|martial|intrigus|martialBonus)([+-]\d+)$/);
+    const skillGrantMatch = segment.match(/^(rhetoric|martial|intrigus|martialBonus)([+-]\d+)$/);
     if (skillGrantMatch) {
       const [, skillKey, deltaStr] = skillGrantMatch;
       const delta = parseInt(deltaStr, 10);
@@ -222,7 +260,13 @@ export function applyEffectString(
         } else {
           if (!char.isPlayer) return char;
         }
-        return { ...char, skills: { ...char.skills, [resolvedKey]: Math.max(0, (char.skills[resolvedKey as keyof typeof char.skills] ?? 0) + delta) } };
+        return {
+          ...char,
+          skills: {
+            ...char.skills,
+            [resolvedKey]: Math.max(0, (char.skills[resolvedKey as keyof typeof char.skills] ?? 0) + delta),
+          },
+        };
       });
       patch.family = updatedFamily;
       continue;
@@ -231,20 +275,50 @@ export function applyEffectString(
     const effects = parseEffect(segment);
     for (const { key, delta } of effects) {
       switch (key) {
-        case 'gravitas':   patch.gravitas   = Math.max(0, (patch.gravitas   ?? state.gravitas)   + delta); break;
-        case 'dignitas':   patch.dignitas   = Math.max(0, (patch.dignitas   ?? state.dignitas)   + delta); break;
-        case 'gratia':     patch.gratia     = Math.max(0, (patch.gratia     ?? state.gratia)     + delta); break;
+        case 'fides':
+          patch.fides = Math.max(0, (patch.fides ?? state.fides) + delta);
+          break;
+        case 'lifetimeDignitas':
+          // lifetimeDignitas accumulates and can only decrease on disgrace events — never clamped at 0 in spending
+          patch.lifetimeDignitas = Math.max(0, (patch.lifetimeDignitas ?? state.lifetimeDignitas) + delta);
+          break;
         case 'denarii':
-        case 'gold':       patch.denarii    = Math.max(0, (patch.denarii    ?? state.denarii)    + delta); break;
+        case 'gold':
+          patch.denarii = Math.max(0, (patch.denarii ?? state.denarii) + delta);
+          break;
         case 'crisis':
-        case 'crisisLevel': patch.crisisLevel = Math.min(100, Math.max(0, (patch.crisisLevel ?? state.crisisLevel) + delta)); break;
-        case 'corruption': patch.family = (patch.family ?? state.family).map(c => c.isPlayer ? { ...c, corruptionScore: Math.min(100, Math.max(0, (c.corruptionScore ?? 0) + delta)) } : c); break;
-        case 'popularesRel': patch.popularesRel = Math.min(100, Math.max(-100, (patch.popularesRel ?? state.popularesRel) + delta)); break;
-        case 'optimatesRel': patch.optimatesRel = Math.min(100, Math.max(-100, (patch.optimatesRel ?? state.optimatesRel) + delta)); break;
-        case 'stability':  patch.rome = { ...state.rome, ...patch.rome, stability:  Math.min(100, Math.max(0, ((patch.rome ?? state.rome).stability)  + delta)) }; break;
-        case 'plebs':      patch.rome = { ...state.rome, ...patch.rome, plebs:      Math.min(100, Math.max(0, ((patch.rome ?? state.rome).plebs)      + delta)) }; break;
-        case 'treasury':   patch.rome = { ...state.rome, ...patch.rome, treasury:   Math.min(100, Math.max(0, ((patch.rome ?? state.rome).treasury)   + delta)) }; break;
-        case 'imperium':   patch.family = (patch.family ?? state.family).map(c => c.isPlayer ? { ...c, imperium: Math.max(0, ((c as any).imperium ?? 0) + delta) } : c); break;
+        case 'crisisLevel':
+          patch.crisisLevel = Math.min(100, Math.max(0, (patch.crisisLevel ?? state.crisisLevel) + delta));
+          break;
+        case 'corruption':
+          patch.family = (patch.family ?? state.family).map(c =>
+            c.isPlayer
+              ? { ...c, corruptionScore: Math.min(100, Math.max(0, (c.corruptionScore ?? 0) + delta)) }
+              : c
+          );
+          break;
+        case 'popularesRel':
+          patch.popularesRel = Math.min(100, Math.max(-100, (patch.popularesRel ?? state.popularesRel) + delta));
+          break;
+        case 'optimatesRel':
+          patch.optimatesRel = Math.min(100, Math.max(-100, (patch.optimatesRel ?? state.optimatesRel) + delta));
+          break;
+        case 'stability':
+          patch.rome = { ...state.rome, ...patch.rome, stability: Math.min(100, Math.max(0, ((patch.rome ?? state.rome).stability) + delta)) };
+          break;
+        case 'plebs':
+          patch.rome = { ...state.rome, ...patch.rome, plebs: Math.min(100, Math.max(0, ((patch.rome ?? state.rome).plebs) + delta)) };
+          break;
+        case 'treasury':
+          patch.rome = { ...state.rome, ...patch.rome, treasury: Math.min(100, Math.max(0, ((patch.rome ?? state.rome).treasury) + delta)) };
+          break;
+        case 'imperium':
+          patch.family = (patch.family ?? state.family).map(c =>
+            c.isPlayer
+              ? { ...c, imperium: Math.max(0, ((c as any).imperium ?? 0) + delta) }
+              : c
+          );
+          break;
       }
     }
   }
@@ -258,7 +332,10 @@ export function applyFactionDrift(state: GameState): { popularesRel: number; opt
   };
 }
 
-export function calcRomeStats(state: GameState, passedBillCount: number): Partial<GameState['rome']> {
+export function calcRomeStats(
+  state: GameState,
+  passedBillCount: number
+): Partial<GameState['rome']> {
   const { stability, plebs, treasury } = state.rome;
   const stabilityDelta = passedBillCount > 0 ? 3 : -5;
   const plebsDelta = passedBillCount > 0 ? 2 : -3;
@@ -284,7 +361,10 @@ export function applyRelationshipDrift(state: GameState): GameState['clans'] {
       else if (rel < 0) rel = Math.min(0, rel + 1);
       let allianceTurns = leader.allianceTurns ?? 0;
       let alliance = leader.alliance ?? false;
-      if (allianceTurns > 0) { allianceTurns -= 1; if (allianceTurns === 0) alliance = false; }
+      if (allianceTurns > 0) {
+        allianceTurns -= 1;
+        if (allianceTurns === 0) alliance = false;
+      }
       return { ...leader, relationship: rel, alliance, allianceTurns };
     }),
   }));

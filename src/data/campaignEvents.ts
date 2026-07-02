@@ -5,7 +5,7 @@ export interface CampaignEventOption {
   id: string;
   label: string;
   goldCost?: number;
-  gravitasCost?: number;
+  fidesCost?: number;
   imperiuCost?: number;
   skillCheck?: { skill: 'martial' | 'intrigus' | 'rhetoric'; difficulty: number };
   successEffect: {
@@ -68,8 +68,8 @@ export const CAMPAIGN_EVENT_DEFS: CampaignEventDef[] = [
     options: [
       {
         id: 'accept',
-        label: 'Accept their guidance (15 Gratia)',
-        gravitasCost: 15,
+        label: 'Accept their guidance (15 Fides)',
+        fidesCost: 15,
         successEffect: { progressDelta: 15, logMsg: 'Local guides reveal a hidden pass.' },
         successText: 'The guides lead you around the enemy flank.',
       },

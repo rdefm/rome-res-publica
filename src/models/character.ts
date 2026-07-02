@@ -2,10 +2,9 @@ export type PersonalityTrait = 'aggressive' | 'content' | 'ambitious' | 'cautiou
 export type AmbitionType = 'gain_dignitas' | 'protect_family' | 'personal_power';
 
 export interface CharacterSkills {
-  rhetoric: number;    // 0–10. Drives Gravitas income.
-  auctoritas: number;  // 0–10. Drives Dignitas income.
-  martial: number;     // 0–10. Reserved for Provinciae (v3).
-  intrigus: number;    // 0–10. Drives Gratia income.
+  rhetoric: number;   // 0–10. Drives Fides income.
+  martial: number;    // 0–10. Military campaigns and governor effectiveness.
+  intrigus: number;   // 0–10. Corruption shield, blackmail, intelligence.
 }
 
 export interface AmbitionGoal {
@@ -31,4 +30,8 @@ export interface Character {
   inheritedTraits: string[];                    // trait IDs from parents (Feature 5)
   ambitionIds: string[];                        // active ambition IDs (Feature 3)
   reputationScores: Record<string, number>;     // clanId → -100 to 100 (Feature 2)
+
+  // Imperium fields (military chunks add raisedLegions/veterans in Chunk H)
+  formalImperium: number;    // 0–3, set by office engine when character holds magistracy
+  militaryImperium: number;  // 0–3, derived from personal troop base (calculated in military chunks)
 }

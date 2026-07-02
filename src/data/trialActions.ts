@@ -10,13 +10,13 @@ export const TRIAL_ACTIONS: TrialAction[] = [
   {
     id: 'call_in_favour',
     label: 'Call in a Political Favour',
-    cost: { resource: 'gratia', amount: 20 },
+    cost: { resource: 'fides', amount: 20 },
     defenseBonus: 20,
   },
   {
     id: 'senate_filibuster',
     label: 'Filibuster the Proceedings',
-    cost: { resource: 'gravitas', amount: 15 },
+    cost: { resource: 'fides', amount: 15 },
     defenseBonus: 10,
   },
   {

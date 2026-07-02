@@ -11,14 +11,12 @@ export interface AssetTier {
 
 export interface AssetBonus {
   gold?: number;
-  dignitas?: number;
+  lifetimeDignitas?: number;
   imperium?: number;
-  gratia?: number;
-  gravitas?: number;
+  fides?: number;
   // Slot bonuses
   rhetoricalBonus?: number;
   martialBonus?: number;
-  auctoritasBonus?: number;
   intrigusBonus?: number;
   // Special
   clientSlots?: number;       // extra client network slots

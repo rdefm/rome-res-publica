@@ -10,13 +10,10 @@ const makeState = (overrides = {}) => ({
   year: -264,
   turnNumber: 1,
   seasonIndex: 0,
-  gravitas: 20,
-  dignitas: 20,
-  gratia: 30,
+  fides: 30,
   denarii: 200,
   imperium: 0,
-  laudatioActive: false,
-  laudatioBonus: 0,
+  lifetimeDignitas: 0,
   popularesRel: 0,
   optimatesRel: 0,
   rome: { stability: 70, plebs: 60, treasury: 50 },
@@ -24,9 +21,10 @@ const makeState = (overrides = {}) => ({
   family: [
     {
       id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 42,
-      skills: { rhetoric: 6, auctoritas: 7, martial: 3, intrigus: 4 },
+      skills: { rhetoric: 6, martial: 3, intrigus: 4 },
       traits: ['ambitious'],
       relationship: 100, familyTrust: 100,
+      officeId: null,
       inheritedTraits: [], ambitionIds: [], reputationScores: {},
     },
   ],
@@ -96,14 +94,14 @@ describe('computeTotalClientBonuses', () => {
       {
         id: 'c-2', name: 'Beta', type: 'publicSupport',
         flavourTitle: 'Orator', flavourText: 'Speaks well.',
-        bonus: { gold: 3, dignitas: 4 },
+        bonus: { gold: 3, fides: 4 },
         acquiredTurn: 1,
       },
     ];
     const result = computeTotalClientBonuses(clients);
     expect(result.gold).toBe(5);
     expect(result.trialDefenseBonus).toBe(5);
-    expect(result.dignitas).toBe(4);
+    expect(result.fides).toBe(4);
   });
 });
 
@@ -115,8 +113,8 @@ describe('resolveEventChoice — branching', () => {
       id: 'ignore',
       label: 'Ignore it',
       nextEventId: 'evt-borrowed-name-followup',
-      successEffect: 'dignitas+99',
-      failureEffect: 'dignitas-99',
+      successEffect: 'lifetimeDignitas+99',
+      failureEffect: 'lifetimeDignitas-99',
     };
     const result = resolveEventChoice(choice, makeState() as any);
     expect(result.nextEventId).toBe('evt-borrowed-name-followup');
@@ -161,12 +159,12 @@ describe('resolveEventChoice — branching', () => {
     const choice: EventChoice = {
       id: 'accept',
       label: 'Accept',
-      successEffect: 'dignitas+5',
+      successEffect: 'lifetimeDignitas+5',
       failureEffect: '',
     };
     const result = resolveEventChoice(choice, makeState() as any);
     expect(result.nextEventId).toBeUndefined();
-    expect(result.effectStr).toBe('dignitas+5');
+    expect(result.effectStr).toBe('lifetimeDignitas+5');
     expect(result.succeeded).toBe(true);
   });
 });
@@ -192,7 +190,7 @@ describe('pickRandomEvent — weight:0 exclusion', () => {
   });
 
   test('no weight:0 event ever appears in pickRandomEvent output', () => {
-    const state = makeState({ dignitas: 100, crisisLevel: 50 });
+    const state = makeState({ lifetimeDignitas: 100, crisisLevel: 50 });
     const selected = new Set<string>();
 
     for (let i = 0; i < 1000; i++) {

@@ -39,9 +39,8 @@ type SheetTab = 'overview' | 'policy' | 'assets' | 'clients' | 'military';
 interface ProvinceSheetProps {
   province: ProvinceState;
   family: Character[];
-  playerGratia: number;
+  playerFides: number;
   playerDenarii: number;
-  playerGravitas: number;
   playerImperium: number;
   playerGoverningMartial: number;
   recruitedClientIds: string[];
@@ -69,9 +68,8 @@ interface ProvinceSheetProps {
 export default function ProvinceSheet({
   province,
   family,
-  playerGratia,
+  playerFides,
   playerDenarii,
-  playerGravitas,
   playerImperium,
   playerGoverningMartial,
   recruitedClientIds,
@@ -191,7 +189,7 @@ export default function ProvinceSheet({
                 def={def}
                 hasPlayerGovernor={hasPlayerGovernor}
                 hasPlayerAmbassador={hasPlayerAmbassador}
-                playerGratia={playerGratia}
+                playerFides={playerFides}
                 playerDenarii={playerDenarii}
                 governorMartial={playerGoverningMartial}
                 onPolicyChange={(policy) => onPolicyChange(province.id, policy)}
@@ -217,7 +215,7 @@ export default function ProvinceSheet({
               <MilitaryTab
                 province={province}
                 family={family}
-                playerGravitas={playerGravitas}
+                playerFides={playerFides}
                 playerDenarii={playerDenarii}
                 playerImperium={playerImperium}
                 commanderElection={commanderElection}
@@ -393,7 +391,7 @@ function PolicyTab({
   def,
   hasPlayerGovernor,
   hasPlayerAmbassador,
-  playerGratia,
+  playerFides,
   playerDenarii,
   governorMartial,
   onPolicyChange,
@@ -403,7 +401,7 @@ function PolicyTab({
   def: NonNullable<ReturnType<typeof getProvinceDefinition>>;
   hasPlayerGovernor: boolean;
   hasPlayerAmbassador: boolean;
-  playerGratia: number;
+  playerFides: number;
   playerDenarii: number;
   governorMartial: number;
   onPolicyChange: (policy: GovernorPolicy) => void;
@@ -425,7 +423,7 @@ function PolicyTab({
       <DiplomatDesk
         province={province}
         ambassador={province.playerAmbassador}
-        playerGratia={playerGratia}
+        playerFides={playerFides}
         playerDenarii={playerDenarii}
         onAction={onAmbassadorAction}
       />

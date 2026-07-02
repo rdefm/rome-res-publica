@@ -207,7 +207,7 @@ const rung = StyleSheet.create({
   actionBtnDisabled: { opacity: 0.4 },
   actionRow: { flexDirection: 'row', justifyContent: 'space-between' },
   actionLabel: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 13, fontWeight: '600', flex: 1 },
-  actionCost: { color: COLORS.gravitasColor, fontFamily: FONTS.ui, fontSize: 11 },
+  actionCost: { color: COLORS.fidesColor, fontFamily: FONTS.ui, fontSize: 11 },
   actionDesc: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11, marginTop: 2 },
   comingSoon: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6 },
 });

@@ -15,14 +15,13 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Resource = 'gravitas' | 'dignitas' | 'gratia' | 'denarii' | 'crisisLevel';
+type Resource = 'fides' | 'lifetimeDignitas' | 'denarii' | 'crisisLevel';
 
 const RESOURCES: { key: Resource; label: string; color: string }[] = [
-  { key: 'gravitas',    label: 'Gravitas',    color: COLORS.gravitasColor },
-  { key: 'dignitas',    label: 'Dignitas',    color: COLORS.dignitasColor },
-  { key: 'gratia',      label: 'Gratia',      color: COLORS.gratiaColor   },
-  { key: 'denarii',     label: 'Denarii',     color: COLORS.denariiColor  },
-  { key: 'crisisLevel', label: 'Crisis',      color: COLORS.crimson       },
+  { key: 'fides',            label: 'Fides',              color: COLORS.fidesColor        },
+  { key: 'lifetimeDignitas', label: 'Dignitas (Legacy)',  color: COLORS.lifetimeDignColor },
+  { key: 'denarii',          label: 'Denarii',            color: COLORS.denariiColor      },
+  { key: 'crisisLevel',      label: 'Crisis',             color: COLORS.crimson           },
 ];
 
 const CHARACTER_FIELDS: { key: string; label: string }[] = [
@@ -31,7 +30,6 @@ const CHARACTER_FIELDS: { key: string; label: string }[] = [
   { key: 'corruptionScore', label: 'Corruption'      },
   { key: 'relationship',    label: 'Relationship'    },
   { key: 'skills.rhetoric',   label: 'Skill: Rhetoric'   },
-  { key: 'skills.auctoritas', label: 'Skill: Auctoritas' },
   { key: 'skills.martial',    label: 'Skill: Martial'    },
   { key: 'skills.intrigus',   label: 'Skill: Intrigus'   },
 ];

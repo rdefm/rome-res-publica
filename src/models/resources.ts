@@ -1,6 +1,5 @@
 export interface ResourcePool {
-  gravitas: number;
-  dignitas: number;
-  gratia: number;
+  fides: number;
+  lifetimeDignitas: number;
   denarii: number;
 }

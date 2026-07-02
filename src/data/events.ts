@@ -106,7 +106,7 @@ export const EVENT_DEFS: EventDef[] = [
         id: 'rhetoric',
         label: 'Smooth it over personally',
         skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 5 },
-        successEffect: 'gravitas+2',
+        successEffect: 'fides+2',
         failureEffect: 'removeClient:muscle',
       },
       {
@@ -135,10 +135,10 @@ export const EVENT_DEFS: EventDef[] = [
         failureEffect: '',
       },
       {
-        id: 'auctoritas',
+        id: 'rhetoric',
         label: 'Appeal to his loyalty',
-        skillCheck: { characterId: 'player', skill: 'auctoritas', difficulty: 4 },
-        successEffect: 'dignitas+2',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 4 },
+        successEffect: 'lifetimeDignitas+2',
         failureEffect: 'removeClient:publicSupport',
       },
       {
@@ -170,7 +170,7 @@ export const EVENT_DEFS: EventDef[] = [
         id: 'intrigue',
         label: "Undermine Pulcher's offer quietly",
         skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 5 },
-        successEffect: 'gratia+3',
+        successEffect: 'fides+3',
         failureEffect: 'removeClient:votingSway',
       },
       {
@@ -199,19 +199,19 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'grant',
         label: 'Give him your word freely',
-        successEffect: 'dignitas+2',
+        successEffect: 'lifetimeDignitas+2',
         failureEffect: '',
       },
       {
         id: 'grant-coin',
         label: 'Give your word and a small purse (−10 Denarii)',
-        successEffect: 'dignitas+4|gratia+2',
+        successEffect: 'lifetimeDignitas+4|fides+2',
         failureEffect: '',
       },
       {
         id: 'refuse',
         label: 'Stay out of it — too risky',
-        successEffect: 'gravitas-1',
+        successEffect: 'fides-1',
         failureEffect: '',
       },
     ],
@@ -230,20 +230,20 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'endorse',
         label: 'Endorse him publicly',
-        successEffect: 'gratia+4|popularesRel+3',
+        successEffect: 'fides+4|popularesRel+3',
         failureEffect: '',
       },
       {
         id: 'endorse-speech',
         label: 'Endorse him and attend yourself',
         skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 4 },
-        successEffect: 'gratia+6|gravitas+3|popularesRel+5',
-        failureEffect: 'gratia+2',
+        successEffect: 'fides+6|fides+3|popularesRel+5',
+        failureEffect: 'fides+2',
       },
       {
         id: 'decline',
         label: 'Decline — the timing is not right',
-        successEffect: 'gratia-2',
+        successEffect: 'fides-2',
         failureEffect: '',
       },
     ],
@@ -263,19 +263,19 @@ export const EVENT_DEFS: EventDef[] = [
         id: 'help',
         label: 'Speak to the senator',
         skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 3 },
-        successEffect: 'gravitas+2|gratia+3',
-        failureEffect: 'gravitas-1',
+        successEffect: 'fides+2|fides+3',
+        failureEffect: 'fides-1',
       },
       {
         id: 'help-coin',
         label: 'Smooth the way with coin instead (−12 Denarii)',
-        successEffect: 'gratia+4|denarii-12',
+        successEffect: 'fides+4|denarii-12',
         failureEffect: '',
       },
       {
         id: 'decline',
         label: 'Politely decline',
-        successEffect: 'gravitas-1',
+        successEffect: 'fides-1',
         failureEffect: '',
       },
     ],
@@ -302,7 +302,7 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'decline',
         label: 'Decline — you are above commerce with freedmen',
-        successEffect: 'dignitas+5',
+        successEffect: 'lifetimeDignitas+5',
         failureEffect: '',
       },
     ],
@@ -323,13 +323,13 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'accept-deal',
         label: 'Accept the exchange — information for a favour',
-        successEffect: 'blackmail:cornelius-sulla|gratia-5',
+        successEffect: 'blackmail:cornelius-sulla|fides-5',
         failureEffect: '',
       },
       {
         id: 'refuse',
         label: 'Decline — you do not deal in whispers',
-        successEffect: 'dignitas+4|gravitas+2',
+        successEffect: 'lifetimeDignitas+4|fides+2',
         failureEffect: '',
       },
       {
@@ -337,7 +337,7 @@ export const EVENT_DEFS: EventDef[] = [
         label: 'Counter-offer: take the information and give nothing',
         skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 5 },
         successEffect: 'blackmail:cornelius-sulla',
-        failureEffect: 'gratia-8|dignitas-3',
+        failureEffect: 'fides-8|lifetimeDignitas-3',
       },
     ],
   },
@@ -350,7 +350,7 @@ export const EVENT_DEFS: EventDef[] = [
       'A petitioner arrives claiming distant kinship with your family — he uses your name to access credit in the Subura and seek introductions among the equestrian class. Your steward brings you the report. The man is articulate and plausible. He is also entirely unknown to you.',
     imageKey: 'portrait-paterfamilias',
     conditions: [
-      { type: 'resource', key: 'dignitas', op: 'gte', value: 20 },
+      { type: 'resource', key: 'lifetimeDignitas', op: 'gte', value: 20 },
     ],
     weight: 9,
     choices: [
@@ -358,13 +358,13 @@ export const EVENT_DEFS: EventDef[] = [
         id: 'confront',
         label: 'Have him brought to you and questioned',
         skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 5 },
-        successEffect: 'dignitas+8|gratia+3',
-        failureEffect: 'dignitas-5',
+        successEffect: 'lifetimeDignitas+8|fides+3',
+        failureEffect: 'lifetimeDignitas-5',
       },
       {
         id: 'legal',
         label: 'Send a lawyer — deal with it formally',
-        successEffect: 'gratia-8|dignitas+4',
+        successEffect: 'fides-8|lifetimeDignitas+4',
         failureEffect: '',
       },
       {
@@ -391,8 +391,8 @@ export const EVENT_DEFS: EventDef[] = [
         id: 'act-late',
         label: 'Expose him publicly now',
         skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
-        successEffect: 'dignitas+4',
-        failureEffect: 'dignitas-8|gravitas-3',
+        successEffect: 'lifetimeDignitas+4',
+        failureEffect: 'lifetimeDignitas-8|fides-3',
       },
       {
         id: 'pay-him-off',
@@ -418,13 +418,13 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'fund-fully',
         label: 'Fund a full grain distribution (−50 Gold)',
-        successEffect: 'gold-50|plebs+15|dignitas+12|gravitas+5|crisis-4',
+        successEffect: 'gold-50|plebs+15|lifetimeDignitas+12|fides+5|crisis-4',
         failureEffect: '',
       },
       {
         id: 'fund-partial',
         label: 'Make a modest contribution (−20 Gold)',
-        successEffect: 'gold-20|plebs+6|dignitas+5',
+        successEffect: 'gold-20|plebs+6|lifetimeDignitas+5',
         failureEffect: '',
       },
       {
@@ -448,8 +448,8 @@ export const EVENT_DEFS: EventDef[] = [
     choices: [
       {
         id: 'hire',
-        label: 'Take him in (−10 Gratia)',
-        successEffect: 'gratia-10|addClient:votingSway:Disgraced Advocate:Lucius Caecilius',
+        label: 'Take him in (−10 Fides)',
+        successEffect: 'fides-10|addClient:votingSway:Disgraced Advocate:Lucius Caecilius',
         failureEffect: '',
       },
       {
@@ -457,12 +457,12 @@ export const EVENT_DEFS: EventDef[] = [
         label: 'Persuade him to join for the honour alone',
         skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
         successEffect: 'addClient:votingSway:Disgraced Advocate:Lucius Caecilius',
-        failureEffect: 'dignitas-2',
+        failureEffect: 'lifetimeDignitas-2',
       },
       {
         id: 'refuse',
         label: 'Turn him away — his reputation is a liability',
-        successEffect: 'gravitas+2',
+        successEffect: 'fides+2',
         failureEffect: '',
       },
     ],
@@ -483,10 +483,10 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'report',
         label: 'Report them truthfully',
-        skillCheck: { characterId: 'player', skill: 'auctoritas', difficulty: 4 },
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 4 },
         nextEventIdOnSuccess: 'evt-legion-deserters-reported',
         successEffect: '',
-        failureEffect: 'dignitas-4',
+        failureEffect: 'lifetimeDignitas-4',
       },
       {
         id: 'cover',
@@ -510,7 +510,7 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'dismiss',
         label: 'Return to your duties',
-        successEffect: 'imperium+5|dignitas+4',
+        successEffect: 'imperium+5|lifetimeDignitas+4',
         failureEffect: '',
       },
     ],
@@ -528,7 +528,7 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'dismiss',
         label: 'Carry the secret',
-        successEffect: 'corruption+8|gratia+6|martialBonus+1',
+        successEffect: 'corruption+8|fides+6|martialBonus+1',
         failureEffect: '',
       },
     ],
@@ -548,7 +548,7 @@ export const EVENT_DEFS: EventDef[] = [
     choices: [
       {
         id: 'investigate',
-        label: 'Spend Gratia to investigate (−10 Gratia)',
+        label: 'Spend Fides to investigate (−10 Fides)',
         skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 5 },
         nextEventIdOnSuccess: 'evt-rivals-agent-turned',
         nextEventIdOnFailure: 'evt-rivals-agent-failed',
@@ -577,7 +577,7 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'use-intel',
         label: 'File the intelligence away',
-        successEffect: 'gratia-10|blackmail:cornelius-sulla',
+        successEffect: 'fides-10|blackmail:cornelius-sulla',
         failureEffect: '',
       },
     ],
@@ -595,7 +595,7 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'accept-loss',
         label: 'Accept the setback',
-        successEffect: 'gratia-10|dignitas-4',
+        successEffect: 'fides-10|lifetimeDignitas-4',
         failureEffect: '',
       },
     ],
@@ -613,7 +613,7 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'absorb',
         label: 'Absorb the reputational damage',
-        successEffect: 'dignitas-6|gold-15',
+        successEffect: 'lifetimeDignitas-6|gold-15',
         failureEffect: '',
       },
     ],
@@ -635,8 +635,8 @@ export const EVENT_DEFS: EventDef[] = [
         id: 'contest',
         label: 'Contest the challenge in court',
         skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
-        successEffect: 'gold+65|dignitas+6',
-        failureEffect: 'dignitas-10',
+        successEffect: 'gold+65|lifetimeDignitas+6',
+        failureEffect: 'lifetimeDignitas-10',
       },
       {
         id: 'settle',
@@ -647,7 +647,7 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'donate',
         label: "Donate the estate publicly in your family's name",
-        successEffect: 'dignitas+14|gravitas+6|plebs+4',
+        successEffect: 'lifetimeDignitas+14|fides+6|plebs+4',
         failureEffect: '',
       },
     ],
@@ -658,7 +658,7 @@ export const EVENT_DEFS: EventDef[] = [
     id: 'evt-augurs-omen',
     title: "The Augur's Omen",
     bodyText:
-      'The College of Augurs reports an ill omen over the city: a flight of ravens from the north, a stillbirth in the sacred flock. Half the Senate refuses to vote on substantive legislation until purification rites are performed. The rituals will take most of the season. Gravitas, already scarce, stretches thinner.',
+      'The College of Augurs reports an ill omen over the city: a flight of ravens from the north, a stillbirth in the sacred flock. Half the Senate refuses to vote on substantive legislation until purification rites are performed. The rituals will take most of the season. Fides, already scarce, stretches thinner.',
     imageKey: 'portrait-paterfamilias',
     conditions: [
       { type: 'season', index: 3 },
@@ -669,7 +669,7 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'acknowledge',
         label: 'Acknowledge the omen',
-        successEffect: 'gravitas-4',
+        successEffect: 'fides-4',
         failureEffect: '',
       },
     ],
@@ -696,7 +696,7 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'decline',
         label: 'Decline — there is Greek enough in Rome already',
-        successEffect: 'gravitas+2',
+        successEffect: 'fides+2',
         failureEffect: '',
       },
     ],
@@ -745,13 +745,13 @@ export const EVENT_DEFS: EventDef[] = [
         id: 'listen',
         label: 'Sit with him and hear his stories',
         skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 3 },
-        successEffect: 'dignitas+5|gold-5|addClient:muscle:Retired Veteran:Titus Servilius',
-        failureEffect: 'dignitas+3',
+        successEffect: 'lifetimeDignitas+5|gold-5|addClient:muscle:Retired Veteran:Titus Servilius',
+        failureEffect: 'lifetimeDignitas+3',
       },
       {
         id: 'gift-send',
         label: 'Give him coin and wish him well (−10 Gold)',
-        successEffect: 'gold-10|dignitas+6',
+        successEffect: 'gold-10|lifetimeDignitas+6',
         failureEffect: '',
       },
     ],
@@ -773,7 +773,7 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'enjoy',
         label: 'An evening well spent',
-        successEffect: 'gratia+8|gravitas+4|dignitas+5',
+        successEffect: 'fides+8|fides+4|lifetimeDignitas+5',
         failureEffect: '',
       },
     ],
@@ -792,20 +792,20 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'let-him-work',
         label: 'Stand back and let the man work',
-        successEffect: 'gold-8|dignitas+2',
+        successEffect: 'gold-8|lifetimeDignitas+2',
         failureEffect: '',
       },
       {
         id: 'question-his-methods',
         label: 'Ask pointed questions about his methodology',
         skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 3 },
-        successEffect: 'gold-5|dignitas+3',
-        failureEffect: 'gold-8|dignitas-2',
+        successEffect: 'gold-5|lifetimeDignitas+3',
+        failureEffect: 'gold-8|lifetimeDignitas-2',
       },
       {
         id: 'dismiss-early',
         label: 'Dismiss him before he finishes and hire someone else',
-        successEffect: 'gold-15|dignitas-3',
+        successEffect: 'gold-15|lifetimeDignitas-3',
         failureEffect: '',
       },
     ],
@@ -827,13 +827,13 @@ export const EVENT_DEFS: EventDef[] = [
         id: 'speak-out',
         label: 'Address the Senate — call for order',
         skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 5 },
-        successEffect: 'stability+8|dignitas+5|gravitas+3',
-        failureEffect: 'dignitas-4',
+        successEffect: 'stability+8|lifetimeDignitas+5|fides+3',
+        failureEffect: 'lifetimeDignitas-4',
       },
       {
         id: 'back-faction',
         label: 'Back the stronger faction — pick a side',
-        successEffect: 'gratia+6|stability-4',
+        successEffect: 'fides+6|stability-4',
         failureEffect: '',
       },
       {

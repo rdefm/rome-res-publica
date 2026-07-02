@@ -245,22 +245,18 @@ export function processSeason(state: GameState): {
   }
 
   // 7. Resource income
-  const { gravitasIncome, dignitasIncome, gratiaIncome, denariiIncome } = calcResourceIncome(s);
+  const { fidesIncome, denariiIncome } = calcResourceIncome(s);
 
   const legacyBonuses = computeLegacyBonuses(s.legacyObjectives);
   const flatBonus = legacyBonuses.flatBonus ?? {};
   const multiplier = legacyBonuses.resourceMultiplier ?? {};
-  const finalGravitas = Math.round((gravitasIncome + (flatBonus.gravitas ?? 0)) * (multiplier.gravitas ?? 1));
-  const finalDignitas = Math.round((dignitasIncome + (flatBonus.dignitas ?? 0)) * (multiplier.dignitas ?? 1));
-  const finalGratia   = Math.round((gratiaIncome   + (flatBonus.gratia   ?? 0)) * (multiplier.gratia   ?? 1));
-  const finalDenarii  = Math.round((denariiIncome  + (flatBonus.gold     ?? 0)) * (multiplier.gold     ?? 1));
+  const finalFides   = Math.round((fidesIncome   + (flatBonus.fides ?? 0)) * (multiplier.fides ?? 1));
+  const finalDenarii = Math.round((denariiIncome + (flatBonus.gold  ?? 0)) * (multiplier.gold  ?? 1));
 
   s = {
     ...s,
-    gravitas: s.gravitas + finalGravitas,
-    dignitas: s.dignitas + finalDignitas,
-    gratia:   s.gratia   + finalGratia,
-    denarii:  s.denarii  + finalDenarii,
+    fides:   s.fides   + finalFides,
+    denarii: s.denarii + finalDenarii,
   };
 
   if (finalDenarii > 0) {
@@ -272,20 +268,17 @@ export function processSeason(state: GameState): {
     }
   }
 
-  const newLifetimeDignitas = s.lifetimeDignitas + Math.max(0, finalDignitas);
+  // lifetimeDignitas is NOT incremented here — it has no passive seasonal income
 
-  const patronTierDef = PATRON_TIER_DEFINITIONS[s.patronTier];
-  const patronGratiaMultiplier = patronTierDef?.passiveBonus.gratiaMultiplier ?? 1;
-  const finalGratiaWithPatron = Math.round(finalGratia * patronGratiaMultiplier);
-  const patronGratiaDelta = finalGratiaWithPatron - finalGratia;
-  if (patronGratiaDelta > 0) {
-    s = { ...s, gratia: s.gratia + patronGratiaDelta };
-  }
-
-  s = { ...s, lifetimeDignitas: newLifetimeDignitas };
+  // NOTE: the patron tier's fidesMultiplier is already applied inside
+  // calcResourceIncome() (resourceEngine.ts, Step 2), scoped to base rhetoric
+  // income only. Do NOT reapply it here — doing so double-multiplies fides
+  // income for any patron tier above 0, and desyncs this total from the
+  // "projected income" figure ResourceBar.tsx shows the player (which calls
+  // calcResourceIncome() directly and only sees the single application).
 
   events.push(
-    `Income: +${finalGravitas} Gravitas, +${finalDignitas} Dignitas, +${finalGratiaWithPatron} Gratia${finalDenarii > 0 ? `, +${finalDenarii} Denarii` : ''}${patronGratiaDelta > 0 ? ` (patron bonus +${patronGratiaDelta})` : ''}`
+    `Income: +${finalFides} Fides${finalDenarii > 0 ? `, +${finalDenarii} Denarii` : ''}`
   );
 
   // 8. Faction drift
@@ -405,11 +398,10 @@ export function processSeason(state: GameState): {
     const def = getAmbitionDefinition(a.definitionId);
     if (!def) continue;
     const r = def.reward;
-    if (r.gold)      s = { ...s, denarii:   s.denarii   + r.gold };
-    if (r.dignitas)  s = { ...s, dignitas:  s.dignitas  + r.dignitas };
-    if (r.gratia)    s = { ...s, gratia:    s.gratia    + r.gratia };
-    if (r.gravitas)  s = { ...s, gravitas:  s.gravitas  + r.gravitas };
-    if (r.imperium)  s = { ...s, imperium:  s.imperium  + r.imperium };
+    if (r.gold)             s = { ...s, denarii:          s.denarii          + r.gold };
+    if (r.lifetimeDignitas) s = { ...s, lifetimeDignitas:  s.lifetimeDignitas + r.lifetimeDignitas };
+    if (r.fides)            s = { ...s, fides:             s.fides            + r.fides };
+    if (r.imperium)         s = { ...s, imperium:          s.imperium         + r.imperium };
     if (r.assetId) {
       s = {
         ...s,
@@ -433,8 +425,8 @@ export function processSeason(state: GameState): {
     const def = getAmbitionDefinition(a.definitionId);
     if (!def?.consequence) continue;
     const c = def.consequence;
-    if (c.gold)             s = { ...s, denarii:  Math.max(0, s.denarii + c.gold) };
-    if (c.dignitas)         s = { ...s, dignitas: Math.max(0, s.dignitas + c.dignitas) };
+    if (c.gold)             s = { ...s, denarii:         Math.max(0, s.denarii + c.gold) };
+    if (c.lifetimeDignitas) s = { ...s, lifetimeDignitas: Math.max(0, s.lifetimeDignitas + c.lifetimeDignitas) };
     if (c.familyTrustDelta) {
       s = {
         ...s,
@@ -488,7 +480,7 @@ export function processSeason(state: GameState): {
         s = { ...s, familyReputations: { ...s.familyReputations, [trial.accusingClanId]: newRep } };
       }
 
-      s = { ...s, dignitas: Math.max(0, s.dignitas + cons.dignitas) };
+      s = { ...s, lifetimeDignitas: Math.max(0, s.lifetimeDignitas + cons.lifetimeDignitas) };
 
       if (cons.denarii) {
         s = { ...s, denarii: Math.max(0, s.denarii + cons.denarii) };
@@ -563,10 +555,9 @@ export function processSeason(state: GameState): {
       const inheritedTraits = resolveInheritedTraits(player, spouse);
 
       const baseSkills = {
-        rhetoric:   Math.max(1, Math.min(8, Math.round((player.skills.rhetoric   + spouse.skills.rhetoric)   / 2 + (Math.random() * 2 - 1)))),
-        auctoritas: Math.max(1, Math.min(8, Math.round((player.skills.auctoritas + spouse.skills.auctoritas) / 2 + (Math.random() * 2 - 1)))),
-        martial:    Math.max(1, Math.min(8, Math.round((player.skills.martial    + spouse.skills.martial)    / 2 + (Math.random() * 2 - 1)))),
-        intrigus:   Math.max(1, Math.min(8, Math.round((player.skills.intrigus   + spouse.skills.intrigus)   / 2 + (Math.random() * 2 - 1)))),
+        rhetoric: Math.max(1, Math.min(8, Math.round((player.skills.rhetoric + spouse.skills.rhetoric) / 2 + (Math.random() * 2 - 1)))),
+        martial:  Math.max(1, Math.min(8, Math.round((player.skills.martial  + spouse.skills.martial)  / 2 + (Math.random() * 2 - 1)))),
+        intrigus: Math.max(1, Math.min(8, Math.round((player.skills.intrigus + spouse.skills.intrigus) / 2 + (Math.random() * 2 - 1)))),
       };
 
       const suggestedName = suggestChildName(role, 'Brutus');
@@ -586,7 +577,7 @@ export function processSeason(state: GameState): {
 
   // 18. Patron tier update and favour call-ins
   {
-    const newPatronTier = computePatronTier(s.lifetimeDignitas, s.gratia);
+    const newPatronTier = computePatronTier(s.lifetimeDignitas, s.fides);
     if (newPatronTier !== s.patronTier) {
       const tierDef = PATRON_TIER_DEFINITIONS[newPatronTier];
       const direction = newPatronTier > s.patronTier ? 'risen to' : 'fallen to';
@@ -594,10 +585,10 @@ export function processSeason(state: GameState): {
       s = { ...s, patronTier: newPatronTier };
     }
 
-    const { gratiaOwed, callInCount } = processFavourCallIns(s.patronTier, s.clients.length, s.rome.plebs);
+    const { fidesOwed, callInCount } = processFavourCallIns(s.patronTier, s.clients.length, s.rome.plebs);
     if (callInCount > 0) {
-      s = { ...s, gratia: Math.max(0, s.gratia - gratiaOwed) };
-      events.push(`${callInCount} client${callInCount !== 1 ? 's' : ''} called in favour${callInCount !== 1 ? 's' : ''} this season (−${gratiaOwed} Gratia).`);
+      s = { ...s, fides: Math.max(0, s.fides - fidesOwed) };
+      events.push(`${callInCount} client${callInCount !== 1 ? 's' : ''} called in favour${callInCount !== 1 ? 's' : ''} this season (−${fidesOwed} Fides).`);
     }
   }
 

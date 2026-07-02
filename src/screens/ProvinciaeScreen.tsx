@@ -35,8 +35,7 @@ export default function ProvinciaeScreen() {
   // ── Store state ──────────────────────────────────────────────────────────────
   const provinces                  = useGameStore(s => s.provinces);
   const imperium                   = useGameStore(s => s.imperium);
-  const gratia                     = useGameStore(s => s.gratia);
-  const gravitas                   = useGameStore(s => s.gravitas);
+  const fides                      = useGameStore(s => s.fides);
   const denarii                    = useGameStore(s => s.denarii);
   const family                     = useGameStore(s => s.family);
   const clients                    = useGameStore(s => s.clients);
@@ -330,9 +329,8 @@ export default function ProvinciaeScreen() {
             <ProvinceSheet
               province={selectedProvince}
               family={family}
-              playerGratia={gratia}
+              playerFides={fides}
               playerDenarii={denarii}
-              playerGravitas={gravitas}
               playerImperium={imperium}
               playerGoverningMartial={governorMartial}
               recruitedClientIds={recruitedClientIds}

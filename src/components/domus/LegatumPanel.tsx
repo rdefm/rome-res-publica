@@ -26,8 +26,7 @@ function bonusLines(bonus: {
 }): string[] {
   const lines: string[] = [];
   const keyLabel: Record<string, string> = {
-    gold: 'Denarii', dignitas: 'Dignitas', gravitas: 'Gravitas',
-    gratia: 'Gratia', imperium: 'Imperium',
+    gold: 'Denarii', lifetimeDignitas: 'Dignitas (Legacy)', fides: 'Fides', imperium: 'Imperium',
   };
   if (bonus.flatBonus) {
     for (const [k, v] of Object.entries(bonus.flatBonus)) {

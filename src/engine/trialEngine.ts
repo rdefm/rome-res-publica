@@ -74,16 +74,16 @@ export function resolveTrial(trial: Trial): TrialOutcome {
 export const OUTCOME_CONSEQUENCES: Record<TrialOutcome, {
   reputationDelta: number;
   corruptionClear: boolean;
-  dignitas: number;
+  lifetimeDignitas: number;
   denarii?: number;
   removeCharacter: boolean;
   familyTrustDelta?: number;
 }> = {
-  acquitted: { reputationDelta: +10, corruptionClear: true,  dignitas: +5,  removeCharacter: false },
-  dismissed: { reputationDelta: +5,  corruptionClear: false, dignitas:  0,  removeCharacter: false },
-  fined:     { reputationDelta: -5,  corruptionClear: false, dignitas: -5,  denarii: -100, removeCharacter: false },
-  exiled:    { reputationDelta: -20, corruptionClear: false, dignitas: -20, removeCharacter: true },
-  executed:  { reputationDelta: -30, corruptionClear: false, dignitas: -30, removeCharacter: true, familyTrustDelta: -20 },
+  acquitted: { reputationDelta: +10, corruptionClear: true,  lifetimeDignitas: +5,  removeCharacter: false },
+  dismissed: { reputationDelta: +5,  corruptionClear: false, lifetimeDignitas:  0,  removeCharacter: false },
+  fined:     { reputationDelta: -5,  corruptionClear: false, lifetimeDignitas: -5,  denarii: -100, removeCharacter: false },
+  exiled:    { reputationDelta: -20, corruptionClear: false, lifetimeDignitas: -20, removeCharacter: true },
+  executed:  { reputationDelta: -30, corruptionClear: false, lifetimeDignitas: -30, removeCharacter: true, familyTrustDelta: -20 },
 };
 
 // ─── Passive trial trigger check ──────────────────────────────────────────────

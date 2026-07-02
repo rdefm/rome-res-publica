@@ -18,7 +18,7 @@ export interface Trial {
 export interface TrialAction {
   id: string;
   label: string;
-  cost: { resource: 'denarii' | 'gratia' | 'gravitas'; amount: number };
+  cost: { resource: 'denarii' | 'fides'; amount: number };
   defenseBonus: number;
   requiresAssetAction?: string; // asset action ID required to unlock
 }

@@ -15,7 +15,7 @@ export interface OfficeAction {
   name: string;
   cost: string;
   costVal: number;
-  resource: 'gratia' | 'dignitas' | 'denarii' | null;
+  resource: 'fides' | 'denarii' | null;
   desc: string;
   effect: (state: GameState) => Partial<GameState> & { logMsg: string };
 }

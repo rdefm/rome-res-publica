@@ -21,7 +21,7 @@ const ACTION_LABELS: Record<string, string> = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function PatronLadderPanel() {
-  const { patronTier, lifetimeDignitas, gratia, clients } = useGameStore();
+  const { patronTier, lifetimeDignitas, fides, clients } = useGameStore();
   const [expanded, setExpanded] = useState(true);
 
   const tierDef = PATRON_TIER_DEFINITIONS[patronTier];
@@ -34,8 +34,8 @@ export default function PatronLadderPanel() {
   const dignitasPct = nextTierDef
     ? Math.min(1, lifetimeDignitas / nextTierDef.requiresDignitasTotal)
     : 1;
-  const gratiaPct = nextTierDef
-    ? Math.min(1, gratia / nextTierDef.requiresGratiaPool)
+  const fidesPct = nextTierDef
+    ? Math.min(1, fides / nextTierDef.requiresFidesPool)
     : 1;
 
   return (
@@ -82,21 +82,21 @@ export default function PatronLadderPanel() {
               <View style={styles.track}>
                 <View style={[styles.trackFill, {
                   width: `${dignitasPct * 100}%`,
-                  backgroundColor: COLORS.dignitasColor,
+                  backgroundColor: COLORS.lifetimeDignColor,
                 }]} />
               </View>
 
-              {/* Gratia pool bar */}
+              {/* Fides pool bar */}
               <View style={[styles.progressRow, { marginTop: SPACING.xs }]}>
-                <Text style={styles.progressLabel}>Gratia Pool</Text>
+                <Text style={styles.progressLabel}>Fides Pool</Text>
                 <Text style={styles.progressVal}>
-                  {gratia} / {nextTierDef.requiresGratiaPool}
+                  {fides} / {nextTierDef.requiresFidesPool}
                 </Text>
               </View>
               <View style={styles.track}>
                 <View style={[styles.trackFill, {
-                  width: `${gratiaPct * 100}%`,
-                  backgroundColor: COLORS.gratiaColor,
+                  width: `${fidesPct * 100}%`,
+                  backgroundColor: COLORS.fidesColor,
                 }]} />
               </View>
             </View>
@@ -113,11 +113,11 @@ export default function PatronLadderPanel() {
               ◈ {clientSlots} client slot{clientSlots !== 1 ? 's' : ''}
             </Text>
             <Text style={styles.bonusLine}>
-              ◈ ×{tierDef.passiveBonus.gratiaMultiplier.toFixed(2)} Gratia income
+              ◈ ×{tierDef.passiveBonus.fidesMultiplier.toFixed(2)} Fides income
             </Text>
             {tierDef.passiveBonus.incomingFavourChance > 0 && (
               <Text style={styles.bonusLine}>
-                ◈ {Math.round(tierDef.passiveBonus.incomingFavourChance * 100)}% chance per client of favour call-in (−10 Gratia each)
+                ◈ {Math.round(tierDef.passiveBonus.incomingFavourChance * 100)}% chance per client of favour call-in (−10 Fides each)
               </Text>
             )}
           </View>

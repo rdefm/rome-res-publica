@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import type { Character } from '../../models/character';
+import { useGameStore } from '../../state/gameStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 const PLAYER_PORTRAIT = require('../../assets/images/portrait-paterfamilias.png');
@@ -14,7 +15,6 @@ const NPC_PORTRAITS: Record<string, ReturnType<typeof require>> = {
 
 const SKILL_COLORS: Record<string, string> = {
   rhetoric:   COLORS.denariiColor,
-  auctoritas: COLORS.dignitasColor,
   martial:    COLORS.crimson,
   intrigus:   COLORS.purple,
 };
@@ -24,6 +24,8 @@ interface CharacterProfilePaneProps {
 }
 
 export default function CharacterProfilePane({ character }: CharacterProfilePaneProps) {
+  const lifetimeDignitas = useGameStore(s => s.lifetimeDignitas);
+
   return (
     <View style={styles.profilePane}>
       {/* Corner coin ornaments — positioned absolute, overflow visible on parent */}
@@ -60,12 +62,17 @@ export default function CharacterProfilePane({ character }: CharacterProfilePane
             <Text style={styles.profileTrust}>
               Family trust: {character.familyTrust}
             </Text>
+            {character.isPlayer && (
+              <Text style={styles.profileDignitas}>
+                DIGNITAS (LEGACY)  <Text style={{ color: COLORS.lifetimeDignColor, fontWeight: '700' }}>{lifetimeDignitas}</Text>
+              </Text>
+            )}
           </View>
         </View>
 
         {/* Skill stat bars — rendered inline because StatBar has no trackColor prop */}
         <View style={styles.skillBars}>
-          {(['rhetoric', 'auctoritas', 'martial', 'intrigus'] as const).map((sk) => {
+          {(['rhetoric', 'martial', 'intrigus'] as const).map((sk) => {
             const pct = Math.min(1, Math.max(0, character.skills[sk] / 10));
             const color = SKILL_COLORS[sk];
             return (
@@ -165,6 +172,13 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.ui,
     fontSize: 11,
     marginTop: 2,
+  },
+  profileDignitas: {
+    color: COLORS.dust,
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    marginTop: 4,
   },
   skillBars: {
     gap: 6,

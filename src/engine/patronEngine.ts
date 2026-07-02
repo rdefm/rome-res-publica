@@ -4,11 +4,11 @@ import { PATRON_TIER_DEFINITIONS, type PatronTier } from '../models/patronLadder
 
 export function computePatronTier(
   lifetimeDignitas: number,
-  currentGratia: number
+  currentFides: number
 ): PatronTier {
   const eligible = PATRON_TIER_DEFINITIONS.filter(
     t => lifetimeDignitas >= t.requiresDignitasTotal &&
-         currentGratia   >= t.requiresGratiaPool
+         currentFides     >= t.requiresFidesPool
   );
   const highest = eligible.sort((a, b) => b.tier - a.tier)[0];
   return (highest?.tier ?? 0) as PatronTier;
@@ -25,10 +25,10 @@ export function processFavourCallIns(
   currentTier: PatronTier,
   clientCount: number,
   plebs: number = 0
-): { gratiaOwed: number; callInCount: number } {
+): { fidesOwed: number; callInCount: number } {
   // Euphoric plebs — clients are satisfied, no call-ins this season
   if (plebs >= 85) {
-    return { gratiaOwed: 0, callInCount: 0 };
+    return { fidesOwed: 0, callInCount: 0 };
   }
 
   const tierDef = PATRON_TIER_DEFINITIONS[currentTier];
@@ -38,5 +38,5 @@ export function processFavourCallIns(
       callInCount++;
     }
   }
-  return { gratiaOwed: callInCount * 10, callInCount };
+  return { fidesOwed: callInCount * 10, callInCount };
 }
