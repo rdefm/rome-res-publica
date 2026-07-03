@@ -44,6 +44,9 @@ export default function ProvinciaeScreen() {
   const purchaseProvinceAsset    = useGameStore(s => s.purchaseProvinceAsset);
   const upgradeProvinceAsset     = useGameStore(s => s.upgradeProvinceAsset);
   const recruitProvincialClient  = useGameStore(s => s.recruitProvincialClient);
+  const startCampaign            = useGameStore(s => s.startCampaign);
+  const volunteerOfficer         = useGameStore(s => s.volunteerOfficer);
+  const resolveOfficerDecision   = useGameStore(s => s.resolveOfficerDecision);
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const selectedProvince = provinces.find(p => p.id === selectedProvinceId);
@@ -216,7 +219,7 @@ export default function ProvinciaeScreen() {
               recruitedClientIds={recruitedClientIds}
               // Military/governor system not yet implemented — pass null/empty stubs
               commanderElection={null}
-              officerVolunteer={null}
+              officerVolunteer={selectedProvince?.officerVolunteer ?? null}
               campaignVotes={campaignVotes}
               onClose={closeSheet}
               onPolicyChange={(provinceId, policy) => updateProvincePolicy(provinceId, policy)}
@@ -225,13 +228,14 @@ export default function ProvinciaeScreen() {
               onUpgradeAsset={(provinceId, assetId) => upgradeProvinceAsset(provinceId, assetId)}
               onRecruitClient={(provinceId, clientId) => recruitProvincialClient(provinceId, clientId)}
               onSeekPosting={() => {}}
+              onStartCampaign={(provinceId, type) => startCampaign(provinceId, type)}
               onCommitCampaignSeason={() => {}}
               onResolveCampaignEvent={() => {}}
               onNominateCommander={() => {}}
               onVoteCommander={() => {}}
               onSpeechCommander={() => {}}
-              onVolunteerOfficer={() => {}}
-              onResolveOfficerDecision={() => {}}
+              onVolunteerOfficer={(provinceId, charId) => volunteerOfficer(provinceId, charId)}
+              onResolveOfficerDecision={(provinceId, idx, risk) => resolveOfficerDecision(provinceId, idx, risk)}
             />
           </Animated.View>
         </>

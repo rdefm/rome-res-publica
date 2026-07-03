@@ -72,6 +72,12 @@ export default function MilitaryTab({
   const [strategy, setStrategy] = useState<CampaignAllocation['strategy']>('probe');
   const [morale, setMorale] = useState<CampaignAllocation['morale']>('pay');
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [selectedVolunteerId, setSelectedVolunteerId] = useState<string | null>(null);
+
+  // The player family member currently serving as governor of this province (if any)
+  const playerGovernorChar = province.playerGovernor?.characterId
+    ? family.find(c => c.id === province.playerGovernor!.characterId) ?? null
+    : null;
 
   // ── No military activity ───────────────────────────────────────────────────
   if (!campaign && !commanderElection && !officerVolunteer && !province.revoltActive) {
@@ -84,11 +90,6 @@ export default function MilitaryTab({
             ? 'This province is Hostile. A campaign may be necessary to restore order.'
             : 'This province is at peace. Military action can be triggered via Curia war declaration bills.'}
         </Text>
-        {province.revoltActive && (
-          <View style={styles.revoltAlert}>
-            <Text style={styles.revoltText}>⚔ REVOLT ACTIVE — Suppression campaign required</Text>
-          </View>
-        )}
       </View>
     );
   }
@@ -101,9 +102,66 @@ export default function MilitaryTab({
         <View style={styles.revoltBanner}>
           <Text style={styles.revoltBannerTitle}>⚔ REVOLT IN PROGRESS</Text>
           <Text style={styles.revoltBannerDesc}>
-            A suppression campaign must be authorised via the Curia to restore order.
-            Until suppressed, this province produces no income and its Relationship deteriorates.
+            This province is in open revolt. Until suppressed, it produces no income
+            and its Relationship continues to deteriorate.
           </Text>
+
+          {playerGovernorChar ? (
+            // ── Path A: player family member is governor → lead as commander ──
+            <TouchableOpacity
+              style={styles.suppressionBtn}
+              onPress={() => onStartCampaign(province.id, 'suppression')}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.suppressionBtnText}>
+                ⚔ Lead Suppression — {playerGovernorChar.name} commands
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            // ── Path B: no player governor → volunteer a family member as captain ──
+            <>
+              <Text style={styles.captainPrompt}>
+                Your family holds no governorship here. Volunteer a family member as captain
+                under the Senate's appointed commander:
+              </Text>
+              {family.map(char => (
+                <TouchableOpacity
+                  key={char.id}
+                  style={[
+                    styles.volunteerCard,
+                    selectedVolunteerId === char.id && styles.volunteerCardSelected,
+                  ]}
+                  onPress={() => setSelectedVolunteerId(char.id)}
+                  activeOpacity={0.75}
+                >
+                  <View>
+                    <Text style={styles.volunteerName}>{char.name}</Text>
+                    <Text style={styles.volunteerStats}>
+                      Martial {char.skills.martial}/10 · Age {char.age}
+                    </Text>
+                  </View>
+                  {selectedVolunteerId === char.id && (
+                    <Text style={styles.volunteerTick}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={[styles.suppressionBtn, !selectedVolunteerId && styles.btnDisabled]}
+                onPress={() => {
+                  if (selectedVolunteerId) {
+                    onStartCampaign(province.id, 'suppression');
+                    onVolunteerOfficer(province.id, selectedVolunteerId);
+                  }
+                }}
+                disabled={!selectedVolunteerId}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.suppressionBtnText, !selectedVolunteerId && { opacity: 0.5 }]}>
+                  ⚔ Volunteer as Captain
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       )}
 
@@ -145,6 +203,26 @@ export default function MilitaryTab({
         />
       )}
 
+      {/* ── Officer decisions resolved — waiting for season end ───────────── */}
+      {officerVolunteer?.resolved && campaign && !campaign.resolved && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>⚔ SUPPRESSION IN PROGRESS</Text>
+          <Text style={styles.commanderName}>
+            {officerVolunteer.characterName} · Officer assignment complete
+          </Text>
+          <Text style={styles.sectionDesc}>
+            All decisions made. Successes: {officerVolunteer.successCount}/3.
+          </Text>
+          <Text style={styles.electionHint}>
+            {officerVolunteer.successCount >= 2
+              ? 'Your officer performed well. The campaign will conclude at the end of the season.'
+              : officerVolunteer.successCount === 1
+              ? 'A mixed performance. The campaign outcome is uncertain.'
+              : 'Your officer struggled. The suppression may fail.'}
+          </Text>
+        </View>
+      )}
+
       {/* ── Officer Volunteer (Light System) ──────────────────────────────── */}
       {officerVolunteer && !officerVolunteer.resolved && (
         <OfficerPanel
@@ -157,8 +235,7 @@ export default function MilitaryTab({
       )}
 
       {/* ── No officer yet — offer to volunteer ───────────────────────────── */}
-      {campaign && !officerVolunteer && campaign.commanderCharacterId !== null && (
-        <VolunteerSection
+      {campaign && !officerVolunteer && campaign.commanderCharacterId !== null && (        <VolunteerSection
           family={family}
           onVolunteer={(charId) => onVolunteerOfficer(province.id, charId)}
         />
@@ -642,6 +719,33 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.dust,
     lineHeight: 17,
+    marginBottom: SPACING.sm,
+  },
+  captainPrompt: {
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    color: COLORS.dust,
+    lineHeight: 17,
+    marginBottom: SPACING.sm,
+    fontStyle: 'italic',
+  },
+  suppressionBtn: {
+    backgroundColor: COLORS.crimson,
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    alignItems: 'center',
+    marginTop: SPACING.xs,
+  },
+  suppressionBtnText: {
+    fontFamily: FONTS.display,
+    fontSize: 13,
+    color: COLORS.marble,
+    letterSpacing: 0.5,
+  },
+  volunteerTick: {
+    fontFamily: FONTS.ui,
+    fontSize: 16,
+    color: COLORS.gold,
   },
   section: {
     backgroundColor: COLORS.panelSurface,
@@ -948,6 +1052,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  volunteerCardSelected: {
+    borderColor: COLORS.gold,
+    backgroundColor: COLORS.gold + '18',
   },
   volunteerName: {
     fontFamily: FONTS.body,

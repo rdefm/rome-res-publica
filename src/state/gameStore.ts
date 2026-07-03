@@ -10,7 +10,7 @@ import type { ActiveAmbition } from '../models/ambition';
 import type { LegacyObjective } from '../models/legacyObjective';
 import type { PatronTier } from '../models/patronLadder';
 import type { Trial } from '../models/trial';
-import type { ProvinceState, GovernorPolicy } from '../models/province';
+import type { ProvinceState, GovernorPolicy, CampaignState, OfficerVolunteerState } from '../models/province';
 import type { TroopUnit } from '../models/troop';
 import type { SenateResponseState } from '../engine/senateResponseEngine';
 import { calcLevyCost } from '../engine/troopEngine';
@@ -233,6 +233,9 @@ export interface GameActions {
   musterVeterans: (characterId: string) => void;
   disbandTroops: (characterId: string, troopIds: string[]) => void;
   updateLocalSupportForPlayer: (provinceId: string, delta: number) => void;
+  startCampaign: (provinceId: string, type: CampaignState['type']) => void;
+  volunteerOfficer: (provinceId: string, characterId: string) => void;
+  resolveOfficerDecision: (provinceId: string, decisionIndex: number, tookRisk: boolean) => void;
 }
 
 let _logId = 0;
@@ -1207,5 +1210,115 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
           : p
       ),
     }));
+  },
+
+  startCampaign: (provinceId, type) => {
+    const s = get();
+    const province = s.provinces.find(p => p.id === provinceId);
+    if (!province || province.activeCampaign) return;
+
+    // Commander: player family member who is currently governor, otherwise NPC (null)
+    const governorCharId = province.playerGovernor?.characterId ?? null;
+    const commanderCharacterId = (governorCharId && s.family.some(c => c.id === governorCharId))
+      ? governorCharId
+      : null;
+
+    const newCampaign: CampaignState = {
+      id:                `campaign-${Date.now()}`,
+      provinceId,
+      type,
+      commanderCharacterId,
+      campaignProgress:  0,
+      enemyStrength:     50,
+      turnsElapsed:      0,
+      localSupportBonus: province.localSupport >= 40,
+      resolved:          false,
+      outcome:           null,
+      activeEventId:     null,
+    };
+
+    const label = turnLabel(s);
+    set({
+      provinces: s.provinces.map(p =>
+        p.id === provinceId ? { ...p, activeCampaign: newCampaign } : p
+      ),
+      log: [...s.log, mkLog(
+        label,
+        `${type.replace(/_/g, ' ')} campaign begins in ${provinceId.replace(/_/g, ' ')}.`,
+        'neutral',
+      )],
+    });
+  },
+
+  volunteerOfficer: (provinceId, characterId) => {
+    const s = get();
+    const province = s.provinces.find(p => p.id === provinceId);
+    if (!province?.activeCampaign) return;
+    const character = s.family.find(c => c.id === characterId);
+    if (!character) return;
+
+    const volunteer: OfficerVolunteerState = {
+      campaignId:        province.activeCampaign.id,
+      provinceId,
+      characterId,
+      characterName:     character.name,
+      decisionsResolved: 0,
+      successCount:      0,
+      decisions:         [],
+      resolved:          false,
+    };
+
+    const label = turnLabel(s);
+    set({
+      provinces: s.provinces.map(p =>
+        p.id === provinceId ? { ...p, officerVolunteer: volunteer } : p
+      ),
+      log: [...s.log, mkLog(
+        label,
+        `${character.name} volunteers as officer in ${provinceId.replace(/_/g, ' ')}.`,
+        'neutral',
+      )],
+    });
+  },
+
+  resolveOfficerDecision: (provinceId, decisionIndex, tookRisk) => {
+    const s = get();
+    const province = s.provinces.find(p => p.id === provinceId);
+    const volunteer = province?.officerVolunteer;
+    if (!volunteer || volunteer.resolved || volunteer.decisionsResolved !== decisionIndex) return;
+
+    const character = s.family.find(c => c.id === volunteer.characterId);
+    const martial = character?.skills.martial ?? 0;
+
+    // Safe:  50% base + 4% per martial point → martial 10 = 90%
+    // Risk:  35% base + 6% per martial point → martial 10 = 95%, but lower floor
+    const successChance = tookRisk
+      ? 0.35 + martial * 0.06
+      : 0.50 + martial * 0.04;
+    const success = Math.random() < successChance;
+
+    const newDecisionsResolved = volunteer.decisionsResolved + 1;
+    const newSuccessCount = volunteer.successCount + (success ? 1 : 0);
+    const resolved = newDecisionsResolved >= 3;
+
+    const updatedVolunteer: OfficerVolunteerState = {
+      ...volunteer,
+      decisionsResolved: newDecisionsResolved,
+      successCount:      newSuccessCount,
+      decisions:         [...volunteer.decisions, { decisionId: `decision-${decisionIndex}`, tookRisk, success }],
+      resolved,
+    };
+
+    const label = turnLabel(s);
+    set({
+      provinces: s.provinces.map(p =>
+        p.id === provinceId ? { ...p, officerVolunteer: updatedVolunteer } : p
+      ),
+      log: [...s.log, mkLog(
+        label,
+        `${volunteer.characterName} — officer decision ${newDecisionsResolved}/3: ${success ? 'success' : 'failed'}.`,
+        success ? 'positive' : 'negative',
+      )],
+    });
   },
 }));

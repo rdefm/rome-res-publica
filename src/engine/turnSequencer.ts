@@ -351,6 +351,41 @@ export function processSeason(state: GameState): {
     s = { ...s, ...patch };
   }
 
+  // 9g. Resolve campaigns with completed officer volunteers (light system)
+  // Iterates ALL provinces so simultaneous revolts each resolve independently.
+  {
+    const updatedProvinces = s.provinces.map(province => {
+      const volunteer = province.officerVolunteer;
+      const campaign = province.activeCampaign;
+      if (!volunteer?.resolved || !campaign || campaign.resolved || campaign.commanderCharacterId !== null) {
+        return province;
+      }
+
+      const { successCount } = volunteer;
+      const outcome: 'victory' | 'strategic_win' | 'stalemate' | 'defeat' =
+        successCount >= 3 ? 'victory'
+        : successCount >= 2 ? 'strategic_win'
+        : successCount >= 1 ? 'stalemate'
+        : 'defeat';
+
+      const revoltSuppressed = successCount >= 2;
+      const relationshipDelta =
+        outcome === 'victory'      ? 12
+        : outcome === 'strategic_win' ? 6
+        : outcome === 'stalemate'     ? 0
+        : -8;
+
+      return {
+        ...province,
+        revoltActive:      revoltSuppressed ? false : province.revoltActive,
+        relationshipScore: Math.min(100, Math.max(0, province.relationshipScore + relationshipDelta)),
+        activeCampaign:    { ...campaign, resolved: true, outcome },
+        officerVolunteer:  null,   // cleared after resolution
+      };
+    });
+    s = { ...s, provinces: updatedProvinces };
+  }
+
   // 10. Age family members
   s = {
     ...s,

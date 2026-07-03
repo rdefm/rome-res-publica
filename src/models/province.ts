@@ -97,6 +97,9 @@ export interface ProvinceState {
 
   // Active campaign (if any)
   activeCampaign: CampaignState | null;
+
+  // Officer volunteer for the active campaign (if any)
+  officerVolunteer: OfficerVolunteerState | null;
 }
 
 export interface NpcRoleHolder {

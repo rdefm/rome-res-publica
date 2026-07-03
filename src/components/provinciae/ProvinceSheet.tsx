@@ -15,6 +15,7 @@ import { COLORS, FONTS, SPACING } from '../../utils/theme';
 import type {
   ProvinceState,
   GovernorPolicy,
+  CampaignState,
   CommanderElectionState,
   OfficerVolunteerState,
 } from '../../models/province';
@@ -58,6 +59,7 @@ interface ProvinceSheetProps {
   onUpgradeAsset: (provinceId: string, assetId: string) => void;
   onRecruitClient: (provinceId: string, clientId: string) => void;
   onSeekPosting: (provinceId: string) => void;
+  onStartCampaign: (provinceId: string, type: CampaignState['type']) => void;
   onCommitCampaignSeason: (provinceId: string, allocation: CampaignAllocation) => void;
   onResolveCampaignEvent: (provinceId: string, eventId: string, optionId: string) => void;
   onNominateCommander: (provinceId: string, candidateId: string) => void;
@@ -87,6 +89,7 @@ export default function ProvinceSheet({
   onUpgradeAsset,
   onRecruitClient,
   onSeekPosting,
+  onStartCampaign,
   onCommitCampaignSeason,
   onResolveCampaignEvent,
   onNominateCommander,
@@ -238,15 +241,14 @@ export default function ProvinceSheet({
                   commanderElection={commanderElection}
                   officerVolunteer={officerVolunteer}
                   campaignVotes={campaignVotes}
-                  onStartCampaign={() => {}}
+                  onStartCampaign={(pid, type) => onStartCampaign(pid, type)}
                   onCommitCampaignSeason={(pid, alloc) => onCommitCampaignSeason(pid, alloc)}
                   onResolveCampaignEvent={(pid, eid, oid) => onResolveCampaignEvent(pid, eid, oid)}
                   onNominateCommander={(pid, cid) => onNominateCommander(pid, cid)}
                   onVoteCommander={(lid, vote) => onVoteCommander(lid, vote)}
                   onSpeechCommander={(pid) => onSpeechCommander(pid)}
                   onVolunteerOfficer={(pid, charId) => onVolunteerOfficer(pid, charId)}
-                  onResolveOfficerDecision={(pid, idx, risk) => onResolveOfficerDecision(pid, idx, risk)}
-                />
+                  onResolveOfficerDecision={(pid, idx, risk) => onResolveOfficerDecision(pid, idx, risk)}                />
 
                 {showMilitarySection && militaryCharacter && (
                   <PersonalMilitarySection
