@@ -18,6 +18,15 @@ import {
   calcConsularArmyStrength,
   calcConsularArmyArrivalTurn,
 } from '../engine/senateResponseEngine';
+import {
+  calcOfficeThreshold,
+  calcCanvassRoll,
+  CANVASS_FIDES_COST,
+  CANVASS_MIN_RELATIONSHIP,
+  CANVASS_EVENT_CHANCE,
+} from '../engine/electionEngine';
+import { CANVASSING_EVENTS } from '../data/canvassingEvents';
+import type { CanvassingEvent } from '../data/canvassingEvents';
 import { STARTING_FAMILY } from '../data/startingFamily';
 import { STARTING_CLANS } from '../data/startingClans';
 import { STARTING_BILLS } from '../data/billTemplates';
@@ -140,6 +149,12 @@ export interface GameState {
 
   // ── Military (Chunk M) ──────────────────────────────────────────────────
   senateResponse: SenateResponseState | null;
+
+  // ── Canvassing ──────────────────────────────────────────────────────────
+  activeCanvassingEvent: CanvassingEvent | null;
+  pendingCanvassLeaderId: string | null;
+  pendingCanvassRoll: number;
+  pendingCanvassThreshold: number;
 }
 
 export interface GameActions {
@@ -236,6 +251,10 @@ export interface GameActions {
   startCampaign: (provinceId: string, type: CampaignState['type']) => void;
   volunteerOfficer: (provinceId: string, characterId: string) => void;
   resolveOfficerDecision: (provinceId: string, decisionIndex: number, tookRisk: boolean) => void;
+
+  // ── Canvassing ──────────────────────────────────────────────────────────
+  canvassLeader: (leaderId: string) => void;
+  resolveCanvassingEvent: (optionId: string) => void;
 }
 
 let _logId = 0;
@@ -312,6 +331,12 @@ export const INITIAL_STATE: GameState = {
 
   // Military (Chunk M)
   senateResponse: null,
+
+  // Canvassing
+  activeCanvassingEvent: null,
+  pendingCanvassLeaderId: null,
+  pendingCanvassRoll: 0,
+  pendingCanvassThreshold: 0,
 
   gameStarted: false,
   debugMode: false,
@@ -1318,6 +1343,117 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         label,
         `${volunteer.characterName} — officer decision ${newDecisionsResolved}/3: ${success ? 'success' : 'failed'}.`,
         success ? 'positive' : 'negative',
+      )],
+    });
+  },
+
+  // ── Canvassing ─────────────────────────────────────────────────────────────
+
+  canvassLeader: (leaderId) => {
+    const s = get();
+    if (!s.campaigning) return;
+    if (s.fides < CANVASS_FIDES_COST) return;
+    if (s.campaignVotes[leaderId] === 'for') return;
+
+    let foundLeader: (typeof s.clans[0]['leaders'][0]) | null = null;
+    let foundClanId: string | null = null;
+    for (const clan of s.clans) {
+      const l = clan.leaders.find(l => l.id === leaderId);
+      if (l) { foundLeader = l; foundClanId = clan.id; break; }
+    }
+    if (!foundLeader || !foundClanId) return;
+    if (foundLeader.relationship < CANVASS_MIN_RELATIONSHIP) return;
+
+    const clanHasRival = s.electionRivals.some(r => r.clanId === foundClanId);
+    const threshold = calcOfficeThreshold(s.campaigning);
+    const effectiveThreshold = clanHasRival ? threshold * 2 : threshold;
+
+    const playerChar = s.family.find(c => c.isPlayer);
+    const rhetoric = playerChar?.skills.rhetoric ?? 0;
+    const roll = calcCanvassRoll(rhetoric, foundLeader.relationship);
+    const newFides = s.fides - CANVASS_FIDES_COST;
+    const label = turnLabel(s);
+
+    if (Math.random() < CANVASS_EVENT_CHANCE && !s.activeCanvassingEvent) {
+      const event = CANVASSING_EVENTS[Math.floor(Math.random() * CANVASSING_EVENTS.length)];
+      set({
+        fides:                   newFides,
+        activeCanvassingEvent:   event,
+        pendingCanvassLeaderId:  leaderId,
+        pendingCanvassRoll:      roll,
+        pendingCanvassThreshold: effectiveThreshold,
+      });
+      return;
+    }
+
+    const success = roll >= effectiveThreshold;
+    set({
+      fides: newFides,
+      campaignVotes: success
+        ? { ...s.campaignVotes, [leaderId]: 'for' as const }
+        : s.campaignVotes,
+      log: [...s.log, mkLog(
+        label,
+        success
+          ? `${foundLeader.name} pledges their support to your campaign.`
+          : `${foundLeader.name} was not persuaded.${clanHasRival ? ' Their gens backs a rival candidate.' : ''}`,
+        success ? 'positive' : 'neutral',
+      )],
+    });
+  },
+
+  resolveCanvassingEvent: (optionId) => {
+    const s = get();
+    const event = s.activeCanvassingEvent;
+    const leaderId = s.pendingCanvassLeaderId;
+    if (!event || !leaderId) return;
+
+    const option = event.options.find(o => o.id === optionId);
+    if (!option) return;
+    if (option.cost?.resource === 'fides'   && s.fides   < option.cost.amount) return;
+    if (option.cost?.resource === 'denarii' && s.denarii < option.cost.amount) return;
+
+    let foundLeader: (typeof s.clans[0]['leaders'][0]) | null = null;
+    for (const clan of s.clans) {
+      const l = clan.leaders.find(l => l.id === leaderId);
+      if (l) { foundLeader = l; break; }
+    }
+    if (!foundLeader) return;
+
+    let rollBonus = 0;
+    let flavour = '';
+
+    if (option.skillCheck) {
+      const playerChar = s.family.find(c => c.isPlayer);
+      const rhetoric = playerChar?.skills.rhetoric ?? 0;
+      const checkRoll = Math.random() * 100 + rhetoric * 5;
+      const checkSuccess = checkRoll >= option.skillCheck.difficulty;
+      rollBonus = checkSuccess
+        ? option.skillCheck.bonusOnSuccess
+        : option.skillCheck.penaltyOnFail;
+      flavour = checkSuccess ? option.flavorSuccess : (option.flavorFail ?? '');
+    } else {
+      flavour = option.flavorSuccess;
+    }
+
+    const finalRoll = s.pendingCanvassRoll + rollBonus;
+    const success = !!(option.immediateSuccess) || (finalRoll >= s.pendingCanvassThreshold);
+    const label = turnLabel(s);
+
+    set({
+      fides:   s.fides   - (option.cost?.resource === 'fides'   ? option.cost.amount : 0),
+      denarii: s.denarii - (option.cost?.resource === 'denarii' ? option.cost.amount : 0),
+      campaignVotes: success
+        ? { ...s.campaignVotes, [leaderId]: 'for' as const }
+        : s.campaignVotes,
+      activeCanvassingEvent:   null,
+      pendingCanvassLeaderId:  null,
+      pendingCanvassRoll:      0,
+      pendingCanvassThreshold: 0,
+      log: [...s.log, mkLog(
+        label,
+        `${foundLeader.name}: ${flavour}${success ? ' They pledge their support.' : ''}`,
+        success ? 'positive' : 'neutral',
       )],
     });
   },

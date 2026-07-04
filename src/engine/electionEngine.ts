@@ -2,14 +2,91 @@ import type { ElectionRival, OfficeId } from '../models/office';
 import type { GameState } from '../state/gameStore';
 import { OFFICES } from '../data/offices';
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+/** Player's starting election score before any canvassing or client bonuses. */
+export const PLAYER_BASE_SCORE = 25;
+
+/** Fides cost per canvassing attempt. */
+export const CANVASS_FIDES_COST = 3;
+
+/** Minimum relationship required to canvass a leader. */
+export const CANVASS_MIN_RELATIONSHIP = 25;
+
+/** Probability of a canvassing event firing on any given attempt (0–1). */
+export const CANVASS_EVENT_CHANCE = 0.15;
+
+function clamp(min: number, max: number, val: number): number {
+  return Math.min(max, Math.max(min, val));
+}
+
+// ─── Office threshold ─────────────────────────────────────────────────────────
+
+/**
+ * Returns the canvassing success threshold for a given office.
+ * Scales linearly: Vigintivirate = 40, adding 5 per rung up to Dictator = 75.
+ * A rival-clan canvass requires double this threshold.
+ */
+export function calcOfficeThreshold(officeId: OfficeId): number {
+  const idx = OFFICES.findIndex(o => o.id === officeId);
+  return 40 + Math.max(0, idx) * 5;
+}
+
+// ─── Canvass roll ─────────────────────────────────────────────────────────────
+
+/**
+ * Generates the raw canvass roll result (not yet compared to threshold).
+ * - Base: 0–100 random
+ * - +5 per rhetoric point
+ * - +2 per 10 relationship points with the target
+ */
+export function calcCanvassRoll(rhetoric: number, relationship: number): number {
+  const base = Math.random() * 100;
+  const rhetBonus = rhetoric * 5;
+  const relBonus = Math.floor(relationship / 10) * 2;
+  return base + rhetBonus + relBonus;
+}
+
+// ─── Player election score ────────────────────────────────────────────────────
+
+/**
+ * Returns the player's current displayed election score:
+ * base + voting-sway client bonuses + votes from successfully canvassed leaders.
+ * Used in both the Cursus election panel (live) and resolveElection (final).
+ */
+export function calcPlayerElectionScore(state: GameState): number {
+  const votingSwayBonus = state.clients
+    .filter(c => c.type === 'votingSway')
+    .reduce((sum, c) => sum + (c.bonus.votingSwayBonus ?? 1), 0);
+
+  const lockedFor = state.clans
+    .flatMap(c => c.leaders)
+    .filter(l => state.campaignVotes[l.id] === 'for')
+    .reduce((sum, l) => sum + l.votes, 0);
+
+  return PLAYER_BASE_SCORE + votingSwayBonus + lockedFor;
+}
+
+// ─── Rival election score ─────────────────────────────────────────────────────
+
+/**
+ * Returns a rival's displayed election score, proportional to their clan's
+ * influence. Higher-influence families field stronger candidates by default.
+ */
+export function calcRivalElectionScore(rival: ElectionRival): number {
+  return Math.round(30 + rival.clanInfluence * 0.4);
+}
+
+// ─── Generate rivals ──────────────────────────────────────────────────────────
+
 export function generateRivals(officeId: OfficeId, state: GameState): ElectionRival[] {
-  const officeIdx = OFFICES.findIndex((o) => o.id === officeId);
+  const officeIdx = OFFICES.findIndex(o => o.id === officeId);
   const count = officeIdx >= 4 ? 3 : 2;
 
-  const pool = state.clans.flatMap((c) =>
+  const pool = state.clans.flatMap(c =>
     c.leaders
-      .filter((l) => l.relationship < 30 && l.votes >= 6)
-      .map((l) => ({
+      .filter(l => l.relationship < 30 && l.votes >= 6)
+      .map(l => ({
         ...l,
         clanName: c.name,
         clanId: c.id,
@@ -20,73 +97,39 @@ export function generateRivals(officeId: OfficeId, state: GameState): ElectionRi
   return pool
     .sort(() => Math.random() - 0.5)
     .slice(0, count)
-    .map((l) => ({
-      id: l.id,
-      name: l.name,
-      emoji: l.emoji,
-      clanName: l.clanName,
-      clanId: l.clanId,
-      title: l.title,
-      bias: l.bias,
-      baseVotes: l.votes,
+    .map(l => ({
+      id:           l.id,
+      name:         l.name,
+      emoji:        l.emoji,
+      clanName:     l.clanName,
+      clanId:       l.clanId,
+      title:        l.title,
+      bias:         l.bias,
+      baseVotes:    l.votes,
       clanInfluence: l.clanInfluence,
-      strength: Math.round(
-        40 +
-          l.clanInfluence * 0.25 +
-          (l.bias === 'optimates' ? 8 : l.bias === 'populares' ? 6 : 3)
-      ),
+      // strength now represents the influence-based election score
+      strength: Math.round(30 + l.clanInfluence * 0.4),
     }));
 }
 
-function clamp(min: number, max: number, val: number): number {
-  return Math.min(max, Math.max(min, val));
-}
+// ─── Clan votes (legacy helper, retained for any backward-compatible callers) ──
 
 export function calcClanVotesForPlayer(
   clanId: string,
-  state: GameState
+  state: GameState,
 ): { forPlayer: number; total: number; prob: number } {
-  const clan = state.clans.find((c) => c.id === clanId);
+  const clan = state.clans.find(c => c.id === clanId);
   if (!clan) return { forPlayer: 0, total: 0, prob: 0 };
 
   const totalVotes = clan.leaders.reduce((s, l) => s + l.votes, 0);
   const weightedRel =
     clan.leaders.reduce((s, l) => s + l.relationship * l.votes, 0) / totalVotes;
-
-  const optBonus =
-    clan.leaders
-      .filter((l) => l.bias === 'optimates')
-      .reduce((s) => s + state.optimatesRel * 0.15, 0) /
-    Math.max(1, clan.leaders.length);
-
-  const popBonus =
-    clan.leaders
-      .filter((l) => l.bias === 'populares')
-      .reduce((s) => s + state.popularesRel * 0.15, 0) /
-    Math.max(1, clan.leaders.length);
-
-  const score = weightedRel + optBonus + popBonus;
-  const prob = clamp(0.05, 0.95, 0.5 + score / 130);
+  const prob = clamp(0.05, 0.95, 0.5 + weightedRel / 130);
   const forPlayer = Math.round(totalVotes * prob);
-
   return { forPlayer, total: totalVotes, prob };
 }
 
-export function calcRivalVotes(rival: ElectionRival, state: GameState): number {
-  const rivalClan = state.clans.find((c) => c.id === rival.clanId);
-  const { forPlayer, total } = calcClanVotesForPlayer(rival.clanId, state);
-  const homeClanAgainst = total - forPlayer;
-
-  const hostileClans = state.clans.filter(
-    (c) => (c.standing === 'hostile' || c.standing === 'rival') && c.id !== rival.clanId
-  );
-  const spillover = hostileClans.reduce((sum, c) => {
-    const { total: ct, forPlayer: cfp } = calcClanVotesForPlayer(c.id, state);
-    return sum + Math.round(((ct - cfp) * 0.4) / Math.max(1, state.electionRivals.length));
-  }, 0);
-
-  return homeClanAgainst + spillover + Math.round(rival.strength * 0.3);
-}
+// ─── Resolve election ─────────────────────────────────────────────────────────
 
 export function resolveElection(state: GameState): {
   won: boolean;
@@ -94,41 +137,22 @@ export function resolveElection(state: GameState): {
   topRivalName: string;
   topRivalVotes: number;
 } {
-  // 1. Locked votes from canvassed leaders
-  let lockedFor = 0;
-  let lockedAgainst = 0;
-  state.clans.flatMap((c) => c.leaders).forEach((l) => {
-    const cv = state.campaignVotes[l.id];
-    if (cv === 'for') lockedFor += l.votes;
-    if (cv === 'against') lockedAgainst += l.votes;
-  });
+  // Player: base + client bonuses + canvassed leaders + small luck factor
+  const playerBase = calcPlayerElectionScore(state);
+  const wordOfMouth = Math.round(Math.random() * 8);
+  const playerTotal = playerBase + wordOfMouth;
 
-  // 2. Probabilistic uncanvassed votes
-  const totalVotes = state.clans.flatMap((c) => c.leaders).reduce((s, l) => s + l.votes, 0);
-  const canvassed = lockedFor + lockedAgainst;
-  const uncanvassed = totalVotes - canvassed;
-  const uncanvProb = clamp(
-    0.05,
-    0.95,
-    0.5 + (state.popularesRel + state.optimatesRel) / 260
-  );
-  const uncanvFor = Math.round(uncanvassed * uncanvProb * (0.8 + Math.random() * 0.4));
-
-  // 3. Voting Sway client bonus — flat +1 vote per client, no scaling
-  const votingSwayClients = state.clients.filter(c => c.type === 'votingSway').length;
-  const playerTotal = lockedFor + uncanvFor + votingSwayClients;
-
-  // 4. Rival totals
-  const rivalResults = state.electionRivals.map((r) => ({
+  // Rivals: influence-based score + small noise
+  const rivalResults = state.electionRivals.map(r => ({
     name: r.name,
-    votes: calcRivalVotes(r, state),
+    votes: Math.round(30 + r.clanInfluence * 0.4 + (Math.random() * 8 - 4)),
   }));
   const topRival = rivalResults.sort((a, b) => b.votes - a.votes)[0];
 
   return {
-    won: !topRival || playerTotal > topRival.votes,
-    playerVotes: playerTotal,
-    topRivalName: topRival?.name ?? 'unknown',
+    won:           !topRival || playerTotal > topRival.votes,
+    playerVotes:   playerTotal,
+    topRivalName:  topRival?.name ?? 'unknown',
     topRivalVotes: topRival?.votes ?? 0,
   };
 }

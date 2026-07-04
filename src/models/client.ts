@@ -8,6 +8,8 @@ export interface ClientBonus {
   corruptionShield?: number;
   rhetoricalBonus?: number;
   martialBonus?: number;
+  /** Votes added directly to the player's election score. Defaults to 1 if unset. */
+  votingSwayBonus?: number;
 }
 
 export interface Client {

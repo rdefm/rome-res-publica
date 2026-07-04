@@ -7,7 +7,7 @@ import { useGameStore } from '../state/gameStore';
 import { OFFICES } from '../data/offices';
 import type { OfficeId } from '../models/office';
 import type { Character } from '../models/character';
-import { calcClanVotesForPlayer } from '../engine/electionEngine';
+import { calcPlayerElectionScore, calcRivalElectionScore, PLAYER_BASE_SCORE } from '../engine/electionEngine';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
@@ -216,26 +216,26 @@ const rung = StyleSheet.create({
 
 function ElectionPanel({ character }: { character: Character }) {
   const state = useGameStore();
-  const { campaigning, campaigningCharacterId, electionRivals, seasonIndex, clans } = state;
+  const { campaigning, campaigningCharacterId, electionRivals, seasonIndex } = state;
 
   if (!campaigning || campaigningCharacterId !== character.id) return null;
 
   const office = OFFICES.find((o) => o.id === campaigning);
   const seasonsToWinter = (3 - seasonIndex + 4) % 4;
 
-  const { forPlayer: totalFor } = clans.reduce(
-    (acc, c) => {
-      const { forPlayer, total } = calcClanVotesForPlayer(c.id, state);
-      return { forPlayer: acc.forPlayer + forPlayer, total: acc.total + total };
-    },
-    { forPlayer: 0, total: 0 }
-  );
+  const playerScore = calcPlayerElectionScore(state);
 
   const candidates = [
-    { name: character.name, votes: totalFor, isPlayer: true },
+    {
+      name:     character.name,
+      subtitle: `Base ${PLAYER_BASE_SCORE} + clients + canvassed`,
+      votes:    playerScore,
+      isPlayer: true,
+    },
     ...electionRivals.map((r) => ({
-      name: r.name,
-      votes: Math.round(r.strength * 0.5 + Math.random() * 10),
+      name:     r.name,
+      subtitle: r.clanName,
+      votes:    calcRivalElectionScore(r),
       isPlayer: false,
     })),
   ].sort((a, b) => b.votes - a.votes);
@@ -253,9 +253,12 @@ function ElectionPanel({ character }: { character: Character }) {
       )}
       {candidates.map((c) => (
         <View key={c.name} style={ep.candidateRow}>
-          <Text style={[ep.candidateName, c.isPlayer && { color: COLORS.gold }]} numberOfLines={1}>
-            {c.name}
-          </Text>
+          <View style={ep.candidateInfo}>
+            <Text style={[ep.candidateName, c.isPlayer && { color: COLORS.gold }]} numberOfLines={1}>
+              {c.name}
+            </Text>
+            <Text style={ep.candidateClan} numberOfLines={1}>{c.subtitle}</Text>
+          </View>
           <View style={ep.voteBarTrack}>
             <View style={[ep.voteBarFill, {
               width: `${(c.votes / maxVotes) * 100}%`,
@@ -276,7 +279,9 @@ const ep = StyleSheet.create({
   countdown: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, marginBottom: SPACING.sm },
   urgent: { color: COLORS.crimson, fontFamily: FONTS.display, fontSize: 12, fontWeight: '700', marginBottom: SPACING.sm },
   candidateRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  candidateName: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 12, width: 110 },
+  candidateInfo: { width: 110 },
+  candidateName: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 12 },
+  candidateClan: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 9, letterSpacing: 0.3 },
   voteBarTrack: { flex: 1, height: 8, backgroundColor: COLORS.bg, borderRadius: 4, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   voteBarFill: { height: '100%', borderRadius: 4 },
   voteCount: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, width: 30, textAlign: 'right' },
