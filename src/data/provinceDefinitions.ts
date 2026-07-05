@@ -36,6 +36,8 @@ export const ITALY_PROVINCES: ProvinceDefinition[] = [
       trait: 'competent',
       policy: { taxation: 'standard', security: 'heavy_garrison', development: 'maintain' },
     },
+    namedWar: 'Gallic Raids',
+    threatWeight: 1.2,
   },
   {
     id: 'etruria',
@@ -108,6 +110,8 @@ export const ITALY_PROVINCES: ProvinceDefinition[] = [
       trait: 'negligent',
       policy: { taxation: 'standard', security: 'light_patrol', development: 'neglect' },
     },
+    namedWar: 'Samnite Unrest',
+    threatWeight: 1.1,
   },
   {
     id: 'campania',
@@ -151,7 +155,7 @@ export function buildInitialProvinceStates(): ProvinceState[] {
   return ITALY_PROVINCES.map(def => ({
     id: def.id,
     map: def.map,
-    status: def.status,          // ← added: mirrors ProvinceDefinition.status onto ProvinceState
+    status: def.status,
     relationshipScore: def.startingRelationship,
     internalStability: def.id === 'latium' ? 100 : 70,
     infrastructureRating: def.startingInfrastructure,
@@ -164,5 +168,9 @@ export function buildInitialProvinceStates(): ProvinceState[] {
     warDeclarationAvailable: false,
     revoltActive: false,
     activeCampaign: null,
+    officerVolunteer: null,          // was missing from original — added here
+    // ── Crisis track inputs (Chunk 2A) ────────────────────────────────────
+    infraStagnationSeasons: 0,
+    lastInfraScore: def.startingInfrastructure,
   }));
 }

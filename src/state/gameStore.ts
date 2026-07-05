@@ -13,6 +13,7 @@ import type { Trial } from '../models/trial';
 import type { ProvinceState, GovernorPolicy, CampaignState, OfficerVolunteerState } from '../models/province';
 import type { TroopUnit } from '../models/troop';
 import type { SenateResponseState } from '../engine/senateResponseEngine';
+import type { CrisisState } from '../models/crisis';
 import { calcLevyCost } from '../engine/troopEngine';
 import {
   calcConsularArmyStrength,
@@ -72,7 +73,11 @@ export interface GameState {
   };
 
   // Crisis
-  crisisLevel: number;
+  crisisLevel: number;         // legacy scalar — kept in sync with four-track average each season
+  crisis: CrisisState;         // four-track model (Chunk 2A+)
+
+  // Flags — general boolean/numeric flag store used by effect strings and gate checks
+  flags: Record<string, boolean | number>;
 
   // Family (Domus)
   family: Character[];
@@ -284,6 +289,15 @@ export const INITIAL_STATE: GameState = {
   rome: { stability: 70, plebs: 60, treasury: 50 },
 
   crisisLevel: 15,
+
+  crisis: {
+    war:          { id: 'war',          level: 20, tier: 1, namedCrisis: 'Border Tensions' },
+    unrest:       { id: 'unrest',       level: 10, tier: 0, namedCrisis: null },
+    constitution: { id: 'constitution', level: 5,  tier: 0, namedCrisis: null },
+    economy:      { id: 'economy',      level: 15, tier: 0, namedCrisis: null },
+  },
+
+  flags: {},
 
   family: STARTING_FAMILY,
   selectedCharacterId: 'pc-1',

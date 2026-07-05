@@ -1,22 +1,21 @@
 import { calcRomeStatModifiers } from '../src/engine/resourceEngine';
 import {
-  calcCrisisEscalation,
-  getStabilityEscalationMultiplier,
-  getTreasuryAbsorption,
-  getPlebsCrisisBonus,
+  applyTrackDelta,
+  calcCascadeDeltas,
+  getCrisisStatusEffects,
+  checkMilitaryBillPressure,
+  calcIndividualEscalation,
 } from '../src/engine/crisisEngine';
+import { getTierFromLevel } from '../src/models/crisis';
+import type { CrisisState, CrisisTrack } from '../src/models/crisis';
 import { calcRomeStatVoteModifier, buildRepealBill } from '../src/data/billTemplates';
 import type { Bill, ActiveLaw } from '../src/models/bill';
 
 // ─── calcRomeStatModifiers ────────────────────────────────────────────────────
-// gravitasDelta (stability) and gratiaDelta (plebs) are merged into a single
-// fidesDelta. Stability and plebs bands are tested separately below, then a
-// combined test confirms the two contributions sum correctly.
 
 describe('calcRomeStatModifiers — stability bands', () => {
   test('0–19 Instability: fides −2, multiplier 1.5', () => {
     const m = calcRomeStatModifiers({ stability: 10, plebs: 50, treasury: 50 });
-    // plebs=50 (Content band) contributes 0, so fidesDelta isolates stability's effect
     expect(m.fidesDelta).toBe(-2);
     expect(m.crisisEscalationMultiplier).toBe(1.5);
     expect(m.stabilityLabel).toBe('Instability');
@@ -49,7 +48,6 @@ describe('calcRomeStatModifiers — stability bands', () => {
 describe('calcRomeStatModifiers — plebs bands', () => {
   test('0–19 Rioting: fides −3, crisis +3, label Rioting', () => {
     const m = calcRomeStatModifiers({ stability: 50, plebs: 10, treasury: 50 });
-    // stability=50 (Stable band) contributes 0, so fidesDelta isolates plebs' effect
     expect(m.fidesDelta).toBe(-3);
     expect(m.plebsCrisisBonus).toBe(3);
     expect(m.plebsLabel).toBe('Rioting');
@@ -80,12 +78,10 @@ describe('calcRomeStatModifiers — plebs bands', () => {
 
 describe('calcRomeStatModifiers — combined stability + plebs', () => {
   test('fidesDelta sums stability and plebs contributions together', () => {
-    // Pax Interna (stability 90 → +2) + Euphoric (plebs 90 → +2) = +4
     const m = calcRomeStatModifiers({ stability: 90, plebs: 90, treasury: 50 });
     expect(m.fidesDelta).toBe(4);
   });
   test('opposing contributions partially cancel', () => {
-    // Instability (stability 10 → −2) + Euphoric (plebs 90 → +2) = 0
     const m = calcRomeStatModifiers({ stability: 10, plebs: 90, treasury: 50 });
     expect(m.fidesDelta).toBe(0);
   });
@@ -120,29 +116,372 @@ describe('calcRomeStatModifiers — treasury bands', () => {
   });
 });
 
-// ─── calcCrisisEscalation with multiplier + absorption ───────────────────────
+// ─── Four-track crisis engine (replaces old calcCrisisEscalation tests) ───────
 
-describe('calcCrisisEscalation — with multiplier and absorption', () => {
-  test('no bills, stable: +8', () => {
-    expect(calcCrisisEscalation(20, 0, 1.0, 0, 0)).toBe(28);
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function makeTrack(id: CrisisTrack['id'], level: number): CrisisTrack {
+  return { id, level, tier: getTierFromLevel(level), namedCrisis: null };
+}
+
+function makeCrisisState(overrides: Partial<Record<string, number>> = {}): CrisisState {
+  return {
+    war:          makeTrack('war',          overrides.war          ?? 10),
+    unrest:       makeTrack('unrest',       overrides.unrest       ?? 10),
+    constitution: makeTrack('constitution', overrides.constitution ?? 10),
+    economy:      makeTrack('economy',      overrides.economy      ?? 10),
+  };
+}
+
+// Minimal GameState shape for calcIndividualEscalation
+function makeMinimalState(overrides: Record<string, any> = {}): any {
+  return {
+    rome: { stability: 50, plebs: 50, treasury: 50 },
+    crisis: makeCrisisState(),
+    provinces: [],
+    clients: [],
+    clans: [],
+    flags: {},
+    npcConsul: null,
+    optimatesRel: 0,
+    popularesRel: 0,
+    ...overrides,
+  };
+}
+
+// ── getTierFromLevel ────────────────────────────────────────────────────────────
+
+describe('getTierFromLevel', () => {
+  test('0–19 → tier 0', () => {
+    expect(getTierFromLevel(0)).toBe(0);
+    expect(getTierFromLevel(19)).toBe(0);
   });
-  test('no bills, instability multiplier 1.5: +12', () => {
-    expect(calcCrisisEscalation(20, 0, 1.5, 0, 0)).toBe(32);
+  test('20–39 → tier 1', () => {
+    expect(getTierFromLevel(20)).toBe(1);
+    expect(getTierFromLevel(39)).toBe(1);
   });
-  test('no bills + treasury absorption 2: net +6', () => {
-    expect(calcCrisisEscalation(20, 0, 1.0, 2, 0)).toBe(26);
+  test('40–59 → tier 2', () => {
+    expect(getTierFromLevel(40)).toBe(2);
+    expect(getTierFromLevel(59)).toBe(2);
   });
-  test('no bills + rioting plebs bonus 3: net +11', () => {
-    expect(calcCrisisEscalation(20, 0, 1.0, 0, 3)).toBe(31);
+  test('60–79 → tier 3', () => {
+    expect(getTierFromLevel(60)).toBe(3);
+    expect(getTierFromLevel(79)).toBe(3);
   });
-  test('bill passes: −3 (multiplier does not apply to negative delta)', () => {
-    expect(calcCrisisEscalation(20, 1, 1.5, 0, 0)).toBe(17);
+  test('80–100 → tier 4', () => {
+    expect(getTierFromLevel(80)).toBe(4);
+    expect(getTierFromLevel(100)).toBe(4);
   });
-  test('clamped at 0', () => {
-    expect(calcCrisisEscalation(0, 1, 1.0, 5, 0)).toBe(0);
+});
+
+// ── applyTrackDelta ─────────────────────────────────────────────────────────────
+
+describe('applyTrackDelta', () => {
+  test('applies positive delta and recomputes tier', () => {
+    const track = makeTrack('war', 15);
+    const result = applyTrackDelta(track, 10);
+    expect(result.level).toBe(25);
+    expect(result.tier).toBe(1);
   });
-  test('clamped at 100', () => {
-    expect(calcCrisisEscalation(98, 0, 1.5, 0, 0)).toBe(100);
+
+  test('applies negative delta and recomputes tier', () => {
+    const track = makeTrack('war', 45);
+    const result = applyTrackDelta(track, -10);
+    expect(result.level).toBe(35);
+    expect(result.tier).toBe(1);
+  });
+
+  test('clamps to 0 when delta would go negative', () => {
+    const track = makeTrack('war', 5);
+    const result = applyTrackDelta(track, -20);
+    expect(result.level).toBe(0);
+    expect(result.tier).toBe(0);
+  });
+
+  test('clamps to 100 when delta would exceed maximum', () => {
+    const track = makeTrack('war', 95);
+    const result = applyTrackDelta(track, 20);
+    expect(result.level).toBe(100);
+    expect(result.tier).toBe(4);
+  });
+
+  test('does not mutate the input track', () => {
+    const track = makeTrack('war', 30);
+    applyTrackDelta(track, 15);
+    expect(track.level).toBe(30);
+  });
+
+  test('returns correct tier at tier boundary', () => {
+    const track = makeTrack('war', 39);
+    const result = applyTrackDelta(track, 1); // 40 → tier 2
+    expect(result.tier).toBe(2);
+  });
+});
+
+// ── calcCascadeDeltas ───────────────────────────────────────────────────────────
+
+describe('calcCascadeDeltas', () => {
+  test('no cascades when all tracks below 60', () => {
+    const crisis = makeCrisisState({ war: 50, unrest: 50, constitution: 50, economy: 50 });
+    const deltas = calcCascadeDeltas(crisis);
+    expect(deltas.war).toBe(0);
+    expect(deltas.unrest).toBe(0);
+    expect(deltas.constitution).toBe(0);
+    expect(deltas.economy).toBe(0);
+  });
+
+  test('constitution ≥ 60 → War +2', () => {
+    const crisis = makeCrisisState({ war: 10, constitution: 65 });
+    const deltas = calcCascadeDeltas(crisis);
+    expect(deltas.war).toBe(2);
+    expect(deltas.unrest).toBe(0);
+    expect(deltas.constitution).toBe(0);
+  });
+
+  test('war ≥ 60 AND constitution ≥ 60 → War +4 total (constitution +2, compound +2)', () => {
+    const crisis = makeCrisisState({ war: 65, constitution: 65 });
+    const deltas = calcCascadeDeltas(crisis);
+    expect(deltas.war).toBe(4);
+  });
+
+  test('economy ≥ 60 → Unrest +2', () => {
+    const crisis = makeCrisisState({ economy: 65 });
+    const deltas = calcCascadeDeltas(crisis);
+    expect(deltas.unrest).toBe(2);
+    expect(deltas.war).toBe(0);
+  });
+
+  test('unrest ≥ 60 → Constitution +2', () => {
+    const crisis = makeCrisisState({ unrest: 65 });
+    const deltas = calcCascadeDeltas(crisis);
+    expect(deltas.constitution).toBe(2);
+    expect(deltas.war).toBe(0);
+  });
+
+  test('multiple cascades stack correctly', () => {
+    // economy 65 → unrest +2; unrest 65 → constitution +2; constitution 65 → war +2
+    const crisis = makeCrisisState({ war: 10, unrest: 65, constitution: 65, economy: 65 });
+    const deltas = calcCascadeDeltas(crisis);
+    // constitution ≥ 60 → war +2; war NOT ≥ 60 so no compound
+    expect(deltas.war).toBe(2);
+    // economy ≥ 60 → unrest +2
+    expect(deltas.unrest).toBe(2);
+    // unrest ≥ 60 → constitution +2
+    expect(deltas.constitution).toBe(2);
+  });
+
+  test('cascade threshold is strictly ≥ 60 — 59 does not trigger', () => {
+    const crisis = makeCrisisState({ constitution: 59 });
+    const deltas = calcCascadeDeltas(crisis);
+    expect(deltas.war).toBe(0);
+  });
+});
+
+// ── getCrisisStatusEffects ──────────────────────────────────────────────────────
+
+describe('getCrisisStatusEffects', () => {
+  test('returns exactly 4 effects', () => {
+    const effects = getCrisisStatusEffects(makeCrisisState());
+    expect(effects).toHaveLength(4);
+  });
+
+  test('all four track IDs are represented', () => {
+    const effects = getCrisisStatusEffects(makeCrisisState());
+    const ids = effects.map(e => e.trackId).sort();
+    expect(ids).toEqual(['constitution', 'economy', 'unrest', 'war']);
+  });
+
+  test('War tier 0: no Fides/Denarii penalty, no special effect', () => {
+    const crisis = makeCrisisState({ war: 10 });
+    const effect = getCrisisStatusEffects(crisis).find(e => e.trackId === 'war')!;
+    expect(effect.tier).toBe(0);
+    expect(effect.fidesDelta).toBe(0);
+    expect(effect.denariDelta).toBe(0);
+    expect(effect.specialEffect).toBeUndefined();
+  });
+
+  test('War tier 2 (40–59): Fides −2, special war-military-bill-pressure', () => {
+    const crisis = makeCrisisState({ war: 50 });
+    const effect = getCrisisStatusEffects(crisis).find(e => e.trackId === 'war')!;
+    expect(effect.tier).toBe(2);
+    expect(effect.fidesDelta).toBe(-2);
+    expect(effect.specialEffect).toBe('war-military-bill-pressure');
+  });
+
+  test('War tier 4 (80–100): Fides −5, Denarii −10, war-levy-discount', () => {
+    const crisis = makeCrisisState({ war: 90 });
+    const effect = getCrisisStatusEffects(crisis).find(e => e.trackId === 'war')!;
+    expect(effect.tier).toBe(4);
+    expect(effect.fidesDelta).toBe(-5);
+    expect(effect.denariDelta).toBe(-10);
+    expect(effect.specialEffect).toBe('war-levy-discount');
+  });
+
+  test('Economy tier 2 (40–59): actionCostMultiplier 1.1', () => {
+    const crisis = makeCrisisState({ economy: 50 });
+    const effect = getCrisisStatusEffects(crisis).find(e => e.trackId === 'economy')!;
+    expect(effect.actionCostMultiplier).toBe(1.1);
+  });
+
+  test('Economy tier 4 (80–100): Fides −3, Denarii −12, multiplier 1.3', () => {
+    const crisis = makeCrisisState({ economy: 85 });
+    const effect = getCrisisStatusEffects(crisis).find(e => e.trackId === 'economy')!;
+    expect(effect.fidesDelta).toBe(-3);
+    expect(effect.denariDelta).toBe(-12);
+    expect(effect.actionCostMultiplier).toBe(1.3);
+  });
+
+  test('label matches tier table', () => {
+    const crisis = makeCrisisState({ unrest: 65 });
+    const effect = getCrisisStatusEffects(crisis).find(e => e.trackId === 'unrest')!;
+    expect(effect.label).toBe('Street Violence');
+  });
+});
+
+// ── checkMilitaryBillPressure ───────────────────────────────────────────────────
+
+describe('checkMilitaryBillPressure', () => {
+  test('returns 0 when War tier < 2 regardless of bills', () => {
+    const crisis = makeCrisisState({ war: 10 }); // tier 0
+    expect(checkMilitaryBillPressure(crisis, [])).toBe(0);
+  });
+
+  test('returns 0 when a military bill passed this season (tier 2)', () => {
+    const crisis = makeCrisisState({ war: 50 }); // tier 2
+    expect(checkMilitaryBillPressure(crisis, ['lex-militaria-auto-1234'])).toBe(0);
+  });
+
+  test('returns +5 at tier 2 with no military bill passed', () => {
+    const crisis = makeCrisisState({ war: 50 }); // tier 2
+    expect(checkMilitaryBillPressure(crisis, [])).toBe(5);
+  });
+
+  test('returns +8 at tier 3 with no military bill passed', () => {
+    const crisis = makeCrisisState({ war: 65 }); // tier 3
+    expect(checkMilitaryBillPressure(crisis, [])).toBe(8);
+  });
+
+  test('returns +8 at tier 4 with no military bill passed', () => {
+    const crisis = makeCrisisState({ war: 90 }); // tier 4
+    expect(checkMilitaryBillPressure(crisis, [])).toBe(8);
+  });
+
+  test('recognises war-related bill IDs', () => {
+    const crisis = makeCrisisState({ war: 65 }); // tier 3
+    // Should return 0 because a "war" bill passed
+    expect(checkMilitaryBillPressure(crisis, ['senatus-consultum-de-bello'])).toBe(0);
+    expect(checkMilitaryBillPressure(crisis, ['levy-supplemental-1'])).toBe(0);
+  });
+
+  test('non-military bills do not count', () => {
+    const crisis = makeCrisisState({ war: 65 }); // tier 3
+    expect(checkMilitaryBillPressure(crisis, ['lex-frumentaria', 'lex-agraria'])).toBe(8);
+  });
+});
+
+// ── calcIndividualEscalation — Economy stagnation ──────────────────────────────
+
+describe('calcIndividualEscalation — Economy track stagnation', () => {
+  test('province with infraStagnationSeasons ≥ 12 adds +3 to Economy escalation', () => {
+    const state = makeMinimalState({
+      provinces: [
+        {
+          id: 'samnium', status: 'incorporated',
+          infraStagnationSeasons: 12, lastInfraScore: 30,
+          relationshipScore: 50,
+          playerGovernor: null, npcRoleHolder: null,
+        },
+      ],
+      rome: { stability: 50, plebs: 50, treasury: 50 },
+    });
+    const delta = calcIndividualEscalation('economy', state);
+    // treasury 50 = no modifier; one stagnant province = +3
+    expect(delta).toBeGreaterThanOrEqual(3);
+  });
+
+  test('province with infraStagnationSeasons < 12 does not trigger stagnation bonus', () => {
+    const state = makeMinimalState({
+      provinces: [
+        {
+          id: 'samnium', status: 'incorporated',
+          infraStagnationSeasons: 8, lastInfraScore: 30,
+          relationshipScore: 50,
+          playerGovernor: null, npcRoleHolder: null,
+        },
+      ],
+      rome: { stability: 50, plebs: 50, treasury: 50 },
+    });
+    const delta = calcIndividualEscalation('economy', state);
+    // treasury 50 = no modifier; stagnation counter below threshold
+    expect(delta).toBe(0);
+  });
+
+  test('multiple stagnant provinces stack additively', () => {
+    const state = makeMinimalState({
+      provinces: [
+        { id: 'samnium',   status: 'incorporated', infraStagnationSeasons: 12, lastInfraScore: 30, relationshipScore: 50, playerGovernor: null, npcRoleHolder: null },
+        { id: 'campania',  status: 'incorporated', infraStagnationSeasons: 15, lastInfraScore: 60, relationshipScore: 50, playerGovernor: null, npcRoleHolder: null },
+      ],
+      rome: { stability: 50, plebs: 50, treasury: 50 },
+    });
+    const delta = calcIndividualEscalation('economy', state);
+    // Two stagnant provinces = +6
+    expect(delta).toBeGreaterThanOrEqual(6);
+  });
+
+  test('heartland provinces never trigger stagnation', () => {
+    const state = makeMinimalState({
+      provinces: [
+        { id: 'latium', status: 'heartland', infraStagnationSeasons: 20, lastInfraScore: 80, relationshipScore: 100, playerGovernor: null, npcRoleHolder: null },
+      ],
+      rome: { stability: 50, plebs: 50, treasury: 50 },
+    });
+    const delta = calcIndividualEscalation('economy', state);
+    expect(delta).toBe(0);
+  });
+});
+
+// ── calcIndividualEscalation — War track province pressure ─────────────────────
+
+describe('calcIndividualEscalation — War track province pressure', () => {
+  test('hostile province (rel < 15) adds +6 per season', () => {
+    const state = makeMinimalState({
+      provinces: [
+        { id: 'samnium', status: 'incorporated', relationshipScore: 10, infraStagnationSeasons: 0, lastInfraScore: 30, playerGovernor: null, npcRoleHolder: null },
+      ],
+    });
+    const delta = calcIndividualEscalation('war', state);
+    expect(delta).toBeGreaterThanOrEqual(6);
+  });
+
+  test('restless province (rel 15–29) adds +3 per season', () => {
+    const state = makeMinimalState({
+      provinces: [
+        { id: 'samnium', status: 'incorporated', relationshipScore: 20, infraStagnationSeasons: 0, lastInfraScore: 30, playerGovernor: null, npcRoleHolder: null },
+      ],
+    });
+    const delta = calcIndividualEscalation('war', state);
+    expect(delta).toBeGreaterThanOrEqual(3);
+  });
+
+  test('stable province (rel > 70) gives −2 per season', () => {
+    const state = makeMinimalState({
+      provinces: [
+        { id: 'campania', status: 'incorporated', relationshipScore: 80, infraStagnationSeasons: 0, lastInfraScore: 60, playerGovernor: null, npcRoleHolder: null },
+      ],
+    });
+    const delta = calcIndividualEscalation('war', state);
+    expect(delta).toBe(-2);
+  });
+
+  test('heartland provinces do not contribute to war escalation', () => {
+    const state = makeMinimalState({
+      provinces: [
+        { id: 'latium', status: 'heartland', relationshipScore: 0, infraStagnationSeasons: 0, lastInfraScore: 80, playerGovernor: null, npcRoleHolder: null },
+      ],
+    });
+    const delta = calcIndividualEscalation('war', state);
+    expect(delta).toBe(0);
   });
 });
 
@@ -207,7 +546,6 @@ describe('buildRepealBill', () => {
     const repeal = buildRepealBill(law);
     expect(repeal.type).toBe('repeal');
     expect(repeal.repeals).toBe('lex-frumentaria');
-    // Original passEffect: 'plebs+10|stability+3' → repeal should have plebs-10 and stability-3
     expect(repeal.passEffect).toContain('plebs-10');
     expect(repeal.passEffect).toContain('stability-3');
   });

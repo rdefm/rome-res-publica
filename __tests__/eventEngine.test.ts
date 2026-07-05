@@ -1,43 +1,59 @@
 import { rollClientBonus, computeTotalClientBonuses } from '../src/engine/clientEngine';
-import { resolveEventChoice, pickRandomEvent } from '../src/engine/eventEngine';
+import { resolveEventChoice, pickRandomEvent, evalCondition } from '../src/engine/eventEngine';
 import { EVENT_DEFS } from '../src/data/events';
 import type { ClientType, Client } from '../src/models/client';
-import type { EventChoice } from '../src/models/event';
+import type { EventChoice, EventCondition } from '../src/models/event';
+import { getTierFromLevel } from '../src/models/crisis';
+import type { CrisisState, CrisisTrack } from '../src/models/crisis';
 
 // ─── Shared state fixture ─────────────────────────────────────────────────────
 
-const makeState = (overrides = {}) => ({
-  year: -264,
-  turnNumber: 1,
-  seasonIndex: 0,
-  fides: 30,
-  denarii: 200,
-  imperium: 0,
-  lifetimeDignitas: 0,
-  popularesRel: 0,
-  optimatesRel: 0,
-  rome: { stability: 70, plebs: 60, treasury: 50 },
-  crisisLevel: 0,
-  family: [
-    {
-      id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 42,
-      skills: { rhetoric: 6, martial: 3, intrigus: 4 },
-      traits: ['ambitious'],
-      relationship: 100, familyTrust: 100,
-      officeId: null,
-      inheritedTraits: [], ambitionIds: [], reputationScores: {},
-    },
-  ],
-  bills: [], clans: [], clients: [], ownedAssets: [], ambitions: [],
-  legacyObjectives: [], patronTier: 0, trialQueue: [],
-  selectedCharacterId: 'pc-1', expandedClanId: null, selectedLeaderId: null,
-  currentOffice: null, officeSeasons: 0, heldOffices: [],
-  campaigning: null, campaignVotes: {}, electionRivals: [],
-  pendingEvents: [], activeEvent: null, log: [], cursusLog: [],
-  seasonOverlayVisible: false, seasonOverlayEvents: [],
-  _expandedBill: null, _expandedType: null, provinces: [],
-  ...overrides,
-});
+function makeTrack(id: CrisisTrack['id'], level: number): CrisisTrack {
+  return { id, level, tier: getTierFromLevel(level), namedCrisis: null };
+}
+
+function makeState(overrides: Record<string, any> = {}) {
+  return {
+    year: -264,
+    turnNumber: 1,
+    seasonIndex: 0,
+    fides: 30,
+    denarii: 200,
+    imperium: 0,
+    lifetimeDignitas: 0,
+    popularesRel: 0,
+    optimatesRel: 0,
+    rome: { stability: 70, plebs: 60, treasury: 50 },
+    crisisLevel: 0,
+    crisis: {
+      war:          makeTrack('war',          0),
+      unrest:       makeTrack('unrest',       0),
+      constitution: makeTrack('constitution', 0),
+      economy:      makeTrack('economy',      0),
+    } satisfies CrisisState,
+    family: [
+      {
+        id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 42,
+        skills: { rhetoric: 6, martial: 3, intrigus: 4 },
+        traits: ['ambitious'],
+        relationship: 100, familyTrust: 100,
+        officeId: null,
+        inheritedTraits: [], ambitionIds: [], reputationScores: {},
+      },
+    ],
+    bills: [], clans: [], clients: [], ownedAssets: [], ambitions: [],
+    legacyObjectives: [], patronTier: 0, trialQueue: [],
+    selectedCharacterId: 'pc-1', expandedClanId: null, selectedLeaderId: null,
+    currentOffice: null, officeSeasons: 0, heldOffices: [],
+    campaigning: null, campaignVotes: {}, electionRivals: [],
+    pendingEvents: [], activeEvent: null, log: [], cursusLog: [],
+    seasonOverlayVisible: false, seasonOverlayEvents: [],
+    _expandedBill: null, _expandedType: null, provinces: [],
+    flags: {},
+    npcConsul: null,
+    ...overrides,
+  };
+}
 
 // ─── Test 1 — rollClientBonus always returns at least one key ────────────────
 
@@ -63,7 +79,6 @@ describe('rollClientBonus secondary bonus', () => {
   test.each(CLIENT_TYPES)(
     'secondary bonus key never matches primary key for type: %s',
     (type) => {
-      // 30% chance of secondary per roll — 500 trials virtually guarantees secondaries appear
       for (let i = 0; i < 500; i++) {
         const bonus = rollClientBonus(type);
         const keys = Object.keys(bonus);
@@ -131,7 +146,6 @@ describe('resolveEventChoice — branching', () => {
       successEffect: '',
       failureEffect: '',
     };
-    // Player intrigus = 4, difficulty = 3 → succeeds
     const result = resolveEventChoice(choice, makeState() as any);
     expect(result.succeeded).toBe(true);
     expect(result.nextEventId).toBe('evt-rivals-agent-turned');
@@ -148,7 +162,6 @@ describe('resolveEventChoice — branching', () => {
       successEffect: '',
       failureEffect: '',
     };
-    // Player intrigus = 4, difficulty = 10 → fails
     const result = resolveEventChoice(choice, makeState() as any);
     expect(result.succeeded).toBe(false);
     expect(result.nextEventId).toBe('evt-rivals-agent-failed');
@@ -169,20 +182,30 @@ describe('resolveEventChoice — branching', () => {
   });
 });
 
-// ─── Test 5 — weight:0 follow-up events never fire via pickRandomEvent ────────
+// ─── Test 5 — weight:0 events never fire via pickRandomEvent ─────────────────
+// Includes all original follow-up events plus new inject-only events from Chunk 2C.
 
 describe('pickRandomEvent — weight:0 exclusion', () => {
-  const FOLLOW_UP_IDS = [
+  const WEIGHT_ZERO_IDS = [
+    // Original follow-ups
     'evt-borrowed-name-followup',
     'evt-legion-deserters-reported',
     'evt-legion-deserters-covered',
     'evt-rivals-agent-turned',
     'evt-rivals-agent-failed',
     'evt-rivals-agent-ignored',
+    // Chunk 2C: multi-ticker events (injection-only)
+    'evt-gracchan-moment',
+    'evt-gracchan-aftermath',
+    'evt-senate-cannot-act',
+    'evt-republic-trembles',
+    // Chunk 2C: injected-by-turnSequencer special events
+    'evt-grain-riot',
+    'evt-creditors-demand',
   ];
 
-  test('all follow-up events have weight === 0 in EVENT_DEFS', () => {
-    for (const id of FOLLOW_UP_IDS) {
+  test('all weight:0 events have weight === 0 in EVENT_DEFS', () => {
+    for (const id of WEIGHT_ZERO_IDS) {
       const def = EVENT_DEFS.find(d => d.id === id);
       expect(def).toBeDefined();
       expect(def!.weight).toBe(0);
@@ -198,7 +221,7 @@ describe('pickRandomEvent — weight:0 exclusion', () => {
       if (picked) selected.add(picked.id);
     }
 
-    for (const id of FOLLOW_UP_IDS) {
+    for (const id of WEIGHT_ZERO_IDS) {
       expect(selected.has(id)).toBe(false);
     }
   });
@@ -210,7 +233,127 @@ describe('pickRandomEvent — weight:0 exclusion', () => {
       const picked = pickRandomEvent(EVENT_DEFS, state as any);
       if (picked) pickedCount++;
     }
-    // Unconditional weight>0 events should fire almost every roll
     expect(pickedCount).toBeGreaterThan(80);
+  });
+});
+
+// ─── Test 6 — evalCondition: crisisTrack conditions ──────────────────────────
+
+describe('evalCondition — crisisTrack', () => {
+  function makeStateWithCrisis(warLevel: number, unrestLevel = 10, constitutionLevel = 10, economyLevel = 10) {
+    return makeState({
+      crisis: {
+        war:          makeTrack('war',          warLevel),
+        unrest:       makeTrack('unrest',       unrestLevel),
+        constitution: makeTrack('constitution', constitutionLevel),
+        economy:      makeTrack('economy',      economyLevel),
+      },
+    });
+  }
+
+  test('crisisTrack gte passes when track level meets threshold', () => {
+    const cond: EventCondition = { type: 'crisisTrack', track: 'war', op: 'gte', value: 40 };
+    expect(evalCondition(cond, makeStateWithCrisis(50) as any)).toBe(true);
+    expect(evalCondition(cond, makeStateWithCrisis(40) as any)).toBe(true);
+  });
+
+  test('crisisTrack gte fails when track level is below threshold', () => {
+    const cond: EventCondition = { type: 'crisisTrack', track: 'war', op: 'gte', value: 40 };
+    expect(evalCondition(cond, makeStateWithCrisis(39) as any)).toBe(false);
+    expect(evalCondition(cond, makeStateWithCrisis(0) as any)).toBe(false);
+  });
+
+  test('crisisTrack lt passes when level is below threshold', () => {
+    const cond: EventCondition = { type: 'crisisTrack', track: 'unrest', op: 'lt', value: 60 };
+    expect(evalCondition(cond, makeStateWithCrisis(10, 55) as any)).toBe(true);
+    expect(evalCondition(cond, makeStateWithCrisis(10, 60) as any)).toBe(false);
+  });
+
+  test('crisisTrack eq matches exact level', () => {
+    const cond: EventCondition = { type: 'crisisTrack', track: 'economy', op: 'eq', value: 25 };
+    expect(evalCondition(cond, makeStateWithCrisis(10, 10, 10, 25) as any)).toBe(true);
+    expect(evalCondition(cond, makeStateWithCrisis(10, 10, 10, 24) as any)).toBe(false);
+  });
+
+  test('each track is evaluated independently', () => {
+    const warCond: EventCondition = { type: 'crisisTrack', track: 'war', op: 'gte', value: 70 };
+    const unrestCond: EventCondition = { type: 'crisisTrack', track: 'unrest', op: 'gte', value: 70 };
+    const state = makeStateWithCrisis(75, 10) as any; // war=75, unrest=10
+    expect(evalCondition(warCond, state)).toBe(true);
+    expect(evalCondition(unrestCond, state)).toBe(false);
+  });
+});
+
+// ─── Test 7 — evalCondition: multiCrisis conditions ──────────────────────────
+
+describe('evalCondition — multiCrisis', () => {
+  function makeStateWithAllTracks(war: number, unrest: number, constitution: number, economy: number) {
+    return makeState({
+      crisis: {
+        war:          makeTrack('war',          war),
+        unrest:       makeTrack('unrest',       unrest),
+        constitution: makeTrack('constitution', constitution),
+        economy:      makeTrack('economy',      economy),
+      },
+    });
+  }
+
+  test('passes when all sub-conditions are met', () => {
+    const cond: EventCondition = {
+      type: 'multiCrisis',
+      conditions: [
+        { track: 'war',   op: 'gte', value: 60 },
+        { track: 'unrest', op: 'gte', value: 60 },
+      ],
+    };
+    const state = makeStateWithAllTracks(65, 65, 10, 10) as any;
+    expect(evalCondition(cond, state)).toBe(true);
+  });
+
+  test('fails when any sub-condition is not met', () => {
+    const cond: EventCondition = {
+      type: 'multiCrisis',
+      conditions: [
+        { track: 'war',   op: 'gte', value: 60 },
+        { track: 'unrest', op: 'gte', value: 60 },
+      ],
+    };
+    // unrest = 55 — below threshold
+    const state = makeStateWithAllTracks(65, 55, 10, 10) as any;
+    expect(evalCondition(cond, state)).toBe(false);
+  });
+
+  test('all-four-tracks condition (evt-republic-trembles): passes when all ≥ 60', () => {
+    const cond: EventCondition = {
+      type: 'multiCrisis',
+      conditions: [
+        { track: 'war',          op: 'gte', value: 60 },
+        { track: 'unrest',       op: 'gte', value: 60 },
+        { track: 'constitution', op: 'gte', value: 60 },
+        { track: 'economy',      op: 'gte', value: 60 },
+      ],
+    };
+    expect(evalCondition(cond, makeStateWithAllTracks(65, 65, 65, 65) as any)).toBe(true);
+    expect(evalCondition(cond, makeStateWithAllTracks(65, 65, 65, 55) as any)).toBe(false);
+  });
+
+  test('all-four-tracks condition fails when exactly one track is below threshold', () => {
+    const cond: EventCondition = {
+      type: 'multiCrisis',
+      conditions: [
+        { track: 'war',          op: 'gte', value: 60 },
+        { track: 'unrest',       op: 'gte', value: 60 },
+        { track: 'constitution', op: 'gte', value: 60 },
+        { track: 'economy',      op: 'gte', value: 60 },
+      ],
+    };
+    // Constitution just below threshold
+    expect(evalCondition(cond, makeStateWithAllTracks(65, 65, 59, 65) as any)).toBe(false);
+  });
+
+  test('empty sub-conditions array always passes', () => {
+    const cond: EventCondition = { type: 'multiCrisis', conditions: [] };
+    const state = makeStateWithAllTracks(0, 0, 0, 0) as any;
+    expect(evalCondition(cond, state)).toBe(true);
   });
 });

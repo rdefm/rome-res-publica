@@ -1,12 +1,18 @@
 import type { GameState } from '../state/gameStore';
 import type { Client, ClientType } from '../models/client';
 import type { EventInstance } from '../models/event';
+import type { CrisisTrackId } from '../models/crisis';
 import { parseEffect } from '../models/bill';
 import { generateClientName } from '../data/clientNames';
 import { computeTotalAssetBonuses } from './assetEngine';
 import { calcAssetGoldOutput } from './provinceEngine';
 import { buildClient, computeTotalClientBonuses } from './clientEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
+import {
+  getCrisisStatusEffects,
+  applyTrackDelta,
+} from './crisisEngine';
+import { getTierFromLevel } from '../models/crisis';
 
 export interface ApplyEffectOptions {
   previewClientName?: string;
@@ -41,8 +47,6 @@ export interface RomeStatModifiers {
 /**
  * Compute all passive modifiers from the three Rome stats.
  * Called once per season in calcResourceIncome and turnSequencer.
- *
- * gravitasDelta (stability) and gratiaDelta (plebs) are merged into fidesDelta.
  */
 export function calcRomeStatModifiers(rome: GameState['rome']): RomeStatModifiers {
   const { stability, plebs, treasury } = rome;
@@ -126,9 +130,16 @@ export function calcRomeStatModifiers(rome: GameState['rome']): RomeStatModifier
 
 // ─── Resource income ──────────────────────────────────────────────────────────
 
+/**
+ * Returns per-season resource income.
+ * plebsDelta: additional Plebs change from active unrest status effects.
+ *   Wired into state in turnSequencer Chunk 2C. Declared here so the return
+ *   type is stable; adding it now doesn't break existing destructuring callers.
+ */
 export function calcResourceIncome(state: GameState): {
   fidesIncome: number;
   denariiIncome: number;
+  plebsDelta: number;
 } {
   const paterfamilias = state.family.find((c) => c.isPlayer);
 
@@ -166,8 +177,19 @@ export function calcResourceIncome(state: GameState): {
   const romeMods = calcRomeStatModifiers(state.rome);
   const romeStatFides = romeMods.fidesDelta;
 
-  // Step 8: Crisis penalty
-  const crisisPenalty = Math.floor(state.crisisLevel / 20);
+  // Step 8: Four-track crisis status effects (replaces old single crisisLevel penalty)
+  const statusEffects = getCrisisStatusEffects(state.crisis);
+  let crisisFidesDelta = 0;
+  let crisisDenariiDelta = 0;
+  for (const effect of statusEffects) {
+    crisisFidesDelta += effect.fidesDelta;
+    crisisDenariiDelta += effect.denariDelta;
+  }
+
+  // Step 9: Unrest tier ≥ 2 causes passive Plebs decay (design doc section 2.3)
+  // plebsDelta is applied by turnSequencer in Chunk 2C once it reads this field.
+  const unrestTier = getTierFromLevel(state.crisis.unrest.level);
+  const plebsDelta = unrestTier >= 2 ? -3 : 0;
 
   // Final Fides income
   const fidesIncome = Math.max(0,
@@ -177,10 +199,10 @@ export function calcResourceIncome(state: GameState): {
     + clientFides
     + assetFides
     + romeStatFides
-    - crisisPenalty
+    + crisisFidesDelta   // negative at higher crisis tiers
   );
 
-  // Denarii income — assets + province gold output + client gold + treasury mod
+  // Denarii income — assets + province gold output + client gold + treasury mod + crisis penalty
   const provinceDenariiBonus = state.provinces.reduce(
     (sum, p) => sum + calcAssetGoldOutput(p), 0
   );
@@ -188,9 +210,10 @@ export function calcResourceIncome(state: GameState): {
     (assetBonuses.gold ?? 0)
     + provinceDenariiBonus
     + (clientBonuses.gold ?? 0)
-    + romeMods.denariDelta;
+    + romeMods.denariDelta
+    + crisisDenariiDelta;  // negative at higher War/Economy tiers
 
-  return { fidesIncome, denariiIncome };
+  return { fidesIncome, denariiIncome, plebsDelta };
 }
 
 // ─── Effect string ────────────────────────────────────────────────────────────
@@ -205,9 +228,47 @@ export function applyEffectString(
   const patch: Partial<GameState> & { _addClient?: Client; _removeClient?: string } = {};
 
   for (const segment of segments) {
+
+    // ── Crisis track tokens: crisis-[trackId]±N ────────────────────────────
+    // Must be checked before the generic parseEffect path, because the hyphen
+    // in e.g. 'crisis-war-5' would confuse parseEffect's sign-split logic.
+    const crisisTrackMatch = segment.match(
+      /^crisis-(war|unrest|constitution|economy)([+-]\d+)$/
+    );
+    if (crisisTrackMatch) {
+      const trackId = crisisTrackMatch[1] as CrisisTrackId;
+      const delta = parseInt(crisisTrackMatch[2], 10);
+      const currentCrisis = patch.crisis ?? state.crisis;
+      const updatedTrack = applyTrackDelta(currentCrisis[trackId], delta);
+      patch.crisis = { ...currentCrisis, [trackId]: updatedTrack };
+      continue;
+    }
+
+    // ── Colon-delimited special tokens ────────────────────────────────────
     if (segment.includes(':')) {
       const parts = segment.split(':');
       const key = parts[0];
+
+      if (key === 'setFlag') {
+        // setFlag:flagKey:value  — value can be true, false, or a number
+        const flagKey = parts[1];
+        const rawVal  = parts[2];
+        const val: boolean | number =
+          rawVal === 'true'  ? true  :
+          rawVal === 'false' ? false :
+          Number(rawVal);
+        patch.flags = { ...(patch.flags ?? state.flags), [flagKey]: val };
+        continue;
+      }
+
+      if (key === 'clearFlag') {
+        // clearFlag:flagKey
+        const flagKey = parts[1];
+        const newFlags = { ...(patch.flags ?? state.flags) };
+        delete newFlags[flagKey];
+        patch.flags = newFlags;
+        continue;
+      }
 
       if (key === 'addClient') {
         if (parts.length >= 4) {
@@ -220,6 +281,7 @@ export function applyEffectString(
         }
         continue;
       }
+
       if (key === 'removeClient') {
         const clientType = parts[1] as ClientType;
         const target = instance?.clientName
@@ -228,6 +290,7 @@ export function applyEffectString(
         if (target) patch._removeClient = target.id;
         continue;
       }
+
       if (key === 'blackmail') {
         const leaderId = parts[1];
         patch.clans = (state.clans ?? []).map(clan => ({
@@ -238,14 +301,16 @@ export function applyEffectString(
         }));
         continue;
       }
+
       if (key === 'npcDignitas') {
         console.log(`[npcDignitas] ${parts[1]} gains ${parts[2]} Dignitas (no-op)`);
         continue;
       }
+
       continue;
     }
 
-    // Skill grants
+    // ── Skill grants ──────────────────────────────────────────────────────
     const skillGrantMatch = segment.match(/^(rhetoric|martial|intrigus|martialBonus)([+-]\d+)$/);
     if (skillGrantMatch) {
       const [, skillKey, deltaStr] = skillGrantMatch;
@@ -272,6 +337,7 @@ export function applyEffectString(
       continue;
     }
 
+    // ── Standard key±N tokens via parseEffect ─────────────────────────────
     const effects = parseEffect(segment);
     for (const { key, delta } of effects) {
       switch (key) {
@@ -279,7 +345,6 @@ export function applyEffectString(
           patch.fides = Math.max(0, (patch.fides ?? state.fides) + delta);
           break;
         case 'lifetimeDignitas':
-          // lifetimeDignitas accumulates and can only decrease on disgrace events — never clamped at 0 in spending
           patch.lifetimeDignitas = Math.max(0, (patch.lifetimeDignitas ?? state.lifetimeDignitas) + delta);
           break;
         case 'denarii':
@@ -288,6 +353,8 @@ export function applyEffectString(
           break;
         case 'crisis':
         case 'crisisLevel':
+          // Legacy token — updates the backwards-compat scalar field.
+          // Migrate callers to 'crisis-[trackId]±N' format in Chunk 2C.
           patch.crisisLevel = Math.min(100, Math.max(0, (patch.crisisLevel ?? state.crisisLevel) + delta));
           break;
         case 'corruption':
@@ -325,12 +392,16 @@ export function applyEffectString(
   return patch;
 }
 
+// ─── Faction drift ────────────────────────────────────────────────────────────
+
 export function applyFactionDrift(state: GameState): { popularesRel: number; optimatesRel: number } {
   return {
     popularesRel: Math.min(100, Math.max(-100, state.popularesRel - 1)),
     optimatesRel: Math.min(100, Math.max(-100, state.optimatesRel - 1)),
   };
 }
+
+// ─── Rome stats ───────────────────────────────────────────────────────────────
 
 export function calcRomeStats(
   state: GameState,
@@ -347,18 +418,34 @@ export function calcRomeStats(
   };
 }
 
-export function calcCrisisEscalation(crisisLevel: number, passedBillCount: number): number {
-  const delta = passedBillCount > 0 ? -3 : 8;
-  return Math.min(100, Math.max(0, crisisLevel + delta));
-}
+// ─── Relationship drift ───────────────────────────────────────────────────────
 
 export function applyRelationshipDrift(state: GameState): GameState['clans'] {
+  // Constitution-track relationship decay (design doc section 2.3 special effects)
+  // constitution-relationship-decay: tier 1–2 adds −1 extra per season
+  // constitution-relationship-decay-large: tier 3 adds −2 extra per season
+  // tier 4: −3 extra (−1 base + −2 extra)
+  const constitutionTier = getTierFromLevel(state.crisis.constitution.level);
+  const constitutionExtraDecay =
+    constitutionTier >= 4 ? 3 :
+    constitutionTier >= 3 ? 2 :
+    constitutionTier >= 1 ? 1 :
+    0;
+
   return state.clans.map((clan) => ({
     ...clan,
     leaders: clan.leaders.map((leader) => {
       let rel = leader.relationship;
+
+      // Base drift
       if (rel > 0) rel = Math.max(0, rel - 2);
       else if (rel < 0) rel = Math.min(0, rel + 1);
+
+      // Constitution-track additional decay (applied after base drift)
+      if (constitutionExtraDecay > 0) {
+        rel = Math.max(0, rel - constitutionExtraDecay);
+      }
+
       let allianceTurns = leader.allianceTurns ?? 0;
       let alliance = leader.alliance ?? false;
       if (allianceTurns > 0) {

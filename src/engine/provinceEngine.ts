@@ -121,6 +121,12 @@ export function calcRevoltChance(
 /**
  * Tick one province forward one season.
  * Returns updated province state + resource deltas to apply to the game state.
+ *
+ * Chunk 2B addition: stagnation tracking.
+ * prevInfra is captured before any changes. After all infra updates,
+ * infraStagnationSeasons is incremented if infra did not improve, reset if it did.
+ * lastInfraScore is updated to the current season's final value.
+ * The stagnation counter is READ by crisisEngine.calcIndividualEscalation (Economy track).
  */
 export function tickProvince(
   province: ProvinceState,
@@ -149,6 +155,9 @@ export function tickProvince(
   let goldDelta = 0;
   let imperiumDelta = 0;
   let corruptionDelta = 0;
+
+  // Capture infra before any changes — used for stagnation tracking at end of tick
+  const prevInfra = p.infrastructureRating;
 
   // ── Player governor ticking ──────────────────────────────────────────────
   if (p.playerGovernor) {
@@ -189,12 +198,9 @@ export function tickProvince(
 
     // Governor term check (4 turns = 1 year term)
     if (p.playerGovernor.turnsServed >= 3) {
-      // Final season — warn the player
       events.push(`⚖ ${def.name}: your governor's term ends this season. A new lot will be drawn after your next office concludes.`);
     }
     if (p.playerGovernor.turnsServed >= 4) {
-      // Term expired — remove governor, carry corruption back to character,
-      // restore NPC placeholder so the province keeps ticking normally.
       const exGovernorId = p.playerGovernor.characterId;
       p = {
         ...p,
@@ -218,7 +224,7 @@ export function tickProvince(
     // NPC corruption quietly destabilises
     let relDelta = calcRelationshipDelta(policy) / 4;
     if (npc.trait === 'corrupt') {
-      relDelta -= 1.5; // corrupt NPC damages relationship beyond policy
+      relDelta -= 1.5;
     } else if (npc.trait === 'competent') {
       relDelta += 0.5;
     }
@@ -233,12 +239,28 @@ export function tickProvince(
     const infraDelta = calcInfrastructureDelta(policy);
     p = {
       ...p,
-      infrastructureRating: Math.max(0, Math.min(100, p.infrastructureRating + infraDelta * 0.5)), // NPC is less effective
+      infrastructureRating: Math.max(0, Math.min(100, p.infrastructureRating + infraDelta * 0.5)),
     };
   }
 
-  // ── Asset relationship bonus (from owned assets — e.g. grain dole) ───────
-  // (Applied above inside governor/NPC blocks via assetRelBonus param)
+  // ── Stagnation tracking (Chunk 2B) ────────────────────────────────────────
+  // Compare the current season's final infra to what it was at the start of the tick.
+  // If it improved (even fractionally), reset the counter; otherwise increment.
+  // crisisEngine.calcEconomyEscalation reads this counter to drive the Economy track.
+  {
+    const currInfra = p.infrastructureRating;
+    if (currInfra > prevInfra) {
+      // Infrastructure improved — reset stagnation counter
+      p = { ...p, infraStagnationSeasons: 0, lastInfraScore: currInfra };
+    } else {
+      // No improvement this season — advance counter
+      p = {
+        ...p,
+        infraStagnationSeasons: (p.infraStagnationSeasons ?? 0) + 1,
+        lastInfraScore: currInfra,
+      };
+    }
+  }
 
   // ── Revolt check (incorporated provinces only) ───────────────────────────
   if (def.status === 'incorporated' && !p.revoltActive) {
@@ -270,7 +292,6 @@ export function tickProvince(
   }
 
   // ── Local Support from assets ─────────────────────────────────────────────
-  // Player owning 2+ assets passively builds relationship (+2/turn from spec)
   if (p.ownedAssets.length >= 2) {
     p = {
       ...p,

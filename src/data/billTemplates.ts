@@ -13,45 +13,35 @@ export function calcRomeStatVoteModifier(
 ): number {
   let modifier = 0;
 
-  // Stability modifier for constitutional/emergency bills
   if (bill.type === 'constitutional' || bill.type === 'emergency') {
     modifier += Math.floor((rome.stability - 50) / 10);
   }
 
-  // Plebs modifier for populist/optimates bills
   if (bill.type === 'populist') {
     modifier += Math.floor((rome.plebs - 40) / 15);
   } else if (bill.type === 'optimates') {
     modifier -= Math.floor((rome.plebs - 40) / 15);
   }
 
-  // Treasury modifier for spending bills (those that drain treasury)
   const effects = parseEffect(bill.passEffect);
   const hasTreasuryDrain = effects.some(e => e.key === 'treasury' && e.delta < 0);
   if (hasTreasuryDrain) {
     if (rome.treasury < 25) {
-      modifier += Math.floor((rome.treasury - 25) / 5); // negative, down to −5
+      modifier += Math.floor((rome.treasury - 25) / 5);
     } else if (rome.treasury > 65) {
-      modifier += Math.floor((rome.treasury - 65) / 5); // positive, up to +5
+      modifier += Math.floor((rome.treasury - 65) / 5);
     }
   }
 
-  // Clamp to ±10
   return Math.max(-10, Math.min(10, modifier));
 }
 
 // ─── Repeal bill factory ──────────────────────────────────────────────────────
 
-/**
- * Build a repeal bill from an active law.
- * Inverts Rome stat effects from the original pass effect.
- * Crisis effects are NOT reversed.
- */
 export function buildRepealBill(law: ActiveLaw): Bill {
   const template = [...BILL_TEMPLATES, ...AUTO_BILL_TEMPLATES, ...HISTORICAL_BILL_TEMPLATES]
     .find(t => t.id === law.billId);
 
-  // Build inverted pass effect — flip sign on rome stats only
   const REVERSIBLE_KEYS = new Set(['stability', 'plebs', 'treasury', 'fides', 'lifetimeDignitas']);
   const originalEffects = parseEffect(template?.passEffect ?? '');
   const repealPassParts = originalEffects
@@ -73,7 +63,13 @@ export function buildRepealBill(law: ActiveLaw): Bill {
   };
 }
 
-// ─── Existing bills — tagged with type, duration, renewable ──────────────────
+// ─── Bill templates ───────────────────────────────────────────────────────────
+// Chunk 2C: all old 'crisis±N' tokens migrated to 'crisis-[trackId]±N' format.
+// Mapping rationale:
+//   Military/war bills  → crisis-war
+//   Constitutional bills → crisis-constitution
+//   Grain/agrarian fail → crisis-unrest
+//   Treasury/infra bills → crisis-economy
 
 export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { id: string })[] = [
   {
@@ -82,7 +78,8 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     desc: 'Road maintenance and expansion across the Republic.',
     type: 'economic',
     support: 15, turnsLeft: 3,
-    passEffect: 'stability+5|lifetimeDignitas+4', failEffect: 'crisis+3',
+    passEffect: 'stability+5|lifetimeDignitas+4',
+    failEffect: 'crisis-war+3',   // roads failing strains military supply
     repealable: false,
   },
   {
@@ -91,7 +88,8 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     desc: 'Codifies age requirements for magistracies.',
     type: 'constitutional',
     support: -10, turnsLeft: 4,
-    passEffect: 'fides+6', failEffect: 'lifetimeDignitas-3',
+    passEffect: 'fides+6',
+    failEffect: 'lifetimeDignitas-3',
     repealable: false,
   },
   {
@@ -100,7 +98,8 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     desc: 'Expansion of the aqueduct network to outlying districts.',
     type: 'economic',
     support: 25, turnsLeft: 3,
-    passEffect: 'stability+8|crisis-4', failEffect: 'crisis+5',
+    passEffect: 'stability+8|crisis-economy-4',   // infrastructure investment eases economy
+    failEffect: 'crisis-economy+5',
     repealable: false,
   },
   {
@@ -109,7 +108,8 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     desc: 'Emergency war powers authorization for the consuls.',
     type: 'military',
     support: -20, turnsLeft: 2,
-    passEffect: 'crisis-12|fides+5', failEffect: 'crisis+10',
+    passEffect: 'crisis-war-12|fides+5',
+    failEffect: 'crisis-war+10',
     repealable: false,
   },
   {
@@ -118,7 +118,8 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     desc: 'Grants citizenship rights to select allied communities.',
     type: 'constitutional',
     support: 5, turnsLeft: 4,
-    passEffect: 'stability+10|lifetimeDignitas+6|crisis-6', failEffect: 'crisis+8|lifetimeDignitas-4',
+    passEffect: 'stability+10|lifetimeDignitas+6|crisis-constitution-6',
+    failEffect: 'crisis-unrest+8|lifetimeDignitas-4',   // allies angered = unrest
     repealable: false,
   },
   {
@@ -127,7 +128,8 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     desc: 'Restricts luxury expenditure among the senatorial class.',
     type: 'optimates',
     support: -25, turnsLeft: 3,
-    passEffect: 'fides+8|lifetimeDignitas+3', failEffect: 'fides-3',
+    passEffect: 'fides+8|lifetimeDignitas+3',
+    failEffect: 'fides-3',
     repealable: true,
   },
   {
@@ -138,7 +140,8 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     support: 20, turnsLeft: 4,
     duration: 20, renewable: true,
     renewalFlavour: 'The grain subsidy has lapsed. The people grow hungry and watchful.',
-    passEffect: 'plebs+10|stability+3', failEffect: 'plebs-6|crisis+3',
+    passEffect: 'plebs+10|stability+3',
+    failEffect: 'plebs-6|crisis-unrest+3',   // grain failure → unrest
     repealable: true,
   },
   {
@@ -147,7 +150,8 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     desc: 'Redistribution of public land to the urban poor.',
     type: 'populist',
     support: -15, turnsLeft: 3,
-    passEffect: 'stability+6|plebs+8', failEffect: 'plebs-5|crisis+4',
+    passEffect: 'stability+6|plebs+8',
+    failEffect: 'plebs-5|crisis-unrest+4',   // land reform failure → unrest
     repealable: false,
   },
 ];
@@ -163,7 +167,8 @@ export const AUTO_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> 
     support: -5, turnsLeft: 3,
     duration: 8, renewable: true,
     renewalFlavour: 'The military levy has expired. The Senate must re-authorise conscription.',
-    passEffect: 'crisis-8', failEffect: 'crisis+10',
+    passEffect: 'crisis-war-8',
+    failEffect: 'crisis-war+10',
     repealable: false,
   },
   {
@@ -172,7 +177,8 @@ export const AUTO_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> 
     desc: 'Emergency decree granting consuls extraordinary powers.',
     type: 'emergency',
     support: -20, turnsLeft: 2,
-    passEffect: 'crisis-15|fides+5', failEffect: 'crisis+5',
+    passEffect: 'crisis-war-15|fides+5',
+    failEffect: 'crisis-war+5',
     repealable: false,
   },
   {
@@ -181,7 +187,8 @@ export const AUTO_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> 
     desc: 'Protections against arbitrary punishment of citizens.',
     type: 'constitutional',
     support: 10, turnsLeft: 4,
-    passEffect: 'lifetimeDignitas+6', failEffect: 'lifetimeDignitas-3',
+    passEffect: 'lifetimeDignitas+6',
+    failEffect: 'lifetimeDignitas-3',
     repealable: false,
   },
 ];
@@ -194,7 +201,8 @@ export const STARTING_BILLS: Bill[] = [
     desc: 'Redistribution of public land to the urban poor.',
     type: 'populist',
     support: -15, turnsLeft: 3,
-    passEffect: 'stability+6|plebs+8', failEffect: 'plebs-5|crisis+4',
+    passEffect: 'stability+6|plebs+8',
+    failEffect: 'plebs-5|crisis-unrest+4',
     repealable: false,
   },
   {
@@ -202,7 +210,8 @@ export const STARTING_BILLS: Bill[] = [
     desc: 'Authorization of war funding against Carthage.',
     type: 'military',
     support: -30, turnsLeft: 2,
-    passEffect: 'crisis-10|fides+4', failEffect: 'crisis+12',
+    passEffect: 'crisis-war-10|fides+4',
+    failEffect: 'crisis-war+12',
     repealable: false,
   },
   {
@@ -212,12 +221,13 @@ export const STARTING_BILLS: Bill[] = [
     support: 20, turnsLeft: 4,
     duration: 20, renewable: true,
     renewalFlavour: 'The grain subsidy has lapsed. The people grow hungry and watchful.',
-    passEffect: 'plebs+10|stability+3', failEffect: 'plebs-6|crisis+3',
+    passEffect: 'plebs+10|stability+3',
+    failEffect: 'plebs-6|crisis-unrest+3',
     repealable: true,
   },
 ];
 
-// ─── New historical bills ─────────────────────────────────────────────────────
+// ─── Historical bill templates ────────────────────────────────────────────────
 
 export const HISTORICAL_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { id: string })[] = [
   {
@@ -227,7 +237,8 @@ export const HISTORICAL_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmit
     type: 'populist',
     support: 10, turnsLeft: 4,
     ongoingEffect: 'treasury-3',
-    passEffect: 'plebs+15|stability+3', failEffect: 'plebs-8|crisis+4',
+    passEffect: 'plebs+15|stability+3',
+    failEffect: 'plebs-8|crisis-unrest+4',
     repealable: true,
   },
   {
@@ -236,7 +247,8 @@ export const HISTORICAL_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmit
     desc: 'Rome\'s Italian allies have bled for her for generations. This law extends full citizenship to all free peoples of Italy.',
     type: 'constitutional',
     support: -15, turnsLeft: 4,
-    passEffect: 'stability+14|plebs+6|crisis-8', failEffect: 'crisis+10|stability-6',
+    passEffect: 'stability+14|plebs+6|crisis-constitution-8',
+    failEffect: 'crisis-unrest+6|crisis-constitution+4|stability-6',
     repealable: false,
   },
   {
@@ -245,7 +257,8 @@ export const HISTORICAL_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmit
     desc: 'No citizen shall hold more than 500 iugera of public land. The Senate\'s great estates have swallowed what belongs to Rome.',
     type: 'populist',
     support: -20, turnsLeft: 3,
-    passEffect: 'plebs+12|stability+5|treasury+4', failEffect: 'plebs-6|stability-4',
+    passEffect: 'plebs+12|stability+5|treasury+4',
+    failEffect: 'plebs-6|stability-4',
     repealable: true,
   },
   {
@@ -255,7 +268,8 @@ export const HISTORICAL_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmit
     type: 'military',
     support: 5, turnsLeft: 3,
     duration: 12, renewable: false,
-    passEffect: 'crisis-10|stability-8', failEffect: 'crisis+6',
+    passEffect: 'crisis-war-10|stability-8',
+    failEffect: 'crisis-war+6',
     repealable: false,
     submissionCondition: 'crisisLevel >= 45',
   },
@@ -267,7 +281,8 @@ export const HISTORICAL_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmit
     support: -5, turnsLeft: 3,
     duration: 20, renewable: false,
     renewalFlavour: 'The Lex Oppia has lapsed. The women of Rome exhale.',
-    passEffect: 'treasury+6|stability-3|plebs-5', failEffect: 'plebs+4',
+    passEffect: 'treasury+6|stability-3|plebs-5',
+    failEffect: 'plebs+4',
     repealable: true,
   },
   {
@@ -278,7 +293,8 @@ export const HISTORICAL_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmit
     support: 15, turnsLeft: 4,
     duration: 40, renewable: true,
     renewalFlavour: 'The right of appeal has lapsed. The Senate must renew the Lex Valeria or Rome\'s citizens stand unprotected.',
-    passEffect: 'stability+10|plebs+8|lifetimeDignitas+4', failEffect: 'stability-5|plebs-4|crisis+3',
+    passEffect: 'stability+10|plebs+8|lifetimeDignitas+4',
+    failEffect: 'stability-5|plebs-4|crisis-constitution+3',
     repealable: false,
   },
   {
@@ -288,7 +304,8 @@ export const HISTORICAL_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmit
     type: 'populist',
     support: 10, turnsLeft: 3,
     ongoingEffect: 'treasury-2',
-    passEffect: 'plebs+10|stability-4', failEffect: 'plebs-5|crisis+4',
+    passEffect: 'plebs+10|stability-4',
+    failEffect: 'plebs-5|crisis-unrest+4',
     repealable: true,
   },
   {
@@ -298,7 +315,8 @@ export const HISTORICAL_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmit
     type: 'emergency',
     support: -25, turnsLeft: 2,
     duration: 4, renewable: false,
-    passEffect: 'crisis-12|stability-6', failEffect: 'crisis+5|stability-3',
+    passEffect: 'crisis-war-12|stability-6',
+    failEffect: 'crisis-constitution+5|stability-3',   // failing emergency decree shakes institutions
     repealable: false,
     submissionCondition: 'crisisLevel >= 55',
   },
@@ -308,7 +326,8 @@ export const HISTORICAL_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmit
     desc: 'The land of Italy is worked by slaves and owned by the few. An agrarian commission shall redistribute public lands to Rome\'s landless citizens.',
     type: 'populist',
     support: -30, turnsLeft: 3,
-    passEffect: 'plebs+18|stability-10|treasury+5', failEffect: 'plebs-10|stability-6|crisis+8',
+    passEffect: 'plebs+18|stability-10|treasury+5',
+    failEffect: 'plebs-10|stability-6|crisis-unrest+8',
     repealable: true,
   },
   {
@@ -319,7 +338,8 @@ export const HISTORICAL_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmit
     support: 0, turnsLeft: 4,
     duration: 16, renewable: true,
     renewalFlavour: 'The debt relief law has expired. Rome\'s debtors await the Senate\'s decision.',
-    passEffect: 'plebs+10|stability+8|treasury-4', failEffect: 'plebs-4|stability-3',
+    passEffect: 'plebs+10|stability+8|treasury-4',
+    failEffect: 'plebs-4|stability-3',
     repealable: true,
   },
   {
@@ -328,7 +348,8 @@ export const HISTORICAL_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmit
     desc: 'An emergency tax levy to replenish the public treasury. The Senate agrees this is necessary. The people agree this is their money.',
     type: 'emergency',
     support: -20, turnsLeft: 3,
-    passEffect: 'treasury+20|plebs-8', failEffect: 'treasury-5|crisis+4',
+    passEffect: 'treasury+20|plebs-8',
+    failEffect: 'treasury-5|crisis-economy+4',   // tax failure worsens economic crisis
     repealable: false,
   },
 ];

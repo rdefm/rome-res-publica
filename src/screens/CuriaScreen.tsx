@@ -4,7 +4,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
-import { getCrisisInfo, getCrisisColour } from '../engine/crisisEngine';
 import { calcRomeStatModifiers } from '../engine/resourceEngine';
 import { getUnlockedAssetActions } from '../engine/assetEngine';
 import { calcRomeStatVoteModifier, ALL_BILL_TEMPLATES } from '../data/billTemplates';
@@ -13,7 +12,106 @@ import StatBar from '../components/shared/StatBar';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
 import { TRIAL_ACTIONS } from '../data/trialActions';
 import type { Bill, ActiveLaw } from '../models/bill';
+import type { CrisisTrackId, CrisisTrack } from '../models/crisis';
+import { getTierFromLevel } from '../models/crisis';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
+
+// ─── Crisis track configuration ───────────────────────────────────────────────
+
+const CRISIS_TRACK_COLOR: Record<CrisisTrackId, string> = {
+  war:          '#C04010',  // amber-red
+  unrest:       '#C03030',  // red-coral
+  constitution: COLORS.purple,
+  economy:      '#1A8888',  // teal
+};
+
+const CRISIS_TRACK_LABEL: Record<CrisisTrackId, string> = {
+  war:          'WAR',
+  unrest:       'UNREST',
+  constitution: 'CONSTITUTION',
+  economy:      'ECONOMY',
+};
+
+const CRISIS_TIER_LABELS: Record<CrisisTrackId, [string, string, string, string, string]> = {
+  war:          ['Pax Externa',           'Border Tensions',   'Active Conflict',     'War Crisis',            'Existential Threat'],
+  unrest:       ['Content Populace',      'Murmurs',           'Growing Anger',       'Street Violence',       'Open Revolt'],
+  constitution: ['Institutional Stability','Political Tension', 'Senate Dysfunction',  'Constitutional Crisis', 'Republic in Peril'],
+  economy:      ['Prosperous Republic',   'Tightening Budgets','Economic Strain',     'Scarcity Crisis',       'Economic Collapse'],
+};
+
+// ─── Crisis track cell ────────────────────────────────────────────────────────
+
+function CrisisTrackCell({
+  trackId,
+  track,
+}: {
+  trackId: CrisisTrackId;
+  track: CrisisTrack;
+}) {
+  const color = CRISIS_TRACK_COLOR[trackId];
+  const tierLabel = CRISIS_TIER_LABELS[trackId][track.tier];
+
+  return (
+    <View style={ctc.cell}>
+      <View style={ctc.header}>
+        <Text style={[ctc.trackName, { color }]}>{CRISIS_TRACK_LABEL[trackId]}</Text>
+        <Text style={[ctc.levelNum, { color }]}>{Math.round(track.level)}</Text>
+      </View>
+      <Text style={ctc.tierLabel}>{tierLabel}</Text>
+      {track.namedCrisis && (
+        <Text style={ctc.namedCrisis}>{track.namedCrisis}</Text>
+      )}
+      <StatBar
+        label=""
+        value={track.level}
+        color={color}
+        thresholdMarks={[20, 40, 60, 80]}
+      />
+    </View>
+  );
+}
+
+const ctc = StyleSheet.create({
+  cell: {
+    flex: 1,
+    backgroundColor: COLORS.panelElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 2,
+  },
+  trackName: {
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+  },
+  levelNum: {
+    fontFamily: FONTS.ui,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  tierLabel: {
+    color: COLORS.marble,
+    fontFamily: FONTS.display,
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  namedCrisis: {
+    color: COLORS.dust,
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 10,
+    marginBottom: 4,
+  },
+});
 
 // ─── Bloc meter ───────────────────────────────────────────────────────────────
 
@@ -374,7 +472,6 @@ function ActiveLawCard({ law }: { law: ActiveLaw }) {
   const { proposeRepeal, fides, bills, turnNumber } = useGameStore();
   const repealAlreadyActive = bills.some(b => b.type === 'repeal' && b.repeals === law.billId);
   const canRepeal = law.repealable && !repealAlreadyActive && fides >= 10;
-
   const seasonsLeft = law.expiresOnTurn !== undefined ? law.expiresOnTurn - turnNumber : null;
 
   return (
@@ -415,13 +512,13 @@ const alc = StyleSheet.create({
 // ─── Submit bill modal ────────────────────────────────────────────────────────
 
 function SubmitBillModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  // crisisLevel is kept in sync as a real field (see Chunk 2D note in plan)
   const { bills, submitBill, fides, crisisLevel, rome } = useGameStore();
   const existing = new Set(bills.map(b => b.name));
 
   const available = ALL_BILL_TEMPLATES.filter(t => {
     if (existing.has(t.name)) return false;
     if (!t.submissionCondition) return true;
-    // Evaluate submissionCondition string safely
     const cond = t.submissionCondition;
     if (cond.startsWith('crisisLevel >=')) {
       const threshold = parseInt(cond.split('>=')[1].trim(), 10);
@@ -491,13 +588,13 @@ const modal = StyleSheet.create({
 // ─── CuriaScreen ──────────────────────────────────────────────────────────────
 
 export default function CuriaScreen() {
-  const { rome, crisisLevel, bills, activeLaws, fides, turnNumber } = useGameStore();
+  const { rome, crisis, bills, activeLaws, fides, turnNumber } = useGameStore();
   const [submitVisible, setSubmitVisible] = useState(false);
   const [activeLawsExpanded, setActiveLawsExpanded] = useState(true);
   const [romeStatModal, setRomeStatModal] = useState<RomeStat | null>(null);
-  const crisis = getCrisisInfo(crisisLevel);
-  const crisisColor = getCrisisColour(crisisLevel);
   const romeMods = calcRomeStatModifiers(rome);
+
+  const TRACK_ORDER: CrisisTrackId[] = ['war', 'unrest', 'constitution', 'economy'];
 
   return (
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
@@ -536,20 +633,20 @@ export default function CuriaScreen() {
           />
         </View>
 
-        {/* Crisis */}
-        <View style={[styles.panel, { borderColor: crisisColor }]}>
-          <Text style={[styles.crisisTitle, { color: crisisColor }]}>{crisis.title}</Text>
-          <Text style={styles.crisisNarr}>{crisis.narrative}</Text>
-          {crisis.fidesPenalty > 0 && (
-            <Text style={styles.crisisPenalty}>
-              Penalties: −{crisis.fidesPenalty} Fides/season
-              {crisis.dignitasPenalty > 0 ? `, −${crisis.dignitasPenalty} Dignitas/season` : ''}
-            </Text>
-          )}
-          <View style={styles.crisisMeter}>
-            <View style={[styles.crisisFill, { width: `${crisisLevel}%`, backgroundColor: crisisColor }]} />
+        {/* Crisis — four-track 2×2 grid (Chunk 2D) */}
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>CRISIS TRACKS</Text>
+          <Text style={styles.panelSub}>Four independent pressures on the Republic. Each escalates and de-escalates through different mechanisms.</Text>
+          <View style={styles.crisisRow}>
+            <CrisisTrackCell trackId={TRACK_ORDER[0]} track={crisis[TRACK_ORDER[0]]} />
+            <View style={styles.crisisGap} />
+            <CrisisTrackCell trackId={TRACK_ORDER[1]} track={crisis[TRACK_ORDER[1]]} />
           </View>
-          <Text style={styles.crisisLevel}>Crisis: {crisisLevel} / 100</Text>
+          <View style={[styles.crisisRow, { marginTop: SPACING.sm }]}>
+            <CrisisTrackCell trackId={TRACK_ORDER[2]} track={crisis[TRACK_ORDER[2]]} />
+            <View style={styles.crisisGap} />
+            <CrisisTrackCell trackId={TRACK_ORDER[3]} track={crisis[TRACK_ORDER[3]]} />
+          </View>
         </View>
 
         {/* Active bills */}
@@ -612,12 +709,10 @@ const styles = StyleSheet.create({
   panel: { backgroundColor: COLORS.panelSurface, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md },
   panelTitle: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4 },
   panelSub: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11, marginBottom: SPACING.sm },
-  crisisTitle: { fontFamily: FONTS.display, fontSize: 16, fontWeight: '700', marginBottom: 6 },
-  crisisNarr: { color: COLORS.marble, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 13, lineHeight: 18, marginBottom: 8 },
-  crisisPenalty: { color: COLORS.crimson, fontFamily: FONTS.ui, fontSize: 11, marginBottom: 6 },
-  crisisMeter: { height: 6, backgroundColor: COLORS.bg, borderRadius: 3, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
-  crisisFill: { height: '100%', borderRadius: 3 },
-  crisisLevel: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 10, marginTop: 4, textAlign: 'right' },
+  // Crisis 2×2 grid
+  crisisRow: { flexDirection: 'row' },
+  crisisGap: { width: SPACING.sm },
+  // Bills
   billsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
   sectionLabel: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' },
   submitBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.panelElevated, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.sm, paddingVertical: 6 },

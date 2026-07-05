@@ -1,15 +1,34 @@
 import {
   calcResourceIncome,
   applyFactionDrift,
-  calcCrisisEscalation,
   calcRomeStats,
 } from '../src/engine/resourceEngine';
-import { getCrisisInfo } from '../src/engine/crisisEngine';
+import { getCrisisStatusEffects } from '../src/engine/crisisEngine';
 import { scoreAction, chooseAction } from '../src/engine/aiScoring';
 import { parseEffect } from '../src/models/bill';
+import type { CrisisState } from '../src/models/crisis';
+
+// ─── Shared fixtures ──────────────────────────────────────────────────────────
+
+function makeCrisisTrack(id: string, level: number) {
+  const tier =
+    level < 20 ? 0 :
+    level < 40 ? 1 :
+    level < 60 ? 2 :
+    level < 80 ? 3 : 4;
+  return { id, level, tier, namedCrisis: null } as const;
+}
+
+const CRISIS_ALL_ZERO: CrisisState = {
+  war:          makeCrisisTrack('war',          0),
+  unrest:       makeCrisisTrack('unrest',       0),
+  constitution: makeCrisisTrack('constitution', 0),
+  economy:      makeCrisisTrack('economy',      0),
+};
 
 // Minimal mock game state
-const makeState = (overrides = {}) => ({
+// Chunk 2A: 'crisis' field added alongside the legacy 'crisisLevel' scalar.
+const makeState = (overrides: Record<string, any> = {}) => ({
   year: -264,
   turnNumber: 1,
   seasonIndex: 0,
@@ -21,6 +40,8 @@ const makeState = (overrides = {}) => ({
   optimatesRel: 0,
   rome: { stability: 50, plebs: 50, treasury: 50 },
   crisisLevel: 0,
+  crisis: CRISIS_ALL_ZERO,     // ← required by calcResourceIncome (Chunk 2B+)
+  flags: {},
   family: [
     {
       id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 42,
@@ -64,34 +85,54 @@ const makeState = (overrides = {}) => ({
 });
 
 // ─── Resource Engine ─────────────────────────────────────────────────────────
+
 describe('calcResourceIncome', () => {
   test('fides = rhetoric × 2 at no crisis, before multipliers', () => {
-    const s = makeState({ crisisLevel: 0 });
+    const s = makeState();
     const { fidesIncome } = calcResourceIncome(s as any);
-    expect(fidesIncome).toBe(12); // rhetoric 6 × 2
+    expect(fidesIncome).toBe(12); // rhetoric 6 × 2 = 12, no crisis penalty at tier 0
   });
+
   test('income floors at 0 under heavy crisis', () => {
-    const s = makeState({ crisisLevel: 100 });
+    const s = makeState({
+      crisis: {
+        war:          makeCrisisTrack('war',          100),
+        unrest:       makeCrisisTrack('unrest',       100),
+        constitution: makeCrisisTrack('constitution', 100),
+        economy:      makeCrisisTrack('economy',      100),
+      },
+    });
     const { fidesIncome } = calcResourceIncome(s as any);
     expect(fidesIncome).toBeGreaterThanOrEqual(0);
   });
-  test('crisis level 20 reduces fides by 1', () => {
-    const s0 = makeState({ crisisLevel: 0 });
-    const s20 = makeState({ crisisLevel: 20 });
+
+  // Chunk 2B: crisis penalty now comes from getCrisisStatusEffects, not Math.floor(crisisLevel/20).
+  // War tier 1 (level 20–39) applies fidesDelta: -1. Compare tier-0 vs tier-1 state.
+  test('War tier 1 reduces fides income by 1 compared to tier 0', () => {
+    const s0 = makeState(); // all tracks tier 0 → total fidesDelta = 0
+    const s1 = makeState({
+      crisis: {
+        war:          makeCrisisTrack('war', 25),  // tier 1 → fidesDelta: -1
+        unrest:       makeCrisisTrack('unrest',       0),
+        constitution: makeCrisisTrack('constitution', 0),
+        economy:      makeCrisisTrack('economy',      0),
+      },
+    });
     const { fidesIncome: f0 } = calcResourceIncome(s0 as any);
-    const { fidesIncome: f20 } = calcResourceIncome(s20 as any);
-    expect(f0 - f20).toBe(1);
+    const { fidesIncome: f1 } = calcResourceIncome(s1 as any);
+    expect(f0 - f1).toBe(1);
   });
+
   test('fides income includes office held bonus', () => {
-    const s = makeState({ crisisLevel: 0 });
+    const s = makeState();
     s.family[0].officeId = 'aedile';
     const { fidesIncome } = calcResourceIncome(s as any);
     // base: rhetoric 6 × 2 = 12, aedile office bonus = +5
     expect(fidesIncome).toBe(12 + 5);
   });
+
   test('fides income includes allied clan leader bonus', () => {
     const s = makeState({
-      crisisLevel: 0,
       clans: [
         {
           id: 'clan-1',
@@ -108,43 +149,58 @@ describe('calcResourceIncome', () => {
   });
 });
 
-// ─── Crisis Engine ───────────────────────────────────────────────────────────
-describe('getCrisisInfo', () => {
-  test('0 crisis = Pax Romana, no penalties', () => {
-    const info = getCrisisInfo(0);
-    expect(info.title).toBe('Pax Romana');
-    expect(info.fidesPenalty).toBe(0);
-    expect(info.dignitasPenalty).toBe(0);
+// ─── Crisis Engine — four-track tier system ───────────────────────────────────
+// Replaces old getCrisisInfo tests (Chunk 2B: getCrisisInfo removed from crisisEngine).
+// The single-level crisis info is now split across four tracks via getCrisisStatusEffects.
+
+describe('getCrisisStatusEffects — war track tiers', () => {
+  test('tier 0 (level 0–19): label Pax Externa, no Fides or Denarii penalty', () => {
+    const crisis: CrisisState = {
+      war:          makeCrisisTrack('war', 10),
+      unrest:       makeCrisisTrack('unrest', 0),
+      constitution: makeCrisisTrack('constitution', 0),
+      economy:      makeCrisisTrack('economy', 0),
+    };
+    const warEffect = getCrisisStatusEffects(crisis).find(e => e.trackId === 'war')!;
+    expect(warEffect.label).toBe('Pax Externa');
+    expect(warEffect.fidesDelta).toBe(0);
+    expect(warEffect.denariDelta).toBe(0);
   });
-  test('80+ crisis = EXISTENTIAL THREAT', () => {
-    const info = getCrisisInfo(80);
-    expect(info.title).toBe('EXISTENTIAL THREAT');
-    expect(info.fidesPenalty).toBe(5);
-    expect(info.dignitasPenalty).toBe(4);
+
+  test('tier 4 (level 80–100): label Existential Threat, maximum penalties', () => {
+    const crisis: CrisisState = {
+      war:          makeCrisisTrack('war', 90),
+      unrest:       makeCrisisTrack('unrest', 0),
+      constitution: makeCrisisTrack('constitution', 0),
+      economy:      makeCrisisTrack('economy', 0),
+    };
+    const warEffect = getCrisisStatusEffects(crisis).find(e => e.trackId === 'war')!;
+    expect(warEffect.label).toBe('Existential Threat');
+    expect(warEffect.fidesDelta).toBe(-5);
+    expect(warEffect.denariDelta).toBe(-10);
   });
-  test('crisis tiers are continuous and ascending', () => {
-    const levels = [0, 19, 20, 39, 40, 59, 60, 79, 80, 100];
-    const titles = levels.map((l) => getCrisisInfo(l).title);
-    const uniqueTitles = [...new Set(titles)];
-    expect(uniqueTitles.length).toBe(5);
+
+  test('five distinct war tier labels exist across 0–100', () => {
+    const levels = [10, 25, 50, 70, 90]; // one per tier band
+    const labels = levels.map(level => {
+      const crisis: CrisisState = {
+        war:          makeCrisisTrack('war', level),
+        unrest:       makeCrisisTrack('unrest', 0),
+        constitution: makeCrisisTrack('constitution', 0),
+        economy:      makeCrisisTrack('economy', 0),
+      };
+      return getCrisisStatusEffects(crisis).find(e => e.trackId === 'war')!.label;
+    });
+    expect(new Set(labels).size).toBe(5);
   });
 });
 
-// ─── Crisis Escalation ───────────────────────────────────────────────────────
-describe('calcCrisisEscalation', () => {
-  test('no bills passed → crisis +8', () => {
-    expect(calcCrisisEscalation(20, 0)).toBe(28);
-  });
-  test('bills passed → crisis -3', () => {
-    expect(calcCrisisEscalation(20, 1)).toBe(17);
-  });
-  test('clamped to 0–100', () => {
-    expect(calcCrisisEscalation(0, 1)).toBe(0);
-    expect(calcCrisisEscalation(95, 0)).toBe(100);
-  });
-});
+// NOTE: calcCrisisEscalation (flat single-track escalation) was removed from
+// resourceEngine in Chunk 2B. The four-track equivalent is tested in
+// romeStats.test.ts (calcIndividualEscalation, calcCascadeDeltas, etc).
 
 // ─── Faction Drift ───────────────────────────────────────────────────────────
+
 describe('applyFactionDrift', () => {
   test('both factions drift -1 each season', () => {
     const s = makeState({ popularesRel: 50, optimatesRel: -10 });
@@ -161,15 +217,16 @@ describe('applyFactionDrift', () => {
 });
 
 // ─── Rome Stats ──────────────────────────────────────────────────────────────
+
 describe('calcRomeStats', () => {
   test('bills passed improves stability and plebs', () => {
-    const s = makeState({ crisisLevel: 0, rome: { stability: 50, plebs: 50, treasury: 50 } });
+    const s = makeState({ rome: { stability: 50, plebs: 50, treasury: 50 } });
     const result = calcRomeStats(s as any, 1);
     expect(result.stability).toBeGreaterThan(50);
     expect(result.plebs).toBeGreaterThan(50);
   });
   test('no bills passed decreases stability', () => {
-    const s = makeState({ crisisLevel: 0, rome: { stability: 50, plebs: 50, treasury: 50 } });
+    const s = makeState({ rome: { stability: 50, plebs: 50, treasury: 50 } });
     const result = calcRomeStats(s as any, 0);
     expect(result.stability).toBeLessThan(50);
     expect(result.plebs).toBeLessThan(50);
@@ -177,6 +234,7 @@ describe('calcRomeStats', () => {
 });
 
 // ─── Bill Effect Parsing ─────────────────────────────────────────────────────
+
 describe('parseEffect', () => {
   test('parses single effect', () => {
     expect(parseEffect('lifetimeDignitas+8')).toEqual([{ key: 'lifetimeDignitas', delta: 8 }]);
@@ -193,6 +251,7 @@ describe('parseEffect', () => {
 });
 
 // ─── AI Scoring ──────────────────────────────────────────────────────────────
+
 describe('scoreAction', () => {
   const aggressiveChar = {
     id: 'npc-son', name: 'Gaius', role: 'son' as const, isPlayer: false, age: 17,
@@ -206,7 +265,6 @@ describe('scoreAction', () => {
     reputationScores: {},
   };
   test('aggressive character scores filibuster above vote_for on average', () => {
-    // Run many times to account for noise
     let filibusterWins = 0;
     const trials = 200;
     for (let i = 0; i < trials; i++) {

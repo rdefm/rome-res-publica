@@ -41,13 +41,24 @@ export function evalCondition(cond: EventCondition, state: GameState): boolean {
       const held = (player as any)?.heldOffice ?? null;
       return held === cond.held;
     }
+    // ── Chunk 2B: four-track crisis conditions ────────────────────────────
+    case 'crisisTrack': {
+      const level = state.crisis[cond.track].level;
+      return evalOp(level, cond.op, cond.value);
+    }
+    case 'multiCrisis': {
+      return cond.conditions.every(c =>
+        evalOp(state.crisis[c.track].level, c.op, c.value)
+      );
+    }
   }
 }
 
 // ─── Full event eligibility check ────────────────────────────────────────────
 
 export function isEventEligible(def: EventDef, state: GameState): boolean {
-  // weight: 0 events are fired only via nextEventId branching — never randomly
+  // weight: 0 events fire only via injection (nextEventId branching or
+  // turnSequencer's multi-ticker step) — never through random selection.
   if (def.weight === 0) return false;
   return def.conditions.every(cond => evalCondition(cond, state));
 }

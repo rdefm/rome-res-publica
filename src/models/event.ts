@@ -1,4 +1,5 @@
 import type { ClientType } from './client';
+import type { CrisisTrackId } from './crisis';
 
 // ─── Condition operators ─────────────────────────────────────────────────────
 
@@ -12,7 +13,9 @@ export type EventCondition =
   | { type: 'resource'; key: 'fides' | 'lifetimeDignitas' | 'denarii' | 'crisisLevel'; op: ConditionOperator; value: number }
   | { type: 'rome'; key: 'stability' | 'plebs' | 'treasury'; op: ConditionOperator; value: number }
   | { type: 'season'; index: 0 | 1 | 2 | 3 }   // 0=Spring 1=Summer 2=Autumn 3=Winter
-  | { type: 'office'; held: string };            // matches heldOffice id in player character
+  | { type: 'office'; held: string }             // matches heldOffice id in player character
+  | { type: 'crisisTrack'; track: CrisisTrackId; op: ConditionOperator; value: number }
+  | { type: 'multiCrisis'; conditions: Array<{ track: CrisisTrackId; op: ConditionOperator; value: number }> };
 
 // ─── Skill check ─────────────────────────────────────────────────────────────
 

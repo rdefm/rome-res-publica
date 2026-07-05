@@ -100,6 +100,13 @@ export interface ProvinceState {
 
   // Officer volunteer for the active campaign (if any)
   officerVolunteer: OfficerVolunteerState | null;
+
+  // ── Crisis track inputs ───────────────────────────────────────────────────
+  // Seasons since last infrastructure improvement. Used by Economy crisis escalation.
+  // Resets to 0 whenever infrastructureRating increases.
+  infraStagnationSeasons: number;
+  // Infrastructure score at end of previous season. Used to detect improvement.
+  lastInfraScore: number;
 }
 
 export interface NpcRoleHolder {
@@ -253,6 +260,15 @@ export interface ProvinceDefinition {
 
   clientIds: string[];
   npcRoleHolder: NpcRoleHolder;
+
+  // ── Crisis track inputs ───────────────────────────────────────────────────
+  // Optional flavour name for this province's contribution to the War crisis string.
+  // e.g. 'Sicilian War' for sicilia. If absent, the generic tier label is used.
+  namedWar?: string;
+  // Multiplier for how much this province's hostile relationship contributes to
+  // the War track. Default 1.0. Strategically critical provinces (e.g. Sicily
+  // at the start of the Punic Wars) can be set higher.
+  threatWeight?: number;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

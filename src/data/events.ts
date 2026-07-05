@@ -3,8 +3,6 @@ import type { EventDef } from '../models/event';
 export const EVENT_DEFS: EventDef[] = [
 
   // ─── Class A — Acquisition events ─────────────────────────────────────────
-  // No hasClient condition. {clientName} is pre-generated at render time by
-  // EventCard.tsx and committed to state only if the player accepts.
 
   {
     id: 'evt-client-muscle-offer',
@@ -82,9 +80,6 @@ export const EVENT_DEFS: EventDef[] = [
   },
 
   // ─── Class B — Retention / loss events ────────────────────────────────────
-  // Require hasClient condition. {clientName} is resolved at injection time by
-  // turnSequencer.ts (oldest client of the relevant type). At least one choice
-  // has a removeClient: effect.
 
   {
     id: 'evt-client-muscle-trouble',
@@ -183,8 +178,6 @@ export const EVENT_DEFS: EventDef[] = [
   },
 
   // ─── Class C — Favour / help events ───────────────────────────────────────
-  // Require hasClient condition. {clientName} resolved at injection. No
-  // removeClient: effects — refusing costs a small resource only.
 
   {
     id: 'evt-client-muscle-favour',
@@ -281,9 +274,8 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // ─── Part 2 — New event cards (rome-event-cards-spec.md) ──────────────────
+  // ─── Part 2 — New event cards ─────────────────────────────────────────────
 
-  // EVENT 1 — The Ambitious Freedman
   {
     id: 'evt-ambitious-freedman',
     title: 'The Ambitious Freedman',
@@ -308,7 +300,6 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // EVENT 2 — The Whisper in the Baths
   {
     id: 'evt-whisper-baths',
     title: 'The Whisper in the Baths',
@@ -342,7 +333,6 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // EVENT 3 — The Borrowed Name (branching)
   {
     id: 'evt-borrowed-name',
     title: 'The Borrowed Name',
@@ -377,7 +367,6 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // Follow-up: weight 0 — only fires via nextEventId
   {
     id: 'evt-borrowed-name-followup',
     title: 'The Borrowed Name Returns',
@@ -403,7 +392,6 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // EVENT 4 — Grain Shortage in the City
   {
     id: 'evt-grain-shortage',
     title: 'Grain Shortage in the City',
@@ -418,7 +406,7 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'fund-fully',
         label: 'Fund a full grain distribution (−50 Gold)',
-        successEffect: 'gold-50|plebs+15|lifetimeDignitas+12|fides+5|crisis-4',
+        successEffect: 'gold-50|plebs+15|lifetimeDignitas+12|fides+5|crisis-unrest-4',
         failureEffect: '',
       },
       {
@@ -430,13 +418,12 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'do-nothing',
         label: 'Let the Senate handle it',
-        successEffect: 'crisis+3|plebs-5',
+        successEffect: 'crisis-unrest+3|plebs-5',
         failureEffect: '',
       },
     ],
   },
 
-  // EVENT 5 — The Disgraced Advocate
   {
     id: 'evt-disgraced-advocate',
     title: 'The Disgraced Advocate',
@@ -468,7 +455,6 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // EVENT 6 — Legion Deserters (branching)
   {
     id: 'evt-legion-deserters',
     title: 'Legion Deserters',
@@ -534,7 +520,6 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // EVENT 7 — The Rival's Agent (branching)
   {
     id: 'evt-rivals-agent',
     title: "The Rival's Agent",
@@ -619,7 +604,6 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // EVENT 8 — An Unexpected Bequest
   {
     id: 'evt-unexpected-bequest',
     title: 'An Unexpected Bequest',
@@ -653,7 +637,6 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // EVENT 9 — The Augur's Omen
   {
     id: 'evt-augurs-omen',
     title: "The Augur's Omen",
@@ -675,7 +658,6 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // EVENT 10 — The Greek Philosopher
   {
     id: 'evt-greek-philosopher',
     title: 'The Greek Philosopher',
@@ -702,7 +684,6 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // EVENT 11 — Bread and Circuses
   {
     id: 'evt-bread-and-circuses',
     title: 'Bread and Circuses',
@@ -723,7 +704,6 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // EVENT 12 — The Returning Soldier
   {
     id: 'evt-returning-soldier',
     title: 'The Returning Soldier',
@@ -757,7 +737,6 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // EVENT 13 — Feast at the Consul's Villa
   {
     id: 'evt-consular-feast',
     title: "Feast at the Consul's Villa",
@@ -779,7 +758,6 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // EVENT 14 — It is-a Me, Marius
   {
     id: 'evt-marius-the-plumber',
     title: 'It is-a Me, Marius',
@@ -811,7 +789,6 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
-  // EVENT — Senatorial Crisis (triggers at stability < 25)
   {
     id: 'evt-senatorial-crisis',
     title: 'A House Divided',
@@ -839,9 +816,491 @@ export const EVENT_DEFS: EventDef[] = [
       {
         id: 'wait',
         label: 'Wait — let the storm exhaust itself',
-        successEffect: 'stability-3|crisis+2',
+        successEffect: 'stability-3|crisis-constitution+2',   // Senate dysfunction frays constitution
         failureEffect: '',
       },
     ],
   },
+
+  // ─── Single-track crisis threshold events (Chunk 2C) ──────────────────────
+  // These fire through normal weighted random selection when their crisisTrack
+  // condition is met. They give the player meaningful choices that can push the
+  // track higher or lower, making crisis management active rather than passive.
+
+  // WAR TRACK — tier 1→2 (level ≥ 40)
+  {
+    id: 'evt-war-frontier-threatened',
+    title: 'Despatches From the Frontier',
+    bodyText:
+      'A courier arrives mud-caked and hollow-eyed. The frontier garrison at Cisalpina has been probed three times in a fortnight. The local commander requests instructions. The Senate, thus far, has not been formally informed. You have a moment in which to act before that changes.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [
+      { type: 'crisisTrack', track: 'war', op: 'gte', value: 40 },
+      { type: 'crisisTrack', track: 'war', op: 'lt',  value: 60 },
+    ],
+    weight: 7,
+    choices: [
+      {
+        id: 'request-levy',
+        label: 'Bring it immediately to the Senate and request authorisation',
+        successEffect: 'fides+5|crisis-war-4',
+        failureEffect: '',
+      },
+      {
+        id: 'quiet-reinforcement',
+        label: 'Send a private letter authorising the garrison commander to act',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 5 },
+        successEffect: 'crisis-war-6|corruption+3',
+        failureEffect: 'crisis-war+4|fides-4',
+      },
+      {
+        id: 'wait-and-watch',
+        label: 'Wait for the Senate to notice on its own terms',
+        successEffect: 'crisis-war+5',
+        failureEffect: '',
+      },
+    ],
+  },
+
+  // WAR TRACK — tier 2→3 (level ≥ 60)
+  {
+    id: 'evt-war-legions-recalled',
+    title: 'The Legions Are Needed',
+    bodyText:
+      'Two dispatches arrive in the same morning. The first is from a frontier prefect describing conditions that can no longer be called skirmishes. The second is from the consul, requesting your family\'s assessment of how far from the city the crisis will be permitted to spread before the Senate acts. Both men are asking the same question in different language.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [
+      { type: 'crisisTrack', track: 'war', op: 'gte', value: 60 },
+    ],
+    weight: 6,
+    choices: [
+      {
+        id: 'champion-funding',
+        label: 'Stand before the Senate and champion a war levy immediately',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'fides+8|lifetimeDignitas+5|crisis-war-8',
+        failureEffect: 'fides-4',
+      },
+      {
+        id: 'coordinate-allies',
+        label: 'Coordinate allied clan support before any Senate session',
+        successEffect: 'fides-8|crisis-war-5',
+        failureEffect: '',
+      },
+      {
+        id: 'defer',
+        label: 'Draft a measured reply — the Senate must deliberate',
+        successEffect: 'crisis-war+6|fides+2',
+        failureEffect: '',
+      },
+    ],
+  },
+
+  // UNREST TRACK — tier 1→2 (level ≥ 40)
+  {
+    id: 'evt-unrest-bread-riots',
+    title: 'Bread Queues at the Granary',
+    bodyText:
+      'The Aventine is restless. Grain prices in the Subura have risen sharply for the third week running and the daily queues at the public granary now stretch to nightfall. Three bakers have shuttered their shops after reported threats. Your household steward estimates you have two weeks before this becomes something the aediles cannot contain quietly.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [
+      { type: 'crisisTrack', track: 'unrest', op: 'gte', value: 40 },
+      { type: 'crisisTrack', track: 'unrest', op: 'lt',  value: 60 },
+    ],
+    weight: 7,
+    choices: [
+      {
+        id: 'fund-grain',
+        label: 'Fund an emergency grain distribution from family reserves (−40 Gold)',
+        successEffect: 'gold-40|plebs+10|lifetimeDignitas+6|crisis-unrest-6',
+        failureEffect: '',
+      },
+      {
+        id: 'push-grain-law',
+        label: 'Announce your intention to table a grain subsidy bill immediately',
+        successEffect: 'fides-5|plebs+5|crisis-unrest-3',
+        failureEffect: '',
+      },
+      {
+        id: 'wait-it-out',
+        label: 'Leave it to the aediles — this is their jurisdiction',
+        successEffect: 'crisis-unrest+5|plebs-4',
+        failureEffect: '',
+      },
+    ],
+  },
+
+  // UNREST TRACK — tier 2→3 (level ≥ 60)
+  {
+    id: 'evt-unrest-tribune-rises',
+    title: 'A Tribune Speaks',
+    bodyText:
+      'A tribune you do not recognise has been addressing crowds on the Capitoline for four consecutive days. He is not threatening anything, precisely. But he is naming the names of senators who voted against the grain subsidy, one per speech, with the particular tone of a man who has nothing to lose. The crowd is not rioting. It is listening, which is sometimes worse.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [
+      { type: 'crisisTrack', track: 'unrest', op: 'gte', value: 60 },
+    ],
+    weight: 6,
+    choices: [
+      {
+        id: 'outreach',
+        label: 'Meet with him privately and offer to sponsor a grain bill jointly',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'fides-5|crisis-unrest-8|plebs+8',
+        failureEffect: 'fides-5|crisis-unrest+4',
+      },
+      {
+        id: 'games',
+        label: 'Announce public games for next season — redirect the crowd',
+        successEffect: 'denarii-60|plebs+12|crisis-unrest-5',
+        failureEffect: '',
+      },
+      {
+        id: 'ignore',
+        label: 'He will exhaust himself. Say nothing.',
+        successEffect: 'crisis-unrest+6',
+        failureEffect: '',
+      },
+    ],
+  },
+
+  // CONSTITUTION TRACK — tier 1→2 (level ≥ 40)
+  {
+    id: 'evt-constitution-senate-split',
+    title: 'The Senate Divides',
+    bodyText:
+      'The morning session dissolved without a quorum for the third consecutive week. Two senior optimates have publicly accused two populist tribunes of procedural manipulation. The tribunes have counter-accused the optimates of attempting to pack the senatorial rolls. Everyone is correct, and no one is governing.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [
+      { type: 'crisisTrack', track: 'constitution', op: 'gte', value: 40 },
+      { type: 'crisisTrack', track: 'constitution', op: 'lt',  value: 60 },
+    ],
+    weight: 6,
+    choices: [
+      {
+        id: 'mediate',
+        label: 'Propose a procedural compromise acceptable to both factions',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'fides+6|lifetimeDignitas+5|crisis-constitution-6',
+        failureEffect: 'fides-3|crisis-constitution+3',
+      },
+      {
+        id: 'side-optimates',
+        label: 'Publicly back the optimates — clarify where the Brutii stand',
+        successEffect: 'optimatesRel+8|popularesRel-5|crisis-constitution-3',
+        failureEffect: '',
+      },
+      {
+        id: 'side-populares',
+        label: 'Publicly back the tribunes — the people are watching',
+        successEffect: 'popularesRel+8|optimatesRel-5|crisis-constitution-3',
+        failureEffect: '',
+      },
+    ],
+  },
+
+  // CONSTITUTION TRACK — tier 2→3 (level ≥ 60)
+  {
+    id: 'evt-constitution-precedent-broken',
+    title: 'The Precedent Has Been Broken',
+    bodyText:
+      'Word spreads through the Forum by mid-morning: the consul last night issued a decree bypassing the standard consular consultation. Whether it was technically legal has become the question every senator is arguing. Three tribunes have filed formal protests. The precedent itself — unbroken for one hundred and twenty years — is now in public dispute.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [
+      { type: 'crisisTrack', track: 'constitution', op: 'gte', value: 60 },
+    ],
+    weight: 5,
+    choices: [
+      {
+        id: 'denounce',
+        label: 'Denounce the decree publicly — Rome\'s institutions must hold',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 7 },
+        successEffect: 'fides+8|lifetimeDignitas+8|crisis-constitution-8',
+        failureEffect: 'fides-4|crisis-constitution+4',
+      },
+      {
+        id: 'defend',
+        label: 'Defend the decree — emergency times require emergency measures',
+        successEffect: 'fides+4|crisis-constitution+6',
+        failureEffect: '',
+      },
+      {
+        id: 'abstain',
+        label: 'Say nothing — let lawyers debate while you work behind the scenes',
+        successEffect: 'crisis-constitution+3|fides-2',
+        failureEffect: '',
+      },
+    ],
+  },
+
+  // ECONOMY TRACK — tier 1→2 (level ≥ 40)
+  {
+    id: 'evt-economy-debt-collector',
+    title: 'The Creditors Are Patient Men',
+    bodyText:
+      'Your estate manager brings you an unusual morning report: three different banking houses have sent representatives this week, not to demand payment, but to "enquire after the family\'s plans." The tone is polite. The implication is not. The treasury is not empty — but Rome\'s commercial class believes it soon will be.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [
+      { type: 'crisisTrack', track: 'economy', op: 'gte', value: 40 },
+      { type: 'crisisTrack', track: 'economy', op: 'lt',  value: 60 },
+    ],
+    weight: 7,
+    choices: [
+      {
+        id: 'reassure-coin',
+        label: 'Host a dinner for the banking representatives — demonstrate solvency (−30 Denarii)',
+        successEffect: 'denarii-30|fides+4|crisis-economy-5',
+        failureEffect: '',
+      },
+      {
+        id: 'push-tax-bill',
+        label: 'Announce your intention to table a treasury replenishment bill',
+        successEffect: 'fides-4|crisis-economy-3',
+        failureEffect: '',
+      },
+      {
+        id: 'ignore',
+        label: 'Send them away — the Brutii do not explain themselves to moneylenders',
+        successEffect: 'crisis-economy+5',
+        failureEffect: '',
+      },
+    ],
+  },
+
+  // ECONOMY TRACK — tier 2→3 (level ≥ 60)
+  {
+    id: 'evt-economy-scarcity-bites',
+    title: 'The Price of Everything',
+    bodyText:
+      'Your steward\'s monthly accounts reveal something no one has said aloud: the cost of maintaining the household has risen thirty percent in two years. He presents the numbers without comment, which is itself a comment. In the market, the price of iron, timber, and grain has all risen simultaneously, the way prices do when something has gone genuinely wrong rather than merely inconvenient.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [
+      { type: 'crisisTrack', track: 'economy', op: 'gte', value: 60 },
+    ],
+    weight: 6,
+    choices: [
+      {
+        id: 'austerity',
+        label: 'Impose household austerity — cut expenditure across the board',
+        successEffect: 'fides-3|lifetimeDignitas-3|crisis-economy-5',
+        failureEffect: '',
+      },
+      {
+        id: 'invest-province',
+        label: 'Redirect capital toward provincial investments — long-term play',
+        successEffect: 'denarii-40|crisis-economy-3',
+        failureEffect: '',
+      },
+      {
+        id: 'nothing',
+        label: 'Rome has survived worse. Continue as before.',
+        successEffect: 'crisis-economy+6',
+        failureEffect: '',
+      },
+    ],
+  },
+
+  // ─── Multi-ticker crisis events (Chunk 2C) ────────────────────────────────
+  // Weight 0 — fire ONLY via turnSequencer step 5a injection when multiCrisis
+  // conditions are met. Never fired through pickRandomEvent.
+  // Cooldown flags prevent repeat firing (see turnSequencer end-of-turn maintenance).
+
+  // Unrest ≥ 65 + Constitution ≥ 65
+  {
+    id: 'evt-gracchan-moment',
+    title: 'A Voice in the Forum',
+    bodyText:
+      'A tribune named Sempronius has been speaking in the Forum for a week — not cautiously, not with the hedged language of a man managing risk. He is calling for land redistribution, for limits on senatorial landholding, for a commission with actual power. The crowd is larger every morning. The Senate is deciding whether to laugh or to panic.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [{ type: 'multiCrisis', conditions: [
+      { track: 'unrest', op: 'gte', value: 65 },
+      { track: 'constitution', op: 'gte', value: 65 },
+    ]}],
+    weight: 0,
+    choices: [
+      {
+        id: 'support-reform',
+        label: "Publicly support Sempronius' reform demand",
+        successEffect: 'crisis-unrest-10|crisis-constitution+8|fides+8',
+        failureEffect: '',
+      },
+      {
+        id: 'oppose',
+        label: 'Side with the Senate against him',
+        successEffect: 'crisis-constitution-6|crisis-unrest+8|fides+5',
+        failureEffect: '',
+      },
+      {
+        id: 'neutrality',
+        label: 'Say nothing — let it resolve itself',
+        successEffect: 'crisis-constitution+4|crisis-unrest+4',
+        failureEffect: '',
+        nextEventIdOnSuccess: 'evt-gracchan-aftermath',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-gracchan-aftermath',
+    title: 'The Reform Crisis Deepens',
+    bodyText:
+      'Your silence was noted. Sempronius has made it part of his speeches — "even the Brutii, who have benefited so greatly from the current arrangement, could not bring themselves to defend it." The land commission debate has moved to a Senate vote. You are called upon to declare.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      {
+        id: 'support-commission',
+        label: 'Vote for the land commission',
+        successEffect: 'crisis-unrest-8|crisis-constitution+5|popularesRel+10|optimatesRel-8',
+        failureEffect: '',
+      },
+      {
+        id: 'oppose-commission',
+        label: 'Vote against it',
+        successEffect: 'crisis-constitution-4|crisis-unrest+10|optimatesRel+8|popularesRel-10',
+        failureEffect: '',
+      },
+    ],
+  },
+
+  // War ≥ 70 + Constitution ≥ 70
+  {
+    id: 'evt-senate-cannot-act',
+    title: 'The Senate Cannot Act',
+    bodyText:
+      'A dispatch arrives from the frontier requesting immediate authorisation for emergency levies. The Senate convenes in emergency session. Four hours later, the session adjourns with no vote taken, no quorum maintained, and two senators having left through different doors rather than pass each other in the corridor. The frontier dispatch sits on the table, unanswered.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [{ type: 'multiCrisis', conditions: [
+      { track: 'war', op: 'gte', value: 70 },
+      { track: 'constitution', op: 'gte', value: 70 },
+    ]}],
+    weight: 0,
+    choices: [
+      {
+        id: 'senatus-consultum',
+        label: 'Issue a consular emergency decree (requires Consul office)',
+        successEffect: 'crisis-war-8|crisis-constitution+6|fides-15',
+        failureEffect: '',
+      },
+      {
+        id: 'broker-emergency',
+        label: 'Broker an emergency bipartisan agreement (−20 Fides)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 8 },
+        successEffect: 'fides-20|crisis-war-6|crisis-constitution-5',
+        failureEffect: 'fides-20|crisis-war+5',
+      },
+      {
+        id: 'do-nothing',
+        label: "Do nothing — the Senate must find its own way",
+        successEffect: 'crisis-war+8|crisis-constitution+4',
+        failureEffect: '',
+      },
+    ],
+  },
+
+  // All four tracks ≥ 60
+  {
+    id: 'evt-republic-trembles',
+    title: 'The Republic Trembles',
+    bodyText:
+      "It is winter. The frontier holds, but barely. The treasury is empty. The Aventine is quiet with the wrong kind of quiet. In the Senate, men who have not spoken civilly to each other in years sit in the same chamber, aware that something is ending and uncertain whether what replaces it will include them. Your steward has placed the family seals within easy reach, for reasons neither of you has said aloud.",
+    imageKey: 'portrait-paterfamilias',
+    conditions: [{ type: 'multiCrisis', conditions: [
+      { track: 'war', op: 'gte', value: 60 },
+      { track: 'unrest', op: 'gte', value: 60 },
+      { track: 'constitution', op: 'gte', value: 60 },
+      { track: 'economy', op: 'gte', value: 60 },
+    ]}],
+    weight: 0,
+    choices: [
+      {
+        id: 'consolidate-power',
+        label: "Begin consolidating your family's position for whatever comes next",
+        successEffect: 'lifetimeDignitas+5|fides-10|setFlag:family-consolidating:true',
+        failureEffect: '',
+      },
+      {
+        id: 'attempt-stabilise',
+        label: "Make a public commitment to defend the Republic's institutions",
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 7 },
+        successEffect: 'crisis-constitution-8|fides+10|lifetimeDignitas+8',
+        failureEffect: 'fides-5',
+      },
+      {
+        id: 'wait',
+        label: 'Do nothing — let events determine who survives',
+        successEffect: 'fides-5',
+        failureEffect: '',
+      },
+    ],
+  },
+
+  // ─── Inject-only crisis response events ───────────────────────────────────
+  // Fired by turnSequencer when specific crisis special effects trigger.
+
+  // Fired by turnSequencer step 5c when Unrest tier ≥ 3 (15% chance per season)
+  {
+    id: 'evt-grain-riot',
+    title: 'Grain Riots in the Aventine',
+    bodyText:
+      'Your morning is interrupted before it begins. Smoke is visible above the Aventine and the sounds from the Subura are not of commerce. The aediles\' watch is overwhelmed. A granary has been forced open and at least two merchants beaten. The riot is not yet large — but it has a logic to it, the kind that makes other people join in.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      {
+        id: 'distribute-grain',
+        label: 'Open your own stores to the crowd immediately (−25 Gold)',
+        successEffect: 'gold-25|crisis-unrest-6|plebs+8',
+        failureEffect: '',
+      },
+      {
+        id: 'call-watch',
+        label: 'Call in the city watch and contain it — no concessions',
+        skillCheck: { characterId: 'player', skill: 'martial', difficulty: 5 },
+        successEffect: 'crisis-unrest-3|fides+4',
+        failureEffect: 'crisis-unrest+5|fides-4',
+      },
+      {
+        id: 'wait-it-out',
+        label: 'Stay home — it will burn itself out',
+        successEffect: 'crisis-unrest+8|plebs-6',
+        failureEffect: '',
+      },
+    ],
+  },
+
+  // Fired by turnSequencer step 5d when Economy tier ≥ 4 (once per year)
+  {
+    id: 'evt-creditors-demand',
+    title: 'The Creditors Arrive',
+    bodyText:
+      'Three men from different banking houses arrive on the same morning — separately, but they know each other. They do not ask for payment. They ask, with the patience of men who have other options, for "clarity regarding the Republic\'s intentions with respect to outstanding obligations." What they mean is: the coin is running out, they know it, and they would like something in writing before the situation becomes unmanageable. The meeting lasts an hour. You leave it poorer in spirit if not yet in money. A loss of twenty denarii follows by the end of the week regardless.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      {
+        id: 'pay-quietly',
+        label: 'Pay the twenty denarii with as much dignity as possible',
+        successEffect: 'denarii-20|crisis-economy-3',
+        failureEffect: '',
+      },
+      {
+        id: 'negotiate',
+        label: 'Negotiate a structured repayment arrangement (−20 Denarii, buy time)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 6 },
+        successEffect: 'denarii-20|fides+3|crisis-economy-5',
+        failureEffect: 'denarii-20|crisis-economy+5',
+      },
+      {
+        id: 'refuse',
+        label: 'Refuse payment and show them out — Rome does not answer to financiers',
+        successEffect: 'denarii-20|crisis-economy+8|fides-5',
+        failureEffect: '',
+      },
+    ],
+  },
+
 ];
