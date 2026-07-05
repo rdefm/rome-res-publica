@@ -9,6 +9,7 @@ import { getUnlockedAssetActions } from '../engine/assetEngine';
 import { calcRomeStatVoteModifier, ALL_BILL_TEMPLATES } from '../data/billTemplates';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import StatBar from '../components/shared/StatBar';
+import CrisisTrackModal from '../components/shared/CrisisTrackModal';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
 import { TRIAL_ACTIONS } from '../data/trialActions';
 import type { Bill, ActiveLaw } from '../models/bill';
@@ -44,14 +45,16 @@ const CRISIS_TIER_LABELS: Record<CrisisTrackId, [string, string, string, string,
 function CrisisTrackCell({
   trackId,
   track,
+  onPress,
 }: {
   trackId: CrisisTrackId;
   track: CrisisTrack;
+  onPress?: () => void;
 }) {
   const color = CRISIS_TRACK_COLOR[trackId];
   const tierLabel = CRISIS_TIER_LABELS[trackId][track.tier];
 
-  return (
+  const cell = (
     <View style={ctc.cell}>
       <View style={ctc.header}>
         <Text style={[ctc.trackName, { color }]}>{CRISIS_TRACK_LABEL[trackId]}</Text>
@@ -69,6 +72,15 @@ function CrisisTrackCell({
       />
     </View>
   );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={{ flex: 1 }}>
+        {cell}
+      </TouchableOpacity>
+    );
+  }
+  return cell;
 }
 
 const ctc = StyleSheet.create({
@@ -137,7 +149,9 @@ const bloc = StyleSheet.create({
 
 // ─── Rome stat detail modal ───────────────────────────────────────────────────
 
-type RomeStat = 'stability' | 'plebs' | 'treasury';
+// 'stability' and 'plebs' moved to Provinciae → Latium (LatiumSheet).
+// Treasury remains here because it directly affects bill support calculations.
+type RomeStat = 'treasury';
 
 const ROME_STAT_CONFIG: Record<RomeStat, {
   label: string;
@@ -145,30 +159,6 @@ const ROME_STAT_CONFIG: Record<RomeStat, {
   thresholds: { range: string; label: string; effects: string }[];
   ticks: number[];
 }> = {
-  stability: {
-    label: 'Stability',
-    color: COLORS.laurel,
-    ticks: [20, 40, 70, 85],
-    thresholds: [
-      { range: '0–19',   label: 'Instability', effects: 'Crisis escalation ×1.5 · Fides −2/season' },
-      { range: '20–39',  label: 'Fragile',      effects: 'Crisis escalation ×1.25 · Fides −1/season' },
-      { range: '40–69',  label: 'Stable',       effects: 'No modifier (baseline)' },
-      { range: '70–84',  label: 'Cohesive',     effects: 'Fides +1/season' },
-      { range: '85–100', label: 'Pax Interna',  effects: 'Fides +2/season · Crisis escalation ×0.85' },
-    ],
-  },
-  plebs: {
-    label: 'Plebs Mood',
-    color: COLORS.purple,
-    ticks: [20, 40, 70, 85],
-    thresholds: [
-      { range: '0–19',   label: 'Rioting',    effects: 'Fides −3/season · Crisis +3/season autonomous · 20% grain riot chance' },
-      { range: '20–39',  label: 'Restless',   effects: 'Fides −1/season · 10% grain riot chance' },
-      { range: '40–69',  label: 'Content',    effects: 'No modifier (baseline)' },
-      { range: '70–84',  label: 'Supportive', effects: 'Fides +1/season · Populist bills +5 support' },
-      { range: '85–100', label: 'Euphoric',   effects: 'Fides +2/season · Populist bills +10 support · Patron call-ins waived' },
-    ],
-  },
   treasury: {
     label: 'Treasury',
     color: COLORS.denariiColor,
@@ -592,6 +582,7 @@ export default function CuriaScreen() {
   const [submitVisible, setSubmitVisible] = useState(false);
   const [activeLawsExpanded, setActiveLawsExpanded] = useState(true);
   const [romeStatModal, setRomeStatModal] = useState<RomeStat | null>(null);
+  const [crisisModal, setCrisisModal] = useState<CrisisTrackId | null>(null);
   const romeMods = calcRomeStatModifiers(rome);
 
   const TRACK_ORDER: CrisisTrackId[] = ['war', 'unrest', 'constitution', 'economy'];
@@ -606,24 +597,12 @@ export default function CuriaScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}>
         <TrialBanner />
 
-        {/* Rome stats — tappable for detail modal */}
+        {/* Treasury — the one Rome stat that directly affects legislation */}
         <View style={styles.panel}>
-          <Text style={styles.panelTitle}>ROME — STATE OF THE REPUBLIC</Text>
-          <Text style={styles.panelSub}>Tap a stat to see its effects. These are Rome's stats — separate from your family resources.</Text>
-          <StatBar
-            label={`Stability — ${romeMods.stabilityLabel}`}
-            value={rome.stability}
-            color={COLORS.laurel}
-            thresholdMarks={[20, 40, 70, 85]}
-            onPress={() => setRomeStatModal('stability')}
-          />
-          <StatBar
-            label={`Plebs Mood — ${romeMods.plebsLabel}`}
-            value={rome.plebs}
-            color={COLORS.purple}
-            thresholdMarks={[20, 40, 70, 85]}
-            onPress={() => setRomeStatModal('plebs')}
-          />
+          <Text style={styles.panelTitle}>ROME — TREASURY</Text>
+          <Text style={styles.panelSub}>
+            Affects bill support and Denarii income each season. Tap for tier details.
+          </Text>
           <StatBar
             label={`Treasury — ${romeMods.treasuryLabel}`}
             value={rome.treasury}
@@ -631,6 +610,13 @@ export default function CuriaScreen() {
             thresholdMarks={[10, 25, 65, 85]}
             onPress={() => setRomeStatModal('treasury')}
           />
+          <View style={styles.crosslink}>
+            <Text style={styles.crosslinkText}>
+              Popular Sentiment &amp; Internal Stability are tracked in{' '}
+              <Text style={styles.crosslinkEmphasis}>Provinciae → Latium</Text>
+              {' '}— they drive Unrest and Constitution crisis escalation.
+            </Text>
+          </View>
         </View>
 
         {/* Crisis — four-track 2×2 grid (Chunk 2D) */}
@@ -638,14 +624,14 @@ export default function CuriaScreen() {
           <Text style={styles.panelTitle}>CRISIS TRACKS</Text>
           <Text style={styles.panelSub}>Four independent pressures on the Republic. Each escalates and de-escalates through different mechanisms.</Text>
           <View style={styles.crisisRow}>
-            <CrisisTrackCell trackId={TRACK_ORDER[0]} track={crisis[TRACK_ORDER[0]]} />
+            <CrisisTrackCell trackId={TRACK_ORDER[0]} track={crisis[TRACK_ORDER[0]]} onPress={() => setCrisisModal(TRACK_ORDER[0])} />
             <View style={styles.crisisGap} />
-            <CrisisTrackCell trackId={TRACK_ORDER[1]} track={crisis[TRACK_ORDER[1]]} />
+            <CrisisTrackCell trackId={TRACK_ORDER[1]} track={crisis[TRACK_ORDER[1]]} onPress={() => setCrisisModal(TRACK_ORDER[1])} />
           </View>
           <View style={[styles.crisisRow, { marginTop: SPACING.sm }]}>
-            <CrisisTrackCell trackId={TRACK_ORDER[2]} track={crisis[TRACK_ORDER[2]]} />
+            <CrisisTrackCell trackId={TRACK_ORDER[2]} track={crisis[TRACK_ORDER[2]]} onPress={() => setCrisisModal(TRACK_ORDER[2])} />
             <View style={styles.crisisGap} />
-            <CrisisTrackCell trackId={TRACK_ORDER[3]} track={crisis[TRACK_ORDER[3]]} />
+            <CrisisTrackCell trackId={TRACK_ORDER[3]} track={crisis[TRACK_ORDER[3]]} onPress={() => setCrisisModal(TRACK_ORDER[3])} />
           </View>
         </View>
 
@@ -696,6 +682,16 @@ export default function CuriaScreen() {
           onClose={() => setRomeStatModal(null)}
         />
       )}
+
+      {crisisModal && (
+        <CrisisTrackModal
+          trackId={crisisModal}
+          track={crisis[crisisModal]}
+          crisisState={crisis}
+          visible={!!crisisModal}
+          onClose={() => setCrisisModal(null)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -722,4 +718,23 @@ const styles = StyleSheet.create({
   emptyText: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 13, textAlign: 'center', marginTop: SPACING.lg },
   activeLawsSection: { marginTop: SPACING.md },
   chevron: { color: COLORS.dust, fontSize: 14 },
+  crosslink: {
+    marginTop: SPACING.sm,
+    paddingTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  crosslinkText: {
+    color: COLORS.dust,
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  crosslinkEmphasis: {
+    color: COLORS.goldDim,
+    fontStyle: 'normal',
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+  },
 });

@@ -16,6 +16,7 @@ import { COLORS, FONTS, SPACING, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 import { useGameStore } from '../state/gameStore';
 import MapView from '../components/provinciae/MapView';
 import ProvinceSheet from '../components/provinciae/ProvinceSheet';
+import LatiumSheet from '../components/provinciae/LatiumSheet';
 import type { GovernorPolicy } from '../models/province';
 import type { AmbassadorActionId } from '../engine/provinceEngine';
 import { calcTotalImperium } from '../engine/troopEngine';
@@ -209,6 +210,9 @@ export default function ProvinciaeScreen() {
             style={[styles.sheetContainer, { top: sheetAnim }]}
             {...panResponder.panHandlers}
           >
+            {selectedProvince.id === 'latium' ? (
+              <LatiumSheet onClose={closeSheet} />
+            ) : (
             <ProvinceSheet
               province={selectedProvince}
               family={family}
@@ -237,6 +241,7 @@ export default function ProvinciaeScreen() {
               onVolunteerOfficer={(provinceId, charId) => volunteerOfficer(provinceId, charId)}
               onResolveOfficerDecision={(provinceId, idx, risk) => resolveOfficerDecision(provinceId, idx, risk)}
             />
+            )}
           </Animated.View>
         </>
       )}
