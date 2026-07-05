@@ -24,9 +24,10 @@ import {
   CANVASS_FIDES_COST,
   CANVASS_MIN_RELATIONSHIP,
   CANVASS_EVENT_CHANCE,
+  generateRivals,
 } from '../engine/electionEngine';
 import { CANVASSING_EVENTS } from '../data/canvassingEvents';
-import type { CanvassingEvent } from '../data/canvassingEvents';
+import type { CanvassingEvent, CanvassingEventResult } from '../data/canvassingEvents';
 import { STARTING_FAMILY } from '../data/startingFamily';
 import { STARTING_CLANS } from '../data/startingClans';
 import { STARTING_BILLS } from '../data/billTemplates';
@@ -152,6 +153,7 @@ export interface GameState {
 
   // ── Canvassing ──────────────────────────────────────────────────────────
   activeCanvassingEvent: CanvassingEvent | null;
+  canvassingEventResult: CanvassingEventResult | null;
   pendingCanvassLeaderId: string | null;
   pendingCanvassRoll: number;
   pendingCanvassThreshold: number;
@@ -255,6 +257,7 @@ export interface GameActions {
   // ── Canvassing ──────────────────────────────────────────────────────────
   canvassLeader: (leaderId: string) => void;
   resolveCanvassingEvent: (optionId: string) => void;
+  dismissCanvassingResult: () => void;
 }
 
 let _logId = 0;
@@ -334,6 +337,7 @@ export const INITIAL_STATE: GameState = {
 
   // Canvassing
   activeCanvassingEvent: null,
+  canvassingEventResult: null,
   pendingCanvassLeaderId: null,
   pendingCanvassRoll: 0,
   pendingCanvassThreshold: 0,
@@ -666,6 +670,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set({
       campaigning: officeId,
       campaigningCharacterId: 'pc-1',
+      electionRivals: generateRivals(officeId, s),
+      campaignVotes: {},
       log: [...s.log, mkLog(label, `Campaign for ${officeId} declared.`, 'neutral')],
     });
   },
@@ -990,6 +996,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set({
       campaigning: officeId,
       campaigningCharacterId: characterId,
+      electionRivals: generateRivals(officeId, s),
+      campaignVotes: {},
       log: [...s.log, mkLog(label, `Family member declared campaign for ${officeId}.`, 'neutral')],
     });
   },
@@ -1440,6 +1448,12 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const success = !!(option.immediateSuccess) || (finalRoll >= s.pendingCanvassThreshold);
     const label = turnLabel(s);
 
+    const result: CanvassingEventResult = {
+      success,
+      leaderName: foundLeader.name,
+      flavour,
+    };
+
     set({
       fides:   s.fides   - (option.cost?.resource === 'fides'   ? option.cost.amount : 0),
       denarii: s.denarii - (option.cost?.resource === 'denarii' ? option.cost.amount : 0),
@@ -1447,6 +1461,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         ? { ...s.campaignVotes, [leaderId]: 'for' as const }
         : s.campaignVotes,
       activeCanvassingEvent:   null,
+      canvassingEventResult:   result,
       pendingCanvassLeaderId:  null,
       pendingCanvassRoll:      0,
       pendingCanvassThreshold: 0,
@@ -1457,4 +1472,6 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       )],
     });
   },
+
+  dismissCanvassingResult: () => set({ canvassingEventResult: null }),
 }));

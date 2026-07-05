@@ -7,7 +7,7 @@ import { useGameStore } from '../state/gameStore';
 import { OFFICES } from '../data/offices';
 import type { OfficeId } from '../models/office';
 import type { Character } from '../models/character';
-import { calcPlayerElectionScore, calcRivalElectionScore, PLAYER_BASE_SCORE } from '../engine/electionEngine';
+import { calcPlayerElectionScore, calcNpcElectionScore, PLAYER_BASE_SCORE } from '../engine/electionEngine';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
@@ -216,58 +216,92 @@ const rung = StyleSheet.create({
 
 function ElectionPanel({ character }: { character: Character }) {
   const state = useGameStore();
-  const { campaigning, campaigningCharacterId, electionRivals, seasonIndex } = state;
+  const { campaigning, campaigningCharacterId, electionRivals, seasonIndex, clans } = state;
 
   if (!campaigning || campaigningCharacterId !== character.id) return null;
 
-  const office = OFFICES.find((o) => o.id === campaigning);
+  const office          = OFFICES.find((o) => o.id === campaigning);
+  const seats           = office?.seats ?? 1;
   const seasonsToWinter = (3 - seasonIndex + 4) % 4;
+  const playerScore     = calcPlayerElectionScore(state);
 
-  const playerScore = calcPlayerElectionScore(state);
+  // Build clan lookup for rival score calculation
+  const clanInfluenceMap = Object.fromEntries(clans.map(c => [c.id, c.influence]));
 
   const candidates = [
     {
-      name:     character.name,
-      subtitle: `Base ${PLAYER_BASE_SCORE} + clients + canvassed`,
-      votes:    playerScore,
-      isPlayer: true,
+      name:          character.name,
+      subtitle:      `Base ${PLAYER_BASE_SCORE} + clients + canvassed`,
+      votes:         playerScore,
+      isPlayer:      true,
+      highestOffice: null as string | null,
     },
     ...electionRivals.map((r) => ({
       name:     r.name,
-      subtitle: r.clanName,
-      votes:    calcRivalElectionScore(r),
+      subtitle: r.highestOffice
+        ? `Ex-${r.highestOffice.charAt(0).toUpperCase() + r.highestOffice.slice(1)} · ${r.clanName}`
+        : r.clanName,
+      votes:    r.strength,
       isPlayer: false,
+      highestOffice: r.highestOffice,
     })),
   ].sort((a, b) => b.votes - a.votes);
 
-  const maxVotes = Math.max(...candidates.map((c) => c.votes), 1);
+  const maxVotes     = Math.max(...candidates.map((c) => c.votes), 1);
+  const playerRank   = candidates.findIndex(c => c.isPlayer) + 1;
+  const onTrackToWin = playerRank <= seats;
 
   return (
     <View style={ep.container}>
       <Text style={ep.title}>Campaign: {office?.name}</Text>
       <Text style={ep.candidate}>Candidate: {character.name}</Text>
+
+      <View style={ep.seatsRow}>
+        <Text style={ep.seatsLabel}>{seats} seat{seats !== 1 ? 's' : ''} available</Text>
+        <Text style={[ep.rankBadge, onTrackToWin ? ep.rankBadgeWin : ep.rankBadgeLose]}>
+          {onTrackToWin ? `✓ Est. #${playerRank}` : `✗ Est. #${playerRank}`}
+        </Text>
+      </View>
+
       {seasonsToWinter === 0 ? (
         <Text style={ep.urgent}>Election resolves this season — End Season to vote.</Text>
       ) : (
         <Text style={ep.countdown}>{seasonsToWinter} season{seasonsToWinter !== 1 ? 's' : ''} until election</Text>
       )}
-      {candidates.map((c) => (
-        <View key={c.name} style={ep.candidateRow}>
-          <View style={ep.candidateInfo}>
-            <Text style={[ep.candidateName, c.isPlayer && { color: COLORS.gold }]} numberOfLines={1}>
-              {c.name}
-            </Text>
-            <Text style={ep.candidateClan} numberOfLines={1}>{c.subtitle}</Text>
-          </View>
-          <View style={ep.voteBarTrack}>
-            <View style={[ep.voteBarFill, {
-              width: `${(c.votes / maxVotes) * 100}%`,
-              backgroundColor: c.isPlayer ? COLORS.gold : COLORS.crimson,
-            }]} />
-          </View>
-          <Text style={ep.voteCount}>{c.votes}</Text>
-        </View>
-      ))}
+
+      {candidates.map((c, i) => {
+        const inWinningZone = i < seats;
+        const barColor = c.isPlayer
+          ? (inWinningZone ? COLORS.gold : COLORS.amber)
+          : (inWinningZone ? COLORS.laurel : COLORS.crimson);
+
+        return (
+          <React.Fragment key={c.name}>
+            {i === seats && (
+              <View style={ep.seatDivider}>
+                <View style={ep.seatDividerLine} />
+                <Text style={ep.seatDividerLabel}>— winning threshold —</Text>
+                <View style={ep.seatDividerLine} />
+              </View>
+            )}
+            <View style={ep.candidateRow}>
+              <View style={ep.candidateInfo}>
+                <Text style={[ep.candidateName, c.isPlayer && { color: COLORS.gold }]} numberOfLines={1}>
+                  {c.name}
+                </Text>
+                <Text style={ep.candidateClan} numberOfLines={1}>{c.subtitle}</Text>
+              </View>
+              <View style={ep.voteBarTrack}>
+                <View style={[ep.voteBarFill, {
+                  width: `${(c.votes / maxVotes) * 100}%` as any,
+                  backgroundColor: barColor,
+                }]} />
+              </View>
+              <Text style={ep.voteCount}>{c.votes}</Text>
+            </View>
+          </React.Fragment>
+        );
+      })}
     </View>
   );
 }
@@ -276,6 +310,11 @@ const ep = StyleSheet.create({
   container: { backgroundColor: 'rgba(200,168,112,0.25)', borderWidth: 1, borderColor: COLORS.gold, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md },
   title: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 16, fontWeight: '700', marginBottom: 2 },
   candidate: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, marginBottom: 4 },
+  seatsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xs },
+  seatsLabel: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 10, letterSpacing: 0.3 },
+  rankBadge: { fontFamily: FONTS.display, fontSize: 11, fontWeight: '700', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  rankBadgeWin: { color: COLORS.laurel, backgroundColor: 'rgba(80,140,60,0.2)' },
+  rankBadgeLose: { color: COLORS.crimson, backgroundColor: 'rgba(160,40,40,0.2)' },
   countdown: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, marginBottom: SPACING.sm },
   urgent: { color: COLORS.crimson, fontFamily: FONTS.display, fontSize: 12, fontWeight: '700', marginBottom: SPACING.sm },
   candidateRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
@@ -285,6 +324,9 @@ const ep = StyleSheet.create({
   voteBarTrack: { flex: 1, height: 8, backgroundColor: COLORS.bg, borderRadius: 4, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   voteBarFill: { height: '100%', borderRadius: 4 },
   voteCount: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, width: 30, textAlign: 'right' },
+  seatDivider: { flexDirection: 'row', alignItems: 'center', marginVertical: 4 },
+  seatDividerLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
+  seatDividerLabel: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 8, letterSpacing: 0.5, marginHorizontal: 4 },
 });
 
 // ─── CursusScreen ─────────────────────────────────────────────────────────────

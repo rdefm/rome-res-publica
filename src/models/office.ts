@@ -28,6 +28,8 @@ export interface Office {
   termSeasons: number;
   minAge: number;
   prerequisite: OfficeId | null;
+  /** Number of simultaneous holders. Player wins if their rank ≤ seats. */
+  seats: number;
   desc: string;
   flavor: string;
   active: boolean;
@@ -45,5 +47,6 @@ export interface ElectionRival {
   bias: string;
   baseVotes: number;
   clanInfluence: number;
-  strength: number;
+  strength: number;         // NPC election score (calcNpcElectionScore result)
+  highestOffice: string | null; // most senior office held — shown in UI as "Ex-Praetor" etc.
 }

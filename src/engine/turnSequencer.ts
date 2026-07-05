@@ -15,7 +15,7 @@ import {
   getTreasuryAbsorption,
   getPlebsCrisisBonus,
 } from './crisisEngine';
-import { resolveElection } from './electionEngine';
+import { tickNpcCareers, resolveElection } from './electionEngine';
 import { pickRandomEvent } from './eventEngine';
 import { tickAmbitions, getAmbitionDefinition } from './ambitionEngine';
 import { incrementLegacy, computeLegacyBonuses } from './legacyEngine';
@@ -75,7 +75,10 @@ export function processSeason(state: GameState): {
   const seasonNames = ['Spring', 'Summer', 'Autumn', 'Winter'];
   events.push(`${seasonNames[newSeasonIndex]}, ${Math.abs(newYear)} BC`);
 
-  // 2. Resolve election (if in Winter and campaigning)
+  // 2a. NPC career tick — decrement terms every season, advance careers in Winter
+  s = { ...s, clans: tickNpcCareers(s.clans, newSeasonIndex) };
+
+  // 2b. Resolve player election (Winter only)
   if (newSeasonIndex === 3 && s.campaigning) {
     const result = resolveElection(s);
     if (result.won) {
@@ -100,12 +103,12 @@ export function processSeason(state: GameState): {
         }
       }
       events.push(
-        `ELECTED! ${s.family.find(c => c.id === s.campaigningCharacterId)?.name ?? 'Your candidate'} wins the ${office?.name ?? ''} with ${result.playerVotes} votes.`
+        `ELECTED! ${s.family.find(c => c.id === s.campaigningCharacterId)?.name ?? 'Your candidate'} wins the ${office?.name ?? ''} — ranked #${result.playerRank} of ${result.seats} seats with ${result.playerVotes} votes.`
       );
     } else {
       s = { ...s, campaigning: null, campaignVotes: {}, electionRivals: [] };
       events.push(
-        `Defeated. Marcus receives ${result.playerVotes} votes. ${result.topRivalName} wins with ${result.topRivalVotes}.`
+        `Defeated. Ranked #${result.playerRank} — only ${result.seats} seat${result.seats !== 1 ? 's' : ''} available. ${result.topRivalName} leads with ${result.topRivalVotes} votes.`
       );
     }
   }
