@@ -2,6 +2,7 @@ import type { GameState } from '../state/gameStore';
 import type { Client, ClientType } from '../models/client';
 import type { EventInstance } from '../models/event';
 import type { CrisisTrackId } from '../models/crisis';
+import type { Bill } from '../models/bill';
 import {
   calcResourceIncome,
   applyEffectString,
@@ -41,11 +42,11 @@ import { computeTotalAssetBonuses } from './assetEngine';
 import { tickAllProvinces } from './provinceEngine';
 import { applyTroopAttrition, calcMilitaryImperium } from './troopEngine';
 import { tickSenateResponse } from './senateResponseEngine';
+import { calcAntagonismLevel, tickNpcConsul } from './npcConsulEngine';
 import { TRIAL_ACTIONS } from '../data/trialActions';
 import { EVENT_DEFS } from '../data/events';
 import { OFFICES } from '../data/offices';
 import { AUTO_BILL_TEMPLATES, HISTORICAL_BILL_TEMPLATES } from '../data/billTemplates';
-import type { Bill } from '../models/bill';
 
 let billIdCounter = 1000;
 function nextBillId(): string {
@@ -58,6 +59,42 @@ function pickOldestClient(clients: Client[], type: ClientType): Client | undefin
   return clients
     .filter(c => c.type === type)
     .sort((a, b) => a.acquiredTurn - b.acquiredTurn)[0];
+}
+
+// ─── Triumph bill builder (Chunk 1C) ─────────────────────────────────────────
+
+/**
+ * Dynamically construct a Triumph petition bill for a character who has
+ * successfully completed a military campaign.
+ *
+ * The bill is added to state.bills when the character:
+ *   - Has a resolved non-defeat campaign as commanderCharacterId on a province
+ *   - state.lifetimeImperium >= 50
+ *   - No triumph bill already queued or passed for this character
+ *
+ * See design doc section 1.6 for full spec.
+ */
+function buildTriumphBill(
+  character: GameState['family'][0],
+  state: GameState,
+): Bill {
+  const characterId = character.id;
+  // Base support: 10 + half the character's martial skill (proxy for military reputation)
+  const baseSupport = 10 + Math.round(character.skills.martial / 2);
+
+  return {
+    id: `triumph-${characterId}-${state.year}`,
+    name: `Triumph for ${character.name}`,
+    // passEffect uses crisis-war--5 to reduce War track by 5 (victorious campaigns reduce external threat)
+    passEffect: `lifetimeDignitas+20|fides+15|plebs+5|crisis-war-5|setFlag:triumph-granted-${characterId}:true`,
+    failEffect: `fides-5|setFlag:triumph-denied-${characterId}:true`,
+    turnsLeft: 4,
+    support: baseSupport,
+    playerProposed: false,
+    type: 'military',
+    repealable: false,
+    renewable: false,
+  } as unknown as Bill;
 }
 
 // ─── Season processor ────────────────────────────────────────────────────────
@@ -108,6 +145,21 @@ export function processSeason(state: GameState): {
       events.push(
         `ELECTED! ${s.family.find(c => c.id === s.campaigningCharacterId)?.name ?? 'Your candidate'} wins the ${office?.name ?? ''} — ranked #${result.playerRank} of ${result.seats} seats with ${result.playerVotes} votes.`
       );
+
+      // ── Contested election event injection (Chunk 1C) ──────────────────────
+      // High constitution crisis makes victorious elections disputeable.
+      if (result.contested) {
+        const player = s.family.find(c => c.isPlayer);
+        s = {
+          ...s,
+          pendingEvents: [...s.pendingEvents, {
+            defId: 'evt-election-contested',
+            firedAtTurn: s.turnNumber,
+            targetCharacterId: player?.id ?? 'pc-1',
+          }],
+        };
+        events.push('Your election result is being contested by rivals.');
+      }
     } else {
       s = { ...s, campaigning: null, campaignVotes: {}, electionRivals: [] };
       events.push(
@@ -128,9 +180,30 @@ export function processSeason(state: GameState): {
     }
   }
 
+  // 3b. Tribune term tick — parallel path, independent of main office term (Chunk 1C)
+  if (s.tribuneHolder) {
+    const newTribSeasons = s.tribuneSeasonsServed + 1;
+    if (newTribSeasons >= 4) {
+      const exTribuneId   = s.tribuneHolder;
+      const exTribuneName = s.family.find(c => c.id === exTribuneId)?.name ?? 'The Tribune';
+      s = {
+        ...s,
+        tribuneHolder:       null,
+        tribuneImmunity:     false,
+        tribuneSeasonsServed: 0,
+        tribuneHostilityDebt: {},
+        // Clear the office from the character's record
+        family: s.family.map(c =>
+          c.id === exTribuneId ? { ...c, officeId: null } : c
+        ),
+      };
+      events.push(`${exTribuneName}'s term as Tribune of the Plebs has ended.`);
+    } else {
+      s = { ...s, tribuneSeasonsServed: newTribSeasons };
+    }
+  }
+
   // 4. Resolve bills
-  // ── Unrest tier 4: Senate session suspension (design doc section 2.3)
-  // 20% chance per season at unrest tier 4 — skips all bill resolution and aging.
   const unrestTier = getTierFromLevel(s.crisis.unrest.level);
   const senateSessionSuspended = unrestTier >= 4 && Math.random() < 0.20;
   if (senateSessionSuspended) {
@@ -145,23 +218,17 @@ export function processSeason(state: GameState): {
   const remainingBills: Bill[] = [];
 
   if (!senateSessionSuspended) {
-    // ── Economy tier 3: forced austerity — spending bills harder to pass
-    // Design doc section 2.3: 'economy-forced-austerity'
-    // Spending bills have effective support reduced by 10 this season.
     const economyTier = getTierFromLevel(s.crisis.economy.level);
     const austerityActive = economyTier >= 3;
 
     for (const bill of s.bills) {
       const turnsLeft = bill.turnsLeft - 1;
 
-      // Apply austerity penalty to spending bills (those whose pass effect drains gold/treasury)
       const isSpendingBill = bill.passEffect?.includes('gold-') || bill.passEffect?.includes('treasury-');
       const effectiveSupport = austerityActive && isSpendingBill
         ? bill.support - 10
         : bill.support;
 
-      // Constitution tier 2–4: bills require extra support to pass
-      // design doc section 2.3: constitution-bill-penalty (tier 2: +5), large (tier 3: +10), extreme (tier 4: +15)
       const constitutionTier = getTierFromLevel(s.crisis.constitution.level);
       const passThresholdBonus =
         constitutionTier >= 4 ? 15 :
@@ -182,7 +249,6 @@ export function processSeason(state: GameState): {
       }
     }
 
-    // Register passed bills as active laws
     const newActiveLaws = passedBills
       .filter(b => b.id && !s.activeLaws?.some(l => l.billId === b.id))
       .map(b => ({
@@ -215,7 +281,6 @@ export function processSeason(state: GameState): {
     events.push(...resolvedLogs);
   }
 
-  // ── Track consecutive seasons without bills for Constitution crisis escalation
   if (passedBills.length > 0) {
     s = { ...s, flags: { ...s.flags, seasonsSinceLastBillPassed: 0 } };
   } else {
@@ -223,18 +288,16 @@ export function processSeason(state: GameState): {
     s = { ...s, flags: { ...s.flags, seasonsSinceLastBillPassed: prev + 1 } };
   }
 
-  // 5. Crisis escalation — four-track model (replaces old single calcCrisisEscalation)
-  const romeMods = calcRomeStatModifiers(s.rome); // still used for logging in step 5b
+  // 5. Crisis escalation — four-track model
+  const romeMods = calcRomeStatModifiers(s.rome);
   const prevCrisis = { ...s.crisis };
 
-  // a. Individual escalation per track
   let updatedCrisis = { ...s.crisis };
   for (const trackId of ['war', 'unrest', 'constitution', 'economy'] as const) {
     const delta = calcIndividualEscalation(trackId, s);
     updatedCrisis = { ...updatedCrisis, [trackId]: applyTrackDelta(updatedCrisis[trackId], delta) };
   }
 
-  // b. Cascade deltas — applied on top of individual escalation
   const cascadeDeltas = calcCascadeDeltas(updatedCrisis);
   for (const trackId of ['war', 'unrest', 'constitution', 'economy'] as const) {
     if (cascadeDeltas[trackId] !== 0) {
@@ -245,7 +308,6 @@ export function processSeason(state: GameState): {
     }
   }
 
-  // c. Recompute namedCrisis for each track
   for (const trackId of ['war', 'unrest', 'constitution', 'economy'] as const) {
     const namedCrisis = getNamedCrisis(trackId, updatedCrisis[trackId].level, s);
     updatedCrisis = {
@@ -254,19 +316,11 @@ export function processSeason(state: GameState): {
     };
   }
 
-  // d. Military bill pressure — additional War delta if no military bill passed
   const militaryPressure = checkMilitaryBillPressure(updatedCrisis, passedBills.map(b => b.id));
   if (militaryPressure !== 0) {
     updatedCrisis = { ...updatedCrisis, war: applyTrackDelta(updatedCrisis.war, militaryPressure) };
   }
 
-  // e. Infrastructure stagnation → Economy (per stagnant province, in addition to crisisEngine's
-  //    calcEconomyEscalation which already reads this; here we apply the turnSequencer-level bonus
-  //    per design doc section 2.12 step 7f — provinces with stagnation ≥ 12 add +3 directly)
-  // NOTE: calcIndividualEscalation already handles this. This block is intentionally left empty
-  // to avoid double-counting. Design doc step 7e is implemented inside calcEconomyEscalation.
-
-  // f. Sync crisisLevel scalar for backwards compatibility (Chunk 2D removes crisisLevel)
   const newCrisisLevel = Math.round(
     (updatedCrisis.war.level + updatedCrisis.unrest.level +
      updatedCrisis.constitution.level + updatedCrisis.economy.level) / 4
@@ -274,7 +328,6 @@ export function processSeason(state: GameState): {
 
   s = { ...s, crisis: updatedCrisis, crisisLevel: newCrisisLevel };
 
-  // Log significant track changes (≥5 points)
   const TRACK_LABELS: Record<CrisisTrackId, string> = {
     war: 'War', unrest: 'Unrest', constitution: 'Constitution', economy: 'Economy',
   };
@@ -291,8 +344,6 @@ export function processSeason(state: GameState): {
   }
 
   // 5a. Multi-ticker event injection
-  // Events with multiCrisis conditions fire via injection, not random selection (weight: 0).
-  // Cooldown flags prevent them from firing more than once per N seasons.
   for (const def of EVENT_DEFS) {
     const hasMultiCrisis = def.conditions.some(c => c.type === 'multiCrisis');
     if (!hasMultiCrisis) continue;
@@ -309,23 +360,16 @@ export function processSeason(state: GameState): {
     s = {
       ...s,
       pendingEvents: [...s.pendingEvents, instance],
-      flags: { ...s.flags, [cooldownKey]: 4 }, // 4-season cooldown
+      flags: { ...s.flags, [cooldownKey]: 4 },
     };
   }
 
-  // 5b. Log Rome stat threshold labels if meaningful
-  if (romeMods.stabilityLabel !== 'Stable') {
-    events.push(`Rome stability: ${romeMods.stabilityLabel}.`);
-  }
-  if (romeMods.plebsLabel !== 'Content') {
-    events.push(`Plebs mood: ${romeMods.plebsLabel}.`);
-  }
-  if (romeMods.treasuryLabel !== 'Adequate') {
-    events.push(`Treasury: ${romeMods.treasuryLabel}.`);
-  }
+  // 5b. Log Rome stat threshold labels
+  if (romeMods.stabilityLabel !== 'Stable') events.push(`Rome stability: ${romeMods.stabilityLabel}.`);
+  if (romeMods.plebsLabel !== 'Content')    events.push(`Plebs mood: ${romeMods.plebsLabel}.`);
+  if (romeMods.treasuryLabel !== 'Adequate') events.push(`Treasury: ${romeMods.treasuryLabel}.`);
 
-  // 5c. Grain riot check — Unrest tier 3 special effect (design doc section 2.3)
-  // 'unrest-tribune-bonus' at tier 3 includes 15% grain riot chance per season.
+  // 5c. Grain riot check
   if (getTierFromLevel(s.crisis.unrest.level) >= 3 && Math.random() < 0.15) {
     const player = s.family.find(c => c.isPlayer);
     s = {
@@ -339,8 +383,7 @@ export function processSeason(state: GameState): {
     events.push('Grain riots have broken out in the city.');
   }
 
-  // 5d. Creditors demand — Economy tier 4 (design doc section 2.3, 'economy-creditors')
-  // Fires once per year (Winter season only).
+  // 5d. Creditors demand — Economy tier 4 (Winter only)
   if (newSeasonIndex === 3 && getTierFromLevel(s.crisis.economy.level) >= 4) {
     const creditorCooldown = s.flags['creditors-demand-cooldown'];
     if (!creditorCooldown) {
@@ -361,7 +404,7 @@ export function processSeason(state: GameState): {
   const romeUpdate = calcRomeStats(s, passedBills.length);
   s = { ...s, rome: { ...s.rome, ...romeUpdate } };
 
-  // 6b. Process active laws — apply ongoing effects and handle expiry
+  // 6b. Process active laws
   if (s.activeLaws && s.activeLaws.length > 0) {
     const expiredLaws: string[] = [];
     const renewalBills: typeof s.bills = [];
@@ -401,7 +444,7 @@ export function processSeason(state: GameState): {
   const { fidesIncome, denariiIncome, plebsDelta } = calcResourceIncome(s);
 
   const legacyBonuses = computeLegacyBonuses(s.legacyObjectives);
-  const flatBonus = legacyBonuses.flatBonus ?? {};
+  const flatBonus  = legacyBonuses.flatBonus ?? {};
   const multiplier = legacyBonuses.resourceMultiplier ?? {};
   const finalFides   = Math.round((fidesIncome   + (flatBonus.fides ?? 0)) * (multiplier.fides ?? 1));
   const finalDenarii = Math.round((denariiIncome + (flatBonus.gold  ?? 0)) * (multiplier.gold  ?? 1));
@@ -412,14 +455,10 @@ export function processSeason(state: GameState): {
     denarii: s.denarii + finalDenarii,
   };
 
-  // Apply plebsDelta from Unrest tier 2+ passive Plebs decay
   if (plebsDelta !== 0) {
     s = {
       ...s,
-      rome: {
-        ...s.rome,
-        plebs: Math.min(100, Math.max(0, s.rome.plebs + plebsDelta)),
-      },
+      rome: { ...s.rome, plebs: Math.min(100, Math.max(0, s.rome.plebs + plebsDelta)) },
     };
   }
 
@@ -432,18 +471,49 @@ export function processSeason(state: GameState): {
     }
   }
 
-  events.push(
-    `Income: +${finalFides} Fides${finalDenarii > 0 ? `, +${finalDenarii} Denarii` : ''}`
-  );
+  events.push(`Income: +${finalFides} Fides${finalDenarii > 0 ? `, +${finalDenarii} Denarii` : ''}`);
+
+  // 7b. NPC consul tick (Chunk 1C) ────────────────────────────────────────────
+  // Recompute antagonism level each season, then run seasonal behaviour.
+  if (s.npcConsul) {
+    const newAntagonism = calcAntagonismLevel(s);
+    s = {
+      ...s,
+      npcConsul: {
+        ...s.npcConsul,
+        antagonismLevel: newAntagonism,
+        seasonsServed: s.npcConsul.seasonsServed + 1,
+      },
+    };
+    const npcConsulPatch = tickNpcConsul(s);
+    s = { ...s, ...npcConsulPatch };
+  }
+
+  // 7c. NPC Tribune veto (Chunk 1C) ───────────────────────────────────────────
+  // When an NPC tribune is active, they veto one player-sponsored bill per season
+  // (reduces support by 25). Cleared by the "Depose Fellow Tribune" extreme action.
+  if (s.npcTribuneActive) {
+    const playerBills = s.bills.filter(b => b.playerProposed);
+    if (playerBills.length > 0) {
+      const target = playerBills[Math.floor(Math.random() * playerBills.length)];
+      s = {
+        ...s,
+        bills: s.bills.map(b =>
+          b.id !== target.id ? b : { ...b, support: (b.support ?? 0) - 25 }
+        ),
+      };
+      events.push(`The NPC Tribune has vetoed support for "${target.name}" (−25 support).`);
+    }
+  }
 
   // 8. Faction drift
   const factionPatch = applyFactionDrift(s);
   s = { ...s, ...factionPatch };
 
-  // 9. Relationship drift and alliance ticks (now includes constitution-track extra decay)
+  // 9. Relationship drift
   s = { ...s, clans: applyRelationshipDrift(s) };
 
-  // 9c. Province tick — relationship, infrastructure, gold/imperium from provinces
+  // 9c. Province tick
   if (s.provinces && s.provinces.length > 0) {
     const { updatedProvinces, totalGoldDelta, totalImperiumDelta, events: provinceEvents } =
       tickAllProvinces(s.provinces, s);
@@ -456,18 +526,14 @@ export function processSeason(state: GameState): {
       lifetimeImperium: (s.lifetimeImperium ?? 0) + Math.max(0, totalImperiumDelta),
     };
 
-    for (const msg of provinceEvents) {
-      events.push(msg);
-    }
+    for (const msg of provinceEvents) events.push(msg);
 
     if (totalGoldDelta > 0 || totalImperiumDelta > 0) {
-      events.push(
-        `Provincial income: +${totalGoldDelta} Gold, +${totalImperiumDelta} Imperium from Italy.`
-      );
+      events.push(`Provincial income: +${totalGoldDelta} Gold, +${totalImperiumDelta} Imperium from Italy.`);
     }
   }
 
-  // 9b. Increment survival_legacy each season
+  // 9b. Increment survival_legacy
   {
     const { updated: legacyAfterSurvival, newMilestonesReached: sMilestones } =
       incrementLegacy(s.legacyObjectives, 'survival_legacy', 1);
@@ -477,7 +543,7 @@ export function processSeason(state: GameState): {
     }
   }
 
-  // 9d. Troop attrition — age inactive veterans for all family members
+  // 9d. Troop attrition
   {
     const updatedFamily = s.family.map(c => {
       if ((c.veterans ?? []).length === 0) return c;
@@ -486,7 +552,7 @@ export function processSeason(state: GameState): {
     s = { ...s, family: updatedFamily };
   }
 
-  // 9e. Recalculate militaryImperium from current troop state
+  // 9e. Recalculate militaryImperium
   {
     const updatedFamily = s.family.map(c => {
       const allTroops = [...(c.raisedLegions ?? []), ...(c.veterans ?? [])];
@@ -497,18 +563,18 @@ export function processSeason(state: GameState): {
     s = { ...s, family: updatedFamily };
   }
 
-  // 9f. Senate response tick — advance crisis phase if an unsanctioned levy is active
+  // 9f. Senate response tick
   if ((s as any).senateResponse?.active) {
     const playerCharacterId = s.family.find(c => c.isPlayer)?.id ?? 'pc-1';
     const patch = tickSenateResponse(s as any, playerCharacterId);
     s = { ...s, ...patch };
   }
 
-  // 9g. Resolve campaigns with completed officer volunteers (light system)
+  // 9g. Resolve campaigns with completed officer volunteers
   {
     const updatedProvinces = s.provinces.map(province => {
       const volunteer = province.officerVolunteer;
-      const campaign = province.activeCampaign;
+      const campaign  = province.activeCampaign;
       if (!volunteer?.resolved || !campaign || campaign.resolved || campaign.commanderCharacterId !== null) {
         return province;
       }
@@ -538,6 +604,54 @@ export function processSeason(state: GameState): {
     s = { ...s, provinces: updatedProvinces };
   }
 
+  // 9h. Triumph bill trigger (Chunk 1C) ────────────────────────────────────────
+  // After campaign resolution: check each province for a completed victory.
+  // If found and threshold conditions met, push a Triumph bill to the Senate queue.
+  {
+    for (const province of s.provinces) {
+      const campaign = province.activeCampaign;
+      // Requires: resolved, non-defeat outcome, has a named commander
+      if (!campaign?.resolved || !campaign.commanderCharacterId) continue;
+      if (campaign.outcome === 'defeat' || campaign.outcome === 'stalemate') continue;
+
+      const character = s.family.find(c => c.id === campaign.commanderCharacterId);
+      if (!character) continue;
+
+      // Don't add a second Triumph bill for the same character
+      if (s.bills.some(b => b.id.startsWith(`triumph-${character.id}`))) continue;
+      if ((s.passedBills ?? []).some(b => b.id.startsWith(`triumph-${character.id}`))) continue;
+
+      // Require sustained military authority: global lifetimeImperium threshold
+      if ((s.lifetimeImperium ?? 0) < 50) continue;
+
+      const triumphBill = buildTriumphBill(character, s);
+      s = { ...s, bills: [...s.bills, triumphBill] };
+      events.push(`⚔ ${character.name} is eligible for a Triumph. A petition has been tabled in the Senate.`);
+    }
+  }
+
+  // 9i. Tribune veto hostility debt check (Chunk 1C) ──────────────────────────
+  // When veto hostility debt for a clan crosses 20, fire a retaliation event
+  // and reset that clan's debt to 0.
+  {
+    for (const [clanId, debt] of Object.entries(s.tribuneHostilityDebt)) {
+      if ((debt as number) >= 20) {
+        const player = s.family.find(c => c.isPlayer);
+        s = {
+          ...s,
+          pendingEvents: [...s.pendingEvents, {
+            defId: 'evt-tribune-veto-retaliation',
+            firedAtTurn: s.turnNumber,
+            targetCharacterId: player?.id ?? 'pc-1',
+          }],
+          tribuneHostilityDebt: { ...s.tribuneHostilityDebt, [clanId]: 0 },
+        };
+        const clan = s.clans.find(c => c.id === clanId);
+        events.push(`${clan?.name ?? 'A clan'} has had enough of your vetoes. Their response is coming.`);
+      }
+    }
+  }
+
   // 10. Age family members
   s = {
     ...s,
@@ -545,7 +659,6 @@ export function processSeason(state: GameState): {
   };
 
   // 11. Auto-inject bills
-  // Force Lex de Vectigalibus if treasury bankrupt OR Economy tier ≥ 2 (design doc section 2.3)
   {
     const economyTier = getTierFromLevel(s.crisis.economy.level);
     const needsVectigalis = s.rome.treasury <= 9 || economyTier >= 2;
@@ -556,17 +669,15 @@ export function processSeason(state: GameState): {
         const template = HISTORICAL_BILL_TEMPLATES.find(t => t.id === 'lex-de-vectigalibus');
         if (template) {
           s = { ...s, bills: [...s.bills, { ...template, id: nextBillId() }] };
-          if (s.rome.treasury <= 9) {
-            events.push(`Emergency: Treasury is bankrupt — Lex de Vectigalibus has been introduced.`);
-          } else {
-            events.push(`Economic pressure: Lex de Vectigalibus has been introduced.`);
-          }
+          events.push(s.rome.treasury <= 9
+            ? `Emergency: Treasury is bankrupt — Lex de Vectigalibus has been introduced.`
+            : `Economic pressure: Lex de Vectigalibus has been introduced.`
+          );
         }
       }
     }
   }
 
-  // 10% chance to force Senatus Consultum Ultimum when stability < 15
   if (s.rome.stability < 15 && Math.random() < 0.10) {
     const scuActive = s.bills.some(b => b.name === 'Senatus Consultum Ultimum');
     if (!scuActive) {
@@ -582,15 +693,12 @@ export function processSeason(state: GameState): {
     const existing = new Set(s.bills.map((b) => b.name));
     const candidates = AUTO_BILL_TEMPLATES.filter((t) => !existing.has(t.name));
     const toAdd = candidates.slice(0, 2 - s.bills.length);
-    const newBills: Bill[] = toAdd.map((t) => ({
-      ...t,
-      id: nextBillId(),
-    }));
+    const newBills: Bill[] = toAdd.map((t) => ({ ...t, id: nextBillId() }));
     s = { ...s, bills: [...s.bills, ...newBills] };
     for (const b of newBills) events.push(`New bill introduced: ${b.name}.`);
   }
 
-  // 12. Pick and inject one end-of-season event (if eligible)
+  // 12. Pick and inject one end-of-season event
   const chosenDef = pickRandomEvent(EVENT_DEFS, s);
   if (chosenDef) {
     const clientCondition = chosenDef.conditions.find(
@@ -602,7 +710,6 @@ export function processSeason(state: GameState): {
       : undefined;
 
     const player = s.family.find((c) => c.isPlayer);
-
     const instance: EventInstance = {
       defId: chosenDef.id,
       firedAtTurn: s.turnNumber,
@@ -665,12 +772,12 @@ export function processSeason(state: GameState): {
   }
 
   // 14. Corruption tick
+  // Chunk 1C: Tribune holder is sacrosanct — skip corruption accumulation for them.
   {
     const player = s.family.find(c => c.isPlayer);
-    if (player) {
+    if (player && player.id !== s.tribuneHolder) {
       const assetBonuses = computeTotalAssetBonuses(s.ownedAssets);
       const shield = assetBonuses.corruptionShield ?? 0;
-      // crisisLevel scalar is kept in sync — tickCorruption uses it as a primitive
       const newScore = tickCorruption(player.corruptionScore, s.crisisLevel, shield);
       if (newScore !== player.corruptionScore) {
         s = {
@@ -730,10 +837,7 @@ export function processSeason(state: GameState): {
       }
 
       if (cons.removeCharacter) {
-        s = {
-          ...s,
-          family: s.family.filter(c => c.id !== trial.accusedCharacterId),
-        };
+        s = { ...s, family: s.family.filter(c => c.id !== trial.accusedCharacterId) };
       }
 
       return { ...trial, resolved: true, outcome };
@@ -747,11 +851,11 @@ export function processSeason(state: GameState): {
   {
     const trigger = shouldTriggerTrial(s);
     if (trigger) {
-      const accused = s.family.find(c => c.id === trigger.accusedId);
+      const accused      = s.family.find(c => c.id === trigger.accusedId);
       const accusingClan = s.clans.find(c => c.id === trigger.accusingClanId);
-      const accuserLeader = accusingClan?.leaders[0];
+      const accuserLeader  = accusingClan?.leaders[0];
       const accuserIntrigus = accuserLeader?.sphere === 'intelligence' ? 7 : 4;
-      const assetBonuses = computeTotalAssetBonuses(s.ownedAssets);
+      const assetBonuses    = computeTotalAssetBonuses(s.ownedAssets);
       const trialDefenseBonus = assetBonuses.trialDefenseBonus ?? 0;
 
       const newTrial = buildTrial(
@@ -774,8 +878,8 @@ export function processSeason(state: GameState): {
   if (isBirthEligible(s.family) && s.pendingBirthNaming === null) {
     const prob = calcBirthProbability(s.family);
     if (Math.random() < prob) {
-      const player = s.family.find(c => c.isPlayer)!;
-      const spouse = s.family.find(c => c.role === 'spouse')!;
+      const player  = s.family.find(c => c.isPlayer)!;
+      const spouse  = s.family.find(c => c.role === 'spouse')!;
       const role: 'son' | 'daughter' = Math.random() < 0.5 ? 'son' : 'daughter';
       const inheritedTraits = resolveInheritedTraits(player, spouse);
 
@@ -789,12 +893,7 @@ export function processSeason(state: GameState): {
 
       s = {
         ...s,
-        pendingBirthNaming: {
-          suggestedName,
-          role,
-          inheritedTraits,
-          baseSkills,
-        },
+        pendingBirthNaming: { suggestedName, role, inheritedTraits, baseSkills },
       };
       events.push(`A child is expected in the Brutii household. Name them before the season ends.`);
     }
@@ -804,7 +903,7 @@ export function processSeason(state: GameState): {
   {
     const newPatronTier = computePatronTier(s.lifetimeDignitas, s.fides);
     if (newPatronTier !== s.patronTier) {
-      const tierDef = PATRON_TIER_DEFINITIONS[newPatronTier];
+      const tierDef  = PATRON_TIER_DEFINITIONS[newPatronTier];
       const direction = newPatronTier > s.patronTier ? 'risen to' : 'fallen to';
       events.push(`Your family has ${direction} "${tierDef.label}" on the Patron Ladder.`);
       s = { ...s, patronTier: newPatronTier };
@@ -820,13 +919,12 @@ export function processSeason(state: GameState): {
   // ── End-of-turn maintenance ──────────────────────────────────────────────────
 
   // Increment Aedile games counter each season.
-  // Reset to 0 by Aedile office actions (Sponsor Ludi, Spectacular Munera) via setFlag token.
   {
     const prev = (s.flags['seasonsSinceAedileGames'] as number | undefined) ?? 0;
     s = { ...s, flags: { ...s.flags, seasonsSinceAedileGames: prev + 1 } };
   }
 
-  // Decrement all numeric cooldown flags (keys ending in '-cooldown').
+  // Decrement all numeric cooldown flags.
   {
     const updatedFlags = { ...s.flags };
     for (const [key, val] of Object.entries(updatedFlags)) {
@@ -837,6 +935,48 @@ export function processSeason(state: GameState): {
       }
     }
     s = { ...s, flags: updatedFlags };
+  }
+
+  // Dictator overstay consequences (Chunk 1C) ─────────────────────────────────
+  // Each season the dictator-overstaying flag is set: apply relationship and crisis penalties.
+  // After 3 consecutive overstay seasons, fire the assassination attempt event.
+  if (s.flags['dictator-overstaying']) {
+    const overstaySeasons = (s.dictatorOverstaySeasons ?? 0) + 1;
+
+    // All clans -5 relationship (applied directly to each leader)
+    const updatedClans = s.clans.map(clan => ({
+      ...clan,
+      leaders: clan.leaders.map(l => ({
+        ...l,
+        relationship: Math.min(100, Math.max(-100, l.relationship - 5)),
+      })),
+    }));
+
+    s = {
+      ...s,
+      dictatorOverstaySeasons: overstaySeasons,
+      clans: updatedClans,
+      crisis: {
+        ...s.crisis,
+        constitution: applyTrackDelta(s.crisis.constitution, 8),
+        war:          applyTrackDelta(s.crisis.war, 3),
+      },
+    };
+
+    events.push('The Dictator continues to hold power beyond the emergency. Rome grows restless.');
+
+    if (overstaySeasons >= 3) {
+      const player = s.family.find(c => c.isPlayer);
+      s = {
+        ...s,
+        pendingEvents: [...s.pendingEvents, {
+          defId: 'evt-assassination-attempt',
+          firedAtTurn: s.turnNumber,
+          targetCharacterId: player?.id ?? 'pc-1',
+        }],
+      };
+      events.push('A conspiracy against the Dictator has been set in motion.');
+    }
   }
 
   return { nextState: s, events };

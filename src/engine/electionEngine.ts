@@ -2,6 +2,7 @@ import type { ElectionRival, OfficeId } from '../models/office';
 import type { Clan, ClanLeader } from '../models/clan';
 import type { GameState } from '../state/gameStore';
 import { OFFICES } from '../data/offices';
+import { getTierFromLevel } from '../models/crisis';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -130,7 +131,6 @@ function getNextEligibleOffice(npc: ClanLeader): typeof OFFICES[0] | null {
 }
 
 export function tickNpcCareers(clans: Clan[], seasonIndex: number): Clan[] {
-  // Step 1: Decrement and complete terms every season
   let updated = clans.map(clan => ({
     ...clan,
     leaders: clan.leaders.map(leader => {
@@ -139,8 +139,8 @@ export function tickNpcCareers(clans: Clan[], seasonIndex: number): Clan[] {
       if (remaining <= 0) {
         return {
           ...leader,
-          heldOffices:      [...leader.heldOffices, leader.currentOffice],
-          currentOffice:    null,
+          heldOffices:       [...leader.heldOffices, leader.currentOffice],
+          currentOffice:     null,
           turnsLeftInOffice: null,
         };
       }
@@ -148,7 +148,6 @@ export function tickNpcCareers(clans: Clan[], seasonIndex: number): Clan[] {
     }),
   }));
 
-  // Step 2: Winter advancement roll
   if (seasonIndex !== 3) return updated;
 
   updated = updated.map(clan => ({
@@ -186,11 +185,21 @@ export interface ElectionResult {
   seats: number;
   topRivalName: string;
   topRivalVotes: number;
+  /**
+   * True if the Constitution crisis tier is high enough to make the election
+   * disputed. turnSequencer injects evt-election-contested into pendingEvents
+   * when this is true and the player won.
+   *
+   * Tier 4 (≥75): always contested.
+   * Tier 3 (50–74): 30% chance.
+   */
+  contested: boolean;
 }
 
 export function resolveElection(state: GameState): ElectionResult {
   const empty: ElectionResult = {
-    won: false, playerVotes: 0, playerRank: 999, seats: 0, topRivalName: '', topRivalVotes: 0,
+    won: false, playerVotes: 0, playerRank: 999, seats: 0,
+    topRivalName: '', topRivalVotes: 0, contested: false,
   };
   if (!state.campaigning) return empty;
 
@@ -199,7 +208,7 @@ export function resolveElection(state: GameState): ElectionResult {
 
   const seats = office.seats;
 
-  // Player
+  // ── Player vote total ──────────────────────────────────────────────────────
   const votingSwayBonus = state.clients
     .filter(c => c.type === 'votingSway')
     .reduce((sum, c) => sum + (c.bonus.votingSwayBonus ?? 1), 0);
@@ -208,23 +217,34 @@ export function resolveElection(state: GameState): ElectionResult {
     .filter(l => state.campaignVotes[l.id] === 'for')
     .reduce((sum, l) => sum + l.votes, 0);
   const wordOfMouth = Math.round(Math.random() * 8);
-  const playerTotal = PLAYER_BASE_SCORE + votingSwayBonus + lockedFor + wordOfMouth;
 
-  // All eligible NPCs (full pool, not just displayed rivals)
+  // Peoples-champion bonus (Chunk 1C): +5 flat votes when flag is active
+  const peoplesChampionBonus = state.flags['peoples-champion'] ? 5 : 0;
+
+  const playerTotal = PLAYER_BASE_SCORE + votingSwayBonus + lockedFor + wordOfMouth + peoplesChampionBonus;
+
+  // ── NPC vote pool ──────────────────────────────────────────────────────────
+  // Nota Censoria (Chunk 1C): proscribed leaders contribute 0 votes — filter them out.
   const npcResults = state.clans.flatMap(clan =>
     clan.leaders
       .filter(l => isNpcEligibleForOffice(l, office.id))
+      .filter(l => !l.proscribed)
       .map(l => ({
         name:  l.name,
         votes: Math.round(calcNpcElectionScore(l, clan.influence) + (Math.random() * 8 - 4)),
       }))
   );
 
-  // Rank player (1 = best)
   const allScores  = [playerTotal, ...npcResults.map(n => n.votes)].sort((a, b) => b - a);
   const playerRank = allScores.indexOf(playerTotal) + 1;
+  const topRival   = [...npcResults].sort((a, b) => b.votes - a.votes)[0];
 
-  const topRival = [...npcResults].sort((a, b) => b.votes - a.votes)[0];
+  // ── Contested election check (Chunk 1C) ───────────────────────────────────
+  // High Constitution crisis makes elections unstable — rivals challenge results.
+  const constitutionTier = getTierFromLevel(state.crisis.constitution.level);
+  const alwaysContested  = constitutionTier >= 4;
+  const contestedRoll    = constitutionTier >= 3 && Math.random() < 0.30;
+  const contested        = alwaysContested || contestedRoll;
 
   return {
     won:           playerRank <= seats,
@@ -233,6 +253,7 @@ export function resolveElection(state: GameState): ElectionResult {
     seats,
     topRivalName:  topRival?.name ?? '',
     topRivalVotes: topRival?.votes ?? 0,
+    contested,
   };
 }
 

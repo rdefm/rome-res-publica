@@ -61,4 +61,11 @@ export interface EventInstance {
   targetCharacterId: string;
   clientName?: string;
   clientType?: ClientType;
+  /**
+   * Optional override for the event's bodyText at render time.
+   * Used by NPC consul and other dynamic injection paths that need to
+   * substitute names/values into an otherwise static EventDef body.
+   * When set, the EventCard should prefer this over EventDef.bodyText.
+   */
+  bodyText?: string;
 }

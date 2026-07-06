@@ -14,6 +14,7 @@ import type { ProvinceState, GovernorPolicy, CampaignState, OfficerVolunteerStat
 import type { TroopUnit } from '../models/troop';
 import type { SenateResponseState } from '../engine/senateResponseEngine';
 import type { CrisisState } from '../models/crisis';
+import type { OfficeActionTargetContext } from '../engine/officeActionEngine';
 import { calcLevyCost } from '../engine/troopEngine';
 import {
   calcConsularArmyStrength,
@@ -162,6 +163,73 @@ export interface GameState {
   pendingCanvassLeaderId: string | null;
   pendingCanvassRoll: number;
   pendingCanvassThreshold: number;
+
+  // ── NPC Co-Consul (Chunk 1B) ─────────────────────────────────────────────
+  npcConsul: {
+    leaderId: string | null;
+    clanId: string | null;
+    factionBias: 'optimates' | 'populares' | 'neutral' | null;
+    antagonismLevel: 0 | 1 | 2 | 3;
+    seasonsServed: number;
+  } | null;
+
+  // ── Tribune of the Plebs — parallel path (Chunk 1B) ─────────────────────
+  /** characterId of the family member currently holding Tribune, or null. */
+  tribuneHolder: string | null;
+  /** True while tribuneHolder is set — grants trial immunity (sacrosanctity). */
+  tribuneImmunity: boolean;
+  /** Seasons served in the current Tribune term (max 4). */
+  tribuneSeasonsServed: number;
+  /**
+   * Tracks veto hostility debt per clan.
+   * Incremented each time the Tribune vetoes a bill sponsored by that clan.
+   * When a clan's debt ≥ 20, turnSequencer fires evt-tribune-veto-retaliation.
+   */
+  tribuneHostilityDebt: Record<string, number>;
+  /** Populated after any office action resolves. Drives the result modal in CursusScreen. Cleared by clearOfficeActionResult. */
+  lastOfficeActionResult: { actionName: string; text: string } | null;
+
+  // ── Consul authority / NPC Tribune (Chunk 1B) ────────────────────────────
+  /** True when invoke-consular-authority action is active. Caps Senate Response at censure. */
+  consulAuthorityActive: boolean;
+  /** Seasons remaining on the consular authority window (starts at 2, decrements each season). */
+  consulAuthoritySeasonsRemaining: number;
+  /** True if the NPC opposition tribune is still active this term. Cleared by depose-fellow-tribune. */
+  npcTribuneActive: boolean;
+
+  // ── Computed flags — recomputed by recomputeComputedFlags after every action (Chunk 1B) ─
+  /** True if any province currently has an active CampaignState. */
+  activeCampaignExists: boolean;
+  /** True if any family member has raisedLegions.length > 0 or veterans.length > 0. */
+  familyHasTroops: boolean;
+  /** True if any province has infrastructureRating ≥ 30. */
+  anyProvinceHasRoads: boolean;
+  /** True if any bill with id starting 'triumph-' is in state.bills. */
+  triumphBillInQueue: boolean;
+  /** True when npcConsul is non-null. */
+  npcConsulExists: boolean;
+
+  // ── Term-scoped flags — persisted, reset per office term by turnSequencer (Chunk 1B) ─
+  /** True once senatus-consultum has been used this Consul term. */
+  consultatumUsedThisTerm: boolean;
+  /**
+   * True when the Senate has been packed (pack-senate or lectio-senatus).
+   * Adds +15 support to all player-sponsored bills while active.
+   */
+  senatePacked: boolean;
+  /**
+   * How many consecutive seasons the Dictator has overstayed.
+   * After 3: fires evt-assassination-attempt.
+   */
+  dictatorOverstaySeasons: number;
+
+  // ── Tribune candidacy ────────────────────────────────────────────────────────
+  /** characterId of the family member who has declared Tribune candidacy, pending election. Null once resolved. */
+  tribuneCandidateId: string | null;
+
+  // ── Office action result modal ───────────────────────────────────────────────
+  /** Populated after any office action resolves. Drives the result modal in CursusScreen. Cleared by clearOfficeActionResult. */
+  lastOfficeActionResult: { actionName: string; text: string } | null;
 }
 
 export interface GameActions {
@@ -263,6 +331,28 @@ export interface GameActions {
   canvassLeader: (leaderId: string) => void;
   resolveCanvassingEvent: (optionId: string) => void;
   dismissCanvassingResult: () => void;
+
+  // ── Office actions (Chunk 1B) ─────────────────────────────────────────────
+  /**
+   * Resolve an office action for a character.
+   * Routes through officeActionEngine.resolveOfficeAction.
+   * For actions requiring a player-chosen target (province, leader, clan),
+   * supply targetContext with the relevant id.
+   */
+  takeOfficeAction: (
+    actionId: string,
+    characterId: string,
+    targetContext?: OfficeActionTargetContext,
+  ) => void;
+
+  /**
+   * Declare a family member as Tribune of the Plebs candidate.
+   * Blocked if the character already holds another office, or if tribuneHolder is set.
+   */
+  declareTribuneCandidate: (characterId: string) => void;
+
+  /** Dismiss the office action result modal. */
+  clearOfficeActionResult: () => void;
 }
 
 let _logId = 0;
@@ -356,15 +446,62 @@ export const INITIAL_STATE: GameState = {
   pendingCanvassRoll: 0,
   pendingCanvassThreshold: 0,
 
+  // ── Chunk 1B ────────────────────────────────────────────────────────────
+  npcConsul: null,
+
+  tribuneHolder: null,
+  tribuneImmunity: false,
+  tribuneSeasonsServed: 0,
+  tribuneHostilityDebt: {},
+  tribuneCandidateId: null,
+
+  consulAuthorityActive: false,
+  consulAuthoritySeasonsRemaining: 0,
+  npcTribuneActive: true,
+
+  activeCampaignExists: false,
+  familyHasTroops: false,
+  anyProvinceHasRoads: false,
+  triumphBillInQueue: false,
+  npcConsulExists: false,
+
+  consultatumUsedThisTerm: false,
+  senatePacked: false,
+  dictatorOverstaySeasons: 0,
+
+  tribuneCandidateId: null,
+  lastOfficeActionResult: null,
+
   gameStarted: false,
   debugMode: false,
-};
+} as any;
 
 
 const SEASON_NAMES = ['Spring', 'Summer', 'Autumn', 'Winter'];
 
 function turnLabel(state: GameState): string {
   return `${Math.abs(state.year)} BC · ${SEASON_NAMES[state.seasonIndex]}`;
+}
+
+// ── Chunk 1B helper ───────────────────────────────────────────────────────────
+
+/**
+ * Recompute derived boolean flags that depend on live state slices.
+ * Called at the end of takeOfficeAction and any other action that changes
+ * provinces, family troops, bills, or npcConsul.
+ */
+function recomputeComputedFlags(s: GameState): Partial<GameState> {
+  return {
+    activeCampaignExists: s.provinces.some(p => p.activeCampaign !== null),
+    familyHasTroops: s.family.some(
+      c => (c.raisedLegions?.length ?? 0) > 0 || (c.veterans?.length ?? 0) > 0,
+    ),
+    anyProvinceHasRoads: s.provinces.some(
+      p => ((p as any).infrastructureRating ?? 0) >= 30,
+    ),
+    triumphBillInQueue: s.bills.some(b => b.id.startsWith('triumph-')),
+    npcConsulExists: s.npcConsul !== null,
+  };
 }
 
 export const useGameStore = create<GameState & GameActions>()((set, get) => ({
@@ -406,14 +543,65 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   endSeason: () => {
     const s = get();
     const { nextState, events } = processSeason(s);
-    const nextEvent = nextState.pendingEvents[0] ?? null;
-    const remainingPending = nextState.pendingEvents.slice(1);
+    const seasonEvents = [...events];
+
+    let finalState = nextState;
+
+    // Chunk 1B: assign NPC co-consul when player wins the Consul election
+    const playerJustBecameConsul =
+      s.currentOffice !== 'consul' &&
+      finalState.currentOffice === 'consul' &&
+      !finalState.npcConsul;
+    if (playerJustBecameConsul) {
+      const { assignNpcConsul } = require('../engine/npcConsulEngine');
+      const npcPatch = assignNpcConsul(finalState);
+      finalState = { ...finalState, ...npcPatch };
+    }
+
+    // Chunk 1B: resolve pending Tribune candidacy election.
+    // Success chance scales with plebs mood (0–100) and popularesRel.
+    // Floor 40%, ceiling 90% — even a hostile plebs gives some chance.
+    if (finalState.tribuneCandidateId) {
+      const tribuneCharId = finalState.tribuneCandidateId;
+      const candidate = finalState.family.find(c => c.id === tribuneCharId);
+      if (candidate) {
+        const plebsScore      = finalState.rome.plebs / 100;
+        const popularesBonus  = Math.max(0, finalState.popularesRel) / 200;
+        const successChance   = Math.min(0.90, 0.40 + plebsScore * 0.40 + popularesBonus);
+        const won             = Math.random() < successChance;
+
+        if (won) {
+          finalState = {
+            ...finalState,
+            tribuneHolder:        tribuneCharId,
+            tribuneCandidateId:   null,
+            tribuneImmunity:      true,
+            tribuneSeasonsServed: 0,
+            tribuneHostilityDebt: {},
+            family: finalState.family.map(c =>
+              c.id === tribuneCharId ? { ...c, officeId: 'tribune' as any } : c
+            ),
+          };
+          seasonEvents.push(
+            `${candidate.name} is elected Tribune of the Plebs by the Concilium Plebis. Sacrosanctity granted.`
+          );
+        } else {
+          finalState = { ...finalState, tribuneCandidateId: null };
+          seasonEvents.push(
+            `${candidate.name}'s candidacy for Tribune of the Plebs was rejected by the Concilium Plebis.`
+          );
+        }
+      }
+    }
+
+    const nextEvent       = finalState.pendingEvents[0] ?? null;
+    const remainingPending = finalState.pendingEvents.slice(1);
     set({
-      ...nextState,
-      activeEvent: nextEvent,
-      pendingEvents: remainingPending,
-      seasonOverlayVisible: true,
-      seasonOverlayEvents: events,
+      ...finalState,
+      activeEvent:            nextEvent,
+      pendingEvents:          remainingPending,
+      seasonOverlayVisible:   true,
+      seasonOverlayEvents:    seasonEvents,
     });
   },
 
@@ -692,10 +880,16 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   useOfficeAction: (actionId) => {
     const s = get();
-    const { OFFICE_ACTIONS } = require('../data/offices');
+    const { OFFICES, TRIBUNE_OFFICE } = require('../data/offices');
     const { getUnlockedAssetActions } = require('../engine/assetEngine');
 
-    const action = OFFICE_ACTIONS.find((a: any) => a.id === actionId);
+    // Flatten all inOfficeActions from every office + Tribune (legacy effect path).
+    // OFFICE_ACTIONS no longer exported separately from offices.ts — search inline.
+    const allActions: any[] = [
+      ...OFFICES.flatMap((o: any) => o.inOfficeActions ?? []),
+      ...(TRIBUNE_OFFICE?.inOfficeActions ?? []),
+    ];
+    const action = allActions.find((a: any) => a.id === actionId);
     if (!action) return;
 
     if (action.requiresAssetAction) {
@@ -703,7 +897,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       if (!unlocked.includes(action.requiresAssetAction)) return;
     }
 
-    const resourceKey = action.cost?.resource as keyof typeof s | undefined;
+    const resourceKey = action.resource as keyof typeof s | undefined;
     if (resourceKey && (s[resourceKey] as number) < action.costVal) return;
 
     const patch = action.effect(s);
@@ -714,6 +908,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       ...statePatch,
       ...(resourceKey ? { [resourceKey]: (s[resourceKey] as number) - action.costVal } : {}),
       log: [...s.log, mkLog(label, logMsg, 'neutral')],
+      lastOfficeActionResult: { actionName: action.name, text: logMsg ?? action.desc ?? 'Done.' },
     });
   },
 
@@ -1015,6 +1210,124 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       log: [...s.log, mkLog(label, `Family member declared campaign for ${officeId}.`, 'neutral')],
     });
   },
+
+  // ─── Office actions (Chunk 1B) ───────────────────────────────────────────────
+
+  takeOfficeAction: (actionId, characterId, targetContext) => {
+    const s = get();
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { resolveOfficeAction } = require('../engine/officeActionEngine') as typeof import('../engine/officeActionEngine');
+    const result = resolveOfficeAction(actionId, characterId, s, targetContext);
+
+    if (result.blocked) {
+      console.warn(`[takeOfficeAction] Blocked: ${result.blockedReason}`);
+      return;
+    }
+
+    const { blocked: _b, blockedReason: _br, logMsg, ...statePatch } = result;
+
+    // Look up action name and compose result text for the modal
+    const { OFFICES: _offices, TRIBUNE_OFFICE: _tribune } = require('../data/offices');
+    const _allActions: any[] = [
+      ..._offices.flatMap((o: any) => o.inOfficeActions ?? []),
+      ...(_tribune?.inOfficeActions ?? []),
+    ];
+    const _actionDef = _allActions.find((a: any) => a.id === actionId);
+    const _actionName = _actionDef?.name ?? actionId;
+    const _resultText = logMsg ?? _actionDef?.desc ?? 'The action has been carried out.';
+
+    // Post-process: sync flag-driven fields to direct GameState fields.
+    // applyEffectString writes to state.flags; some flags have a corresponding
+    // direct field that engines read (avoiding flag-string lookups in hot paths).
+    const flags = (statePatch.flags ?? s.flags) as Record<string, unknown>;
+    const syncedPatch: Partial<GameState> = {};
+
+    // invoke-consular-authority sets flag + direct fields
+    if (flags['consulAuthorityActive'] === true && !s.consulAuthorityActive) {
+      syncedPatch.consulAuthorityActive = true;
+      syncedPatch.consulAuthoritySeasonsRemaining = 2;
+    }
+
+    // pack-senate and lectio-senatus set the 'senate-packed' flag
+    if (flags['senate-packed'] === true && !s.senatePacked) {
+      syncedPatch.senatePacked = true;
+    }
+
+    // depose-fellow-tribune sets flag to false
+    if (flags['npcTribuneActive'] === false) {
+      syncedPatch.npcTribuneActive = false;
+    }
+
+    // senatus-consultum sets flag by the same name
+    if ('consultatumUsedThisTerm' in flags) {
+      syncedPatch.consultatumUsedThisTerm = Boolean(flags['consultatumUsedThisTerm']);
+    }
+
+    // Recompute computed flags after all patches applied
+    const mergedForRecompute: GameState = { ...s, ...statePatch, ...syncedPatch };
+    const computedFlagsPatch = recomputeComputedFlags(mergedForRecompute);
+
+    const label = turnLabel(s);
+    set({
+      ...statePatch,
+      ...syncedPatch,
+      ...computedFlagsPatch,
+      lastOfficeActionResult: { actionName: _actionName, text: _resultText },
+      ...(logMsg
+        ? { log: [...s.log, mkLog(label, logMsg, 'neutral')] }
+        : {}),
+    });
+  },
+
+  declareTribuneCandidate: (characterId) => {
+    const s = get();
+
+    const character = s.family.find(c => c.id === characterId);
+    if (!character) {
+      console.warn(`[declareTribuneCandidate] Character ${characterId} not found.`);
+      return;
+    }
+
+    // Block: character already holds another office.
+    // For the player, office is tracked in state.currentOffice (not character.officeId).
+    // For non-player family members, it's on character.officeId.
+    const holdsAnyOffice = character.officeId !== null ||
+      (character.isPlayer && s.currentOffice !== null);
+    if (holdsAnyOffice) {
+      console.warn(`[declareTribuneCandidate] ${character.name} already holds an office.`);
+      return;
+    }
+
+    // Block: a family member already holds Tribune
+    if (s.tribuneHolder !== null) {
+      console.warn(`[declareTribuneCandidate] Tribune already held by character ${s.tribuneHolder}`);
+      return;
+    }
+
+    // Block: a candidacy is already pending
+    if (s.tribuneCandidateId !== null) {
+      console.warn(`[declareTribuneCandidate] Tribune candidacy already pending for ${s.tribuneCandidateId}`);
+      return;
+    }
+
+    const label = turnLabel(s);
+
+    // Set pending candidacy — election resolves at the next season end in endSeason().
+    set({
+      tribuneCandidateId: characterId,
+      log: [
+        ...s.log,
+        mkLog(
+          label,
+          `${character.name} declares candidacy for Tribune of the Plebs. The Concilium Plebis will vote at the next season end.`,
+          'neutral',
+        ),
+      ],
+    });
+  },
+
+  clearOfficeActionResult: () => set({ lastOfficeActionResult: null }),
 
   // ─── Provinciae ─────────────────────────────────────────────────────────────
 

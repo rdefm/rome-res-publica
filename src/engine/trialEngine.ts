@@ -93,6 +93,15 @@ export function shouldTriggerTrial(state: GameState): {
   accusedId: string;
   accusingClanId: string;
 } | null {
+  // ── Tribune immunity (Chunk 1C) ────────────────────────────────────────────
+  // Sacrosanctity: no trials may be initiated while any family member holds Tribune.
+  if (state.tribuneHolder) return null;
+
+  // ── Dictator trial suspension (Chunk 1C) ──────────────────────────────────
+  // The Dictator's "Suspend All Trials" action sets this flag.
+  if (state.flags['dictatorTrialSuspension']) return null;
+
+  // Already a pending trial — only one active trial at a time
   if (state.trialQueue.some(t => !t.resolved)) return null;
 
   const player = state.family.find(c => c.isPlayer);
@@ -103,11 +112,19 @@ export function shouldTriggerTrial(state: GameState): {
   );
   if (!accusingClan) return null;
 
+  // ── Blacklist check (Chunk 1C) ─────────────────────────────────────────────
+  // If the accusing clan's first leader is blacklisted by the Praetor's action,
+  // they cannot initiate prosecution this season.
+  const hostileLeader = accusingClan.leaders[0];
+  if (hostileLeader && state.flags[`blacklisted-${hostileLeader.id}`]) return null;
+
   if (player.corruptionScore > 60 && Math.random() < 0.20) {
     return { charge: 'corruption', accusedId: player.id, accusingClanId: accusingClan.id };
   }
 
-  if (state.crisisLevel > 80 && Math.random() < 0.10) {
+  // ── Crisis track check (Chunk 1C) ─────────────────────────────────────────
+  // Use Constitution track level instead of the legacy flat crisisLevel scalar.
+  if (state.crisis.constitution.level > 80 && Math.random() < 0.10) {
     return { charge: 'treason', accusedId: player.id, accusingClanId: accusingClan.id };
   }
 

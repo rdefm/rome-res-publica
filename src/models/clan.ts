@@ -25,9 +25,17 @@ export interface ClanLeader {
 
   // ── NPC career system ─────────────────────────────────────────────────────
   skills: ClanLeaderSkills;
-  heldOffices: string[];          // office IDs completed (used for prerequisite checks)
-  currentOffice: string | null;   // office ID currently being served
+  heldOffices: string[];            // office IDs completed (used for prerequisite checks)
+  currentOffice: string | null;     // office ID currently being served
   turnsLeftInOffice: number | null; // seasons remaining in current term
+
+  // ── Judicial / political status ───────────────────────────────────────────
+  /**
+   * Set to true by the Dictator's Proscription action or nota-censoria consequences.
+   * While true: vote contribution is treated as 0 in electionEngine.resolveElection.
+   * In practice this is permanent for proscription; nota-censoria uses a timed flag instead.
+   */
+  proscribed?: boolean;
 }
 
 export interface Clan {

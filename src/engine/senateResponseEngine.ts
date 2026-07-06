@@ -6,7 +6,6 @@ import type { GameState } from '../state/gameStore';
 import { calcEffectiveForce } from './troopEngine';
 
 // ─── Senate Response State ────────────────────────────────────────────────────
-// Exported so Chunk M can add this to the GameState interface and INITIAL_STATE.
 
 export interface SenateResponseState {
   active: boolean;
@@ -18,8 +17,6 @@ export interface SenateResponseState {
   consularArmyArrivesOnTurn: number;   // accounts for distance delay
 }
 
-// Augmented type used within this engine.
-// Once Chunk M adds senateResponse to GameState, this resolves to the real type.
 export type SenateAwareState = GameState & {
   senateResponse: SenateResponseState | null;
 };
@@ -44,21 +41,12 @@ const DISTANCE_LOOKUP: Record<string, DistanceTier> = {
   macedonia:          'distant',
 };
 
-/**
- * Returns the distance tier for a muster province, used to calculate how many
- * seasons it takes for a consular army to arrive.
- * Unrecognised province IDs default to 'near' (safe fallback).
- */
 export function getMusterProvinceDistanceTier(provinceId: string): DistanceTier {
   return DISTANCE_LOOKUP[provinceId] ?? 'near';
 }
 
 // ─── Army Strength & Arrival ──────────────────────────────────────────────────
 
-/**
- * Calculates the strength of the consular army sent to suppress the player.
- * Scales with crisis level and how threatening the player's forces already are.
- */
 export function calcConsularArmyStrength(
   crisisLevel: number,
   playerMilitaryImperium: number,
@@ -66,10 +54,6 @@ export function calcConsularArmyStrength(
   return Math.round(40 + (crisisLevel * 0.5) + (playerMilitaryImperium * 2));
 }
 
-/**
- * Calculates the turn on which the consular army arrives at the muster province.
- * Base delay is 4 seasons, plus 0–3 additional seasons based on distance.
- */
 export function calcConsularArmyArrivalTurn(
   detectedOnTurn: number,
   musterProvinceId: string,
@@ -86,11 +70,6 @@ export function calcConsularArmyArrivalTurn(
 
 // ─── Phase Thresholds ─────────────────────────────────────────────────────────
 
-/**
- * Returns the turn number at which each phase transition fires.
- * If the debate was suppressed, all post-debate phases are delayed by 2 seasons,
- * since censure must resolve before hostis can follow.
- */
 function phaseThresholds(response: SenateResponseState): {
   debateTurn: number;
   censureTurn: number;
@@ -107,20 +86,29 @@ function phaseThresholds(response: SenateResponseState): {
 
 // ─── Senate Response Tick ─────────────────────────────────────────────────────
 
-/**
- * Called once per season end by the turn sequencer (added in Chunk M).
- * Reads the current Senate response state and turn number, advances the phase
- * if a threshold is reached, and returns a state patch to apply.
- *
- * Each phase guard checks BOTH the turn number AND the current phase, so this
- * function is safe to call multiple times without double-firing.
- */
 export function tickSenateResponse(
   state: SenateAwareState,
   characterId: string,
 ): SenateAwarePatch {
   const response = state.senateResponse;
   if (!response?.active) return {};
+
+  // ── Consul authority cap (Chunk 1C) ───────────────────────────────────────
+  // When the player holds consular authority (invoke-consular-authority action),
+  // the Senate response cannot advance beyond the 'censure' phase for the duration.
+  // Decrement the remaining counter each season; clear when it reaches 0.
+  if (state.consulAuthorityActive) {
+    const cappedPhase: SenateResponseState['phase'] =
+      response.phase === 'hostis' || response.phase === 'consular_army'
+        ? 'censure'
+        : response.phase;
+    const newRemaining = state.consulAuthoritySeasonsRemaining - 1;
+    return {
+      senateResponse: { ...response, phase: cappedPhase },
+      consulAuthorityActive: newRemaining > 0,
+      consulAuthoritySeasonsRemaining: Math.max(0, newRemaining),
+    };
+  }
 
   const { turnNumber } = state;
   const { debateTurn, censureTurn, hostisTurn } = phaseThresholds(response);
@@ -132,9 +120,6 @@ export function tickSenateResponse(
     };
 
     if (!response.debateSuppressed) {
-      // Inject the Senatus Consultum de Censura as a pending bill.
-      // If passed, this bill zeroes Fides income until the levy is disbanded.
-      // TODO (Chunk M): adjust the object shape to match the full Bill model.
       const censuraBill = {
         id:              `senate-censura-${turnNumber}`,
         title:           'Senatus Consultum de Censura',
@@ -145,7 +130,7 @@ export function tickSenateResponse(
         playerCanVote:   true,
         passThreshold:   50,
         effectOnPass:    'fides_income_blocked',
-      } as any;  // TODO: cast to Bill once model is confirmed
+      } as any;
       patch.bills = [...state.bills, censuraBill];
     }
 
@@ -154,7 +139,6 @@ export function tickSenateResponse(
 
   // ── debate → censure ──────────────────────────────────────────────────────
   if (turnNumber === censureTurn && response.phase === 'debate') {
-    // Penalise local support in the muster province and add corruption.
     const updatedProvinces = response.musterProvinceId
       ? state.provinces.map(p =>
           p.id === response.musterProvinceId
@@ -178,10 +162,6 @@ export function tickSenateResponse(
 
   // ── censure → hostis ──────────────────────────────────────────────────────
   if (turnNumber === hostisTurn && response.phase === 'censure') {
-    // Hostis declaration: flag that zeroes allied-clan Fides income is now active
-    // (resourceEngine should check senateResponse.phase === 'hostis' when computing income).
-    // Also queues a treason trial.
-    // TODO (Chunk M): construct a proper Trial object once the Trial model is confirmed.
     const treasonTrial = {
       id:          `trial-treason-${turnNumber}`,
       type:        'treason',
@@ -189,7 +169,7 @@ export function tickSenateResponse(
       characterId,
       turnQueued:  turnNumber,
       autoResolve: false,
-    } as any;  // TODO: cast to Trial once model is confirmed
+    } as any;
 
     return {
       senateResponse: { ...response, phase: 'hostis' },
@@ -198,7 +178,6 @@ export function tickSenateResponse(
   }
 
   // ── hostis / consular_army → combat ──────────────────────────────────────
-  // Combat runs each season once the army has arrived, until resolved.
   if (
     turnNumber >= response.consularArmyArrivesOnTurn &&
     (response.phase === 'hostis' || response.phase === 'consular_army')
@@ -219,14 +198,11 @@ export function tickSenateResponse(
     const playerWins = effectiveForce >= response.consularArmyStrength;
 
     if (playerWins) {
-      // Player defeats the consular army — crisis ends but Dignitas cost is paid.
       return {
         senateResponse:   null,
         lifetimeDignitas: Math.max(0, state.lifetimeDignitas - 5),
       };
     } else {
-      // Player is overwhelmed — character captured, worst-outcome trial queued.
-      // TODO (Chunk M): construct a proper Trial object once the Trial model is confirmed.
       const captureTrial = {
         id:            `trial-capture-${turnNumber}`,
         type:          'treason',
@@ -235,7 +211,7 @@ export function tickSenateResponse(
         turnQueued:    turnNumber,
         forcedOutcome: 'worst',
         autoResolve:   false,
-      } as any;  // TODO: cast to Trial once model is confirmed
+      } as any;
 
       return {
         senateResponse: { ...response, phase: 'consular_army' },
@@ -249,11 +225,6 @@ export function tickSenateResponse(
 
 // ─── Player Counter-Actions ───────────────────────────────────────────────────
 
-/**
- * Spend 15 Fides to bribe sympathetic tribunes into suppressing the Senate debate.
- * Delays all post-debate phase transitions by 2 seasons.
- * Guard: Senate response must be active and currently in Phase 'debate'.
- */
 export function suppressDebate(state: SenateAwareState): SenateAwarePatch {
   const response = state.senateResponse;
   if (!response?.active || response.phase !== 'debate') return {};
@@ -265,12 +236,6 @@ export function suppressDebate(state: SenateAwareState): SenateAwarePatch {
   };
 }
 
-/**
- * Spend 50 Denarii to bribe the Quaestor's Commission into dropping its inquiry.
- * Resets the Senate response entirely — the levy must be re-detected before
- * phase escalation can resume.
- * Guard: Senate response must be active and currently in Phase 'censure'.
- */
 export function bribeCommission(state: SenateAwareState): SenateAwarePatch {
   const response = state.senateResponse;
   if (!response?.active || response.phase !== 'censure') return {};
@@ -282,12 +247,6 @@ export function bribeCommission(state: SenateAwareState): SenateAwarePatch {
   };
 }
 
-/**
- * Disband all personal legions and submit to the Senate, ending the crisis.
- * Veterans are retained — only raised legions are disbanded.
- * Costs lifetimeDignitas −15. If in Phase 'hostis', cancels the queued treason trial.
- * Guard: Senate response must be active.
- */
 export function capitulate(
   state: SenateAwareState,
   characterId: string,
@@ -297,11 +256,10 @@ export function capitulate(
 
   const updatedFamily = state.family.map(c =>
     c.id === characterId
-      ? { ...c, raisedLegions: [] }   // veterans intentionally preserved
+      ? { ...c, raisedLegions: [] }
       : c
   );
 
-  // Cancel queued treason trials for this character if in the hostis phase.
   const updatedTrialQueue = response.phase === 'hostis'
     ? state.trialQueue.filter((t: any) => !(t.type === 'treason' && t.characterId === characterId))
     : state.trialQueue;
