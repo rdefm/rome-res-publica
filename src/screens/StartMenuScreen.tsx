@@ -1,4 +1,9 @@
-import React, { useState } from 'react';
+// StartMenuScreen — P1-G redesign.
+// Replaced the old START_OPTIONS list with a two-card picker driven by
+// START_DEFINITIONS (src/data/startDefinitions.ts). Debug bypass retained.
+// onStart prop removed; startGame is called directly from the store.
+
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,46 +15,34 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useGameStore, INITIAL_STATE } from '../state/gameStore';
-import { saveProvider, importSave } from '../state/saveLoad';
-import { COLORS, FONTS, SPACING } from '../utils/theme';
+import { useGameStore } from '../state/gameStore';
+import { saveProvider, hasSave, importSave } from '../state/saveLoad';
+import { START_DEFINITIONS } from '../data/startDefinitions';
+import { COLORS, FONTS, SPACING, RADIUS } from '../utils/theme';
 
 const BG = (() => {
   try { return require('../assets/images/menu-bg.png'); } catch { return null; }
 })();
 
-type StartOption = {
-  id: string;
-  label: string;
-  subtitle: string;
-  available: boolean;
-};
+export default function StartMenuScreen() {
+  const startGame                   = useGameStore(s => s.startGame);
+  const [loading, setLoading]       = useState(false);
+  const [saveExists, setSaveExists] = useState(false);
 
-const START_OPTIONS: StartOption[] = [
-  { id: 'senator',   label: 'Senator',               subtitle: 'The Brutii — 264 BC',           available: true  },
-  { id: 'debug',     label: 'Debug',                  subtitle: 'All tools unlocked',            available: true  },
-  { id: 'noble',     label: 'Noble House on Hard Times', subtitle: 'Coming soon',                available: false },
-  { id: 'soldier',   label: 'Equestrian Soldier',     subtitle: 'Coming soon',                   available: false },
-  { id: 'merchant',  label: 'Merchant',               subtitle: 'Coming soon',                   available: false },
-];
-
-interface Props {
-  onStart: (mode: 'senator' | 'debug') => void;
-}
-
-export default function StartMenuScreen({ onStart }: Props) {
-  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    hasSave().then(setSaveExists).catch(() => setSaveExists(false));
+  }, []);
 
   async function handleLoad() {
     setLoading(true);
     try {
       const saved = await saveProvider.load();
       if (saved) {
-        useGameStore.setState({ ...saved, gameStarted: true, debugMode: false });
+        useGameStore.getState().loadGame(saved);
       } else {
         Alert.alert('No save found', 'No saved game was found on this device.');
       }
-    } catch (e) {
+    } catch {
       Alert.alert('Load failed', 'Could not load save file.');
     } finally {
       setLoading(false);
@@ -60,20 +53,11 @@ export default function StartMenuScreen({ onStart }: Props) {
     setLoading(true);
     try {
       const saved = await importSave();
-      if (saved) {
-        useGameStore.setState({ ...saved, gameStarted: true, debugMode: false });
-      }
-    } catch (e) {
+      if (saved) useGameStore.getState().loadGame(saved);
+    } catch {
       Alert.alert('Import failed', 'Could not import save file.');
     } finally {
       setLoading(false);
-    }
-  }
-
-  function handleSelect(opt: StartOption) {
-    if (!opt.available) return;
-    if (opt.id === 'senator' || opt.id === 'debug') {
-      onStart(opt.id);
     }
   }
 
@@ -85,63 +69,85 @@ export default function StartMenuScreen({ onStart }: Props) {
       imageStyle={{ backgroundColor: COLORS.terracotta }}
     >
       <SafeAreaView style={styles.safe}>
-        {/* Title */}
+
+        {/* ── Title ── */}
         <View style={styles.titleBlock}>
           <Text style={styles.title}>ROME</Text>
           <Text style={styles.subtitle}>RES PUBLICA</Text>
           <View style={styles.titleRule} />
         </View>
 
-        {/* Start options */}
-        <View style={styles.optionsBlock}>
+        {/* ── Two-card start picker ── */}
+        <View style={styles.cardsBlock}>
           <Text style={styles.sectionLabel}>BEGIN</Text>
-          {START_OPTIONS.map(opt => (
+
+          {START_DEFINITIONS.map(def => (
             <TouchableOpacity
-              key={opt.id}
-              style={[styles.optionBtn, !opt.available && styles.optionBtnDisabled]}
-              onPress={() => handleSelect(opt)}
-              activeOpacity={opt.available ? 0.75 : 1}
+              key={def.id}
+              style={[
+                styles.startCard,
+                def.recommended && styles.startCardRecommended,
+              ]}
+              onPress={() => startGame(def.id)}
+              activeOpacity={0.82}
             >
-              <Text style={[styles.optionLabel, !opt.available && styles.optionLabelDisabled]}>
-                {opt.label}
-              </Text>
-              <Text style={styles.optionSub}>{opt.subtitle}</Text>
+              {def.recommended && (
+                <View style={styles.laurel}>
+                  <Text style={styles.laurelText}>RECOMMENDED</Text>
+                </View>
+              )}
+              <Text style={styles.cardName}>{def.name}</Text>
+              <Text style={styles.cardSubtitle}>{def.subtitle}</Text>
+              <Text style={styles.cardDesc}>{def.description}</Text>
             </TouchableOpacity>
           ))}
+
+          {/* Debug bypass — small, below the main cards */}
+          <TouchableOpacity
+            style={styles.debugBtn}
+            onPress={() => startGame('standard', 'debug')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.debugText}>⚙ Debug Mode</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Load / Import */}
+        {/* ── Continue / Load section ── */}
         <View style={styles.loadBlock}>
           <Text style={styles.sectionLabel}>CONTINUE</Text>
-          <TouchableOpacity style={styles.loadBtn} onPress={handleLoad} activeOpacity={0.75}>
+          <TouchableOpacity
+            style={[styles.loadBtn, saveExists && styles.loadBtnActive]}
+            onPress={handleLoad}
+            activeOpacity={0.75}
+          >
             {loading
               ? <ActivityIndicator color={COLORS.gold} />
-              : <Text style={styles.loadLabel}>Load Game</Text>
+              : <Text style={[styles.loadLabel, saveExists && styles.loadLabelActive]}>
+                  {saveExists ? 'Continue' : 'Load Game'}
+                </Text>
             }
           </TouchableOpacity>
           <TouchableOpacity style={styles.loadBtn} onPress={handleImport} activeOpacity={0.75}>
             <Text style={styles.loadLabel}>Import Save File</Text>
           </TouchableOpacity>
         </View>
+
       </SafeAreaView>
     </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  bg: {
-    flex: 1,
-  },
+  bg:   { flex: 1 },
   safe: {
     flex: 1,
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.xl,
   },
-  titleBlock: {
-    alignItems: 'center',
-    marginTop: SPACING.xl,
-  },
+
+  // ── Title ────────────────────────────────────────────────────────────────
+  titleBlock: { alignItems: 'center', marginTop: SPACING.xl },
   title: {
     fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
     fontSize: 52,
@@ -164,12 +170,13 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
   },
   titleRule: {
-    width: 120,
-    height: 1,
+    width: 120, height: 1,
     backgroundColor: COLORS.gold,
     marginTop: SPACING.md,
     opacity: 0.6,
   },
+
+  // ── Shared section label ──────────────────────────────────────────────────
   sectionLabel: {
     fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
     fontSize: 10,
@@ -178,39 +185,74 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: SPACING.sm,
   },
-  optionsBlock: {
-    gap: SPACING.xs,
-  },
-  optionBtn: {
-    backgroundColor: 'rgba(26,23,20,0.82)',
+
+  // ── Start cards ───────────────────────────────────────────────────────────
+  cardsBlock: { gap: SPACING.sm },
+
+  startCard: {
+    backgroundColor: 'rgba(26,23,20,0.88)',
     borderWidth: 1,
     borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+  },
+  startCardRecommended: {
+    borderColor: COLORS.goldDim,
+    borderWidth: 1.5,
+  },
+
+  // "Recommended" laurel badge
+  laurel: {
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.goldDim + '33',
+    borderWidth: 1,
+    borderColor: COLORS.goldDim,
     borderRadius: 2,
-    paddingVertical: 12,
-    paddingHorizontal: SPACING.md,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginBottom: 6,
   },
-  optionBtnDisabled: {
-    opacity: 0.4,
+  laurelText: {
+    color: COLORS.gold,
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+    fontSize: 8,
+    letterSpacing: 1.5,
+    fontWeight: '700',
   },
-  optionLabel: {
-    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+
+  cardName: {
+    fontFamily: FONTS.display,
     fontSize: 17,
     color: COLORS.marble,
     fontWeight: '700',
+    marginBottom: 2,
   },
-  optionLabelDisabled: {
-    color: COLORS.dust,
-  },
-  optionSub: {
-    fontFamily: Platform.OS === 'ios' ? 'Georgia-Italic' : 'serif',
+  cardSubtitle: {
+    fontFamily: FONTS.body,
     fontStyle: 'italic',
     fontSize: 12,
     color: COLORS.dust,
-    marginTop: 2,
+    marginBottom: 6,
   },
-  loadBlock: {
-    gap: SPACING.xs,
+  cardDesc: {
+    fontFamily: FONTS.bodyRegular,
+    fontSize: 12,
+    color: COLORS.dust,
+    lineHeight: 17,
   },
+
+  // Debug bypass
+  debugBtn: { alignItems: 'center', paddingVertical: SPACING.xs, marginTop: 2 },
+  debugText: {
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+    fontSize: 11,
+    color: COLORS.goldDim,
+    letterSpacing: 0.5,
+  },
+
+  // ── Load / Import ─────────────────────────────────────────────────────────
+  loadBlock: { gap: SPACING.xs },
+
   loadBtn: {
     backgroundColor: 'rgba(26,23,20,0.6)',
     borderWidth: 1,
@@ -220,10 +262,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     alignItems: 'center',
   },
+  loadBtnActive: {
+    borderColor: COLORS.goldDim,
+    backgroundColor: 'rgba(26,23,20,0.85)',
+  },
   loadLabel: {
     fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
     fontSize: 14,
     color: COLORS.dust,
     letterSpacing: 1,
+  },
+  loadLabelActive: {
+    color: COLORS.gold,
+    fontWeight: '600',
   },
 });

@@ -43,6 +43,13 @@ interface EventCardProps {
 
 export default function EventCard({ def, instance, onChoiceMade }: EventCardProps) {
   const clients = useGameStore(s => s.clients);
+  const dismissEvent = useGameStore(s => s.dismissEvent);
+
+  // P1-G: result text state — shown after a terminal, no-skill-check choice is made
+  const [pendingChoice, setPendingChoice] = useState<{
+    choice: EventChoice;
+    previewClientName?: string;
+  } | null>(null);
 
   // Addition 2 — Class A name pre-generation
   // For Class A events, EventInstance.clientName is undefined at injection.
@@ -69,6 +76,23 @@ export default function EventCard({ def, instance, onChoiceMade }: EventCardProp
 
   const imageSource = EVENT_IMAGES[def.imageKey] ?? null;
 
+  // P1-G: if the choice has successText and no skill check, show result text
+  // before resolving (outcome is deterministic — no skill check means always success).
+  // Skill-check choices resolve immediately (outcome not known until engine runs).
+  function handleChoicePress(choice: EventChoice, preview?: string) {
+    if (choice.successText && !choice.skillCheck) {
+      setPendingChoice({ choice, previewClientName: preview });
+    } else {
+      onChoiceMade(choice.id, preview);
+    }
+  }
+
+  function handleContinue() {
+    if (!pendingChoice) return;
+    onChoiceMade(pendingChoice.choice.id, pendingChoice.previewClientName);
+    setPendingChoice(null);
+  }
+
   return (
     <View style={styles.card}>
       {/* Event image */}
@@ -82,17 +106,26 @@ export default function EventCard({ def, instance, onChoiceMade }: EventCardProp
       {/* Body */}
       <Text style={styles.body}>{resolvedBody}</Text>
 
-      {/* Choices */}
-      <View style={styles.choicesContainer}>
-        {def.choices.map(choice => (
-          <ChoiceButton
-            key={choice.id}
-            choice={choice}
-            clients={clients}
-            onPress={() => onChoiceMade(choice.id, previewClientName ?? undefined)}
-          />
-        ))}
-      </View>
+      {/* Result text (shown after choice made) or choices */}
+      {pendingChoice ? (
+        <View style={styles.resultView}>
+          <Text style={styles.resultText}>{pendingChoice.choice.successText}</Text>
+          <TouchableOpacity style={styles.continueBtn} onPress={handleContinue} activeOpacity={0.75}>
+            <Text style={styles.continueTxt}>Continue</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.choicesContainer}>
+          {def.choices.map(choice => (
+            <ChoiceButton
+              key={choice.id}
+              choice={choice}
+              clients={clients}
+              onPress={() => handleChoicePress(choice, previewClientName ?? undefined)}
+            />
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -179,6 +212,33 @@ const styles = StyleSheet.create({
   },
   choicesContainer: {
     gap: SPACING.sm,
+  },
+
+  // ── Result text (P1-G) ────────────────────────────────────────────────────
+  resultView: {
+    marginTop: SPACING.sm,
+  },
+  resultText: {
+    color: COLORS.dust,
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: SPACING.md,
+    textAlign: 'center',
+  },
+  continueBtn: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    alignItems: 'center',
+  },
+  continueTxt: {
+    color: COLORS.marble,
+    fontFamily: FONTS.display,
+    fontSize: 14,
+    fontWeight: '600',
   },
 
   // ── Choice button ──────────────────────────────────────────────────────────

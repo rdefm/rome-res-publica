@@ -1,9 +1,9 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useEffect, useState } from 'react';
+import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, StyleSheet, View } from 'react-native';
+import { Text, StyleSheet, View, AppState } from 'react-native';
 
 import DomusScreen from './src/screens/DomusScreen';
 import ForumScreen from './src/screens/ForumScreen';
@@ -14,6 +14,9 @@ import ResourceBar from './src/components/shared/ResourceBar';
 import EventModal from './src/components/shared/EventModal';
 import AmbitionSelectionModal from './src/components/shared/AmbitionSelectionModal';
 import BirthNamingModal from './src/components/domus/BirthNamingModal';
+import AgendaTablet from './src/components/shared/AgendaTablet';
+import WelcomeBackModal from './src/components/shared/WelcomeBackModal';
+import { generateAgenda } from './src/engine/agendaEngine';
 import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle } from './src/components/shared/TabBar';
 import StartMenuScreen from './src/screens/StartMenuScreen';
 import { COLORS } from './src/utils/theme';
@@ -87,20 +90,128 @@ function AppNavigator() {
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 function GameRoot() {
-  const { gameStarted, startGame } = useGameStore();
+  const gameStarted = useGameStore(s => s.gameStarted);
+
+  // ── Navigation ref — used by the uiNavRequest deep-link handler ─────────────
+  const navRef = useNavigationContainerRef();
+
+  // ── Welcome-back recap (local state — not in store) ────────────────────────
+  const [showWelcomeBack, setShowWelcomeBack] = useState(false);
+
+  // ── AppState listener — autosave on background, welcome-back on foreground ──
+  useEffect(() => {
+    const TWELVE_HOURS = 12 * 60 * 60 * 1000;
+
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      const storeState = useGameStore.getState();
+      const { saveProvider: sp } = require('./src/state/saveLoad');
+
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        // Save on background — UI fields are stripped inside saveLoad.save()
+        sp.save(storeState).catch((e: Error) =>
+          console.warn('[P1-D] Background save failed:', e)
+        );
+        storeState.tickLastActive();
+      } else if (nextAppState === 'active') {
+        const elapsed = Date.now() - storeState.lastActiveAt;
+        if (
+          storeState.gameStarted &&
+          storeState.lastSeasonLedger &&
+          elapsed > TWELVE_HOURS
+        ) {
+          setShowWelcomeBack(true);
+        }
+        storeState.tickLastActive();
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  // ── uiNavRequest deep-link handler ──────────────────────────────────────────
+  // When an agenda item is tapped, agendaEngine sets uiNavRequest via
+  // requestNavigation(). We consume it here, switch tabs, apply payload,
+  // then clear the request.
+  const uiNavRequest  = useGameStore(s => s.uiNavRequest);
+  const clearNavRequest = useGameStore(s => s.clearNavRequest);
+  const selectCharacter = useGameStore(s => s.selectCharacter);
+
+  useEffect(() => {
+    if (!uiNavRequest) return;
+    if (!navRef.isReady()) return;
+
+    // Navigate to the target tab
+    navRef.navigate(uiNavRequest.tab as never);
+
+    // Apply payload — selectedCharacterId is the only confirmed store field (v1).
+    // provinceId / billId / trialId: tab landing only per plan §P1-C v1 scope.
+    // TODO (P1-C+): add selectedLeaderId, expandedClanId, provinceId deep-links
+    //               once the relevant screen store fields are confirmed.
+    if (uiNavRequest.selectedCharacterId) {
+      selectCharacter(uiNavRequest.selectedCharacterId);
+    }
+
+    clearNavRequest();
+  }, [uiNavRequest]);
+
+  // ── AgendaTablet auto-open ──────────────────────────────────────────────────
+  // Opens once per season after all blocking modals are dismissed.
+  // Priority (plan §P1-C): SeasonOverlay → EventModal → BirthNaming/Ambition
+  //                         → AgendaTablet (here, last).
+  const agendaVisible        = useGameStore(s => s.agendaVisible);
+  const seasonOverlayVisible = useGameStore(s => s.seasonOverlayVisible);
+  const activeEvent          = useGameStore(s => s.activeEvent);
+  const pendingBirthNaming   = useGameStore(s => s.pendingBirthNaming);
+  const pendingAmbitionScopes = useGameStore(s => s.pendingAmbitionScopes);
+  const agendaViewedTurn     = useGameStore(s => s.agendaViewedTurn);
+  const turnNumber           = useGameStore(s => s.turnNumber);
+  const showAgenda           = useGameStore(s => s.showAgenda);
+
+  useEffect(() => {
+    if (!gameStarted) return;
+    if (agendaVisible) return;
+    if (seasonOverlayVisible) return;
+    if (activeEvent) return;
+    if (pendingBirthNaming) return;
+    if ((pendingAmbitionScopes ?? []).length > 0) return;
+    if (agendaViewedTurn >= turnNumber) return;
+
+    // Auto-open when items exist, or in the first 8 turns (early-game guidance)
+    const items = generateAgenda(useGameStore.getState());
+    if (items.length > 0 || turnNumber <= 8) {
+      showAgenda();
+    }
+  }, [
+    gameStarted,
+    agendaVisible,
+    seasonOverlayVisible,
+    activeEvent,
+    pendingBirthNaming,
+    pendingAmbitionScopes,
+    agendaViewedTurn,
+    turnNumber,
+  ]);
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   if (!gameStarted) {
-    return <StartMenuScreen onStart={startGame} />;
+    return <StartMenuScreen />;
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navRef}>
       <View style={styles.root}>
         <StatusBar style="light" backgroundColor={COLORS.bg} />
         <ResourceBar />
         <AppNavigator />
+        {/* Modal priority: EventModal → AmbitionSelectionModal → AgendaTablet → WelcomeBackModal */}
         <EventModal />
         <AmbitionSelectionModal />
+        <AgendaTablet />
+        <WelcomeBackModal
+          visible={showWelcomeBack}
+          onDismiss={() => setShowWelcomeBack(false)}
+        />
       </View>
     </NavigationContainer>
   );

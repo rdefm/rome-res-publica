@@ -9,6 +9,7 @@ import { getNextMilestone } from '../../engine/legacyEngine';
 import type { LegacyObjective } from '../../models/legacyObjective';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import ScrollModal, { PARCHMENT } from '../shared/ScrollModal';
+import InfoTap from '../shared/InfoTap';
 
 const { height } = Dimensions.get('window');
 
@@ -310,7 +311,9 @@ export default function LegatumPanel() {
         activeOpacity={0.8}
       >
         <View style={styles.headerRow}>
-          <Text style={styles.heading}>LEGATUM</Text>
+          <InfoTap termId="legatum">
+            <Text style={styles.heading}>LEGATUM</Text>
+          </InfoTap>
           <Text style={styles.tapHint}>tap for detail ›</Text>
         </View>
 

@@ -307,6 +307,25 @@ export function applyEffectString(
         continue;
       }
 
+      // ── P1-G: leaderRel:[leaderId]:[delta] ─────────────────────────────────
+      // Updates relationship on the ClanLeader with the matching id across all clans.
+      // Clamped to [−100, 100]. Only new effect token added in Phase 1 (plan §P1-G changelog).
+      if (key === 'leaderRel') {
+        const leaderId = parts[1];
+        const delta    = parseInt(parts[2] ?? '0', 10);
+        if (leaderId && !isNaN(delta)) {
+          patch.clans = (patch.clans ?? state.clans).map((clan: any) => ({
+            ...clan,
+            leaders: clan.leaders.map((leader: any) =>
+              leader.id === leaderId
+                ? { ...leader, relationship: Math.min(100, Math.max(-100, (leader.relationship ?? 0) + delta)) }
+                : leader
+            ),
+          })) as any;
+        }
+        continue;
+      }
+
       continue;
     }
 

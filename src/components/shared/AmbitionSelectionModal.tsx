@@ -7,6 +7,7 @@ import { drawAmbitions } from '../../engine/ambitionEngine';
 import type { AmbitionDefinition } from '../../models/ambition';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import ScrollModal, { PARCHMENT } from './ScrollModal';
+import InfoTap from './InfoTap';
 
 // ─── Reward summary line ──────────────────────────────────────────────────────
 
@@ -101,7 +102,9 @@ export default function AmbitionSelectionModal() {
             {/* Family ambitions */}
             {needsFamily && (
               <>
-                <Text style={styles.sectionLabel}>FAMILY AMBITION (required)</Text>
+                <InfoTap termId="ambition">
+                  <Text style={styles.sectionLabel}>FAMILY AMBITION (required)</Text>
+                </InfoTap>
                 {familyOptions.map(def => (
                   <AmbitionCard
                     key={def.id}
@@ -116,9 +119,11 @@ export default function AmbitionSelectionModal() {
             {/* Character ambitions */}
             {needsCharacter && (
               <>
-                <Text style={[styles.sectionLabel, { marginTop: needsFamily ? SPACING.md : 0 }]}>
-                  CHARACTER AMBITION — {player?.name ?? 'Player'}{needsFamily ? ' (optional)' : ' (required)'}
-                </Text>
+                <InfoTap termId="ambition">
+                  <Text style={[styles.sectionLabel, { marginTop: needsFamily ? SPACING.md : 0 }]}>
+                    CHARACTER AMBITION — {player?.name ?? 'Player'}{needsFamily ? ' (optional)' : ' (required)'}
+                  </Text>
+                </InfoTap>
                 {characterOptions.map(def => (
                   <AmbitionCard
                     key={def.id}

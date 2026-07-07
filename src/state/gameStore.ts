@@ -15,6 +15,10 @@ import type { TroopUnit } from '../models/troop';
 import type { SenateResponseState } from '../engine/senateResponseEngine';
 import type { CrisisState } from '../models/crisis';
 import type { OfficeActionTargetContext } from '../engine/officeActionEngine';
+// ── Phase 1 (P1-A) ────────────────────────────────────────────────────────────
+import type { StartId } from '../models/gameStart';
+import type { AgendaTarget } from '../models/agenda';
+import type { SeasonLedger } from '../models/ledger';
 import { calcLevyCost } from '../engine/troopEngine';
 import {
   calcConsularArmyStrength,
@@ -230,6 +234,26 @@ export interface GameState {
   // ── Office action result modal ───────────────────────────────────────────────
   /** Populated after any office action resolves. Drives the result modal in CursusScreen. Cleared by clearOfficeActionResult. */
   lastOfficeActionResult: { actionName: string; text: string } | null;
+
+  // ── Phase 1 — Agenda tablet + tutorial (P1-A) ──────────────────────────────
+  /** Which start configuration launched this game. */
+  startId: StartId;
+  /** Ordered defIds remaining in the guided tutorial script. Empty = no active script or standard start. */
+  tutorialQueue: string[];
+  /** turnNumber of the last season the tablet auto-opened. −1 = never opened. Prevents re-open within same season. */
+  agendaViewedTurn: number;
+  /** True while the Agenda Tablet modal is open. */
+  agendaVisible: boolean;
+  /** Snapshot of the last completed season's resource/crisis/rome deltas. Displayed in SeasonOverlay and welcome-back recap (P1-D). */
+  lastSeasonLedger: SeasonLedger | null;
+  /** Epoch ms; updated on endSeason and app background. Used for the welcome-back 12-hour threshold (P1-D). */
+  lastActiveAt: number;
+  /** One-shot deep-link request. Set by agenda item taps; consumed and cleared by the App.tsx navigator (P1-C). */
+  uiNavRequest: AgendaTarget | null;
+
+  // ── App lifecycle (previously untyped — formalised here) ──────────────────
+  gameStarted: boolean;
+  debugMode: boolean;
 }
 
 export interface GameActions {
@@ -304,7 +328,8 @@ export interface GameActions {
   expireLaw: (lawId: string) => void;
 
   // App flow
-  startGame: (mode: 'senator' | 'debug') => void;
+  /** Start a new game with the chosen start configuration. Default is standard (no tutorial). */
+  startGame: (startId?: StartId, mode?: 'senator' | 'debug') => void;
 
   // Log
   addLog: (text: string, type?: LogEntry['type']) => void;
@@ -353,6 +378,29 @@ export interface GameActions {
 
   /** Dismiss the office action result modal. */
   clearOfficeActionResult: () => void;
+
+  // ── Phase 1 — Agenda tablet (P1-A; auto-open logic derived in App.tsx in P1-C) ──
+  /** Open the Agenda Tablet modal and record the viewed turn. */
+  showAgenda: () => void;
+  /** Close the Agenda Tablet modal. */
+  dismissAgenda: () => void;
+  /**
+   * Request navigation to a tab with an optional entity payload.
+   * App.tsx watches uiNavRequest and executes the navigation, then calls clearNavRequest().
+   */
+  requestNavigation: (target: AgendaTarget) => void;
+  /** Clear a consumed navigation request. Called by App.tsx after the nav executes. */
+  clearNavRequest: () => void;
+
+  // ── Phase 1 — Season ledger + autosave (P1-D) ─────────────────────────────
+  /**
+   * Load a saved game. Spreads INITIAL_STATE under savedState so fields added
+   * after a save was written fall back to their initial values (migration guard).
+   * Always resets UI-only fields to safe defaults.
+   */
+  loadGame: (savedState: GameState) => void;
+  /** Stamp lastActiveAt = Date.now(). Called on foreground/background by App.tsx. */
+  tickLastActive: () => void;
 }
 
 let _logId = 0;
@@ -472,6 +520,15 @@ export const INITIAL_STATE: GameState = {
   tribuneCandidateId: null,
   lastOfficeActionResult: null,
 
+  // ── Phase 1 — Agenda tablet + tutorial (P1-A) ──────────────────────────────
+  startId: 'standard' as StartId,
+  tutorialQueue: [],
+  agendaViewedTurn: -1,
+  agendaVisible: false,
+  lastSeasonLedger: null,
+  lastActiveAt: Date.now(),
+  uiNavRequest: null,
+
   gameStarted: false,
   debugMode: false,
 } as any;
@@ -532,11 +589,36 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     }));
   },
 
-  startGame: (mode) => {
+  startGame: (startId = 'standard', mode = 'senator') => {
+    // P1-G: resolve tutorial script for the chosen start
+    const { START_DEFINITIONS, TUTORIAL_SCRIPTS } = require('../data/startDefinitions');
+    const startDef = (START_DEFINITIONS as any[]).find((d: any) => d.id === startId);
+    const scriptId: string | undefined = startDef?.tutorialScriptId;
+    const rawQueue: string[] = scriptId ? [...((TUTORIAL_SCRIPTS as any)[scriptId] ?? [])] : [];
+
+    // tut-00 fires immediately at game start (gameStart timing).
+    // Pop it from the raw queue and push directly into pendingEvents.
+    // All other tutorial events fire through the season slot.
+    let tutorialQueue  = rawQueue;
+    let pendingGameStart: import('./gameStore').GameState['pendingEvents'] = [];
+
+    if (rawQueue[0] === 'evt-tut-00') {
+      pendingGameStart = [{
+        defId: 'evt-tut-00',
+        firedAtTurn: 0,
+        targetCharacterId: (INITIAL_STATE as any).family?.find((c: any) => c.isPlayer)?.id ?? 'pc-1',
+      }];
+      tutorialQueue = rawQueue.slice(1);
+    }
+
     set({
       ...INITIAL_STATE,
       gameStarted: true,
       debugMode: mode === 'debug',
+      startId: startId as StartId,
+      tutorialQueue,
+      pendingEvents: pendingGameStart,
+      lastActiveAt: Date.now(),
     });
   },
 
@@ -594,6 +676,33 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       }
     }
 
+    // ── P1-D: season ledger ──────────────────────────────────────────────────
+    // Diff is computed against the pre-season snapshot `s` and the fully
+    // post-processed `finalState` (after NPC consul, Tribune election, etc.).
+    const ledger: SeasonLedger = {
+      turnNumber:  s.turnNumber,
+      seasonLabel: `${Math.abs(s.year)} BC · ${SEASON_NAMES[s.seasonIndex]}`,
+      year:        s.year,
+      resourceDeltas: {
+        fides:            finalState.fides            - s.fides,
+        denarii:          finalState.denarii          - s.denarii,
+        imperium:         finalState.imperium         - s.imperium,
+        lifetimeDignitas: finalState.lifetimeDignitas - s.lifetimeDignitas,
+      },
+      crisisDeltas: {
+        war:          finalState.crisis.war.level          - s.crisis.war.level,
+        unrest:       finalState.crisis.unrest.level       - s.crisis.unrest.level,
+        constitution: finalState.crisis.constitution.level - s.crisis.constitution.level,
+        economy:      finalState.crisis.economy.level      - s.crisis.economy.level,
+      },
+      romeDeltas: {
+        stability: finalState.rome.stability - s.rome.stability,
+        plebs:     finalState.rome.plebs     - s.rome.plebs,
+        treasury:  finalState.rome.treasury  - s.rome.treasury,
+      },
+      headlines: seasonEvents.slice(0, 5),
+    };
+
     const nextEvent       = finalState.pendingEvents[0] ?? null;
     const remainingPending = finalState.pendingEvents.slice(1);
     set({
@@ -602,7 +711,13 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       pendingEvents:          remainingPending,
       seasonOverlayVisible:   true,
       seasonOverlayEvents:    seasonEvents,
+      lastSeasonLedger:       ledger,
+      lastActiveAt:           Date.now(),
     });
+
+    // Autosave — async, non-fatal. UI-only fields stripped inside saveLoad.save().
+    const { saveProvider: sp } = require('../state/saveLoad');
+    sp.save(get()).catch((e: Error) => console.warn('[P1-D] Autosave failed:', e));
   },
 
   dismissSeasonOverlay: () => set({ seasonOverlayVisible: false, seasonOverlayEvents: [] }),
@@ -1125,11 +1240,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const s = get();
     if (!s.activeEvent) return;
 
-    const { EVENT_DEFS } = require('../data/events');
-    const { applyEffectString } = require('../engine/resourceEngine');
-    const { resolveEventChoice } = require('../engine/eventEngine');
+    const { EVENT_DEFS }          = require('../data/events');
+    const { TUTORIAL_EVENT_DEFS } = require('../data/tutorialEvents');
+    const { applyEffectString }   = require('../engine/resourceEngine');
+    const { resolveEventChoice }  = require('../engine/eventEngine');
 
-    const def = EVENT_DEFS.find((d: any) => d.id === s.activeEvent!.defId);
+    // P1-G: search tutorial pool as well as main pool
+    const allDefs = [...EVENT_DEFS, ...TUTORIAL_EVENT_DEFS];
+    const def = allDefs.find((d: any) => d.id === s.activeEvent!.defId);
     if (!def) {
       set({ activeEvent: null });
       return;
@@ -1171,8 +1289,55 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
     set({ ...statePatch, activeEvent: nextEvent, pendingEvents: remainingPending });
 
+    // ── P1-G: Tutorial special-case handlers ────────────────────────────────
+    // Three handlers permitted by plan. Fourth would require a generic token.
+    // See Fable-phase1-implementation-plan.md §P1-G cross-chunk notes.
+    const defId = s.activeEvent.defId;
+
+    // Case 1 — tut-00 "Show me the tablet": open AgendaTablet immediately
+    if (defId === 'evt-tut-00' && choiceId === 'show-tablet') {
+      const curr = get();
+      set({ agendaVisible: true, agendaViewedTurn: curr.turnNumber });
+    }
+
+    // Case 2 — tut-03 "Vote for bill": add +15 support to highest-support live bill
+    if (defId === 'evt-tut-03' && choiceId === 'vote-bill') {
+      const curr = get();
+      if (curr.bills.length > 0) {
+        const topBill = curr.bills.reduce(
+          (best, b) => (b.support > best.support ? b : best),
+          curr.bills[0]
+        );
+        set({
+          bills: curr.bills.map(b =>
+            b.id === topBill.id ? { ...b, support: b.support + 15 } : b
+          ),
+        });
+      }
+    }
+
+    // Case 3 — tut-05 "Declare Gaius": invoke declareFamilyCampaign for eligible member
+    if (defId === 'evt-tut-05' && choiceId === 'declare-gaius') {
+      const curr  = get();
+      const { OFFICES } = require('../data/offices');
+      const eligible = curr.family.find(c =>
+        !c.isPlayer && (c.age ?? 0) >= 18 && (c as any).officeId === null
+      );
+      if (eligible) {
+        const heldOffices: string[] = (eligible as any).heldOffices ?? [];
+        const firstOffice = (OFFICES as any[]).find((o: any) =>
+          o.id !== 'dictator' &&
+          !heldOffices.includes(o.id) &&
+          (eligible.age ?? 0) >= o.minAge
+        );
+        if (firstOffice) {
+          get().declareFamilyCampaign(eligible.id, firstOffice.id);
+        }
+      }
+    }
+    // ── End tutorial special-case handlers ─────────────────────────────────
+
     if (_addClient) {
-      // _addClient is now a fully built Client object from applyEffectString
       set((s2) => ({ clients: [...s2.clients, _addClient] }));
     }
     if (_removeClient) get().removeClient(_removeClient);
@@ -1328,6 +1493,35 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   },
 
   clearOfficeActionResult: () => set({ lastOfficeActionResult: null }),
+
+  // ── Phase 1 — Agenda tablet (P1-A) ───────────────────────────────────────────
+  // These are the complete implementations. Auto-open is derived from state shape
+  // in App.tsx (P1-C), not a store action, so no stub-replacement is needed later.
+
+  showAgenda: () => {
+    const s = get();
+    set({ agendaVisible: true, agendaViewedTurn: s.turnNumber });
+  },
+
+  dismissAgenda:     () => set({ agendaVisible: false }),
+  requestNavigation: (target) => set({ uiNavRequest: target }),
+  clearNavRequest:   () => set({ uiNavRequest: null }),
+
+  // ── Phase 1 — Season ledger + autosave (P1-D) ─────────────────────────────
+
+  loadGame: (savedState) => set({
+    ...INITIAL_STATE,
+    ...savedState,
+    // Always reset transient UI state — these must not be loaded from disk
+    gameStarted:   true,
+    debugMode:     false,
+    agendaVisible: false,
+    uiNavRequest:  null,
+    activeEvent:   null,
+  }),
+
+  tickLastActive: () => set({ lastActiveAt: Date.now() }),
+
 
   // ─── Provinciae ─────────────────────────────────────────────────────────────
 

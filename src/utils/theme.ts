@@ -26,6 +26,12 @@ export const COLORS = {
   goldBronze:    '#a07840',
   crimsonDark:   '#6b1414',
   crimsonMuted:  '#c09090',
+  // Wax tablet palette (P1-C — AgendaTablet)
+  // The tabula cerata: wooden frame around a dark wax writing surface.
+  waxSurface:        '#141210',  // near-black warm umber — the wax field
+  waxFrame:          '#5a3c1a',  // warm wood brown — the tablet surround
+  waxInscription:    '#d4c8a0',  // pale scratched text — primary item text
+  waxInscriptionDim: '#7a6e50',  // dimmer secondary — detail lines, subheaders
   // Redesign tokens (domus-visual-redesign-plan-v2)
   parchment:       '#e8dcc8',
   parchmentBorder: '#b8a070',

@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal,
-  ActivityIndicator, Alert,
+  ActivityIndicator, Alert, ScrollView,
 } from 'react-native';
 import { useGameStore, INITIAL_STATE } from '../../state/gameStore';
 import { saveProvider, exportSave, importSave } from '../../state/saveLoad';
+import { GLOSSARY_TERMS } from '../../data/glossaryTerms';
+import GlossaryPopup from './GlossaryPopup';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
+import ScrollModal, { PARCHMENT } from './ScrollModal';
 
 interface Props {
   visible: boolean;
@@ -18,6 +21,8 @@ export default function SettingsModal({ visible, onClose }: Props) {
   const state = useGameStore();
   const [status, setStatus] = useState<Status>('idle');
   const [statusMsg, setStatusMsg] = useState('');
+  const [tabulariumOpen, setTabulariumOpen] = useState(false);
+  const [selectedTermId, setSelectedTermId] = useState<string | null>(null);
 
   function flash(msg: string, isError = false) {
     setStatus(isError ? 'error' : 'done');
@@ -50,7 +55,7 @@ export default function SettingsModal({ visible, onClose }: Props) {
     try {
       const loaded = await importSave();
       if (!loaded) { flash('Import cancelled.'); return; }
-      useGameStore.setState(loaded);
+      useGameStore.getState().loadGame(loaded);
       flash('Save loaded successfully.');
       onClose();
     } catch {
@@ -135,8 +140,51 @@ export default function SettingsModal({ visible, onClose }: Props) {
           </View>
         )}
 
+        <View style={s.divider} />
+        <Text style={s.sectionLabel}>REFERENCE</Text>
+
+        <SettingsButton
+          label="Tabularium"
+          desc="Philon's records — all game terms explained"
+          icon="📜"
+          onPress={() => setTabulariumOpen(true)}
+          disabled={busy}
+        />
+
         <Text style={s.version}>Rome — Res Publica · v1</Text>
       </View>
+
+      {/* ── Tabularium — alphabetical term list ─────────────────────────── */}
+      <ScrollModal
+        visible={tabulariumOpen}
+        onClose={() => setTabulariumOpen(false)}
+        title="TABULARIUM"
+        subtitle="The household records, as Philon keeps them."
+        animationType="fade"
+      >
+        <View style={tab.list}>
+          {[...GLOSSARY_TERMS].sort((a, b) => a.term.localeCompare(b.term)).map(term => (
+            <TouchableOpacity
+              key={term.id}
+              style={tab.row}
+              onPress={() => setSelectedTermId(term.id)}
+              activeOpacity={0.7}
+            >
+              <Text style={tab.term}>{term.term}</Text>
+              <Text style={tab.arrow}>›</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollModal>
+
+      {/* GlossaryPopup spawned from within Tabularium */}
+      {selectedTermId && (
+        <GlossaryPopup
+          termId={selectedTermId}
+          visible={!!selectedTermId}
+          onClose={() => setSelectedTermId(null)}
+        />
+      )}
     </Modal>
   );
 }
@@ -257,5 +305,33 @@ const sb = StyleSheet.create({
     fontStyle: 'italic',
     fontSize: 11,
     marginTop: 2,
+  },
+});
+
+
+const tab = StyleSheet.create({
+  list: {
+    paddingHorizontal: SPACING.sm,
+    paddingBottom: SPACING.md,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: PARCHMENT.border,
+  },
+  term: {
+    fontFamily: FONTS.displayLight,
+    fontSize: 13,
+    color: PARCHMENT.body,
+    flex: 1,
+  },
+  arrow: {
+    fontFamily: FONTS.ui,
+    fontSize: 16,
+    color: PARCHMENT.muted,
+    marginLeft: SPACING.sm,
   },
 });

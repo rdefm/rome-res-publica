@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
-import { EVENT_DEFS } from '../../data/events';
+import { getEventDef } from '../../engine/eventEngine';
 import EventCard from './EventCard';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
 import ScrollModal, { PARCHMENT } from './ScrollModal';
@@ -22,7 +22,7 @@ export default function EventModal() {
 
   if (!activeEvent) return null;
 
-  const def = EVENT_DEFS.find(d => d.id === activeEvent.defId);
+  const def = getEventDef(activeEvent.defId);
   if (!def) return null;
 
   return (

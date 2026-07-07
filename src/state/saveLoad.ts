@@ -59,7 +59,15 @@ export interface SaveProvider {
 
 export class LocalSaveProvider implements SaveProvider {
   async save(state: GameState): Promise<void> {
-    const json = JSON.stringify(state);
+    // Strip UI-only fields that should never persist across sessions.
+    // agendaVisible / uiNavRequest / activeEvent are transient modal state.
+    const {
+      agendaVisible: _av,
+      uiNavRequest:  _unr,
+      activeEvent:   _ae,
+      ...persistedState
+    } = state as any;
+    const json = JSON.stringify(persistedState);
     await AsyncStorage.setItem(SAVE_KEY, json);
   }
 
@@ -74,6 +82,19 @@ export class LocalSaveProvider implements SaveProvider {
       console.warn('Save load failed or corrupted:', e);
       return null;
     }
+  }
+}
+
+/**
+ * Lightweight check — reads just the key without deserialising the save.
+ * Used by StartMenuScreen to conditionally show the Continue button.
+ */
+export async function hasSave(): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(SAVE_KEY);
+    return raw !== null;
+  } catch {
+    return false;
   }
 }
 

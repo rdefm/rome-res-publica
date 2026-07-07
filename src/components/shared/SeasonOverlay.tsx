@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, Animated, TouchableOpacity, Dimensions,
 } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
+import LedgerBlock from './LedgerBlock';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
 
 const { width, height } = Dimensions.get('window');
@@ -10,7 +11,7 @@ const { width, height } = Dimensions.get('window');
 const SEASON_NAMES = ['Spring', 'Summer', 'Autumn', 'Winter'];
 
 export default function SeasonOverlay() {
-  const { seasonOverlayVisible, seasonOverlayEvents, seasonIndex, year, dismissSeasonOverlay } =
+  const { seasonOverlayVisible, seasonOverlayEvents, seasonIndex, year, dismissSeasonOverlay, lastSeasonLedger } =
     useGameStore();
 
   const opacity = useRef(new Animated.Value(0)).current;
@@ -40,6 +41,15 @@ export default function SeasonOverlay() {
         <Text style={styles.season}>{SEASON_NAMES[seasonIndex]}</Text>
         <Text style={styles.year}>{Math.abs(year)} BC</Text>
         <View style={styles.divider} />
+
+        {/* ── P1-D: compact season ledger ──────────────────────────────── */}
+        {lastSeasonLedger && (
+          <>
+            <LedgerBlock ledger={lastSeasonLedger} />
+            <View style={styles.divider} />
+          </>
+        )}
+
         {visibleEvents.map((evt, i) => (
           <Text key={i} style={styles.event}>{evt}</Text>
         ))}

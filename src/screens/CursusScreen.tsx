@@ -12,6 +12,7 @@ import { evaluateGates } from '../engine/officeActionEngine';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
+import InfoTap from '../components/shared/InfoTap';
 
 // ─── Family member picker ─────────────────────────────────────────────────────
 
@@ -218,7 +219,9 @@ function OfficeRung({
       <View style={rung.row}>
         <Text style={rung.icon}>{office.icon}</Text>
         <View style={rung.info}>
-          <Text style={rung.name}>{office.name}</Text>
+          <InfoTap termId={officeId}>
+            <Text style={rung.name}>{office.name}</Text>
+          </InfoTap>
           <Text style={rung.latin}>{office.latin}</Text>
           <Text style={rung.meta}>Min age {office.minAge} · {office.termSeasons} seasons</Text>
         </View>
@@ -332,7 +335,9 @@ function TribunePanel({ character }: { character: Character }) {
       <View style={tp.header}>
         <Text style={tp.icon}>✊</Text>
         <View style={tp.info}>
-          <Text style={tp.name}>Tribune of the Plebs</Text>
+          <InfoTap termId="tribune">
+            <Text style={tp.name}>Tribune of the Plebs</Text>
+          </InfoTap>
           <Text style={tp.latin}>Tribunus Plebis · Parallel Path</Text>
         </View>
         {isHolder && (

@@ -16,6 +16,7 @@ import type { Bill, ActiveLaw } from '../models/bill';
 import type { CrisisTrackId, CrisisTrack } from '../models/crisis';
 import { getTierFromLevel } from '../models/crisis';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
+import InfoTap from '../components/shared/InfoTap';
 
 // ─── Crisis track configuration ───────────────────────────────────────────────
 
@@ -277,7 +278,9 @@ function TrialBanner() {
     <View style={tb.container}>
       <TouchableOpacity style={tb.header} onPress={() => setExpanded(e => !e)} activeOpacity={0.75}>
         <View style={tb.headerLeft}>
-          <Text style={tb.heading}>⚖️ ACTIVE TRIAL</Text>
+          <InfoTap termId="trial">
+            <Text style={tb.heading}>⚖️ ACTIVE TRIAL</Text>
+          </InfoTap>
           <Text style={tb.sub}>{CHARGE_LABELS[activeTrial.charge] ?? activeTrial.charge} · {accused?.name ?? 'Unknown'}</Text>
           <Text style={tb.sub}>Brought by {clan?.name ?? 'Unknown'} · {activeTrial.turnsRemaining} season{activeTrial.turnsRemaining !== 1 ? 's' : ''} remaining</Text>
         </View>
@@ -599,7 +602,9 @@ export default function CuriaScreen() {
 
         {/* Treasury — the one Rome stat that directly affects legislation */}
         <View style={styles.panel}>
-          <Text style={styles.panelTitle}>ROME — TREASURY</Text>
+          <InfoTap termId="rome-treasury">
+            <Text style={styles.panelTitle}>ROME — TREASURY</Text>
+          </InfoTap>
           <Text style={styles.panelSub}>
             Affects bill support and Denarii income each season. Tap for tier details.
           </Text>
@@ -619,9 +624,10 @@ export default function CuriaScreen() {
           </View>
         </View>
 
-        {/* Crisis — four-track 2×2 grid (Chunk 2D) */}
         <View style={styles.panel}>
-          <Text style={styles.panelTitle}>CRISIS TRACKS</Text>
+          <InfoTap termId="crisis-tracks">
+            <Text style={styles.panelTitle}>CRISIS TRACKS</Text>
+          </InfoTap>
           <Text style={styles.panelSub}>Four independent pressures on the Republic. Each escalates and de-escalates through different mechanisms.</Text>
           <View style={styles.crisisRow}>
             <CrisisTrackCell trackId={TRACK_ORDER[0]} track={crisis[TRACK_ORDER[0]]} onPress={() => setCrisisModal(TRACK_ORDER[0])} />

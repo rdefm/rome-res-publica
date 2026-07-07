@@ -1,12 +1,12 @@
 import { rollClientBonus, computeTotalClientBonuses } from '../src/engine/clientEngine';
-import { resolveEventChoice, pickRandomEvent, evalCondition } from '../src/engine/eventEngine';
+import { resolveEventChoice, pickRandomEvent, evalCondition, checkTutorialGate, getEventDef } from '../src/engine/eventEngine';
 import { EVENT_DEFS } from '../src/data/events';
 import type { ClientType, Client } from '../src/models/client';
-import type { EventChoice, EventCondition } from '../src/models/event';
+import type { EventChoice, EventCondition, EventDef } from '../src/models/event';
 import { getTierFromLevel } from '../src/models/crisis';
 import type { CrisisState, CrisisTrack } from '../src/models/crisis';
 
-// ─── Shared state fixture ─────────────────────────────────────────────────────
+// ─── Shared state and helpers ─────────────────────────────────────────────────────
 
 function makeTrack(id: CrisisTrack['id'], level: number): CrisisTrack {
   return { id, level, tier: getTierFromLevel(level), namedCrisis: null };
@@ -55,7 +55,20 @@ function makeState(overrides: Record<string, any> = {}) {
   };
 }
 
-// ─── Test 1 — rollClientBonus always returns at least one key ────────────────
+function makeEventDef(id: string, weight: number, seasons?: number[]): EventDef {
+  return {
+    id,
+    title: id,
+    bodyText: 'Test body.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight,
+    seasons,
+    choices: [{ id: 'ok', label: 'OK', successEffect: '', failureEffect: '' }],
+  };
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('rollClientBonus', () => {
   const CLIENT_TYPES: ClientType[] = ['muscle', 'publicSupport', 'votingSway'];
@@ -70,8 +83,6 @@ describe('rollClientBonus', () => {
     }
   );
 });
-
-// ─── Test 2 — secondary bonus key never matches primary key ──────────────────
 
 describe('rollClientBonus secondary bonus', () => {
   const CLIENT_TYPES: ClientType[] = ['muscle', 'publicSupport', 'votingSway'];
@@ -89,8 +100,6 @@ describe('rollClientBonus secondary bonus', () => {
     }
   );
 });
-
-// ─── Test 3 — computeTotalClientBonuses([]) returns empty object ─────────────
 
 describe('computeTotalClientBonuses', () => {
   test('empty roster returns empty object', () => {
@@ -119,8 +128,6 @@ describe('computeTotalClientBonuses', () => {
     expect(result.fides).toBe(4);
   });
 });
-
-// ─── Test 4 — branching choice returns nextEventId, does not apply effectStr ──
 
 describe('resolveEventChoice — branching', () => {
   test('nextEventId branch: returns nextEventId and empty effectStr', () => {
@@ -182,24 +189,18 @@ describe('resolveEventChoice — branching', () => {
   });
 });
 
-// ─── Test 5 — weight:0 events never fire via pickRandomEvent ─────────────────
-// Includes all original follow-up events plus new inject-only events from Chunk 2C.
-
 describe('pickRandomEvent — weight:0 exclusion', () => {
   const WEIGHT_ZERO_IDS = [
-    // Original follow-ups
     'evt-borrowed-name-followup',
     'evt-legion-deserters-reported',
     'evt-legion-deserters-covered',
     'evt-rivals-agent-turned',
     'evt-rivals-agent-failed',
     'evt-rivals-agent-ignored',
-    // Chunk 2C: multi-ticker events (injection-only)
     'evt-gracchan-moment',
     'evt-gracchan-aftermath',
     'evt-senate-cannot-act',
     'evt-republic-trembles',
-    // Chunk 2C: injected-by-turnSequencer special events
     'evt-grain-riot',
     'evt-creditors-demand',
   ];
@@ -236,8 +237,6 @@ describe('pickRandomEvent — weight:0 exclusion', () => {
     expect(pickedCount).toBeGreaterThan(80);
   });
 });
-
-// ─── Test 6 — evalCondition: crisisTrack conditions ──────────────────────────
 
 describe('evalCondition — crisisTrack', () => {
   function makeStateWithCrisis(warLevel: number, unrestLevel = 10, constitutionLevel = 10, economyLevel = 10) {
@@ -278,13 +277,11 @@ describe('evalCondition — crisisTrack', () => {
   test('each track is evaluated independently', () => {
     const warCond: EventCondition = { type: 'crisisTrack', track: 'war', op: 'gte', value: 70 };
     const unrestCond: EventCondition = { type: 'crisisTrack', track: 'unrest', op: 'gte', value: 70 };
-    const state = makeStateWithCrisis(75, 10) as any; // war=75, unrest=10
+    const state = makeStateWithCrisis(75, 10) as any;
     expect(evalCondition(warCond, state)).toBe(true);
     expect(evalCondition(unrestCond, state)).toBe(false);
   });
 });
-
-// ─── Test 7 — evalCondition: multiCrisis conditions ──────────────────────────
 
 describe('evalCondition — multiCrisis', () => {
   function makeStateWithAllTracks(war: number, unrest: number, constitution: number, economy: number) {
@@ -318,7 +315,6 @@ describe('evalCondition — multiCrisis', () => {
         { track: 'unrest', op: 'gte', value: 60 },
       ],
     };
-    // unrest = 55 — below threshold
     const state = makeStateWithAllTracks(65, 55, 10, 10) as any;
     expect(evalCondition(cond, state)).toBe(false);
   });
@@ -347,7 +343,6 @@ describe('evalCondition — multiCrisis', () => {
         { track: 'economy',      op: 'gte', value: 60 },
       ],
     };
-    // Constitution just below threshold
     expect(evalCondition(cond, makeStateWithAllTracks(65, 65, 59, 65) as any)).toBe(false);
   });
 
@@ -355,5 +350,153 @@ describe('evalCondition — multiCrisis', () => {
     const cond: EventCondition = { type: 'multiCrisis', conditions: [] };
     const state = makeStateWithAllTracks(0, 0, 0, 0) as any;
     expect(evalCondition(cond, state)).toBe(true);
+  });
+});
+
+describe('pickRandomEvent — seasonal weighting', () => {
+  test('in-season event is ~6× more likely than its off-season counterpart', () => {
+    const pool: EventDef[] = [
+      makeEventDef('spring-evt', 5, [0]),
+      makeEventDef('summer-evt', 5, [1]),
+    ];
+    const state = makeState({ seasonIndex: 0 });
+
+    let springCount = 0;
+    let summerCount = 0;
+    const TRIALS = 10_000;
+
+    for (let i = 0; i < TRIALS; i++) {
+      const picked = pickRandomEvent(pool, state as any);
+      if (picked?.id === 'spring-evt') springCount++;
+      else if (picked?.id === 'summer-evt') summerCount++;
+    }
+
+    const ratio = springCount / summerCount;
+    expect(ratio).toBeGreaterThan(4.0);
+    expect(ratio).toBeLessThan(9.0);
+  });
+
+  test('untagged event weight is unchanged by season — neutral multiplier applies', () => {
+    const pool: EventDef[] = [
+      makeEventDef('neutral-evt', 5),
+      makeEventDef('autumn-evt',  5, [2]),
+    ];
+    const state = makeState({ seasonIndex: 1 });
+
+    let neutralCount = 0;
+    let autumnCount  = 0;
+    const TRIALS = 10_000;
+
+    for (let i = 0; i < TRIALS; i++) {
+      const picked = pickRandomEvent(pool, state as any);
+      if (picked?.id === 'neutral-evt') neutralCount++;
+      else if (picked?.id === 'autumn-evt') autumnCount++;
+    }
+
+    const ratio = neutralCount / autumnCount;
+    expect(ratio).toBeGreaterThan(1.5);
+    expect(ratio).toBeLessThan(4.5);
+  });
+});
+
+describe('evalCondition — P1-E new types', () => {
+  test('flag: equals:true passes when flag is truthy', () => {
+    const cond: EventCondition = { type: 'flag', key: 'spring-seed-loan', equals: true };
+    expect(evalCondition(cond, makeState({ flags: { 'spring-seed-loan': true } }) as any)).toBe(true);
+    expect(evalCondition(cond, makeState({ flags: {} }) as any)).toBe(false);
+    expect(evalCondition(cond, makeState({ flags: { 'spring-seed-loan': false } }) as any)).toBe(false);
+  });
+
+  test('flag: equals:false passes when flag is falsy or absent', () => {
+    const cond: EventCondition = { type: 'flag', key: 'spring-seed-loan', equals: false };
+    expect(evalCondition(cond, makeState({ flags: {} }) as any)).toBe(true);
+    expect(evalCondition(cond, makeState({ flags: { 'spring-seed-loan': false } }) as any)).toBe(true);
+    expect(evalCondition(cond, makeState({ flags: { 'spring-seed-loan': true } }) as any)).toBe(false);
+  });
+
+  test('asset: passes when ownedAssets contains the definitionId', () => {
+    const cond: EventCondition = { type: 'asset', definitionId: 'vineyard' };
+    const withVineyard = makeState({
+      ownedAssets: [{ definitionId: 'vineyard', currentTier: 1, turnAcquired: 1 }],
+    });
+    const withoutVineyard = makeState({ ownedAssets: [] });
+    expect(evalCondition(cond, withVineyard as any)).toBe(true);
+    expect(evalCondition(cond, withoutVineyard as any)).toBe(false);
+  });
+
+  test('asset: does not match a different asset definitionId', () => {
+    const cond: EventCondition = { type: 'asset', definitionId: 'vineyard' };
+    const withLibrary = makeState({
+      ownedAssets: [{ definitionId: 'library', currentTier: 1, turnAcquired: 1 }],
+    });
+    expect(evalCondition(cond, withLibrary as any)).toBe(false);
+  });
+
+  test('campaigning: passes when campaigning is non-null', () => {
+    const cond: EventCondition = { type: 'campaigning' };
+    expect(evalCondition(cond, makeState({ campaigning: 'quaestor' }) as any)).toBe(true);
+    expect(evalCondition(cond, makeState({ campaigning: null }) as any)).toBe(false);
+  });
+});
+
+describe('pickRandomEvent — isTutorial exclusion', () => {
+  test('pickRandomEvent never returns an isTutorial event across 1000 trials', () => {
+    const tutorialDef: EventDef = {
+      id: 'test-isTutorial',
+      title: 'Tutorial Test',
+      bodyText: 'Tutorial body.',
+      imageKey: 'portrait-paterfamilias',
+      conditions: [],
+      weight: 999,
+      isTutorial: true,
+      choices: [{ id: 'ok', label: 'OK', successEffect: '', failureEffect: '' }],
+    };
+    const normalDef = makeEventDef('test-normal-pg', 5);
+    const pool = [tutorialDef, normalDef];
+    const state = makeState();
+
+    for (let i = 0; i < 1000; i++) {
+      const picked = pickRandomEvent(pool, state as any);
+      expect(picked?.id).not.toBe('test-isTutorial');
+    }
+  });
+});
+
+describe('checkTutorialGate', () => {
+  test('tut-01 fires only in Spring (seasonIndex 0)', () => {
+    expect(checkTutorialGate('evt-tut-01', makeState({ seasonIndex: 0 }) as any)).toEqual({ fire: true, skip: false });
+    expect(checkTutorialGate('evt-tut-01', makeState({ seasonIndex: 1 }) as any)).toEqual({ fire: false, skip: false });
+    expect(checkTutorialGate('evt-tut-01', makeState({ seasonIndex: 2 }) as any)).toEqual({ fire: false, skip: false });
+    expect(checkTutorialGate('evt-tut-01', makeState({ seasonIndex: 3 }) as any)).toEqual({ fire: false, skip: false });
+  });
+
+  test('tut-02 fires only in Summer (seasonIndex 1)', () => {
+    expect(checkTutorialGate('evt-tut-02', makeState({ seasonIndex: 1 }) as any)).toEqual({ fire: true,  skip: false });
+    expect(checkTutorialGate('evt-tut-02', makeState({ seasonIndex: 0 }) as any)).toEqual({ fire: false, skip: false });
+  });
+
+  test('tut-06 is skipped silently in Winter when not campaigning', () => {
+    const winterNoCampaign  = makeState({ seasonIndex: 3, campaigning: null });
+    const winterCampaigning = makeState({ seasonIndex: 3, campaigning: 'quaestor' });
+    const summerNoCampaign  = makeState({ seasonIndex: 1, campaigning: null });
+
+    expect(checkTutorialGate('evt-tut-06', winterNoCampaign  as any)).toEqual({ fire: false, skip: true  });
+    expect(checkTutorialGate('evt-tut-06', winterCampaigning as any)).toEqual({ fire: true,  skip: false });
+    expect(checkTutorialGate('evt-tut-06', summerNoCampaign  as any)).toEqual({ fire: false, skip: false });
+  });
+
+  test('tut-07 fires any season (no gate)', () => {
+    for (const seasonIndex of [0, 1, 2, 3] as const) {
+      expect(checkTutorialGate('evt-tut-07', makeState({ seasonIndex }) as any)).toEqual({ fire: true, skip: false });
+    }
+  });
+
+  test('getEventDef searches both main and tutorial pools', () => {
+    expect(getEventDef('evt-client-muscle-offer')).toBeDefined();
+    expect(getEventDef('evt-client-muscle-offer')?.id).toBe('evt-client-muscle-offer');
+    expect(getEventDef('evt-nonexistent-xyz-abc')).toBeUndefined();
+    const tutDef = getEventDef('evt-tut-00');
+    expect(tutDef).toBeDefined();
+    expect(tutDef?.isTutorial).toBe(true);
   });
 });

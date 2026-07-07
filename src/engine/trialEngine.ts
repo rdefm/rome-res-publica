@@ -88,6 +88,13 @@ export const OUTCOME_CONSEQUENCES: Record<TrialOutcome, {
 
 // ─── Passive trial trigger check ──────────────────────────────────────────────
 
+/**
+ * The corruptionScore level at which a hostile clan may initiate prosecution.
+ * Exported so agendaEngine can warn the player when within 10 points
+ * without independently hardcoding the value. Change here propagates everywhere.
+ */
+export const CORRUPTION_TRIAL_THRESHOLD = 60;
+
 export function shouldTriggerTrial(state: GameState): {
   charge: TrialCharge;
   accusedId: string;

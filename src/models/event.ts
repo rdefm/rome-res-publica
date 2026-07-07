@@ -15,12 +15,16 @@ export type EventCondition =
   | { type: 'season'; index: 0 | 1 | 2 | 3 }   // 0=Spring 1=Summer 2=Autumn 3=Winter
   | { type: 'office'; held: string }             // matches heldOffice id in player character
   | { type: 'crisisTrack'; track: CrisisTrackId; op: ConditionOperator; value: number }
-  | { type: 'multiCrisis'; conditions: Array<{ track: CrisisTrackId; op: ConditionOperator; value: number }> };
+  | { type: 'multiCrisis'; conditions: Array<{ track: CrisisTrackId; op: ConditionOperator; value: number }> }
+  // ── Phase 1 (P1-E) — new condition types ─────────────────────────────────
+  | { type: 'flag'; key: string; equals: boolean }
+  | { type: 'asset'; definitionId: string }
+  | { type: 'campaigning' };
 
 // ─── Skill check ─────────────────────────────────────────────────────────────
 
 export interface SkillCheck {
-  characterId: string; // 'player' resolves to the isPlayer character
+  characterId: string;
   skill: 'rhetoric' | 'martial' | 'intrigus';
   difficulty: number;
 }
@@ -34,11 +38,13 @@ export interface EventChoice {
   successEffect: string;
   failureEffect: string;
   requiresClient?: ClientType;
-  // Branching — if set, fires a follow-up event rather than applying effects directly.
-  // successEffect and failureEffect are ignored when any nextEventId field is set.
-  nextEventId?: string;           // always branch to this event regardless of skill check
-  nextEventIdOnSuccess?: string;  // branch here on skill check success
-  nextEventIdOnFailure?: string;  // branch here on skill check failure
+  nextEventId?: string;
+  nextEventIdOnSuccess?: string;
+  nextEventIdOnFailure?: string;
+  // Post-choice narrative feedback — names match rome-event-writing-guide.md §2.2.
+  // Required on every terminal choice (quality checklist §9).
+  successText?: string;
+  failureText?: string;
 }
 
 // ─── Event definition ────────────────────────────────────────────────────────
@@ -51,6 +57,8 @@ export interface EventDef {
   conditions: EventCondition[];
   weight: number;
   choices: EventChoice[];
+  seasons?: number[];   // 0=Spring 1=Summer 2=Autumn 3=Winter; absent = season-neutral
+  isTutorial?: boolean; // excluded from pickRandomEvent; only fired via tutorialQueue (P1-G)
 }
 
 // ─── Event instance ──────────────────────────────────────────────────────────
@@ -61,11 +69,5 @@ export interface EventInstance {
   targetCharacterId: string;
   clientName?: string;
   clientType?: ClientType;
-  /**
-   * Optional override for the event's bodyText at render time.
-   * Used by NPC consul and other dynamic injection paths that need to
-   * substitute names/values into an otherwise static EventDef body.
-   * When set, the EventCard should prefer this over EventDef.bodyText.
-   */
   bodyText?: string;
 }

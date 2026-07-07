@@ -699,26 +699,62 @@ export function processSeason(state: GameState): {
   }
 
   // 12. Pick and inject one end-of-season event
-  const chosenDef = pickRandomEvent(EVENT_DEFS, s);
-  if (chosenDef) {
-    const clientCondition = chosenDef.conditions.find(
-      c => c.type === 'hasClient'
-    ) as { type: 'hasClient'; clientType: ClientType } | undefined;
+  // P1-G: tutorial queue takes priority over random event pool.
+  // When tutorialQueue is non-empty, pop the head if its season gate is met.
+  // When queue empties on this pop, set flags['tutorial-complete'].
+  // When queue is empty (or tutorial complete), fall through to pickRandomEvent.
+  // See Fable-phase1-implementation-plan.md §P1-G — Firing rules, hook 2.
+  {
+    const { checkTutorialGate, getEventDef } = require('../engine/eventEngine');
+    let chosenDef: import('../models/event').EventDef | undefined;
 
-    const involvedClient = clientCondition
-      ? pickOldestClient(s.clients, clientCondition.clientType)
-      : undefined;
+    const tutorialQueue = s.tutorialQueue ?? [];
 
-    const player = s.family.find((c) => c.isPlayer);
-    const instance: EventInstance = {
-      defId: chosenDef.id,
-      firedAtTurn: s.turnNumber,
-      targetCharacterId: player?.id ?? 'pc-1',
-      clientName: involvedClient?.name,
-      clientType: involvedClient?.type,
-    };
+    if (tutorialQueue.length > 0) {
+      const nextDefId = tutorialQueue[0];
+      const gate = checkTutorialGate(nextDefId, s) as { fire: boolean; skip: boolean };
 
-    s = { ...s, pendingEvents: [...s.pendingEvents, instance] };
+      if (gate.fire) {
+        chosenDef = getEventDef(nextDefId) as typeof chosenDef;
+        const newQueue = tutorialQueue.slice(1);
+        s = {
+          ...s,
+          tutorialQueue: newQueue,
+          // Queue exhausted: stamp completion flag
+          flags: newQueue.length === 0
+            ? { ...s.flags, 'tutorial-complete': true }
+            : s.flags,
+        };
+      } else if (gate.skip) {
+        // Conditional failure (e.g. tut-06 with no campaign) — pop silently, no event
+        s = { ...s, tutorialQueue: tutorialQueue.slice(1) };
+      }
+      // gate.wait (both false): leave queue intact, no event this season
+    } else {
+      // Normal random event — tutorial queue exhausted or standard start
+      chosenDef = pickRandomEvent(EVENT_DEFS, s);
+    }
+
+    if (chosenDef) {
+      const clientCondition = chosenDef.conditions.find(
+        c => c.type === 'hasClient'
+      ) as { type: 'hasClient'; clientType: ClientType } | undefined;
+
+      const involvedClient = clientCondition
+        ? pickOldestClient(s.clients, clientCondition.clientType)
+        : undefined;
+
+      const player = s.family.find((c) => c.isPlayer);
+      const instance: EventInstance = {
+        defId: chosenDef.id,
+        firedAtTurn: s.turnNumber,
+        targetCharacterId: player?.id ?? 'pc-1',
+        clientName: involvedClient?.name,
+        clientType: involvedClient?.type,
+      };
+
+      s = { ...s, pendingEvents: [...s.pendingEvents, instance] };
+    }
   }
 
   // 13. Tick ambitions
