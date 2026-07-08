@@ -182,12 +182,11 @@ function AvailableAssetCard({
   );
 }
 
-function renderBonusSummary(bonus: { goldPerTurn?: number; dignitasPerTurn?: number; gratiaPerTurn?: number; imperiuPerTurn?: number; relationshipPerTurn?: number }): string {
+function renderBonusSummary(bonus: { goldPerTurn?: number; fidesPerTurn?: number; imperiumPerTurn?: number; relationshipPerTurn?: number }): string {
   const parts: string[] = [];
   if (bonus.goldPerTurn) parts.push(`+${bonus.goldPerTurn} Gold/turn`);
-  if (bonus.dignitasPerTurn) parts.push(`+${bonus.dignitasPerTurn} Dignitas/turn`);
-  if (bonus.gratiaPerTurn) parts.push(`+${bonus.gratiaPerTurn} Gratia/turn`);
-  if (bonus.imperiuPerTurn) parts.push(`+${bonus.imperiuPerTurn} Imperium/turn`);
+  if (bonus.fidesPerTurn) parts.push(`+${bonus.fidesPerTurn} Fides/turn`);
+  if (bonus.imperiumPerTurn) parts.push(`+${bonus.imperiumPerTurn} Imperium/turn`);
   if (bonus.relationshipPerTurn) {
     const sign = bonus.relationshipPerTurn > 0 ? '+' : '';
     parts.push(`${sign}${bonus.relationshipPerTurn} Rel/turn`);

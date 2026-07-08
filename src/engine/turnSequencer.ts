@@ -46,12 +46,8 @@ import { calcAntagonismLevel, tickNpcConsul } from './npcConsulEngine';
 import { TRIAL_ACTIONS } from '../data/trialActions';
 import { EVENT_DEFS } from '../data/events';
 import { OFFICES } from '../data/offices';
-import { AUTO_BILL_TEMPLATES, HISTORICAL_BILL_TEMPLATES } from '../data/billTemplates';
-
-let billIdCounter = 1000;
-function nextBillId(): string {
-  return `auto-${billIdCounter++}`;
-}
+import { AUTO_BILL_TEMPLATES, BILL_TEMPLATES, HISTORICAL_BILL_TEMPLATES } from '../data/billTemplates';
+import { getProvinceDefinition } from '../data/provinceDefinitions';
 
 // ─── Client helpers ──────────────────────────────────────────────────────────
 
@@ -105,6 +101,15 @@ export function processSeason(state: GameState): {
 } {
   const events: string[] = [];
   let s = { ...state };
+
+  // Auto-generated bill ids are sourced from state (not a module-level counter) so the
+  // sequence survives being duplicated across Metro's per-route lazy web bundles — a module
+  // singleton reset to its initial value there produced duplicate React keys like `auto-1000`.
+  function nextBillId(): string {
+    const id = `auto-${s.billIdSeq}`;
+    s = { ...s, billIdSeq: s.billIdSeq + 1 };
+    return id;
+  }
 
   // 1. Advance season / year
   const newSeasonIndex = (s.seasonIndex + 1) % 4;
@@ -421,7 +426,7 @@ export function processSeason(state: GameState): {
         events.push(flavour);
 
         if (law.renewable) {
-          const allTemplates = [...AUTO_BILL_TEMPLATES, ...HISTORICAL_BILL_TEMPLATES];
+          const allTemplates = [...BILL_TEMPLATES, ...AUTO_BILL_TEMPLATES, ...HISTORICAL_BILL_TEMPLATES];
           const template = allTemplates.find(t => t.id === law.billId);
           if (template) {
             renewalBills.push({ ...template, id: nextBillId() });
@@ -515,6 +520,66 @@ export function processSeason(state: GameState): {
 
   // 9c. Province tick
   if (s.provinces && s.provinces.length > 0) {
+
+    // ── 9c-i: Development mandate enforcement (Lex de Provinciarum Cultura) ──
+    //
+    // While this law is active, any player governor whose development policy is
+    // 'exploit' or 'neglect' is silently raised to 'maintain' before tickProvince
+    // runs. This means the tick sees the corrected policy: the infrastructure
+    // improvement (DEVELOPMENT_INFRA_DELTA['maintain'] = 0, vs -5 for exploit)
+    // and the cost difference (DEVELOPMENT_GOLD_COST['maintain'] = 5) are both
+    // applied automatically inside calcProvinceGoldOutput — no extra deduction
+    // needed here.
+    //
+    // Only player governors are compelled. NPC role-holders govern by their own
+    // trait and are outside the scope of this mandate. Unincorporated provinces
+    // have no governor system and are also skipped.
+    {
+      const mandateLawActive = (s.activeLaws ?? []).some(
+        l => l.billId === 'lex-de-provinciarum-cultura',
+      );
+
+      if (mandateLawActive) {
+        // Ordered from lowest to highest development commitment.
+        const DEV_NOTCH_ORDER = ['exploit', 'neglect', 'maintain', 'invest', 'major_works'];
+        const MANDATE_MIN = 'maintain';
+        const mandateMinIdx = DEV_NOTCH_ORDER.indexOf(MANDATE_MIN);
+
+        s = {
+          ...s,
+          provinces: s.provinces.map(province => {
+            // Only incorporated provinces have governors
+            if (province.status !== 'incorporated') return province;
+            // Only apply to player governors
+            if (!province.playerGovernor) return province;
+
+            const currentDev = province.playerGovernor.policy.development;
+            // Already meets or exceeds the mandate — no action needed
+            if (DEV_NOTCH_ORDER.indexOf(currentDev) >= mandateMinIdx) return province;
+
+            // Force policy up to the mandate minimum
+            const def = getProvinceDefinition(province.id);
+            events.push(
+              `⚖ Senate mandate: ${def?.name ?? province.id} — governor's development raised to Maintain` +
+              ` (was ${currentDev === 'exploit' ? 'Exploit' : 'Neglect'}) by Lex de Provinciarum Cultura.`,
+            );
+
+            return {
+              ...province,
+              playerGovernor: {
+                ...province.playerGovernor,
+                policy: {
+                  ...province.playerGovernor.policy,
+                  development: MANDATE_MIN,
+                },
+              },
+            };
+          }),
+        };
+      }
+    }
+
+    // ── 9c-ii: Province tick ─────────────────────────────────────────────────
     const { updatedProvinces, totalGoldDelta, totalImperiumDelta, events: provinceEvents } =
       tickAllProvinces(s.provinces, s);
 
@@ -530,6 +595,54 @@ export function processSeason(state: GameState): {
 
     if (totalGoldDelta > 0 || totalImperiumDelta > 0) {
       events.push(`Provincial income: +${totalGoldDelta} Gold, +${totalImperiumDelta} Imperium from Italy.`);
+    }
+
+    // ── 9c-iii: Lex de Viis — province infrastructure boost ─────────────────
+    //
+    // While the road maintenance law is active, all non-heartland provinces gain
+    // +1 infrastructure rating each season, on top of whatever their governor's
+    // development policy already produced. This represents the Senate funding
+    // direct road-building across the Republic.
+    //
+    // The treasury cost is 3 points of rome.treasury per province. A larger
+    // empire costs proportionally more to maintain — this is the design intent.
+    // The cost drains the public treasury (rome.treasury), not the player's
+    // personal denarii, since road maintenance is a senatorial expenditure.
+    //
+    // Note: The +1 infra here also resets the infraStagnationSeasons counter
+    // inside tickProvince for the *next* season (because currInfra > prevInfra
+    // once this is applied). However, since the tick already ran this season
+    // before this block executes, the stagnation counter effect is delayed by
+    // one season — which is intentional and correct.
+    {
+      const lexDeViisActive = (s.activeLaws ?? []).some(l => l.billId === 'lex-de-viis');
+
+      if (lexDeViisActive) {
+        const nonHeartlandProvinces = s.provinces.filter(p => p.status !== 'heartland');
+        const provCount = nonHeartlandProvinces.length;
+
+        if (provCount > 0) {
+          const treasuryCost = provCount * 3;
+
+          s = {
+            ...s,
+            provinces: s.provinces.map(p =>
+              p.status === 'heartland'
+                ? p
+                : { ...p, infrastructureRating: Math.min(100, p.infrastructureRating + 1) },
+            ),
+            rome: {
+              ...s.rome,
+              treasury: Math.max(0, s.rome.treasury - treasuryCost),
+            },
+          };
+
+          events.push(
+            `Via Romana: road upkeep advances infrastructure across ${provCount}` +
+            ` province${provCount !== 1 ? 's' : ''} (+1 each, −${treasuryCost} Treasury).`,
+          );
+        }
+      }
     }
   }
 
@@ -805,6 +918,27 @@ export function processSeason(state: GameState): {
       };
     }
     events.push(`Ambition expired: "${def.title}". Consequences applied.`);
+  }
+
+  // 13b. Re-offer ambition selection for any scope left without an active ambition —
+  // covers a scope that was skipped/dismissed earlier as well as one that just
+  // completed or expired above. Without this, dismissing the prompt once meant it
+  // never returned, since pendingAmbitionScopes was only ever cleared, not refilled.
+  {
+    const scopesNeeded: ('family' | 'character')[] = [];
+    if (!s.ambitions.some(a => a.status === 'active' && a.scope === 'family')) {
+      scopesNeeded.push('family');
+    }
+    const player = s.family.find(c => c.isPlayer);
+    if (!s.ambitions.some(a => a.status === 'active' && a.scope === 'character' && a.assignedCharacterId === player?.id)) {
+      scopesNeeded.push('character');
+    }
+    if (scopesNeeded.length > 0) {
+      s = {
+        ...s,
+        pendingAmbitionScopes: Array.from(new Set([...s.pendingAmbitionScopes, ...scopesNeeded])),
+      };
+    }
   }
 
   // 14. Corruption tick

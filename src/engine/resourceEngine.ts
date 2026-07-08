@@ -5,7 +5,7 @@ import type { CrisisTrackId } from '../models/crisis';
 import { parseEffect } from '../models/bill';
 import { generateClientName } from '../data/clientNames';
 import { computeTotalAssetBonuses } from './assetEngine';
-import { calcAssetGoldOutput } from './provinceEngine';
+import { calcAssetGoldOutput, calcAssetFidesOutput } from './provinceEngine';
 import { buildClient, computeTotalClientBonuses } from './clientEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import {
@@ -173,6 +173,11 @@ export function calcResourceIncome(state: GameState): {
   const assetBonuses = computeTotalAssetBonuses(state.ownedAssets);
   const assetFides = assetBonuses.fides ?? 0;
 
+  // Step 6b: Province asset Fides bonus (former Gratia/Dignitas asset bonuses, now Fides)
+  const provinceFidesBonus = state.provinces.reduce(
+    (sum, p) => sum + calcAssetFidesOutput(p), 0
+  );
+
   // Step 7: Rome stat modifier
   const romeMods = calcRomeStatModifiers(state.rome);
   const romeStatFides = romeMods.fidesDelta;
@@ -198,6 +203,7 @@ export function calcResourceIncome(state: GameState): {
     + clanFidesIncome
     + clientFides
     + assetFides
+    + provinceFidesBonus
     + romeStatFides
     + crisisFidesDelta   // negative at higher crisis tiers
   );

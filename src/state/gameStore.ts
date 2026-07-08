@@ -40,7 +40,7 @@ import { STARTING_BILLS } from '../data/billTemplates';
 import { buildInitialProvinceStates } from '../data/provinceDefinitions';
 import { processSeason } from '../engine/turnSequencer';
 import { incrementLegacy, initLegacyObjectives } from '../engine/legacyEngine';
-import { adjustReputation } from '../engine/reputationEngine';
+import { adjustReputation, computeReputationDelta } from '../engine/reputationEngine';
 import {
   resolveAmbassadorAction as engineResolveAmbassadorAction,
   type AmbassadorActionId,
@@ -92,6 +92,9 @@ export interface GameState {
   bills: Bill[];
   _expandedBill: string | null;
   _expandedType: 'vote' | 'speech' | null;
+  /** Monotonic sequence for auto-generated bill ids (turnSequencer.nextBillId). Lives in state, not a module
+   *  singleton, so it survives being duplicated across Metro's per-route lazy web bundles. */
+  billIdSeq: number;
 
   // Forum
   clans: Clan[];
@@ -308,6 +311,7 @@ export interface GameActions {
   selectAmbition: (definitionId: string, scope: 'family' | 'character', assignedCharacterId?: string) => void;
   dismissAmbitionSelection: () => void;
   clearAmbitionScope: (scope: 'family' | 'character') => void;
+  requestAmbitionChange: (scope: 'family' | 'character') => void;
 
   // Reputation
   adjustClanReputation: (clanId: string, delta: number, clanName: string) => void;
@@ -443,6 +447,7 @@ export const INITIAL_STATE: GameState = {
   bills: STARTING_BILLS,
   _expandedBill: null,
   _expandedType: null,
+  billIdSeq: 1000,
 
   clans: STARTING_CLANS,
   expandedClanId: null,
@@ -538,6 +543,14 @@ const SEASON_NAMES = ['Spring', 'Summer', 'Autumn', 'Winter'];
 
 function turnLabel(state: GameState): string {
   return `${Math.abs(state.year)} BC · ${SEASON_NAMES[state.seasonIndex]}`;
+}
+
+function findClanAndLeader(clans: Clan[], leaderId: string) {
+  for (const clan of clans) {
+    const leader = clan.leaders.find(l => l.id === leaderId);
+    if (leader) return { clan, leader };
+  }
+  return null;
 }
 
 // ── Chunk 1B helper ───────────────────────────────────────────────────────────
@@ -828,11 +841,13 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const rhetoric = player?.skills.rhetoric ?? 0;
     const roll = Math.random();
     const success = roll < 0.4 + rhetoric * 0.06;
-    const delta = success
-      ? direction === 'for'
-        ? (bill.speechForSupport ?? 20)
-        : (bill.speechAgainstSupport ?? -20)
-      : 0;
+    const baseDelta = direction === 'for'
+      ? (bill.speechForSupport ?? 20)
+      : (bill.speechAgainstSupport ?? -20);
+    // Rhetoric scales the swing itself, not just whether it lands: 0.5x at rhetoric 0,
+    // 1x (the old flat default) at rhetoric 5, 1.5x at rhetoric 10.
+    const rhetoricMultiplier = 0.5 + rhetoric * 0.1;
+    const delta = success ? Math.round(baseDelta * rhetoricMultiplier) : 0;
     const label = turnLabel(s);
     set({
       fides: s.fides - speechFidesCost,
@@ -891,65 +906,89 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   buyInfluence: (leaderId) => {
     const s = get();
     if (s.fides < 10) return;
+    const found = findClanAndLeader(s.clans, leaderId);
+    if (!found) return;
     const label = turnLabel(s);
+    const relationshipDelta = 5;
+    const clanTotalVotes = found.clan.leaders.reduce((sum, l) => sum + l.votes, 0);
+    const repDelta = computeReputationDelta(relationshipDelta, found.leader.votes, clanTotalVotes);
     set({
       fides: s.fides - 10,
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
-          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + 5) } : l
+          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + relationshipDelta) } : l
         ),
       })),
       log: [...s.log, mkLog(label, 'Influence purchased with a clan leader.', 'neutral')],
     });
+    get().adjustClanReputation(found.clan.id, repDelta, found.clan.name);
   },
 
   inviteToDinner: (leaderId) => {
     const s = get();
     if (s.denarii < 20) return;
+    const found = findClanAndLeader(s.clans, leaderId);
+    if (!found) return;
     const label = turnLabel(s);
+    const relationshipDelta = 8;
+    const clanTotalVotes = found.clan.leaders.reduce((sum, l) => sum + l.votes, 0);
+    const repDelta = computeReputationDelta(relationshipDelta, found.leader.votes, clanTotalVotes);
     set({
       denarii: s.denarii - 20,
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
-          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + 8) } : l
+          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + relationshipDelta) } : l
         ),
       })),
       log: [...s.log, mkLog(label, 'Dinner hosted for a clan leader. Warmth increased.', 'good')],
     });
+    get().adjustClanReputation(found.clan.id, repDelta, found.clan.name);
   },
 
   forgeAlliance: (leaderId) => {
     const s = get();
     if (s.fides < 20) return;
+    const found = findClanAndLeader(s.clans, leaderId);
+    if (!found) return;
     const label = turnLabel(s);
+    const relationshipDelta = 12;
+    const clanTotalVotes = found.clan.leaders.reduce((sum, l) => sum + l.votes, 0);
+    const repDelta = computeReputationDelta(relationshipDelta, found.leader.votes, clanTotalVotes);
     set({
       fides: s.fides - 20,
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
-          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + 12), alliance: true } : l
+          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + relationshipDelta), alliance: true } : l
         ),
       })),
       log: [...s.log, mkLog(label, 'Alliance forged with a clan leader.', 'good')],
     });
+    get().adjustClanReputation(found.clan.id, repDelta, found.clan.name);
   },
 
   arrangeMarriageForum: (leaderId) => {
     const s = get();
     if (s.fides < 20) return;
+    const found = findClanAndLeader(s.clans, leaderId);
+    if (!found) return;
     const label = turnLabel(s);
+    const relationshipDelta = 20;
+    const clanTotalVotes = found.clan.leaders.reduce((sum, l) => sum + l.votes, 0);
+    const repDelta = computeReputationDelta(relationshipDelta, found.leader.votes, clanTotalVotes);
     set({
       fides: s.fides - 20,
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
-          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + 20) } : l
+          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + relationshipDelta) } : l
         ),
       })),
       log: [...s.log, mkLog(label, 'Marriage alliance arranged with a clan family.', 'good')],
     });
+    get().adjustClanReputation(found.clan.id, repDelta, found.clan.name);
   },
 
   gatherIntelligence: (leaderId) => {
@@ -1058,6 +1097,13 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       turnActivated: s.turnNumber,
       turnsRemaining: def.expiresInTurns,
     };
+    // Picking a new ambition for a scope (initial selection or a deliberate change from
+    // the Domus tab) always supersedes whatever's currently active there — dropped for
+    // free, with no reward or expiry consequence, since it's a choice, not a timeout.
+    const survivingAmbitions = s.ambitions.filter(a =>
+      !(a.status === 'active' && a.scope === scope &&
+        (scope !== 'character' || a.assignedCharacterId === assignedCharacterId))
+    );
     const newFamily = assignedCharacterId
       ? s.family.map(c =>
           c.id === assignedCharacterId
@@ -1066,7 +1112,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         )
       : s.family;
     set({
-      ambitions: [...s.ambitions, newAmbition],
+      ambitions: [...survivingAmbitions, newAmbition],
       family: newFamily,
       pendingAmbitionScopes: s.pendingAmbitionScopes.filter(sc => sc !== scope),
     });
@@ -1076,6 +1122,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   clearAmbitionScope: (scope) => set((s) => ({
     pendingAmbitionScopes: s.pendingAmbitionScopes.filter(sc => sc !== scope),
+  })),
+
+  // Opens the ambition picker for a scope on demand (e.g. tapping an ambition in the
+  // Domus character modal to change it), independent of the season-end auto-prompt.
+  requestAmbitionChange: (scope) => set((s) => ({
+    pendingAmbitionScopes: s.pendingAmbitionScopes.includes(scope)
+      ? s.pendingAmbitionScopes
+      : [...s.pendingAmbitionScopes, scope],
   })),
 
   // ─── Clientela ──────────────────────────────────────────────────────────────
@@ -1655,6 +1709,13 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       id: `provincial-${clientId}-${Date.now()}`,
       name: clientDef.name,
       type: 'provincial' as any,
+      flavourTitle: 'Provincial Client',
+      flavourText: clientDef.bonusDescription,
+      // Provincial clients carry their bonuses via provincialClientDefId (resolved through
+      // getProvincialClientDef), not the generic ClientBonus pool — but computeTotalClientBonuses
+      // and the Clientela UI both assume every Client has a `bonus` object, so this must be
+      // present (even empty) or those call sites crash on Object.entries(undefined).
+      bonus: {},
       acquiredTurn: s.turnNumber,
       isProvincialClient: true,
       provincialClientDefId: clientId,

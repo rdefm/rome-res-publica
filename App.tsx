@@ -155,42 +155,30 @@ function GameRoot() {
   }, [uiNavRequest]);
 
   // ── AgendaTablet auto-open ──────────────────────────────────────────────────
-  // Opens once per season after all blocking modals are dismissed.
-  // Priority (plan §P1-C): SeasonOverlay → EventModal → BirthNaming/Ambition
-  //                         → AgendaTablet (here, last).
-  const agendaVisible        = useGameStore(s => s.agendaVisible);
-  const seasonOverlayVisible = useGameStore(s => s.seasonOverlayVisible);
-  const activeEvent          = useGameStore(s => s.activeEvent);
-  const pendingBirthNaming   = useGameStore(s => s.pendingBirthNaming);
-  const pendingAmbitionScopes = useGameStore(s => s.pendingAmbitionScopes);
-  const agendaViewedTurn     = useGameStore(s => s.agendaViewedTurn);
-  const turnNumber           = useGameStore(s => s.turnNumber);
-  const showAgenda           = useGameStore(s => s.showAgenda);
-
+  // Uses a Zustand subscription rather than a useEffect deps array.
+  // A deps-array effect fires once per React render batch; if seasonOverlayVisible
+  // clears in the same batch as turnNumber changes, the effect can miss the window.
+  // A subscription fires after EVERY store commit, always reading current state.
   useEffect(() => {
-    if (!gameStarted) return;
-    if (agendaVisible) return;
-    if (seasonOverlayVisible) return;
-    if (activeEvent) return;
-    if (pendingBirthNaming) return;
-    if ((pendingAmbitionScopes ?? []).length > 0) return;
-    if (agendaViewedTurn >= turnNumber) return;
+    const checkAndMaybeOpen = () => {
+      const s = useGameStore.getState();
+      if (!s.gameStarted)                              return;
+      if (s.agendaVisible)                             return;
+      if (s.seasonOverlayVisible)                      return;
+      if (s.activeEvent)                               return;
+      if (s.pendingBirthNaming)                        return;
+      if ((s.pendingAmbitionScopes ?? []).length > 0)  return;
+      if (s.agendaViewedTurn >= s.turnNumber)          return;
 
-    // Auto-open when items exist, or in the first 8 turns (early-game guidance)
-    const items = generateAgenda(useGameStore.getState());
-    if (items.length > 0 || turnNumber <= 8) {
-      showAgenda();
-    }
-  }, [
-    gameStarted,
-    agendaVisible,
-    seasonOverlayVisible,
-    activeEvent,
-    pendingBirthNaming,
-    pendingAmbitionScopes,
-    agendaViewedTurn,
-    turnNumber,
-  ]);
+      const items = generateAgenda(s);
+      if (items.length > 0 || s.turnNumber <= 8) {
+        s.showAgenda();
+      }
+    };
+
+    const unsub = useGameStore.subscribe(checkAndMaybeOpen);
+    return unsub; // clean up on unmount
+  }, []); // intentionally empty — subscription lives for component lifetime
 
   // ── Render ──────────────────────────────────────────────────────────────────
 

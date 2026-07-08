@@ -8,6 +8,8 @@ import {
 } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import type { ClientType, Client, ClientBonus } from '../../models/client';
+import { getProvincialClientDef } from '../../data/provincialClients';
+import { getProvinceDefinition } from '../../data/provinceDefinitions';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 // ─── Asset map ───────────────────────────────────────────────────────────────
@@ -37,6 +39,17 @@ const TYPE_CONFIG: Record<ClientType, {
 };
 
 const CLIENT_TYPE_ORDER: ClientType[] = ['muscle', 'publicSupport', 'votingSway'];
+
+const PROVINCIAL_CONFIG = { emoji: '🏛️', label: 'PROVINCIAL', borderColor: COLORS.denariiColor };
+
+/** Resolves the province name a provincial client was recruited from, for display. */
+function getProvincialClientProvinceName(client: Client): string | null {
+  const defId = (client as any).provincialClientDefId as string | undefined;
+  if (!defId) return null;
+  const def = getProvincialClientDef(defId);
+  if (!def) return null;
+  return getProvinceDefinition(def.provinceId)?.name ?? def.provinceId;
+}
 
 // ─── Bonus pill labels ────────────────────────────────────────────────────────
 
@@ -70,8 +83,9 @@ function BonusPills({ bonus }: { bonus: ClientBonus }) {
 
 // ─── Client detail card ───────────────────────────────────────────────────────
 
-function ClientDetailCard({ client, borderColor }: { client: Client; borderColor: string }) {
+function ClientDetailCard({ client, borderColor, subtitle }: { client: Client; borderColor: string; subtitle?: string }) {
   const asset = PORTRAIT_ASSETS[client.type];
+  const displaySubtitle = subtitle ?? client.flavourTitle;
 
   return (
     <View style={[styles.clientDetailCard, { borderColor }]}>
@@ -88,7 +102,7 @@ function ClientDetailCard({ client, borderColor }: { client: Client; borderColor
       <View style={styles.clientInfo}>
         <Text style={styles.clientName} numberOfLines={1}>
           {client.name}
-          {client.flavourTitle ? <Text style={styles.clientFlavourTitle}> · {client.flavourTitle}</Text> : null}
+          {displaySubtitle ? <Text style={styles.clientFlavourTitle}> · {displaySubtitle}</Text> : null}
         </Text>
         {client.flavourText ? (
           <Text style={styles.clientFlavourText} numberOfLines={2}>{client.flavourText}</Text>
@@ -130,6 +144,40 @@ function TrackerRow({ type, clients }: { type: ClientType; clients: Client[] }) 
   );
 }
 
+// ─── Provincial clients row ────────────────────────────────────────────────────
+// Provincial clients (recruited from the Provinciae tab) carry a different bonus
+// shape than the three household categories above, so they get their own row
+// rather than being forced into MUSCLE/PUBLIC SUPPORT/VOTING SWAY.
+
+function ProvincialClientsRow({ clients }: { clients: Client[] }) {
+  const provincialClients = clients.filter(c => (c as any).isProvincialClient);
+  const count = provincialClients.length;
+
+  return (
+    <View style={styles.trackerRow}>
+      <View style={styles.rowHeader}>
+        <Text style={styles.rowLabel}>{PROVINCIAL_CONFIG.emoji} {PROVINCIAL_CONFIG.label}</Text>
+        <Text style={styles.rowCount}>[{count}]</Text>
+      </View>
+
+      {count === 0 ? (
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyText}>None yet</Text>
+        </View>
+      ) : (
+        provincialClients.map(client => (
+          <ClientDetailCard
+            key={client.id}
+            client={client}
+            borderColor={PROVINCIAL_CONFIG.borderColor}
+            subtitle={getProvincialClientProvinceName(client) ?? undefined}
+          />
+        ))
+      )}
+    </View>
+  );
+}
+
 // ─── Main panel ──────────────────────────────────────────────────────────────
 
 export default function ClientelaPanel() {
@@ -146,6 +194,7 @@ export default function ClientelaPanel() {
       {CLIENT_TYPE_ORDER.map(type => (
         <TrackerRow key={type} type={type} clients={clients} />
       ))}
+      <ProvincialClientsRow clients={clients} />
     </ScrollView>
   );
 }

@@ -24,7 +24,7 @@ function FamilyMemberPicker({
   onSelect: (id: string) => void;
 }) {
   const { family } = useGameStore();
-  const eligible = family.filter(c => c.age >= 25);
+  const eligible = family.filter(c => c.age >= 18);
 
   return (
     <View style={fp.container}>
@@ -191,6 +191,13 @@ function OfficeRung({
   const noCampaignActive = !campaigning;
   const isEligible = !isCurrent && !isCampaigning && !isHeld && prereqMet && ageOk && noCampaignActive;
 
+  // Whether to show the Apply button at all — current/held/campaigning offices show a
+  // status badge instead. When shown, it's disabled (greyed) rather than hidden when
+  // the character doesn't meet age/prerequisite/campaign-slot requirements, so the
+  // player can see the office and why they can't apply yet.
+  const showApplyBtn = !isCurrent && !isHeld && !isCampaigning;
+  const canApply = prereqMet && ageOk && noCampaignActive;
+
   const rungColor = isCurrent ? COLORS.gold
     : isCampaigning ? COLORS.denariiColor
     : isHeld        ? COLORS.laurel
@@ -225,9 +232,13 @@ function OfficeRung({
           <Text style={rung.latin}>{office.latin}</Text>
           <Text style={rung.meta}>Min age {office.minAge} · {office.termSeasons} seasons</Text>
         </View>
-        {isEligible && (
-          <TouchableOpacity style={rung.applyBtn} onPress={handleDeclare}>
-            <Text style={rung.applyText}>Apply</Text>
+        {showApplyBtn && (
+          <TouchableOpacity
+            style={[rung.applyBtn, !canApply && rung.applyBtnDisabled]}
+            onPress={handleDeclare}
+            disabled={!canApply}
+          >
+            <Text style={[rung.applyText, !canApply && rung.applyTextDisabled]}>Apply</Text>
           </TouchableOpacity>
         )}
         {isCurrent && <View style={rung.badge}><Text style={rung.badgeText}>IN OFFICE</Text></View>}
@@ -287,7 +298,9 @@ const rung = StyleSheet.create({
   meta: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 10, marginTop: 2 },
   desc: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6, lineHeight: 16 },
   applyBtn: { backgroundColor: COLORS.amber + '22', borderWidth: 1, borderColor: COLORS.amber, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.sm, paddingVertical: 6, minHeight: 36, justifyContent: 'center' },
+  applyBtnDisabled: { opacity: 0.4 },
   applyText: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 13, fontWeight: '700' },
+  applyTextDisabled: { color: PARCHMENT_TEXT.muted },
   badge: { backgroundColor: COLORS.gold + '22', borderWidth: 1, borderColor: COLORS.gold, borderRadius: 2, paddingHorizontal: 6, paddingVertical: 2 },
   badgeHeld: { backgroundColor: COLORS.laurel + '22', borderColor: COLORS.laurel },
   badgeCamp: { backgroundColor: COLORS.denariiColor + '22', borderColor: COLORS.denariiColor },

@@ -9,6 +9,7 @@ import type { CrisisTrackId } from '../models/crisis';
 import { SEVERITY_ORDER } from '../models/agenda';
 import { OFFICES, TRIBUNE_OFFICE } from '../data/offices';
 import { CORRUPTION_TRIAL_THRESHOLD } from './trialEngine';
+import { getClanStanding } from './reputationEngine';
 
 // ─── Crisis tier copy ─────────────────────────────────────────────────────────
 // Labels and penalty strings sourced directly from the tier tables in
@@ -265,7 +266,9 @@ function genCrisisHot(state: GameState): AgendaItem[] {
 
 function genCorruptionExposure(state: GameState): AgendaItem[] {
   const nearThreshold = CORRUPTION_TRIAL_THRESHOLD - 10;
-  const hasHostileClan = state.clans.some(c => c.standing === 'hostile');
+  const hasHostileClan = state.clans.some(
+    c => getClanStanding(c.id, state.familyReputations, state.electionRivals) === 'hostile'
+  );
   const items: AgendaItem[] = [];
 
   for (const member of state.family) {

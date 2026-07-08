@@ -198,9 +198,9 @@ export interface ProvinceAssetDefinition {
 export interface AssetBonus {
   label: string;
   goldPerTurn?: number;
-  dignitasPerTurn?: number;
-  gratiaPerTurn?: number;
-  imperiuPerTurn?: number;
+  /** Consolidated from the former dignitasPerTurn/gratiaPerTurn fields — both resources were removed. */
+  fidesPerTurn?: number;
+  imperiumPerTurn?: number;
   relationshipPerTurn?: number;
   corruptionResistance?: number;
 }

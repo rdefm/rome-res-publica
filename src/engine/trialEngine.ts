@@ -2,6 +2,7 @@ import type { Trial, TrialCharge, TrialOutcome } from '../models/trial';
 import type { GameState } from '../state/gameStore';
 import { computeTotalAssetBonuses } from './assetEngine';
 import { computeTotalClientBonuses } from './clientEngine';
+import { getClanStanding } from './reputationEngine';
 
 // ─── Build a new trial ────────────────────────────────────────────────────────
 
@@ -114,9 +115,10 @@ export function shouldTriggerTrial(state: GameState): {
   const player = state.family.find(c => c.isPlayer);
   if (!player) return null;
 
-  const accusingClan = state.clans.find(
-    c => c.standing === 'hostile' || c.standing === 'rival'
-  );
+  const accusingClan = state.clans.find(c => {
+    const standing = getClanStanding(c.id, state.familyReputations, state.electionRivals);
+    return standing === 'hostile' || standing === 'rival';
+  });
   if (!accusingClan) return null;
 
   // ── Blacklist check (Chunk 1C) ─────────────────────────────────────────────

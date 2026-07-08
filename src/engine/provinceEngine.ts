@@ -327,20 +327,22 @@ export function tickAllProvinces(
       governorMartial = char?.skills.martial ?? 0;
     }
 
-    // Calculate asset relationship bonus for this province
+    // Calculate asset relationship and Imperium bonuses for this province
     let assetRelBonus = 0;
+    let assetImperiumBonus = 0;
     for (const asset of province.ownedAssets) {
       const def = getProvinceAssetDefinition(asset.definitionId);
       if (!def) continue;
       const bonus = asset.tier === 2 ? def.tier2Bonus : def.tier1Bonus;
       assetRelBonus += bonus.relationshipPerTurn ?? 0;
+      assetImperiumBonus += bonus.imperiumPerTurn ?? 0;
     }
 
     const { updatedProvince, goldDelta, imperiumDelta, events: pEvents } =
       tickProvince(province, governorMartial, assetRelBonus);
 
     totalGoldDelta += goldDelta;
-    totalImperiumDelta += imperiumDelta;
+    totalImperiumDelta += imperiumDelta + assetImperiumBonus;
     events.push(...pEvents);
 
     return updatedProvince;
@@ -461,29 +463,17 @@ export function calcAssetGoldOutput(province: ProvinceState): number {
 }
 
 /**
- * Calculate dignitas output from all player-owned assets in a province.
+ * Calculate Fides output from all player-owned assets in a province.
+ * (Consolidates the former separate Dignitas/Gratia asset outputs — both
+ * resources were removed and folded into Fides.)
  */
-export function calcAssetDignitasOutput(province: ProvinceState): number {
+export function calcAssetFidesOutput(province: ProvinceState): number {
   let total = 0;
   for (const asset of province.ownedAssets) {
     const def = getProvinceAssetDefinition(asset.definitionId);
     if (!def) continue;
     const bonus = asset.tier === 2 ? def.tier2Bonus : def.tier1Bonus;
-    total += bonus.dignitasPerTurn ?? 0;
-  }
-  return total;
-}
-
-/**
- * Calculate gratia output from all player-owned assets in a province.
- */
-export function calcAssetGratiaOutput(province: ProvinceState): number {
-  let total = 0;
-  for (const asset of province.ownedAssets) {
-    const def = getProvinceAssetDefinition(asset.definitionId);
-    if (!def) continue;
-    const bonus = asset.tier === 2 ? def.tier2Bonus : def.tier1Bonus;
-    total += bonus.gratiaPerTurn ?? 0;
+    total += bonus.fidesPerTurn ?? 0;
   }
   return total;
 }

@@ -8,6 +8,7 @@ import {
   View, Text, Image, Modal, TouchableOpacity,
   ScrollView, StyleSheet, Dimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FONTS } from '../../utils/theme';
 
@@ -68,6 +69,7 @@ export default function ScrollModal({
   children,
   animationType = 'slide',
 }: ScrollModalProps) {
+  const insets = useSafeAreaInsets();
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(false);
   const [isScrollable, setIsScrollable] = useState(false);
 
@@ -93,7 +95,10 @@ export default function ScrollModal({
     >
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
 
-      <View style={styles.positioner} pointerEvents="box-none">
+      <View
+        style={[styles.positioner, { paddingBottom: insets.bottom }]}
+        pointerEvents="box-none"
+      >
         <View style={styles.scrollContainer}>
           <Image
             source={SCROLL_IMG}

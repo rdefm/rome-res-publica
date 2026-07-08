@@ -5,7 +5,6 @@ export const STARTING_CLANS: Clan[] = [
     id: 'cornelii',
     name: 'Gens Cornelia',
     sigil: '🦅',
-    standing: 'neutral',
     influence: 85,
     desc: 'The most powerful patrician family. Controls aristocratic senate seats and priesthoods.',
     leaders: [
@@ -88,7 +87,6 @@ export const STARTING_CLANS: Clan[] = [
     id: 'valerii',
     name: 'Gens Valeria',
     sigil: '🐺',
-    standing: 'ally',
     influence: 60,
     desc: 'Ancient plebeian clan. Populist sympathies, strong in the tribal assembly.',
     leaders: [
@@ -154,7 +152,6 @@ export const STARTING_CLANS: Clan[] = [
     id: 'fabii',
     name: 'Gens Fabia',
     sigil: '🐗',
-    standing: 'hostile',
     influence: 70,
     desc: 'Ancient rivals of the Brutii. Control northern tribal votes.',
     leaders: [
@@ -218,7 +215,6 @@ export const STARTING_CLANS: Clan[] = [
     id: 'claudii',
     name: 'Gens Claudia',
     sigil: '⚖️',
-    standing: 'rival',
     influence: 75,
     desc: 'Haughty patricians who view the Brutii as upstarts.',
     leaders: [

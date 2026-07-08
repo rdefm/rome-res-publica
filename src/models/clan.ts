@@ -42,7 +42,6 @@ export interface Clan {
   id: string;
   name: string;
   sigil: string;
-  standing: ClanStanding;
   influence: number; // 0–100
   desc: string;
   leaders: ClanLeader[];

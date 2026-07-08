@@ -30,12 +30,12 @@ export const PROVINCE_ASSET_DEFINITIONS: ProvinceAssetDefinition[] = [
     tier1Bonus: {
       label: 'Way-station',
       goldPerTurn: 3,
-      gratiaPerTurn: 1,
+      fidesPerTurn: 1,
     },
     tier2Bonus: {
       label: 'Traveller\'s Inn',
       goldPerTurn: 5,
-      gratiaPerTurn: 2,
+      fidesPerTurn: 2,
     },
   },
   {
@@ -46,11 +46,11 @@ export const PROVINCE_ASSET_DEFINITIONS: ProvinceAssetDefinition[] = [
     flavorText: 'A contract to supply and quarter auxiliary troops. Generates Imperium and goodwill with the legions.',
     tier1Bonus: {
       label: 'Minor Contract',
-      imperiuPerTurn: 2,
+      imperiumPerTurn: 2,
     },
     tier2Bonus: {
       label: 'Standing Contract',
-      imperiuPerTurn: 4,
+      imperiumPerTurn: 4,
     },
   },
   {
@@ -76,12 +76,12 @@ export const PROVINCE_ASSET_DEFINITIONS: ProvinceAssetDefinition[] = [
     flavorText: 'Endowing a local temple buys spiritual legitimacy and the warmth of the community.',
     tier1Bonus: {
       label: 'Minor Patron',
-      dignitasPerTurn: 3,
+      fidesPerTurn: 3,
       relationshipPerTurn: 2,
     },
     tier2Bonus: {
       label: 'Major Patron',
-      dignitasPerTurn: 5,
+      fidesPerTurn: 5,
       relationshipPerTurn: 4,
     },
   },

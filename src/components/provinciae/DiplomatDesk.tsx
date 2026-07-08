@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
+import InfoTap from '../shared/InfoTap';
 import type { ProvinceState, AmbassadorState } from '../../models/province';
 import type { AmbassadorActionId } from '../../engine/provinceEngine';
 
@@ -126,7 +127,9 @@ export default function DiplomatDesk({
       <View style={styles.divider} />
 
       {/* Action tray */}
-      <Text style={styles.sectionTitle}>AVAILABLE ACTIONS</Text>
+      <InfoTap termId="ambassador">
+        <Text style={styles.sectionTitle}>AVAILABLE ACTIONS</Text>
+      </InfoTap>
       <Text style={styles.sectionSubtitle}>One action per season. Used actions are locked until next season.</Text>
 
       {AMBASSADOR_ACTIONS.map(action => {

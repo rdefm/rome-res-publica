@@ -1,9 +1,8 @@
 import React from 'react';
-import {
-  View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView,
-} from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import type { CrisisTrackId, CrisisTrack, CrisisState, CrisisTier } from '../../models/crisis';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
+import ScrollModal, { PARCHMENT } from './ScrollModal';
 
 // ─── Track colour ─────────────────────────────────────────────────────────────
 
@@ -231,149 +230,83 @@ export default function CrisisTrackModal({
     economy:      ['Prosperous Republic',   'Tightening Budgets', 'Economic Strain',      'Scarcity Crisis',       'Economic Collapse'],
   };
 
+  const subtitle = track.namedCrisis
+    ? `${TIER_NAMES[trackId][activeTier]} — ${track.namedCrisis}`
+    : TIER_NAMES[trackId][activeTier];
+
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      presentationStyle="overFullScreen"
-    >
-      <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={onClose} />
-      <View style={s.sheet}>
-        <View style={s.handle} />
+    <ScrollModal visible={visible} onClose={onClose} title={TRACK_DISPLAY[trackId]} subtitle={subtitle}>
 
-        {/* ── Header ─────────────────────────────────────────────────────────── */}
-        <View style={[s.header, { borderBottomColor: color + '55' }]}>
-          <View style={s.headerLeft}>
-            <Text style={[s.trackName, { color }]}>{TRACK_DISPLAY[trackId]}</Text>
-            <Text style={[s.tierLabel, { color }]}>{TIER_NAMES[trackId][activeTier]}</Text>
-            {track.namedCrisis && (
-              <Text style={s.namedCrisis}>{track.namedCrisis}</Text>
-            )}
-          </View>
-          <View style={s.headerRight}>
-            <Text style={[s.levelBig, { color }]}>{Math.round(track.level)}</Text>
-            <Text style={s.levelDenom}>/100</Text>
-          </View>
-        </View>
-
-        <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
-
-          {/* ── Current effects ─────────────────────────────────────────────── */}
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>CURRENT EFFECTS</Text>
-            <Text style={s.effectsText}>{tierDef.effects}</Text>
-            {cascadeNote && (
-              <View style={s.cascadeBox}>
-                <Text style={s.cascadeLabel}>CASCADE ACTIVE</Text>
-                <Text style={s.cascadeText}>{cascadeNote}</Text>
-              </View>
-            )}
-          </View>
-
-          {/* ── Raises ──────────────────────────────────────────────────────── */}
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>WHAT RAISES THIS</Text>
-            <Text style={s.bodyText}>{content.raises}</Text>
-          </View>
-
-          {/* ── Lowers ──────────────────────────────────────────────────────── */}
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>WHAT LOWERS THIS</Text>
-            <Text style={s.bodyText}>{content.lowers}</Text>
-          </View>
-
-          {/* ── Tier reference ──────────────────────────────────────────────── */}
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>ALL TIERS</Text>
-            {([0, 1, 2, 3, 4] as CrisisTier[]).map((tier) => {
-              const isActive = tier === activeTier;
-              return (
-                <View
-                  key={tier}
-                  style={[s.tierRow, isActive && { borderColor: color, backgroundColor: color + '18' }]}
-                >
-                  <View style={s.tierRowHeader}>
-                    <Text style={[s.tierRowName, isActive && { color }]}>
-                      {TIER_NAMES[trackId][tier]}
-                    </Text>
-                    <Text style={s.tierRowRange}>{TIER_LABELS[tier].range}</Text>
-                    {isActive && (
-                      <View style={[s.activePip, { backgroundColor: color }]} />
-                    )}
-                  </View>
-                  <Text style={[s.tierRowEffects, isActive && s.tierRowEffectsActive]}>
-                    {TIER_LABELS[tier].effects}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-
-        </ScrollView>
+      {/* ── Level readout ────────────────────────────────────────────────────── */}
+      <View style={s.levelRow}>
+        <Text style={[s.levelBig, { color }]}>{Math.round(track.level)}</Text>
+        <Text style={s.levelDenom}>/100</Text>
       </View>
-    </Modal>
+
+      {/* ── Current effects ─────────────────────────────────────────────────── */}
+      <View style={s.section}>
+        <Text style={s.sectionTitle}>CURRENT EFFECTS</Text>
+        <Text style={s.effectsText}>{tierDef.effects}</Text>
+        {cascadeNote && (
+          <View style={s.cascadeBox}>
+            <Text style={s.cascadeLabel}>CASCADE ACTIVE</Text>
+            <Text style={s.cascadeText}>{cascadeNote}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* ── Raises ───────────────────────────────────────────────────────────── */}
+      <View style={s.section}>
+        <Text style={s.sectionTitle}>WHAT RAISES THIS</Text>
+        <Text style={s.bodyText}>{content.raises}</Text>
+      </View>
+
+      {/* ── Lowers ───────────────────────────────────────────────────────────── */}
+      <View style={s.section}>
+        <Text style={s.sectionTitle}>WHAT LOWERS THIS</Text>
+        <Text style={s.bodyText}>{content.lowers}</Text>
+      </View>
+
+      {/* ── Tier reference ───────────────────────────────────────────────────── */}
+      <View style={s.section}>
+        <Text style={s.sectionTitle}>ALL TIERS</Text>
+        {([0, 1, 2, 3, 4] as CrisisTier[]).map((tier) => {
+          const isActive = tier === activeTier;
+          return (
+            <View
+              key={tier}
+              style={[s.tierRow, isActive && { borderColor: color, backgroundColor: color + '18' }]}
+            >
+              <View style={s.tierRowHeader}>
+                <Text style={[s.tierRowName, isActive && { color }]}>
+                  {TIER_NAMES[trackId][tier]}
+                </Text>
+                <Text style={s.tierRowRange}>{TIER_LABELS[tier].range}</Text>
+                {isActive && (
+                  <View style={[s.activePip, { backgroundColor: color }]} />
+                )}
+              </View>
+              <Text style={[s.tierRowEffects, isActive && s.tierRowEffectsActive]}>
+                {TIER_LABELS[tier].effects}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+
+    </ScrollModal>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  sheet: {
-    backgroundColor: COLORS.panelSurface,
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
-    borderTopWidth: 1,
-    borderColor: COLORS.border,
-    maxHeight: '82%',
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    backgroundColor: COLORS.border,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: SPACING.sm,
-    marginBottom: 4,
-  },
-  header: {
+  levelRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingHorizontal: SPACING.md,
-    paddingBottom: SPACING.sm,
-    borderBottomWidth: 1,
-  },
-  headerLeft: { flex: 1 },
-  headerRight: {
     alignItems: 'flex-end',
-    justifyContent: 'flex-end',
-    flexDirection: 'row',
-    alignSelf: 'flex-end',
+    justifyContent: 'center',
     gap: 2,
-  },
-  trackName: {
-    fontFamily: FONTS.display,
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: 2,
-  },
-  tierLabel: {
-    fontFamily: FONTS.display,
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  namedCrisis: {
-    color: COLORS.dust,
-    fontFamily: FONTS.body,
-    fontStyle: 'italic',
-    fontSize: 11,
-    marginTop: 2,
+    marginBottom: SPACING.sm,
   },
   levelBig: {
     fontFamily: FONTS.ui,
@@ -382,62 +315,55 @@ const s = StyleSheet.create({
     lineHeight: 32,
   },
   levelDenom: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.ui,
     fontSize: 12,
     alignSelf: 'flex-end',
     marginBottom: 4,
   },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: SPACING.md,
-    paddingBottom: SPACING.xl,
-  },
   section: {
     paddingTop: SPACING.sm,
     marginTop: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: PARCHMENT.border,
   },
   sectionTitle: {
-    color: COLORS.goldDim,
+    color: PARCHMENT.gold,
     fontFamily: FONTS.ui,
     fontSize: 10,
     letterSpacing: 1.5,
     marginBottom: SPACING.sm,
   },
   effectsText: {
-    color: COLORS.marble,
+    color: PARCHMENT.heading,
     fontFamily: FONTS.bodyRegular,
     fontSize: 13,
     lineHeight: 20,
   },
   cascadeBox: {
     marginTop: SPACING.sm,
-    backgroundColor: COLORS.amber + '18',
+    backgroundColor: COLORS.amber + '22',
     borderWidth: 1,
-    borderColor: COLORS.amber + '55',
+    borderColor: COLORS.amber + '88',
     borderRadius: RADIUS.sm,
     padding: SPACING.sm,
   },
   cascadeLabel: {
-    color: COLORS.amber,
+    color: COLORS.crimsonDark,
     fontFamily: FONTS.ui,
     fontSize: 9,
     letterSpacing: 1.5,
     marginBottom: 4,
   },
   cascadeText: {
-    color: COLORS.marble,
+    color: PARCHMENT.heading,
     fontFamily: FONTS.body,
     fontStyle: 'italic',
     fontSize: 12,
     lineHeight: 18,
   },
   bodyText: {
-    color: COLORS.dust,
+    color: PARCHMENT.body,
     fontFamily: FONTS.body,
     fontStyle: 'italic',
     fontSize: 12,
@@ -445,7 +371,7 @@ const s = StyleSheet.create({
   },
   tierRow: {
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: PARCHMENT.border,
     borderRadius: RADIUS.sm,
     padding: SPACING.sm,
     marginBottom: SPACING.sm,
@@ -457,14 +383,14 @@ const s = StyleSheet.create({
     marginBottom: 3,
   },
   tierRowName: {
-    color: COLORS.marble,
+    color: PARCHMENT.heading,
     fontFamily: FONTS.display,
     fontSize: 12,
     fontWeight: '600',
     flex: 1,
   },
   tierRowRange: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.ui,
     fontSize: 10,
   },
@@ -474,12 +400,12 @@ const s = StyleSheet.create({
     borderRadius: 3,
   },
   tierRowEffects: {
-    color: COLORS.dust,
+    color: PARCHMENT.muted,
     fontFamily: FONTS.ui,
     fontSize: 11,
     lineHeight: 16,
   },
   tierRowEffectsActive: {
-    color: COLORS.marble,
+    color: PARCHMENT.heading,
   },
 });

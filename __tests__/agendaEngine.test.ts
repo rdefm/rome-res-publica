@@ -38,6 +38,8 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
     rome: { stability: 70, plebs: 60, treasury: 50 },
     // Clans
     clans: [],
+    familyReputations: {},
+    electionRivals: [],
     // Ambitions
     ambitions: [],
     // Senate/province
@@ -221,7 +223,8 @@ describe('generateAgenda', () => {
     const nearScore = CORRUPTION_TRIAL_THRESHOLD - 5;
     const state = makeState({
       family: [makePlayer({ corruptionScore: nearScore })],
-      clans: [{ id: 'fabii', standing: 'hostile', leaders: [], influence: 70, name: 'Gens Fabia' } as any],
+      clans: [{ id: 'fabii', leaders: [], influence: 70, name: 'Gens Fabia' } as any],
+      familyReputations: { fabii: -50 }, // below -10 → 'hostile' standing
     });
     const items = getCriticalItems(state);
     expect(items.some(i => i.id === 'agenda-corruption-pc-brutus')).toBe(true);

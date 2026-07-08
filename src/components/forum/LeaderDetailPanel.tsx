@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { ClanLeader } from '../../models/clan';
 import { useGameStore } from '../../state/gameStore';
-import { getUnlockedReputationActions } from '../../engine/reputationEngine';
+import { getUnlockedReputationActions, computeReputationDelta } from '../../engine/reputationEngine';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 // ─── ForumActionBtn ───────────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ const fab = StyleSheet.create({
 
 function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: string }) {
   const {
-    fides, campaigning, campaignVotes, familyReputations,
+    fides, denarii, campaigning, campaignVotes, familyReputations, clans,
     buyInfluence, inviteToDinner, forgeAlliance, arrangeMarriageForum,
     gatherIntelligence, canvassForVotes,
   } = useGameStore();
@@ -75,6 +75,11 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
 
   const allianceMarriageLocked = !unlockedActions.includes('propose_alliance_marriage');
   const allianceMarriageLockReason = `Requires "Cordial" standing (Rep ≥ 35). Current: ${repScore > 0 ? '+' : ''}${repScore}.`;
+
+  // Reputation swing scales with this leader's share of their clan's total
+  // voting bloc — see engine/reputationEngine.ts computeReputationDelta.
+  const clanTotalVotes = clans.find(c => c.id === clanId)?.leaders.reduce((sum, l) => sum + l.votes, 0) ?? 0;
+  const repFor = (relationshipDelta: number) => computeReputationDelta(relationshipDelta, leader.votes, clanTotalVotes);
 
   return (
     <View style={ld.container}>
@@ -97,49 +102,49 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
       <View style={ld.actions}>
         <ForumActionBtn
           label="Buy Influence"
-          cost="8 Fides"
-          desc="Relationship +. Reputation +5."
-          disabled={fides < 8}
+          cost="10 Fides"
+          desc={`Relationship +5. Reputation +${repFor(5)}.`}
+          disabled={fides < 10}
           onPress={() => buyInfluence(leader.id)}
         />
         <ForumActionBtn
           label="Invite to Dinner"
-          cost="12 Fides"
-          desc="Relationship +, Favour +. Reputation +3."
-          disabled={fides < 12}
+          cost="20 Denarii"
+          desc={`Relationship +8, Favour +. Reputation +${repFor(8)}.`}
+          disabled={denarii < 20}
           onPress={() => inviteToDinner(leader.id)}
         />
         <ForumActionBtn
           label="Forge Alliance"
           cost="20 Fides"
-          desc="Requires Rel ≥ 30. 2-season alliance. Reputation +5."
+          desc={`Requires Rel ≥ 30. 2-season alliance. Reputation +${repFor(12)}.`}
           disabled={fides < 20 || leader.relationship < 30}
           onPress={() => forgeAlliance(leader.id)}
         />
         <ForumActionBtn
           label="Arrange Marriage"
-          cost="18 Fides"
-          desc="Requires Rel ≥ 20. Standing improves. Reputation +15."
-          disabled={fides < 18 || leader.relationship < 20}
+          cost="20 Fides"
+          desc={`Requires Rel ≥ 20. Standing improves. Reputation +${repFor(20)}.`}
+          disabled={fides < 20 || leader.relationship < 20}
           locked={allianceMarriageLocked}
           lockReason={allianceMarriageLockReason}
           onPress={() => arrangeMarriageForum(leader.id)}
         />
         <ForumActionBtn
           label={leader.blackmail ? 'Counter Blackmail' : 'Gather Intelligence'}
-          cost="6 Fides"
+          cost="8 Fides"
           desc={leader.blackmail
             ? 'Neutralise leverage they hold.'
             : '50% chance to acquire leverage. Reputation -20 if successful.'}
-          disabled={fides < 6}
+          disabled={fides < 8}
           onPress={() => gatherIntelligence(leader.id)}
         />
         {campaigning && (
           <ForumActionBtn
             label={canvassed ? `Canvassed: ${campaignVotes[leader.id]}` : 'Canvass for Votes'}
-            cost="6 Fides"
+            cost="12 Fides"
             desc="One chance per leader per campaign."
-            disabled={fides < 6 || canvassed}
+            disabled={fides < 12 || canvassed}
             onPress={() => canvassForVotes(leader.id)}
           />
         )}

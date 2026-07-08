@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
@@ -11,6 +11,7 @@ import SeasonOverlay from '../components/shared/SeasonOverlay';
 import StatBar from '../components/shared/StatBar';
 import CrisisTrackModal from '../components/shared/CrisisTrackModal';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
+import ScrollModal, { PARCHMENT } from '../components/shared/ScrollModal';
 import { TRIAL_ACTIONS } from '../data/trialActions';
 import type { Bill, ActiveLaw } from '../models/bill';
 import type { CrisisTrackId, CrisisTrack } from '../models/crisis';
@@ -188,57 +189,48 @@ function RomeStatModal({
   const config = ROME_STAT_CONFIG[stat];
 
   return (
-    <Modal visible={visible} animationType="slide" transparent presentationStyle="overFullScreen">
-      <TouchableOpacity style={rsm.backdrop} activeOpacity={1} onPress={onClose} />
-      <View style={rsm.sheet}>
-        <View style={rsm.handle} />
-        <Text style={[rsm.title, { color: config.color }]}>{config.label}</Text>
-        <Text style={rsm.current}>Current: <Text style={{ color: config.color, fontWeight: '700' }}>{value}</Text></Text>
-        <ScrollView>
-          {config.thresholds.map((t, i) => {
-            const [min, max] = t.range.split('–').map(Number);
-            const isActive = value >= min && value <= max;
-            return (
-              <ParchmentCard
-                key={i}
-                style={rsm.thresholdCard}
-                selected={isActive}
-              >
-                <View style={rsm.thresholdRow}>
-                  <Text style={[rsm.thresholdLabel, isActive && { color: PARCHMENT_TEXT.gold }]}>
-                    {t.label}
-                  </Text>
-                  <Text style={rsm.thresholdRange}>{t.range}</Text>
-                </View>
-                <Text style={rsm.thresholdEffects}>{t.effects}</Text>
-                {isActive && (
-                  <Text style={rsm.activeTag}>← CURRENT</Text>
-                )}
-              </ParchmentCard>
-            );
-          })}
-        </ScrollView>
-      </View>
-    </Modal>
+    <ScrollModal
+      visible={visible}
+      onClose={onClose}
+      title={config.label}
+      subtitle={`Current: ${value}`}
+    >
+      {config.thresholds.map((t, i) => {
+        const [min, max] = t.range.split('–').map(Number);
+        const isActive = value >= min && value <= max;
+        return (
+          <View key={i} style={[rsm.thresholdCard, isActive && rsm.thresholdCardActive]}>
+            <View style={rsm.thresholdRow}>
+              <Text style={[rsm.thresholdLabel, isActive && rsm.thresholdLabelActive]}>
+                {t.label}
+              </Text>
+              <Text style={rsm.thresholdRange}>{t.range}</Text>
+            </View>
+            <Text style={rsm.thresholdEffects}>{t.effects}</Text>
+            {isActive && <Text style={rsm.activeTag}>← CURRENT</Text>}
+          </View>
+        );
+      })}
+    </ScrollModal>
   );
 }
 
 const rsm = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
-  sheet: {
-    backgroundColor: COLORS.panelSurface, borderTopColor: COLORS.border, borderTopWidth: 1,
-    borderTopLeftRadius: 12, borderTopRightRadius: 12, padding: SPACING.md,
-    paddingBottom: SPACING.xl, maxHeight: '80%',
+  thresholdCard: {
+    backgroundColor: 'rgba(200,168,112,0.25)',
+    borderWidth: 1,
+    borderColor: PARCHMENT.border,
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
   },
-  handle: { width: 40, height: 4, backgroundColor: COLORS.border, borderRadius: 2, alignSelf: 'center', marginBottom: SPACING.md },
-  title: { fontFamily: FONTS.display, fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 4 },
-  current: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 12, textAlign: 'center', marginBottom: SPACING.md },
-  thresholdCard: { marginBottom: SPACING.sm },
+  thresholdCardActive: { borderColor: PARCHMENT.gold, backgroundColor: 'transparent' },
   thresholdRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  thresholdLabel: { fontFamily: FONTS.display, fontSize: 14, fontWeight: '600', color: PARCHMENT_TEXT.heading },
-  thresholdRange: { fontFamily: FONTS.ui, fontSize: 11, color: PARCHMENT_TEXT.muted },
-  thresholdEffects: { fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, color: PARCHMENT_TEXT.body },
-  activeTag: { fontFamily: FONTS.ui, fontSize: 9, color: PARCHMENT_TEXT.gold, marginTop: 4, letterSpacing: 1 },
+  thresholdLabel: { fontFamily: FONTS.display, fontSize: 14, fontWeight: '600', color: PARCHMENT.heading },
+  thresholdLabelActive: { color: PARCHMENT.gold },
+  thresholdRange: { fontFamily: FONTS.ui, fontSize: 11, color: PARCHMENT.muted },
+  thresholdEffects: { fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, color: PARCHMENT.body },
+  activeTag: { fontFamily: FONTS.ui, fontSize: 9, color: PARCHMENT.gold, marginTop: 4, letterSpacing: 1 },
 });
 
 // ─── Trial banner ─────────────────────────────────────────────────────────────
@@ -352,6 +344,7 @@ function BillCard({ bill }: { bill: Bill }) {
   const { rome, fides, expandBill, _expandedBill, _expandedType, voteBill, speechBill, filibusterBill } = useGameStore();
   const isExpandedVote = _expandedBill === bill.id && _expandedType === 'vote';
   const isExpandedSpeech = _expandedBill === bill.id && _expandedType === 'speech';
+  const [detailVisible, setDetailVisible] = useState(false);
 
   const romeMod = calcRomeStatVoteModifier(bill, rome);
   const effectiveSupport = (bill.support ?? 0) + romeMod;
@@ -363,36 +356,40 @@ function BillCard({ bill }: { bill: Bill }) {
 
   return (
     <View style={bstyle.card}>
-      <View style={bstyle.topRow}>
-        <View style={bstyle.nameWrap}>
-          <Text style={bstyle.name}>{bill.name}</Text>
-          {bill.type && <Text style={bstyle.type}>{bill.type.toUpperCase()}</Text>}
+      <TouchableOpacity activeOpacity={0.75} onPress={() => setDetailVisible(true)}>
+        <View style={bstyle.topRow}>
+          <View style={bstyle.nameWrap}>
+            <Text style={bstyle.name}>{bill.name}</Text>
+            {bill.type && <Text style={bstyle.type}>{bill.type.toUpperCase()}</Text>}
+          </View>
+          <View style={bstyle.badges}>
+            {bill.playerSubmitted && <View style={bstyle.badge}><Text style={bstyle.badgeText}>YOURS</Text></View>}
+            {bill.playerVote && (
+              <View style={[bstyle.badge, { borderColor: bill.playerVote === 'filibuster' ? COLORS.crimson : COLORS.gold }]}>
+                <Text style={[bstyle.badgeText, { color: bill.playerVote === 'filibuster' ? COLORS.crimson : COLORS.gold }]}>
+                  {bill.playerVote.replace('_', ' ').toUpperCase()}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
-        <View style={bstyle.badges}>
-          {bill.playerSubmitted && <View style={bstyle.badge}><Text style={bstyle.badgeText}>YOURS</Text></View>}
-          {bill.playerVote && (
-            <View style={[bstyle.badge, { borderColor: bill.playerVote === 'filibuster' ? COLORS.crimson : COLORS.gold }]}>
-              <Text style={[bstyle.badgeText, { color: bill.playerVote === 'filibuster' ? COLORS.crimson : COLORS.gold }]}>
-                {bill.playerVote.replace('_', ' ').toUpperCase()}
-              </Text>
-            </View>
-          )}
-        </View>
-      </View>
 
-      <Text style={bstyle.desc}>{bill.desc}</Text>
-      {bill.ongoingEffect && <Text style={bstyle.ongoing}>Ongoing: {bill.ongoingEffect} per season</Text>}
+        <Text style={bstyle.desc}>{bill.desc}</Text>
+        {bill.ongoingEffect && <Text style={bstyle.ongoing}>Ongoing: {bill.ongoingEffect} per season</Text>}
 
-      <View style={bstyle.row}>
-        <Text style={bstyle.meta}>{bill.turnsLeft} seasons left</Text>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={[bstyle.verdict, { color: verdictColor }]}>{supportVerdict}</Text>
-          {romeMod !== 0 && (
-            <Text style={bstyle.modNote}>Rome mod: {romeMod > 0 ? '+' : ''}{romeMod}</Text>
-          )}
+        <View style={bstyle.row}>
+          <Text style={bstyle.meta}>{bill.turnsLeft} seasons left</Text>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={[bstyle.verdict, { color: verdictColor }]}>{supportVerdict}</Text>
+            {romeMod !== 0 && (
+              <Text style={bstyle.modNote}>Rome mod: {romeMod > 0 ? '+' : ''}{romeMod}</Text>
+            )}
+          </View>
         </View>
-      </View>
-      <BlocMeter support={effectiveSupport} />
+        <BlocMeter support={effectiveSupport} />
+      </TouchableOpacity>
+
+      <BillDetailModal bill={bill} visible={detailVisible} onClose={() => setDetailVisible(false)} />
 
       <View style={bstyle.actions}>
         <TouchableOpacity style={[bstyle.actionBtn, isExpandedVote && bstyle.actionBtnActive]} onPress={() => expandBill(bill.id, 'vote')}>
@@ -459,6 +456,115 @@ const bstyle = StyleSheet.create({
   subBtnLabel: { fontFamily: FONTS.display, fontSize: 14, fontWeight: '600', textAlign: 'center' },
 });
 
+// ─── Bill effect string formatting ────────────────────────────────────────────
+// Mirrors the token vocabulary applyEffectString (resourceEngine.ts) actually
+// understands, so the modal only ever shows effects that really happen —
+// colon tokens (setFlag, addClient, etc.) are internal bookkeeping and skipped.
+
+const EFFECT_LABELS: Record<string, string> = {
+  fides: 'Fides',
+  denarii: 'Denarii',
+  gold: 'Denarii',
+  lifetimeDignitas: 'Dignitas',
+  stability: 'Stability',
+  plebs: 'Plebs Mood',
+  treasury: 'Treasury',
+  imperium: 'Imperium',
+  corruption: 'Corruption',
+  popularesRel: 'Populares Standing',
+  optimatesRel: 'Optimates Standing',
+};
+
+const CRISIS_EFFECT_LABELS: Record<CrisisTrackId, string> = {
+  war: 'War Crisis',
+  unrest: 'Unrest',
+  constitution: 'Constitution Crisis',
+  economy: 'Economy Crisis',
+};
+
+function formatEffectString(effectStr: string | undefined): string[] {
+  if (!effectStr) return [];
+  const parts: string[] = [];
+  for (const raw of effectStr.split('|').map(s => s.trim()).filter(Boolean)) {
+    const crisisMatch = raw.match(/^crisis-(war|unrest|constitution|economy)([+-]\d+)$/);
+    if (crisisMatch) {
+      const delta = parseInt(crisisMatch[2], 10);
+      parts.push(`${delta > 0 ? '+' : ''}${delta} ${CRISIS_EFFECT_LABELS[crisisMatch[1] as CrisisTrackId]}`);
+      continue;
+    }
+    if (raw.includes(':')) continue; // internal bookkeeping token — not player-facing
+    const match = raw.match(/^([a-zA-Z]+)([+-]\d+)$/);
+    if (!match) continue;
+    const label = EFFECT_LABELS[match[1]];
+    if (!label) continue; // unrecognized/legacy key
+    const delta = parseInt(match[2], 10);
+    parts.push(`${delta > 0 ? '+' : ''}${delta} ${label}`);
+  }
+  return parts;
+}
+
+// ─── Bill detail modal ────────────────────────────────────────────────────────
+
+function BillDetailModal({ bill, visible, onClose }: { bill: Bill; visible: boolean; onClose: () => void }) {
+  const { rome } = useGameStore();
+  const romeMod = calcRomeStatVoteModifier(bill, rome);
+  const effectiveSupport = (bill.support ?? 0) + romeMod;
+
+  const passEffects = formatEffectString(bill.passEffect);
+  const failEffects = formatEffectString(bill.failEffect);
+  const ongoingEffects = formatEffectString(bill.ongoingEffect);
+
+  return (
+    <ScrollModal
+      visible={visible}
+      onClose={onClose}
+      title={bill.name}
+      subtitle={bill.type ? bill.type.toUpperCase() : undefined}
+    >
+      <Text style={bdm.desc}>{bill.desc}</Text>
+
+      <View style={bdm.metaRow}>
+        <Text style={bdm.metaText}>{bill.turnsLeft} season{bill.turnsLeft !== 1 ? 's' : ''} left</Text>
+        <Text style={bdm.metaText}>
+          Support: {effectiveSupport > 0 ? '+' : ''}{effectiveSupport}
+          {romeMod !== 0 ? ` (Rome mod ${romeMod > 0 ? '+' : ''}${romeMod})` : ''}
+        </Text>
+      </View>
+
+      <View style={bdm.section}>
+        <Text style={[bdm.sectionLabel, { color: COLORS.laurel }]}>IF PASSED</Text>
+        {passEffects.length > 0
+          ? passEffects.map((line, i) => <Text key={i} style={bdm.effectLine}>{line}</Text>)
+          : <Text style={bdm.effectLineMuted}>No direct effect.</Text>}
+      </View>
+
+      <View style={bdm.section}>
+        <Text style={[bdm.sectionLabel, { color: COLORS.crimson }]}>IF IT FAILS</Text>
+        {failEffects.length > 0
+          ? failEffects.map((line, i) => <Text key={i} style={bdm.effectLine}>{line}</Text>)
+          : <Text style={bdm.effectLineMuted}>No direct effect.</Text>}
+      </View>
+
+      {ongoingEffects.length > 0 && (
+        <View style={bdm.section}>
+          <Text style={[bdm.sectionLabel, { color: PARCHMENT.gold }]}>WHILE ACTIVE (PER SEASON)</Text>
+          {ongoingEffects.map((line, i) => <Text key={i} style={bdm.effectLine}>{line}</Text>)}
+        </View>
+      )}
+    </ScrollModal>
+  );
+}
+
+const bdm = StyleSheet.create({
+  desc: { color: PARCHMENT.body, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 13 },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACING.md, paddingBottom: SPACING.sm, borderBottomWidth: 1, borderBottomColor: PARCHMENT.border },
+  metaText: { color: PARCHMENT.muted, fontFamily: FONTS.ui, fontSize: 11 },
+  section: { marginTop: SPACING.md },
+  sectionLabel: { fontFamily: FONTS.ui, fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4 },
+  effectLine: { color: PARCHMENT.heading, fontFamily: FONTS.ui, fontSize: 13, marginBottom: 2 },
+  effectLineMuted: { color: PARCHMENT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12 },
+});
+
 // ─── Active Law card ──────────────────────────────────────────────────────────
 
 function ActiveLawCard({ law }: { law: ActiveLaw }) {
@@ -466,16 +572,22 @@ function ActiveLawCard({ law }: { law: ActiveLaw }) {
   const repealAlreadyActive = bills.some(b => b.type === 'repeal' && b.repeals === law.billId);
   const canRepeal = law.repealable && !repealAlreadyActive && fides >= 10;
   const seasonsLeft = law.expiresOnTurn !== undefined ? law.expiresOnTurn - turnNumber : null;
+  const [detailVisible, setDetailVisible] = useState(false);
 
   return (
     <ParchmentCard style={alc.card}>
-      <View style={alc.row}>
-        <Text style={alc.name}>{law.name}</Text>
-        {seasonsLeft !== null && (
-          <Text style={alc.expiry}>Expires in {seasonsLeft} season{seasonsLeft !== 1 ? 's' : ''}</Text>
-        )}
-      </View>
-      {law.ongoingEffect && <Text style={alc.ongoing}>Ongoing: {law.ongoingEffect} per season</Text>}
+      <TouchableOpacity activeOpacity={0.75} onPress={() => setDetailVisible(true)}>
+        <View style={alc.row}>
+          <Text style={alc.name}>{law.name}</Text>
+          {seasonsLeft !== null && (
+            <Text style={alc.expiry}>Expires in {seasonsLeft} season{seasonsLeft !== 1 ? 's' : ''}</Text>
+          )}
+        </View>
+        {law.ongoingEffect && <Text style={alc.ongoing}>Ongoing: {law.ongoingEffect} per season</Text>}
+      </TouchableOpacity>
+
+      <ActiveLawDetailModal law={law} visible={detailVisible} onClose={() => setDetailVisible(false)} />
+
       {law.repealable && (
         <TouchableOpacity
           style={[alc.repealBtn, !canRepeal && alc.repealBtnDisabled]}
@@ -490,6 +602,63 @@ function ActiveLawCard({ law }: { law: ActiveLaw }) {
     </ParchmentCard>
   );
 }
+
+// ─── Active law detail modal ──────────────────────────────────────────────────
+
+function ActiveLawDetailModal({ law, visible, onClose }: { law: ActiveLaw; visible: boolean; onClose: () => void }) {
+  const { turnNumber } = useGameStore();
+  // law.billId is the bill's runtime instance id (re-assigned on every injection/
+  // submission via nextBillId()/Date.now()), not the template's static id — so the
+  // only reliable way back to the template is by name, which stays stable per bill type.
+  const template = ALL_BILL_TEMPLATES.find(t => t.name === law.name);
+  const seasonsLeft = law.expiresOnTurn !== undefined ? law.expiresOnTurn - turnNumber : null;
+  const enactedEffects = formatEffectString(template?.passEffect);
+  const ongoingEffects = formatEffectString(law.ongoingEffect);
+
+  return (
+    <ScrollModal visible={visible} onClose={onClose} title={law.name} subtitle="ACTIVE LAW">
+      {template?.desc && <Text style={ldm.desc}>{template.desc}</Text>}
+
+      <View style={ldm.metaRow}>
+        <Text style={ldm.metaText}>Enacted turn {law.passedOnTurn}</Text>
+        <Text style={ldm.metaText}>
+          {seasonsLeft !== null ? `Expires in ${seasonsLeft} season${seasonsLeft !== 1 ? 's' : ''}` : 'Permanent'}
+        </Text>
+      </View>
+
+      {enactedEffects.length > 0 && (
+        <View style={ldm.section}>
+          <Text style={[ldm.sectionLabel, { color: COLORS.laurel }]}>WHEN ENACTED</Text>
+          {enactedEffects.map((line, i) => <Text key={i} style={ldm.effectLine}>{line}</Text>)}
+        </View>
+      )}
+
+      {ongoingEffects.length > 0 && (
+        <View style={ldm.section}>
+          <Text style={[ldm.sectionLabel, { color: PARCHMENT.gold }]}>WHILE ACTIVE (PER SEASON)</Text>
+          {ongoingEffects.map((line, i) => <Text key={i} style={ldm.effectLine}>{line}</Text>)}
+        </View>
+      )}
+
+      <View style={ldm.section}>
+        <Text style={[ldm.sectionLabel, { color: PARCHMENT.gold }]}>STATUS</Text>
+        <Text style={ldm.effectLine}>
+          {law.repealable ? 'Can be repealed by proposing a repeal bill.' : 'Cannot be repealed.'}
+        </Text>
+        {law.renewable && <Text style={ldm.effectLine}>Renews automatically when it expires.</Text>}
+      </View>
+    </ScrollModal>
+  );
+}
+
+const ldm = StyleSheet.create({
+  desc: { color: PARCHMENT.body, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 13 },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACING.md, paddingBottom: SPACING.sm, borderBottomWidth: 1, borderBottomColor: PARCHMENT.border },
+  metaText: { color: PARCHMENT.muted, fontFamily: FONTS.ui, fontSize: 11 },
+  section: { marginTop: SPACING.md },
+  sectionLabel: { fontFamily: FONTS.ui, fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4 },
+  effectLine: { color: PARCHMENT.heading, fontFamily: FONTS.ui, fontSize: 13, marginBottom: 2 },
+});
 
 const alc = StyleSheet.create({
   card: { marginBottom: SPACING.sm },
@@ -525,57 +694,44 @@ function SubmitBillModal({ visible, onClose }: { visible: boolean; onClose: () =
   });
 
   return (
-    <Modal visible={visible} animationType="slide" transparent presentationStyle="overFullScreen">
-      <TouchableOpacity style={modal.backdrop} activeOpacity={1} onPress={onClose} />
-      <View style={modal.sheet}>
-        <View style={modal.handle} />
-        <Text style={modal.title}>Submit a Bill</Text>
-        <Text style={modal.cost}>Cost: 10 Fides</Text>
-        <ScrollView>
-          {available.map((t, i) => {
-            const romeMod = calcRomeStatVoteModifier(t as Bill, rome);
-            return (
-              <TouchableOpacity
-                key={i}
-                style={[modal.item, fides < 10 && modal.itemDisabled]}
-                disabled={fides < 10}
-                onPress={() => { submitBill(t as any); onClose(); }}
-              >
-                <View style={modal.itemHeader}>
-                  <Text style={modal.itemName}>{t.name}</Text>
-                  {t.type && <Text style={modal.itemType}>{t.type.toUpperCase()}</Text>}
-                </View>
-                <Text style={modal.itemDesc}>{t.desc}</Text>
-                <View style={modal.itemMeta}>
-                  <Text style={modal.itemMetaText}>Support: {t.support > 0 ? `+${t.support}` : t.support} · {t.turnsLeft} seasons</Text>
-                  {romeMod !== 0 && <Text style={modal.itemMod}>Rome mod: {romeMod > 0 ? '+' : ''}{romeMod}</Text>}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-          {available.length === 0 && <Text style={modal.empty}>No bills available to submit.</Text>}
-        </ScrollView>
-      </View>
-    </Modal>
+    <ScrollModal visible={visible} onClose={onClose} title="Submit a Bill" subtitle="Cost: 10 Fides">
+      {available.map((t, i) => {
+        const romeMod = calcRomeStatVoteModifier(t as Bill, rome);
+        return (
+          <TouchableOpacity
+            key={i}
+            style={[modal.item, fides < 10 && modal.itemDisabled]}
+            disabled={fides < 10}
+            onPress={() => { submitBill(t as any); onClose(); }}
+          >
+            <View style={modal.itemHeader}>
+              <Text style={modal.itemName}>{t.name}</Text>
+              {t.type && <Text style={modal.itemType}>{t.type.toUpperCase()}</Text>}
+            </View>
+            <Text style={modal.itemDesc}>{t.desc}</Text>
+            <View style={modal.itemMeta}>
+              <Text style={modal.itemMetaText}>Support: {t.support > 0 ? `+${t.support}` : t.support} · {t.turnsLeft} seasons</Text>
+              {romeMod !== 0 && <Text style={modal.itemMod}>Rome mod: {romeMod > 0 ? '+' : ''}{romeMod}</Text>}
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+      {available.length === 0 && <Text style={modal.empty}>No bills available to submit.</Text>}
+    </ScrollModal>
   );
 }
 
 const modal = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
-  sheet: { backgroundColor: COLORS.panelSurface, borderTopColor: COLORS.border, borderTopWidth: 1, borderTopLeftRadius: 12, borderTopRightRadius: 12, padding: SPACING.md, paddingBottom: SPACING.xl, maxHeight: '75%' },
-  handle: { width: 40, height: 4, backgroundColor: COLORS.border, borderRadius: 2, alignSelf: 'center', marginBottom: SPACING.md },
-  title: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 18, fontWeight: '700', textAlign: 'center' },
-  cost: { color: COLORS.fidesColor, fontFamily: FONTS.ui, fontSize: 12, textAlign: 'center', marginBottom: SPACING.md },
-  item: { backgroundColor: COLORS.panelElevated, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.sm },
+  item: { backgroundColor: 'rgba(200,168,112,0.25)', borderWidth: 1, borderColor: PARCHMENT.border, borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.sm },
   itemDisabled: { opacity: 0.4 },
   itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  itemName: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 14, fontWeight: '600', flex: 1 },
-  itemType: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 9, letterSpacing: 1 },
-  itemDesc: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 3 },
+  itemName: { color: PARCHMENT.heading, fontFamily: FONTS.display, fontSize: 14, fontWeight: '600', flex: 1 },
+  itemType: { color: PARCHMENT.gold, fontFamily: FONTS.ui, fontSize: 9, letterSpacing: 1 },
+  itemDesc: { color: PARCHMENT.body, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 3 },
   itemMeta: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
-  itemMetaText: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 11 },
+  itemMetaText: { color: PARCHMENT.muted, fontFamily: FONTS.ui, fontSize: 11 },
   itemMod: { color: COLORS.senatBlue, fontFamily: FONTS.ui, fontSize: 11 },
-  empty: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', textAlign: 'center', marginTop: SPACING.lg },
+  empty: { color: PARCHMENT.muted, fontFamily: FONTS.body, fontStyle: 'italic', textAlign: 'center', marginTop: SPACING.lg },
 });
 
 // ─── CuriaScreen ──────────────────────────────────────────────────────────────

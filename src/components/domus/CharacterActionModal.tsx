@@ -23,23 +23,27 @@ const SKILL_LABELS: Record<string, string> = {
 // ─── Ambition tracker (player) ────────────────────────────────────────────────
 
 function PlayerAmbitionTracker({ characterId }: { characterId: string }) {
-  const { ambitions } = useGameStore();
-  const active    = ambitions.filter(a => a.status === 'active' && (a.scope === 'family' || a.assignedCharacterId === characterId));
+  const { ambitions, requestAmbitionChange } = useGameStore();
+  const familyAmbition    = ambitions.find(a => a.status === 'active' && a.scope === 'family');
+  const characterAmbition = ambitions.find(a => a.status === 'active' && a.scope === 'character' && a.assignedCharacterId === characterId);
   const completed = ambitions.filter(a => a.status === 'completed');
   const expired   = ambitions.filter(a => a.status === 'expired');
 
-  if (active.length === 0 && completed.length === 0) {
-    return (
-      <View style={at.container}>
-        <Text style={at.heading}>AMBITIONS</Text>
-        <Text style={at.empty}>No active ambitions. End the season to select one.</Text>
-      </View>
-    );
-  }
   return (
     <View style={at.container}>
       <Text style={at.heading}>AMBITIONS</Text>
-      {active.map(a => <ActiveAmbitionRow key={a.definitionId} ambition={a} />)}
+      <AmbitionSlot
+        icon="🏛️"
+        emptyLabel="No family ambition set"
+        ambition={familyAmbition}
+        onPress={() => requestAmbitionChange('family')}
+      />
+      <AmbitionSlot
+        icon="👤"
+        emptyLabel="No personal ambition set"
+        ambition={characterAmbition}
+        onPress={() => requestAmbitionChange('character')}
+      />
       {completed.length > 0 && (
         <>
           <Text style={at.subheading}>COMPLETED</Text>
@@ -56,21 +60,30 @@ function PlayerAmbitionTracker({ characterId }: { characterId: string }) {
   );
 }
 
-function ActiveAmbitionRow({ ambition }: { ambition: ActiveAmbition }) {
-  const def = getAmbitionDefinition(ambition.definitionId);
-  if (!def) return null;
-  const isExpiring = ambition.turnsRemaining !== undefined && ambition.turnsRemaining <= 5;
+// Tappable slot for the player's family/personal ambition — shown whether or not one
+// is currently active, since tapping either opens the picker to set or change it.
+function AmbitionSlot({
+  icon, emptyLabel, ambition, onPress,
+}: {
+  icon: string;
+  emptyLabel: string;
+  ambition: ActiveAmbition | undefined;
+  onPress: () => void;
+}) {
+  const def = ambition ? getAmbitionDefinition(ambition.definitionId) : undefined;
+  const isExpiring = ambition?.turnsRemaining !== undefined && ambition.turnsRemaining <= 5;
   return (
-    <View style={at.row}>
+    <TouchableOpacity style={at.row} onPress={onPress} activeOpacity={0.7}>
       <View style={at.rowHeader}>
-        <Text style={at.scopeBadge}>{ambition.scope === 'family' ? '🏛️' : '👤'}</Text>
-        <Text style={at.rowTitle}>{def.title}</Text>
-        {ambition.turnsRemaining !== undefined && (
+        <Text style={at.scopeBadge}>{icon}</Text>
+        <Text style={at.rowTitle}>{def ? def.title : emptyLabel}</Text>
+        {ambition?.turnsRemaining !== undefined && (
           <Text style={[at.turns, isExpiring && at.turnsUrgent]}>{ambition.turnsRemaining}t</Text>
         )}
+        <Text style={at.changeHint}>{def ? 'Change ›' : 'Choose ›'}</Text>
       </View>
-      <Text style={at.rowDesc}>{def.description}</Text>
-    </View>
+      {def && <Text style={at.rowDesc}>{def.description}</Text>}
+    </TouchableOpacity>
   );
 }
 function CompletedAmbitionRow({ ambition: a }: { ambition: ActiveAmbition }) {
@@ -88,8 +101,8 @@ const at = StyleSheet.create({
   container:       { marginTop: SPACING.md, borderTopWidth: 1, borderTopColor: PARCHMENT.border, paddingTop: SPACING.md },
   heading:         { color: PARCHMENT.gold, fontFamily: FONTS.ui, fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', marginBottom: SPACING.sm },
   subheading:      { color: PARCHMENT.muted, fontFamily: FONTS.ui, fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', marginTop: SPACING.sm, marginBottom: 4 },
-  empty:           { color: PARCHMENT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12 },
   row:             { backgroundColor: 'rgba(200,168,112,0.2)', borderWidth: 1, borderColor: PARCHMENT.border, borderRadius: RADIUS.sm, padding: SPACING.sm, marginBottom: SPACING.xs },
+  changeHint:      { color: COLORS.gold, fontFamily: FONTS.ui, fontSize: 10, letterSpacing: 0.3 },
   rowDone:         { opacity: 0.5, borderColor: COLORS.laurel },
   rowExpired:      { opacity: 0.4, borderColor: COLORS.crimson },
   rowHeader:       { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginBottom: 2 },

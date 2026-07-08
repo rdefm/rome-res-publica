@@ -72,15 +72,40 @@ export function buildRepealBill(law: ActiveLaw): Bill {
 //   Treasury/infra bills → crisis-economy
 
 export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { id: string })[] = [
+  // ── Lex de Viis ─────────────────────────────────────────────────────────────
+  // Now an active law (duration 16 seasons, renewable).
+  // While active, turnSequencer applies +1 infrastructure to every non-heartland
+  // province each season and drains rome.treasury by (province_count × 3).
+  // The ongoing road-maintenance cost scales automatically with empire size.
   {
     id: 'lex-de-viis',
     name: 'Lex de Viis',
-    desc: 'Road maintenance and expansion across the Republic.',
+    desc: 'Road maintenance and expansion across the Republic. While active, the public treasury funds ongoing improvements to provincial infrastructure. The cost of upkeep scales with the number of provinces — a larger empire demands greater investment.',
     type: 'economic',
     support: 15, turnsLeft: 3,
+    duration: 16, renewable: true,
+    renewalFlavour: 'The road maintenance law has lapsed. Without Senate funding, provincial roads begin to crumble.',
     passEffect: 'stability+5|lifetimeDignitas+4',
     failEffect: 'crisis-war+3',   // roads failing strains military supply
-    repealable: false,
+    repealable: true,
+  },
+  // ── Lex de Provinciarum Cultura ─────────────────────────────────────────────
+  // Development mandate bill. While active as a law, turnSequencer silently
+  // forces any player governor set to 'exploit' or 'neglect' up to 'maintain'
+  // before the province tick runs. The policy upgrade is automatic — the
+  // governor's gold output is reduced accordingly by the normal province formula.
+  // Only player governors are affected; NPC role-holders are not compelled.
+  {
+    id: 'lex-de-provinciarum-cultura',
+    name: 'Lex de Provinciarum Cultura',
+    desc: 'Governors of incorporated provinces are required by senatorial decree to maintain a minimum standard of civic development. Any governor found exploiting or neglecting their province\'s infrastructure will be compelled by the authority of the Senate to invest at the Maintain level. Rome\'s provinces are not to be stripped bare.',
+    type: 'economic',
+    support: -5, turnsLeft: 3,
+    duration: 12, renewable: true,
+    renewalFlavour: 'The development mandate has lapsed. Governors may once again neglect their provinces without senatorial censure.',
+    passEffect: 'stability+3|crisis-economy-4',
+    failEffect: 'crisis-economy+3',
+    repealable: true,
   },
   {
     id: 'lex-annalis',

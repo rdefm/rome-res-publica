@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
+import InfoTap from '../shared/InfoTap';
 import type {
   GovernorPolicy,
   TaxationNotch,
@@ -183,6 +184,10 @@ export default function PolicyBoard({
         </View>
       )}
 
+      <InfoTap termId="governor-policy" style={styles.policyHeader}>
+        <Text style={styles.policyHeaderText}>GOVERNOR POLICY</Text>
+      </InfoTap>
+
       <AxisSlider
         label="Taxation"
         notches={TAXATION_NOTCHES}
@@ -232,6 +237,19 @@ const styles = StyleSheet.create({
   board: {
     padding: SPACING.md,
   } as ViewStyle,
+
+  policyHeader: {
+    marginBottom: SPACING.sm,
+  } as ViewStyle,
+
+  policyHeaderText: {
+    color: COLORS.goldDim,
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    letterSpacing: 2,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  } as TextStyle,
 
   readOnlyBanner: {
     backgroundColor: '#2a2018',

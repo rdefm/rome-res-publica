@@ -4,7 +4,7 @@ import type { Clan } from '../../models/clan';
 import { useGameStore } from '../../state/gameStore';
 import LeaderCard from './LeaderCard';
 import LeaderDetailPanel from './LeaderDetailPanel';
-import { getReputationTier } from '../../engine/reputationEngine';
+import { getReputationTier, getClanStanding } from '../../engine/reputationEngine';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 const STANDING_COLORS: Record<string, string> = {
@@ -121,10 +121,11 @@ const rb = StyleSheet.create({
 // ─── ClanCard ─────────────────────────────────────────────────────────────────
 
 function ClanCard({ clan }: { clan: Clan }) {
-  const { expandedClanId, selectedLeaderId, expandClan, selectLeader } = useGameStore();
+  const { expandedClanId, selectedLeaderId, expandClan, selectLeader, familyReputations, electionRivals } = useGameStore();
   const isExpanded = expandedClanId === clan.id;
   const selectedLeader = clan.leaders.find((l) => l.id === selectedLeaderId);
-  const standingColor = STANDING_COLORS[clan.standing] ?? COLORS.dust;
+  const standing = getClanStanding(clan.id, familyReputations, electionRivals);
+  const standingColor = STANDING_COLORS[standing] ?? COLORS.dust;
 
   return (
     <View style={cc.container}>
@@ -134,7 +135,7 @@ function ClanCard({ clan }: { clan: Clan }) {
           <View style={cc.titleRow}>
             <Text style={cc.name}>{clan.name}</Text>
             <View style={[cc.standingBadge, { borderColor: standingColor }]}>
-              <Text style={[cc.standingText, { color: standingColor }]}>{clan.standing.toUpperCase()}</Text>
+              <Text style={[cc.standingText, { color: standingColor }]}>{standing.toUpperCase()}</Text>
             </View>
           </View>
           <Text style={cc.desc} numberOfLines={2}>{clan.desc}</Text>
