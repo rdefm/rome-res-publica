@@ -3,9 +3,8 @@ export type AmbitionStatus = 'active' | 'completed' | 'failed' | 'expired';
 
 export interface AmbitionReward {
   gold?: number;
-  dignitas?: number;
-  gratia?: number;
-  gravitas?: number;
+  lifetimeDignitas?: number;
+  fides?: number;
   imperium?: number;
   traitId?: string;         // grants a trait to the target character
   assetId?: string;         // grants an asset (tier 1) for free
@@ -15,7 +14,7 @@ export interface AmbitionReward {
 
 export interface AmbitionConsequence {
   gold?: number;            // negative = loss
-  dignitas?: number;
+  lifetimeDignitas?: number;
   familyTrustDelta?: number;
   reputationPenalty?: { clanId: string; delta: number }[];
 }
@@ -36,7 +35,7 @@ export interface AmbitionCondition {
   threshold?: number;
   assetId?: string;
   minTier?: 1 | 2 | 3;
-  resource?: 'gold' | 'dignitas' | 'gratia' | 'gravitas' | 'imperium';
+  resource?: 'gold' | 'fides' | 'imperium';
   amount?: number;
   turns?: number;
 }

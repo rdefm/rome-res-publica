@@ -12,7 +12,7 @@ export const AMBITION_DEFINITIONS: AmbitionDefinition[] = [
     flavourText: '"The Consul\'s fasces catch the morning light. That shall be ours."',
     completionCondition: { type: 'hold_office', officeId: 'consul' },
     reward: {
-      dignitas: 30,
+      lifetimeDignitas: 30,
       reputationBonus: [{ clanId: 'cornelii', delta: 10 }],
       chainAmbitionId: 'second_consul',
     },
@@ -24,7 +24,7 @@ export const AMBITION_DEFINITIONS: AmbitionDefinition[] = [
     description: 'Hold the Consulship a second time.',
     flavourText: '"Once is fortune. Twice is destiny."',
     completionCondition: { type: 'win_election', officeId: 'consul' },
-    reward: { dignitas: 50, gravitas: 20 },
+    reward: { lifetimeDignitas: 50, fides: 20 },
   },
   {
     id: 'wealthy_house',
@@ -33,7 +33,7 @@ export const AMBITION_DEFINITIONS: AmbitionDefinition[] = [
     description: 'Accumulate 500 Denarii in your family treasury.',
     flavourText: '"A senator without gold is merely a man with opinions."',
     completionCondition: { type: 'accumulate_resource', resource: 'gold', amount: 500 },
-    reward: { gratia: 20, dignitas: 10, chainAmbitionId: 'grand_estate' },
+    reward: { fides: 20, lifetimeDignitas: 10, chainAmbitionId: 'grand_estate' },
   },
   {
     id: 'grand_estate',
@@ -42,7 +42,7 @@ export const AMBITION_DEFINITIONS: AmbitionDefinition[] = [
     description: 'Own at least one asset at Tier 2 or above.',
     flavourText: '"Bricks and mortar outlast bronze statues."',
     completionCondition: { type: 'own_asset', assetId: 'vineyard', minTier: 2 },
-    reward: { dignitas: 15, gratia: 10 },
+    reward: { lifetimeDignitas: 15, fides: 10 },
   },
   {
     id: 'survive_dynasty',
@@ -51,7 +51,7 @@ export const AMBITION_DEFINITIONS: AmbitionDefinition[] = [
     description: 'Keep the Brutii alive and active for 12 more seasons.',
     flavourText: '"Many families rose in our grandfather\'s day. Few endure."',
     completionCondition: { type: 'survive_turns', turns: 12 },
-    reward: { dignitas: 20, gravitas: 15 },
+    reward: { lifetimeDignitas: 20, fides: 15 },
   },
   {
     id: 'trusted_patron',
@@ -60,7 +60,7 @@ export const AMBITION_DEFINITIONS: AmbitionDefinition[] = [
     description: 'Reach "Trusted Ally" standing with any clan.',
     flavourText: '"A family without allies is one prosecution away from ruin."',
     completionCondition: { type: 'reach_reputation', threshold: 60 },
-    reward: { gratia: 25, chainAmbitionId: 'bound_patron' },
+    reward: { fides: 25, chainAmbitionId: 'bound_patron' },
   },
   {
     id: 'bound_patron',
@@ -69,7 +69,7 @@ export const AMBITION_DEFINITIONS: AmbitionDefinition[] = [
     description: 'Reach "Bound by Oath" standing with any clan.',
     flavourText: '"When blood and oath align, even the Senate yields."',
     completionCondition: { type: 'reach_reputation', threshold: 85 },
-    reward: { gratia: 40, dignitas: 20 },
+    reward: { fides: 40, lifetimeDignitas: 20 },
   },
 
   // ─── Character ambitions ───────────────────────────────────────────────────
@@ -80,8 +80,8 @@ export const AMBITION_DEFINITIONS: AmbitionDefinition[] = [
     title: 'Voice of the Republic',
     description: 'Raise Rhetoric to 8 or above.',
     flavourText: '"When he speaks, even enemies pause to listen."',
-    completionCondition: { type: 'accumulate_resource', resource: 'gravitas', amount: 80 },
-    reward: { traitId: 'great_orator', gravitas: 20 },
+    completionCondition: { type: 'accumulate_resource', resource: 'fides', amount: 80 },
+    reward: { traitId: 'great_orator', fides: 20 },
   },
   {
     id: 'forge_alliance',
@@ -90,7 +90,7 @@ export const AMBITION_DEFINITIONS: AmbitionDefinition[] = [
     description: 'Reach "Trusted Ally" standing with two different clans.',
     flavourText: '"He who unites factions holds real power."',
     completionCondition: { type: 'reach_reputation', threshold: 60 },
-    reward: { gratia: 30, dignitas: 15 },
+    reward: { fides: 30, lifetimeDignitas: 15 },
   },
   {
     id: 'quaestor_path',
@@ -99,9 +99,9 @@ export const AMBITION_DEFINITIONS: AmbitionDefinition[] = [
     description: 'Win election to the Quaestorship.',
     flavourText: '"Every Consul was once a clerk counting grain."',
     completionCondition: { type: 'hold_office', officeId: 'quaestor' },
-    reward: { dignitas: 15, gravitas: 10 },
+    reward: { lifetimeDignitas: 15, fides: 10 },
     expiresInTurns: 16,
-    consequence: { dignitas: -5 },
+    consequence: { lifetimeDignitas: -5 },
   },
   {
     id: 'aedile_path',
@@ -110,9 +110,9 @@ export const AMBITION_DEFINITIONS: AmbitionDefinition[] = [
     description: 'Win election to the Aedileship.',
     flavourText: '"The people remember the man who fed them."',
     completionCondition: { type: 'hold_office', officeId: 'aedile' },
-    reward: { dignitas: 20, gratia: 15 },
+    reward: { lifetimeDignitas: 20, fides: 15 },
     expiresInTurns: 20,
-    consequence: { dignitas: -8 },
+    consequence: { lifetimeDignitas: -8 },
   },
   {
     id: 'praetor_path',
@@ -121,9 +121,9 @@ export const AMBITION_DEFINITIONS: AmbitionDefinition[] = [
     description: 'Win election to the Praetorship.',
     flavourText: '"Justice flows from the Praetor\'s bench — or at least the appearance of it."',
     completionCondition: { type: 'hold_office', officeId: 'praetor' },
-    reward: { dignitas: 30, gravitas: 15, imperium: 10 },
+    reward: { lifetimeDignitas: 30, fides: 15, imperium: 10 },
     expiresInTurns: 24,
-    consequence: { dignitas: -10 },
+    consequence: { lifetimeDignitas: -10 },
   },
   {
     id: 'patron_tier_one',
@@ -132,6 +132,6 @@ export const AMBITION_DEFINITIONS: AmbitionDefinition[] = [
     description: 'Reach Patron Tier 1.',
     flavourText: '"A few commoners look to you for protection."',
     completionCondition: { type: 'patron_tier_reached', threshold: 1 },
-    reward: { gratia: 15 },
+    reward: { fides: 15 },
   },
 ];

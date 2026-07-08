@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
   } as ViewStyle,
 
   barRapport: {
-    backgroundColor: COLORS.senate,
+    backgroundColor: COLORS.senatBlue,
   } as ViewStyle,
 
   intelDots: {

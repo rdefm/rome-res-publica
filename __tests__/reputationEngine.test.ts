@@ -8,7 +8,10 @@ import {
 import type { ElectionRival } from '../src/models/office';
 
 function makeRival(clanId: string): ElectionRival {
-  return { id: `rival-${clanId}`, name: 'Rival', emoji: '🎭', clanName: clanId, clanId, title: 'Candidate' };
+  return {
+    id: `rival-${clanId}`, name: 'Rival', emoji: '🎭', clanName: clanId, clanId, title: 'Candidate',
+    bias: 'optimates', baseVotes: 10, clanInfluence: 50, strength: 40, highestOffice: null,
+  };
 }
 
 describe('getReputationTier / adjustReputation', () => {

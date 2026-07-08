@@ -1,6 +1,6 @@
 export interface LegacyBonus {
-  resourceMultiplier?: Partial<Record<'gold' | 'dignitas' | 'gratia' | 'gravitas' | 'imperium', number>>;
-  flatBonus?: Partial<Record<'gold' | 'dignitas' | 'gratia' | 'gravitas' | 'imperium', number>>;
+  resourceMultiplier?: Partial<Record<'gold' | 'lifetimeDignitas' | 'fides' | 'imperium', number>>;
+  flatBonus?: Partial<Record<'gold' | 'lifetimeDignitas' | 'fides' | 'imperium', number>>;
   unlocksTrait?: string;
   unlocksAsset?: string;
 }

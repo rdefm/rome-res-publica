@@ -96,7 +96,7 @@ export default function MapView({ provinces, onProvincePress, selectedProvinceId
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             {province.ownedAssets.length > 0 && !isHeartland && (
-              <View style={[styles.assetRing, { borderColor: COLORS.denarii }]} />
+              <View style={[styles.assetRing, { borderColor: COLORS.denariiColor }]} />
             )}
 
             <View

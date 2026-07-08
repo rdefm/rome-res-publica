@@ -30,7 +30,7 @@ import { getOfficerDecisions } from '../../engine/campaignEngine';
 interface MilitaryTabProps {
   province: ProvinceState;
   family: Character[];
-  playerGravitas: number;
+  playerFides: number;
   playerDenarii: number;
   playerImperium: number;
   commanderElection: CommanderElectionState | null;
@@ -52,7 +52,7 @@ interface MilitaryTabProps {
 export default function MilitaryTab({
   province,
   family,
-  playerGravitas,
+  playerFides,
   playerDenarii,
   playerImperium,
   commanderElection,
@@ -170,7 +170,7 @@ export default function MilitaryTab({
         <CommanderElectionPanel
           election={commanderElection}
           campaignVotes={campaignVotes}
-          playerGravitas={playerGravitas}
+          playerFides={playerFides}
           selectedCandidateId={selectedCandidateId}
           onSelectCandidate={setSelectedCandidateId}
           onNominate={() => {
@@ -192,7 +192,7 @@ export default function MilitaryTab({
           strategy={strategy}
           morale={morale}
           playerDenarii={playerDenarii}
-          playerGravitas={playerGravitas}
+          playerFides={playerFides}
           onSetManpower={setManpower}
           onSetStrategy={setStrategy}
           onSetMorale={setMorale}
@@ -260,7 +260,7 @@ export default function MilitaryTab({
 function CommanderElectionPanel({
   election,
   campaignVotes,
-  playerGravitas,
+  playerFides,
   selectedCandidateId,
   onSelectCandidate,
   onNominate,
@@ -269,7 +269,7 @@ function CommanderElectionPanel({
 }: {
   election: CommanderElectionState;
   campaignVotes: Record<string, 'for' | 'against' | 'neutral'>;
-  playerGravitas: number;
+  playerFides: number;
   selectedCandidateId: string | null;
   onSelectCandidate: (id: string) => void;
   onNominate: () => void;
@@ -319,12 +319,12 @@ function CommanderElectionPanel({
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.electionBtn, playerGravitas < 10 && styles.btnDisabled]}
+          style={[styles.electionBtn, playerFides < 10 && styles.btnDisabled]}
           onPress={onSpeech}
-          disabled={playerGravitas < 10}
+          disabled={playerFides < 10}
           activeOpacity={0.75}
         >
-          <Text style={styles.electionBtnText}>Give Speech (10 Gravitas)</Text>
+          <Text style={styles.electionBtnText}>Give Speech (10 Fides)</Text>
         </TouchableOpacity>
       </View>
 
@@ -374,7 +374,7 @@ function WarRoom({
   strategy,
   morale,
   playerDenarii,
-  playerGravitas,
+  playerFides,
   onSetManpower,
   onSetStrategy,
   onSetMorale,
@@ -387,7 +387,7 @@ function WarRoom({
   strategy: CampaignAllocation['strategy'];
   morale: CampaignAllocation['morale'];
   playerDenarii: number;
-  playerGravitas: number;
+  playerFides: number;
   onSetManpower: (v: CampaignAllocation['manpower']) => void;
   onSetStrategy: (v: CampaignAllocation['strategy']) => void;
   onSetMorale: (v: CampaignAllocation['morale']) => void;

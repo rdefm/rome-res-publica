@@ -55,13 +55,13 @@ function getProvincialClientProvinceName(client: Client): string | null {
 
 const BONUS_LABELS: Record<keyof ClientBonus, string> = {
   gold:               '🪙 Gold',
-  gratia:             '🤝 Gratia',
-  dignitas:           '⭐ Dignitas',
-  gravitas:           '⚖ Gravitas',
+  fides:              '🤝 Fides',
+  lifetimeDignitas:   '⭐ Dignitas',
   trialDefenseBonus:  '🛡 Defence',
   corruptionShield:   '🔒 Corruption',
   rhetoricalBonus:    '📜 Rhetoric',
   martialBonus:       '⚔ Martial',
+  votingSwayBonus:    '🗳 Votes',
 };
 
 function BonusPills({ bonus }: { bonus: ClientBonus }) {

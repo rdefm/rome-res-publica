@@ -1,11 +1,10 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
-import type { ProvinceState, ProvinceAssetOwned } from '../../models/province';
+import type { ProvinceState, ProvinceAssetOwned, ProvinceAssetDefinition } from '../../models/province';
 import {
   getAvailableAssetsForProvince,
   getProvinceAssetDefinition,
-  type ProvinceAssetDefinition,
 } from '../../data/provinceAssets';
 
 // ─── Component ────────────────────────────────────────────────────────────────

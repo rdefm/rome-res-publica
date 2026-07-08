@@ -14,11 +14,10 @@ import InfoTap from './InfoTap';
 function rewardSummary(def: AmbitionDefinition): string {
   const r = def.reward;
   const parts: string[] = [];
-  if (r.gold)      parts.push(`+${r.gold} Denarii`);
-  if (r.dignitas)  parts.push(`+${r.dignitas} Dignitas`);
-  if (r.gravitas)  parts.push(`+${r.gravitas} Gravitas`);
-  if (r.gratia)    parts.push(`+${r.gratia} Gratia`);
-  if (r.imperium)  parts.push(`+${r.imperium} Imperium`);
+  if (r.gold)             parts.push(`+${r.gold} Denarii`);
+  if (r.lifetimeDignitas) parts.push(`+${r.lifetimeDignitas} Dignitas`);
+  if (r.fides)            parts.push(`+${r.fides} Fides`);
+  if (r.imperium)         parts.push(`+${r.imperium} Imperium`);
   if (r.traitId)   parts.push(`Grants trait: ${r.traitId}`);
   if (r.assetId)   parts.push(`Grants asset: ${r.assetId}`);
   if (r.chainAmbitionId) parts.push('Chains to new ambition');

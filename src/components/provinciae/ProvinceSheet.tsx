@@ -543,7 +543,7 @@ function OverviewTab({
         <View
           style={[
             styles.relBarFill,
-            { width: `${province.infrastructureRating}%`, backgroundColor: COLORS.senate },
+            { width: `${province.infrastructureRating}%`, backgroundColor: COLORS.senatBlue },
           ]}
         />
       </View>

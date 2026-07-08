@@ -40,13 +40,11 @@ const ASSET_IMAGES: Record<string, ReturnType<typeof require> | null> = {
 
 const BONUS_LABELS: Record<keyof AssetBonus, string> = {
   gold:             '+{n} Denarii/season',
-  dignitas:         '+{n} Dignitas/season',
-  gratia:           '+{n} Gratia/season',
-  gravitas:         '+{n} Gravitas/season',
+  lifetimeDignitas: '+{n} Dignitas/season',
+  fides:            '+{n} Fides/season',
   imperium:         '+{n} Imperium/season',
   rhetoricalBonus:  '+{n} Rhetoric skill bonus',
   martialBonus:     '+{n} Martial skill bonus',
-  auctoritasBonus:  '+{n} Auctoritas skill bonus',
   intrigusBonus:    '+{n} Intrigus skill bonus',
   clientSlots:      '+{n} Client slot(s)',
   corruptionShield: '-{n} Corruption gain/season',

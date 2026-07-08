@@ -366,10 +366,8 @@ export interface AmbassadorActionResult {
   success: boolean;
   provincePatch: Partial<ProvinceState>;
   resourcePatch: {
-    gratia?: number;
+    fides?: number;
     denarii?: number;
-    dignitas?: number;
-    gravitas?: number;
     corruption?: number;
   };
   logMessage: string;
@@ -391,7 +389,7 @@ export function resolveAmbassadorAction(
             ? { ...province.playerAmbassador, personalRapport: Math.min(50, province.playerAmbassador.personalRapport + 4) }
             : null,
         },
-        resourcePatch: { gratia: -15 },
+        resourcePatch: { fides: -15 },
         logMessage: 'Ambassador builds personal rapport with local leaders.',
       };
 
@@ -414,7 +412,7 @@ export function resolveAmbassadorAction(
             ? { ...province.playerAmbassador, intelRevealed: Math.min(6, province.playerAmbassador.intelRevealed + 1) }
             : null,
         },
-        resourcePatch: { gratia: -10 },
+        resourcePatch: { fides: -10 },
         logMessage: 'Intelligence gathered on local power structure.',
       };
 
@@ -434,7 +432,7 @@ export function resolveAmbassadorAction(
         provincePatch: {
           localSupport: Math.min(100, province.localSupport + 6),
         },
-        resourcePatch: { gratia: -15 },
+        resourcePatch: { fides: -15 },
         logMessage: 'Cultural exchange arranged. A region-specific event has been queued.',
       };
 

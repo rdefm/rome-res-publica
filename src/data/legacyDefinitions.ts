@@ -10,17 +10,17 @@ export const LEGACY_DEFINITIONS: LegacyObjectiveDefinition[] = [
       {
         threshold: 1,
         label: 'First Among Equals',
-        permanentBonus: { flatBonus: { dignitas: 5 } },
+        permanentBonus: { flatBonus: { lifetimeDignitas: 5 } },
       },
       {
         threshold: 3,
         label: 'Consular Family',
-        permanentBonus: { flatBonus: { dignitas: 10 }, resourceMultiplier: { gravitas: 1.1 } },
+        permanentBonus: { flatBonus: { lifetimeDignitas: 10 }, resourceMultiplier: { fides: 1.1 } },
       },
       {
         threshold: 7,
         label: 'Ancient Nobility',
-        permanentBonus: { flatBonus: { dignitas: 20 }, unlocksTrait: 'nobilitas' },
+        permanentBonus: { flatBonus: { lifetimeDignitas: 20 }, unlocksTrait: 'nobilitas' },
       },
     ],
   },
@@ -56,17 +56,17 @@ export const LEGACY_DEFINITIONS: LegacyObjectiveDefinition[] = [
       {
         threshold: 10,
         label: 'Senate Regular',
-        permanentBonus: { flatBonus: { gravitas: 3 } },
+        permanentBonus: { flatBonus: { fides: 3 } },
       },
       {
         threshold: 40,
         label: 'Senate Voice',
-        permanentBonus: { resourceMultiplier: { gravitas: 1.1 } },
+        permanentBonus: { resourceMultiplier: { fides: 1.1 } },
       },
       {
         threshold: 100,
         label: 'Pillar of Rome',
-        permanentBonus: { flatBonus: { gravitas: 15 }, unlocksTrait: 'father_of_senate' },
+        permanentBonus: { flatBonus: { fides: 15 }, unlocksTrait: 'father_of_senate' },
       },
     ],
   },
@@ -79,12 +79,12 @@ export const LEGACY_DEFINITIONS: LegacyObjectiveDefinition[] = [
       {
         threshold: 40,
         label: 'Established House',
-        permanentBonus: { flatBonus: { dignitas: 5 } },
+        permanentBonus: { flatBonus: { lifetimeDignitas: 5 } },
       },
       {
         threshold: 100,
         label: 'Ancient House',
-        permanentBonus: { flatBonus: { dignitas: 15 }, resourceMultiplier: { dignitas: 1.1 } },
+        permanentBonus: { flatBonus: { lifetimeDignitas: 15 }, resourceMultiplier: { lifetimeDignitas: 1.1 } },
       },
       {
         threshold: 200,
