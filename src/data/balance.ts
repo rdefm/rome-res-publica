@@ -337,6 +337,24 @@ export const BALANCE = {
       commanderReserveMultPerMartial: 0.01,
       unledLaneMoraleSeedDelta: -15,
       unledLaneBlocksWedgeAndFeint: true,
+      /** M4 — clan legates: min familyReputations[clanId] to offer one
+       *  offerable legate captain from that clan. */
+      legateMinRelationship: 60,
+      legateMartialMin: 4,
+      legateMartialMax: 7,
+      legateAcceptRelationshipBonus: 5,
+      legateCrushingVictoryShareBonus: 10,
+      legateDeathRelationshipPenalty: -15,
+    },
+
+    /** M4 — wounded status. Deliberately NOT a per-unit skill-penalty
+     *  mechanic (no generic character-skill-buff pathway exists in this
+     *  codebase — see musterEngine.ts's header comment); wounded is a
+     *  flags-cooldown entry consumed only where the martial rating is
+     *  actually read for battle purposes (captain roster resolution). */
+    wounds: {
+      durationTurns: 4,
+      martialPenalty: 2,
     },
 
     /** Loyalty effects specific to battle. Loyalty *lifecycle* (gain/decay
@@ -448,10 +466,22 @@ export const BALANCE = {
       sueThresholdEffects: { levyDenariiCostMult: 0.75, wingsDefMult: 1.1 },
       forcedThresholdEffects: { extraStratagemHandSize: 1, winningOverextensionUpkeepMult: 1.25 },
     },
-    /** M4: ransom demand for a captured character. */
+    /** M4: ransom demand for a captured character. `negotiate` is a
+     *  DEVIATION from the plan's literal "60% chance" framing — this
+     *  codebase's event system only supports deterministic skill-gate
+     *  checks (skill >= difficulty), not weighted-random outcomes (verified
+     *  in eventEngine.ts's resolveChoice; adding true RNG there would be
+     *  new surgery on a shared, large file for one choice). A paterfamilias
+     *  with intrigus >= negotiateIntrigusDifficulty reliably halves the
+     *  ransom for a Fides cost; below that, negotiation reliably fails and
+     *  the Fides is spent for nothing — consistent with every other
+     *  skill-checked event choice in the game. */
     ransom: {
       baseDenarii: 150,
-      negotiateFidesChance: 0.6,
+      negotiateFidesCost: 15,
+      negotiateIntrigusDifficulty: 6,
+      negotiateSuccessMult: 0.5,
+      refuseLifetimeDignitasPenalty: -5,
     },
     /** Design decision (see models/war.ts header comment): provincial revolts
      *  route through this same set-piece system as a 'local' scale war,

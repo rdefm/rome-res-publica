@@ -59,6 +59,13 @@ import {
 } from '../engine/munificenceEngine';
 import { applyTrackDelta } from '../engine/crisisEngine';
 import { injectNoticeEvent } from '../engine/eventEngine';
+// Military Overhaul M4 — battle bridge
+import type { BattleState, BattleSide, BattleOutcome } from '../models/battle';
+import {
+  applyBattleOutcome,
+  resolveRansomChoice,
+  type BattleBridgeContext,
+} from '../engine/battle/musterEngine';
 
 export interface LogEntry {
   id: string;
@@ -399,6 +406,21 @@ export interface GameActions {
   startCampaign: (provinceId: string, type: CampaignState['type']) => void;
   volunteerOfficer: (provinceId: string, characterId: string) => void;
   resolveOfficerDecision: (provinceId: string, decisionIndex: number, tookRisk: boolean) => void;
+
+  // ── Military Overhaul M4 — battle bridge ──────────────────────────────────
+  // Thin wrappers over musterEngine.ts's pure functions (per the plan's
+  // cross-chunk note). No `activeBattle` session state yet (M5) — callers
+  // pass the finished BattleState/BattleOutcome directly, which is also
+  // exactly what a headless debug harness needs.
+  resolveBattleOutcome: (
+    battleState: BattleState,
+    romeSide: BattleSide,
+    outcome: BattleOutcome,
+    ctx: BattleBridgeContext,
+  ) => void;
+  payRansom: (characterId: string) => void;
+  negotiateRansom: (characterId: string) => void;
+  refuseRansom: (characterId: string) => void;
 
   // ── Canvassing ──────────────────────────────────────────────────────────
   canvassLeader: (leaderId: string) => void;
@@ -2093,6 +2115,68 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
           : c
       ),
     }));
+  },
+
+  // ── Military Overhaul M4 — battle bridge ──────────────────────────────────
+
+  resolveBattleOutcome: (battleState, romeSide, outcome, ctx) => {
+    const s = get();
+    const { state: nextState, ledgerNotes } = applyBattleOutcome(s, battleState, romeSide, outcome, ctx);
+    const label = turnLabel(s);
+    const logType: LogEntry['type'] =
+      outcome.victor === 'withdrawal' ? 'neutral' : outcome.victor === romeSide ? 'good' : 'bad';
+    set({
+      ...nextState,
+      log: [...nextState.log, ...ledgerNotes.map(note => mkLog(label, note, logType))],
+    });
+  },
+
+  payRansom: (characterId) => {
+    const s = get();
+    const character = s.family.find(c => c.id === characterId);
+    if (!character?.captivity || character.captivity.status !== 'awaiting_ransom') return;
+    if (s.denarii < character.captivity.demandDenarii) return;
+
+    const result = resolveRansomChoice(s.family, characterId, 'pay', 0);
+    const label = turnLabel(s);
+    set({
+      family: result.family,
+      denarii: s.denarii + result.denariiDelta,
+      log: [...s.log, mkLog(label, result.logMessage, 'neutral')],
+    });
+  },
+
+  negotiateRansom: (characterId) => {
+    const s = get();
+    const character = s.family.find(c => c.id === characterId);
+    if (!character?.captivity || character.captivity.status !== 'awaiting_ransom') return;
+    if (s.fides < BALANCE.war.ransom.negotiateFidesCost) return;
+
+    const player = s.family.find(c => c.isPlayer);
+    const result = resolveRansomChoice(s.family, characterId, 'negotiate', player?.skills.intrigus ?? 0);
+    if (s.denarii + result.denariiDelta < 0) return; // can't afford even the (possibly halved) ransom
+
+    const label = turnLabel(s);
+    set({
+      family: result.family,
+      denarii: s.denarii + result.denariiDelta,
+      fides: s.fides + result.fidesDelta,
+      log: [...s.log, mkLog(label, result.logMessage, 'neutral')],
+    });
+  },
+
+  refuseRansom: (characterId) => {
+    const s = get();
+    const character = s.family.find(c => c.id === characterId);
+    if (!character?.captivity || character.captivity.status !== 'awaiting_ransom') return;
+
+    const result = resolveRansomChoice(s.family, characterId, 'refuse', 0);
+    const label = turnLabel(s);
+    set({
+      family: result.family,
+      lifetimeDignitas: Math.max(0, s.lifetimeDignitas + result.lifetimeDignitasDelta),
+      log: [...s.log, mkLog(label, result.logMessage, 'bad')],
+    });
   },
 
   updateLocalSupportForPlayer: (provinceId, delta) => {

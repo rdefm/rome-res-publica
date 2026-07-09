@@ -1,6 +1,6 @@
 export type TrialOutcome = 'acquitted' | 'fined' | 'exiled' | 'executed' | 'dismissed';
 export type TrialRole = 'defendant' | 'prosecutor';
-export type TrialCharge = 'corruption' | 'treason' | 'electoral_fraud' | 'murder';
+export type TrialCharge = 'corruption' | 'treason' | 'electoral_fraud' | 'murder' | 'military_incompetence';
 
 export interface Trial {
   id: string;

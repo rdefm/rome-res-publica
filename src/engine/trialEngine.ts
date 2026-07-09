@@ -137,6 +137,19 @@ export function shouldTriggerTrial(state: GameState): {
     return { charge: 'treason', accusedId: player.id, accusingClanId: accusingClan.id };
   }
 
+  // ── Military Overhaul M4 — defeated general prosecution ──────────────────
+  // Hostile clans may prosecute any family member (not just the player) who
+  // commanded a clear-or-worse defeat in a set-piece battle. musterEngine's
+  // applyBattleOutcome sets `flags['defeatedGeneral-<characterId>']`;
+  // turnSequencer.ts clears it once a trial actually fires from it (the flag
+  // otherwise keeps re-rolling each season it isn't consumed).
+  const defeatedGeneralId = Object.keys(state.flags)
+    .find(k => k.startsWith('defeatedGeneral-') && state.flags[k] === true)
+    ?.slice('defeatedGeneral-'.length);
+  if (defeatedGeneralId && state.family.some(c => c.id === defeatedGeneralId) && Math.random() < 0.25) {
+    return { charge: 'military_incompetence', accusedId: defeatedGeneralId, accusingClanId: accusingClan.id };
+  }
+
   return null;
 }
 

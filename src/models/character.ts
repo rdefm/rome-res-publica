@@ -3,6 +3,17 @@ import { TroopUnit } from './troop';
 export type PersonalityTrait = 'aggressive' | 'content' | 'ambitious' | 'cautious';
 export type AmbitionType = 'gain_dignitas' | 'protect_family' | 'personal_power';
 
+// ─── Military Overhaul M4 — captivity status ─────────────────────────────────
+// Wounded status is deliberately NOT a Character field — see musterEngine.ts's
+// header comment for why (reuses the existing generic `<key>-cooldown` flags
+// decay pass in turnSequencer.ts instead of a new per-character field/tick).
+
+export interface CaptivityState {
+  status: 'awaiting_ransom' | 'imprisoned';
+  demandDenarii: number;
+  capturedTurn: number;
+}
+
 export interface CharacterSkills {
   rhetoric: number;   // 0–10. Drives Fides income.
   martial: number;    // 0–10. Military campaigns and governor effectiveness.
@@ -40,4 +51,9 @@ export interface Character {
   // Military fields (Chunk H)
   raisedLegions: TroopUnit[];  // Personal legions raised by this character. Persist across postings.
   veterans: TroopUnit[];        // Veterans from survived campaigns. Never lost between postings.
+
+  // Military Overhaul M4 — optional so existing Character object literals
+  // (startingFamily.ts, birth/inheritance) don't all need updating; absent
+  // is equivalent to null (not captured).
+  captivity?: CaptivityState | null;
 }

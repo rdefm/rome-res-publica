@@ -1100,6 +1100,13 @@ export function processSeason(state: GameState): {
       events.push(
         `⚖️ ${accusingClan?.name ?? 'A rival faction'} has brought charges of ${trigger.charge.replace('_', ' ')} against ${accused?.name ?? 'your family'}. ${newTrial.turnsRemaining} seasons to prepare your defense.`
       );
+
+      // Military Overhaul M4: consume the defeatedGeneral flag once it
+      // actually produces a trial (it otherwise re-rolls every season).
+      if (trigger.charge === 'military_incompetence') {
+        const { [`defeatedGeneral-${trigger.accusedId}`]: _consumed, ...restFlags } = s.flags;
+        s = { ...s, flags: restFlags };
+      }
     }
   }
 
