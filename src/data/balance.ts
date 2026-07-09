@@ -3,7 +3,8 @@
 // (rome-phase2-implementation-plan.md) seeds this by extracting existing
 // scattered constants without changing their values. Later chunks fill in
 // their placeholder groups: training (P2-C), relationships (P2-D),
-// munificence (P2-F), actionEconomy (P2-E).
+// munificence (P2-F), actionEconomy (P2-E), battle/war (Military Overhaul
+// Chunk M1 — rome-military-implementation-plan.md).
 //
 // Discipline: after this chunk, any new numeric literal for a tunable
 // belongs here, not inline in engine/store code. A magic number added to
@@ -30,6 +31,7 @@ import {
   RIVAL_STRENGTH_BY_OFFICE_RANK,
   CANVASS_FIDES_COST_BY_OFFICE_RANK,
 } from '../engine/electionEngine';
+import type { UnitClass, Veterancy, FormationId, TerrainMod } from '../models/battle';
 
 export const BALANCE = {
   // ─── Fides income formula (resourceEngine.calcResourceIncome) ─────────────
@@ -198,6 +200,249 @@ export const BALANCE = {
     },
     /** A season running longer than this (wall-clock) is flagged on the Pace panel. */
     maxSeasonDurationSec: 8 * 60,
+  },
+
+  // ─── M1 — Battle system (src/engine/battle/*) ──────────────────────────────
+  // Set-piece battle math. See rome-military-implementation-plan.md §Chunk M1
+  // for the source tables and rationale for every number below. Zero of this
+  // is read by any engine yet — M1 is types + numbers only, no wiring.
+  battle: {
+    /** Base stats per unit class. shock only matters on a unit's charging
+     *  round (see `shock` decay below); moraleWeight feeds the wing morale
+     *  pool seed. */
+    unitStats: {
+      legionary:     { atk: 6, def: 6, shock: 3,  moraleWeight: 7, notes: 'The line that grinds' },
+      spear_foot:    { atk: 4, def: 7, shock: 2,  moraleWeight: 7, notes: 'The wall' },
+      skirmisher:    { atk: 3, def: 2, shock: 1,  moraleWeight: 4, notes: 'The screen' },
+      cavalry_heavy: { atk: 5, def: 4, shock: 8,  moraleWeight: 6, notes: 'The hammer' },
+      cavalry_light: { atk: 4, def: 3, shock: 4,  moraleWeight: 5, notes: 'The net' },
+      elephant:      { atk: 7, def: 6, shock: 10, moraleWeight: 8, notes: 'The gamble' },
+    } as Record<UnitClass, { atk: number; def: number; shock: number; moraleWeight: number; notes: string }>,
+
+    /** Class-vs-class modifiers, data-driven per invariant 3 (a naval reskin
+     *  adds rows, not switch branches). `subjectClass` is the unit receiving
+     *  the modifier; `vsClass` is the opposing class present in the lane that
+     *  triggers it. Applied by clashEngine (M2) alongside the base stat +
+     *  formation + veterancy + captain + terrain pipeline. */
+    matchups: [
+      { subjectClass: 'legionary', vsClass: 'spear_foot', atkDelta: 2,
+        note: 'legionary atk +2 (swords beat spears in the grind)' },
+      { subjectClass: 'spear_foot', vsClass: 'cavalry_heavy', defDelta: 2, incomingShockMult: 0.25,
+        note: 'spear def +2; incoming shock from cavalry_heavy ×0.25' },
+      { subjectClass: 'spear_foot', vsClass: 'elephant', defDelta: 2, incomingShockMult: 0.25,
+        note: 'spear def +2; incoming shock from elephant ×0.25' },
+      { subjectClass: 'cavalry_heavy', vsClass: 'spear_foot', atkDelta: -2,
+        note: 'cavalry atk −2 vs spear wall (stacks with the shock negation above)' },
+      { subjectClass: 'cavalry_light', vsClass: 'cavalry_heavy', incomingShockMult: 0.5, firstClashOnly: true,
+        note: 'first-clash incoming shock ×0.5 (evasion)' },
+      { subjectClass: 'cavalry_light', vsClass: 'skirmisher', atkDelta: 2,
+        note: 'cavalry_light atk +2' },
+    ] as Array<{
+      subjectClass: UnitClass;
+      vsClass: UnitClass;
+      atkDelta?: number;
+      defDelta?: number;
+      incomingShockMult?: number;
+      firstClashOnly?: boolean;
+      note: string;
+    }>,
+
+    /** Lane-level (not class-vs-class) effect: a lane containing enough
+     *  skirmisher strength dampens incoming shock for the whole lane. */
+    skirmisherScreen: {
+      minStrength: 30,
+      incomingShockMult: 0.7,
+    },
+
+    /** Stat/morale multipliers by veterancy tier. */
+    veterancy: {
+      raw:       { statMult: 0.85, moraleSeedDelta: -10 },
+      trained:   { statMult: 1.00, moraleSeedDelta: 0 },
+      veteran:   { statMult: 1.15, moraleSeedDelta: 10 },
+      legendary: { statMult: 1.30, moraleSeedDelta: 20 },
+    } as Record<Veterancy, { statMult: number; moraleSeedDelta: number }>,
+
+    /** Formation stat multipliers. `feigned_retreat` is excluded — it's
+     *  resolved as a one-off manoeuvre via `feint` below, not a standing
+     *  stance. `requiresCaptain` lanes without a captain may not select it
+     *  (enforced by battleEngine.getValidOrders, M3). */
+    formations: {
+      line:        { atkMult: 1.0,  defMult: 1.0,  incomingShockMult: 1.0, requiresCaptain: false },
+      wedge:       { atkMult: 1.25, defMult: 0.8,  incomingShockMult: 1.25, requiresCaptain: true,
+                     flankChargeMultVsThisLane: 1.25, extraMoraleLossOnRoundLoss: 1 },
+      shield_wall: { atkMult: 0.75, defMult: 1.3,  incomingShockMult: 0.6, requiresCaptain: false,
+                     skirmisherPreludeChipMult: 0.5, wingMoraleDrainMult: 0.85 },
+      open_ranks:  { atkMult: 0.9,  defMult: 0.85, incomingShockMult: 0.2, requiresCaptain: false,
+                     terrorImmune: true },
+    } as Record<Exclude<FormationId, 'feigned_retreat'>, {
+      atkMult: number;
+      defMult: number;
+      incomingShockMult: number;
+      requiresCaptain: boolean;
+      flankChargeMultVsThisLane?: number;
+      extraMoraleLossOnRoundLoss?: number;
+      skirmisherPreludeChipMult?: number;
+      wingMoraleDrainMult?: number;
+      terrorImmune?: boolean;
+    }>,
+
+    /** Feigned retreat gating + roll math. Gating: permitted if lane avg
+     *  veterancy ≥ veteran, OR (avg veterancy ≥ trained AND avg loyalty ≥
+     *  minLoyaltyWithMinVeterancy), OR any legendary unit present (checked
+     *  directly by the engine, not encoded here). */
+    feint: {
+      minVeterancyAvgTier: 'veteran' as Veterancy,
+      minVeterancyAvgTierWithLoyalty: 'trained' as Veterancy,
+      minLoyaltyWithMinVeterancy: 70,
+      successBase: 30,
+      successPerAvgLoyalty: 0.5,
+      successPerVeterancyTierIndex: 10,
+      successCap: 95,
+      /** Roll ≤ this on the success check = botch, regardless of success chance. */
+      botchRollMax: 10,
+      successEnemyOverextendedDefMult: 0.7,
+      successOwnNextChargeShockMult: 1.25,
+      failureOwnMoraleDelta: -3,
+      failureOwnDefMult: 0.8,
+      botchOwnMoraleDelta: -10,
+    },
+
+    /** A unit's shock applies in full on its first round engaged in a lane,
+     *  half the second, none after — resets on entering a new lane (wheel,
+     *  reserve commit) and on a successful feint countercharge. */
+    shock: {
+      firstRoundMult: 1.0,
+      secondRoundMult: 0.5,
+      thirdPlusRoundMult: 0,
+    },
+
+    /** Captain/commander effects. */
+    command: {
+      captainAtkDefMultPerMartial: 0.02,
+      captainMoraleSeedPerMartial: 2,
+      /** Commander stationed on a lane acts as that lane's captain at full
+       *  effect, plus this army-wide morale seed bonus. */
+      commanderStationedArmyWideMoraleSeed: 1,
+      /** Commander in reserve/rear grants every lane this fraction of the
+       *  stationed-captain martial multiplier instead (half-effect). */
+      commanderReserveMultPerMartial: 0.01,
+      unledLaneMoraleSeedDelta: -15,
+      unledLaneBlocksWedgeAndFeint: true,
+    },
+
+    /** Loyalty effects specific to battle. Loyalty *lifecycle* (gain/decay
+     *  over time) lives in `lifecycle` below (M8). */
+    loyalty: {
+      highThreshold: 80,
+      highMoraleSeedBonus: 5,
+      lowThreshold: 30,
+      /** Extra morale loss whenever a low-loyalty wing loses a round ("wavering"). */
+      lowWaveringMoraleDelta: -2,
+    },
+
+    /** Melee exchange math (clashEngine, M2). */
+    melee: {
+      baseCasualtyRate: 6,
+      minCasualtyPct: 2,
+      maxCasualtyPct: 15,
+    },
+
+    /** Wing morale pool: seed, drain, break, and rout-cascade math. */
+    morale: {
+      seedPerAvgWeightedMoraleWeight: 10,
+      clampMin: 20,
+      clampMax: 100,
+      casualtyDrainMult: 0.8,
+      brokenThreshold: 0,
+      /** Once a side has 2 broken wings, its remaining wing takes this extra
+       *  drain automatically each round. */
+      routCascadeMoraleDeltaPerRound: -20,
+    },
+
+    /** Wing-break resolution: the victor's pursue-vs-wheel choice. */
+    break: {
+      pursueDestroyPct: 0.4,
+      pursueDestroyPctWithCavalryLight: 0.6,
+      pursueEnemyCaptainCaptureWeightBonus: 15,
+      pursueWarScoreRider: 2,
+      wheelShockResetMult: 1.5,
+      wheelTargetMoraleDelta: -10,
+      wheelFlankedDefMult: 0.85,
+    },
+
+    /** Elephant terror, skirmisher-prelude panic, and amok checks. */
+    elephant: {
+      terrorMoraleDeltaPerRound: -2,
+      terrorMinStrengthInLane: 30,
+      skirmisherPreludeStrengthDamage: 8,
+      skirmisherPreludeAmokChanceDelta: 0.10,
+      amokBaseChancePerEngagedRound: 0.08,
+      amokLowStrengthThreshold: 50,
+      amokLowStrengthChanceBonus: 0.15,
+      /** Amok checks begin this round (no check on the first engaged round). */
+      amokFirstEligibleRound: 2,
+      /** M8: chance to gain a captured elephant unit after a crushing victory
+       *  over an army that fielded elephants. */
+      capturedElephantChance: 0.25,
+      capturedElephantStartingLoyalty: 30,
+    },
+
+    /** Character risk on battle end (weights sum to 100 within each branch). */
+    risk: {
+      wingRouted:       { killed: 10, captured: 20, wounded: 30, unharmed: 40 },
+      battleLostNoRout: { killed: 3,  captured: 5,  wounded: 15, unharmed: 77 },
+      cavalryWingKilledWeightBonus: 5,
+      enemyPursuedCapturedWeightBonus: 15,
+      /** Commander (vs a mere captain) is a bigger prize. */
+      commanderCapturedWeightBonus: 5,
+    },
+
+    /** Victory tiers and their warScore swing (mirrored negative for a loss). */
+    tiers: {
+      crushingMinWingsBroken: 2,
+      crushingMinCasualtyPct: 0.6,
+      clearMinWingsBroken: 2,
+      warScoreByTier: { crushing: 20, clear: 12, marginal: 6 },
+      orderlyWithdrawalWarScore: -4,
+    },
+
+    /** Four terrain types. `mods` keys are read by clashEngine (M2); absent
+     *  keys mean "no modifier" (coastal_plain is intentionally neutral —
+     *  it exists so a future naval-adjacent fight has a label to use). */
+    terrains: {
+      open_plain:     { id: 'open_plain',     label: 'Open Plain',      mods: { cavalryShock: 1.15 } },
+      rough_hills:    { id: 'rough_hills',    label: 'Rough Hills',     mods: { cavalryShock: 0.7, defenderDef: 1.1 } },
+      river_crossing: { id: 'river_crossing', label: 'River Crossing',  mods: { attackerAtk: 0.85 } },
+      coastal_plain:  { id: 'coastal_plain',  label: 'Coastal Plain',   mods: {} },
+    } as Record<string, TerrainMod>,
+  },
+
+  // ─── M1 — War score & strategic layer (src/engine/warEngine.ts, M9) ────────
+  war: {
+    maxSingleBattleSwing: 25,
+    skirmishDriftMin: 1,
+    skirmishDriftMax: 3,
+    siegeObjectiveMin: 5,
+    siegeObjectiveMax: 10,
+    /** 12 war-turns (3 years) before weariness drift begins. */
+    wearinessAfterTurns: 12,
+    wearinessDriftPerSeason: 1,
+    thresholds: { sue: 40, forced: 70, dictate: 90 },
+    /** Applies to the losing side once |warScore| crosses the given threshold. */
+    desperation: {
+      sueThresholdEffects: { levyDenariiCostMult: 0.75, wingsDefMult: 1.1 },
+      forcedThresholdEffects: { extraStratagemHandSize: 1, winningOverextensionUpkeepMult: 1.25 },
+    },
+    /** M4: ransom demand for a captured character. */
+    ransom: {
+      baseDenarii: 150,
+      negotiateFidesChance: 0.6,
+    },
+    /** Design decision (see models/war.ts header comment): provincial revolts
+     *  route through this same set-piece system as a 'local' scale war,
+     *  scaled well below a 'major' foreign war's enemy army size. M9's
+     *  scheduler multiplies its enemy-army-size formula by this factor. */
+    scaleArmyMultiplier: { major: 1.0, local: 0.4 },
   },
 };
 

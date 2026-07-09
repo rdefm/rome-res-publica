@@ -174,6 +174,8 @@ Bill voting, speeches, filibusters, Rome-wide stats, crisis tracks.
 | `trial.ts` | `Trial`, `TrialCharge`, `TrialOutcome`. |
 | `agenda.ts` | `AgendaItem`, severity/category, `TabName`. |
 | `ledger.ts` | `SeasonLedger` and its delta sub-types (resource/crisis/Rome). |
+| `battle.ts` | **Military Overhaul M1** — set-piece battle types: `BattleUnit`, `Deployment`, `SideOrders`, `WingState`, `BattleState`, `BattleLog`/`RoundLogEntry`, `BattleOutcome`. Types only — engine lives in `src/engine/battle/` (from M2 onward). |
+| `war.ts` | **Military Overhaul M1** — `WarState`, `SetPieceOffer`, `TreatyState` (placeholder, full shape in M10). `enemyId` is a plain string and `scale`/`provinceId` distinguish a major foreign war from a local/revolt war — see the file's header comment for why this departs from the plan's single-war draft. |
 | `gameStart.ts` | `StartDefinition`, `StartId` (start-menu options). |
 | `resources.ts` | `ResourcePool` (tiny — 5 lines). |
 | `telemetry.ts` | `SeasonStats` — local-only playtest instrumentation shape (P2-A). No network/remote analytics. **P2-E** added `patronTierAtEnd`, a per-season tier snapshot the Pace panel uses to bucket history by stage. |
@@ -186,7 +188,7 @@ Grouped since most are large const arrays of definitions consumed by the matchin
 
 | File | Content |
 |---|---|
-| `balance.ts` | **The balance registry (P2-A)** — single authoritative home for tunable numbers (income, diplomacy, senate, elections, training, relationships, munificence, actionEconomy). Patron and elections numbers stay in their own files and are re-exported here; see the file's indirection-policy comment. Any new numeric literal for a tunable belongs here, not inline in engine/store code. |
+| `balance.ts` | **The balance registry (P2-A)** — single authoritative home for tunable numbers (income, diplomacy, senate, elections, training, relationships, munificence, actionEconomy, **battle**/**war** — Military Overhaul M1). Patron and elections numbers stay in their own files and are re-exported here; see the file's indirection-policy comment. Any new numeric literal for a tunable belongs here, not inline in engine/store code. |
 | `munificence.ts` | **Munificence acts (P2-F)** — `MUNIFICENCE_ACTS`: feasts, games, 5 named temple restorations, endowments. Structured `effects` (not effect strings) so Aedile's cost/effect multipliers can scale individual fields; see the file's header comment. Numbers read from `BALANCE.munificence`. |
 | `offices.ts` | Full 8-office Cursus Honorum ladder + all in-office actions (**large**, ~1000 lines). **P2-F:** Aedile's `host-public-games`/`host-grand-ludi`/`sponsor-games-state`/`sponsor-ludi`/`spectacular-munera`/`temple-restoration` were removed — superseded by the Munificence panel (Curia), which the Aedile discount now applies to instead of a separate parallel action set. |
 | `events.ts` | All non-tutorial random event definitions (**largest data file**, ~1150 lines). |
