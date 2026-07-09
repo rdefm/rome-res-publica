@@ -340,3 +340,43 @@ The Pace panel shows real data; hand-played test seasons at each stage land in t
 5. The Provinciae governance sliders are pixel-identical to their pre-Phase-2 state.
 6. The Pace panel shows seasons landing in 3–4 / 4–6 / 5–8 bands at early/mid/late debug states; the election summit curve (junior offices winnable, consul a genuine summit) is demonstrated and logged; chosen `BALANCE` values plus observations are recorded in the tuning log.
 7. `tsc` clean; all prior tests plus the new patron/training/relationship/munificence/economy tests pass; no `gravitas`/`gratia` remnants in `src/`.
+
+## Tuning log
+
+**Status: first-pass only, unverified.** No scripted election-simulation harness was built and no hand-played debug seasons were logged this pass — the implementing session had no way to hand-play the app, and building a Monte Carlo sim harness with synthetic "preparation level" scenarios was explicitly declined in favor of shipping reasoned-but-unmeasured constants now and validating against real playtesting later. Treat every percentage/band claim below as a hypothesis, not a result.
+
+### E1/E2 — instrumentation (this is real, not first-pass)
+
+- `actionsThisSeason` is now wired into all ~32 store actions in the plan's counted-action list (Forum diplomacy, bill actions, train, assets incl. provincial, Domestic Directives, office actions, trials, ambassador actions, military/levy actions, governor policy, every Munificence act). Verified by `__tests__/actionEconomy.test.ts`.
+- `fidesSpentThisSeason`/`denariiSpentThisSeason` — discovered these P2-A counters were never wired despite being declared; wired in the same pass since the Pace panel's "income vs. spent" comparison is meaningless without them. Gross cost tracked where explicit; net-decrease approximated for the two actions (`takeOfficeAction`, and gains-only-excluded for `resolveAmbassadorAction`) whose patches come from arbitrary effect-string application rather than a single literal cost.
+- `SeasonStats` gained `patronTierAtEnd`, snapshotting the tier at the moment each season completed. Stage (early/mid/late) is derived from tier alone — the plan's bands (0–1 / 2–3 / 4–5) partition the six tiers with no gaps, so no separate year/governorship signal was needed.
+- DebugPanel's new PACE tab buckets `seasonStatsHistory` by each season's own `patronTierAtEnd`, shows last-10 averages per stage, and flags when the average falls outside `BALANCE.actionEconomy.actionBand[stage]` or any season in the sample exceeded `maxSeasonDurationSec` (8 min).
+
+### E3 — election summit-curve levers (first-pass, unverified)
+
+Reasoned from the existing formulas (`calcNpcElectionScore`, `resolveElection`) rather than measured:
+
+- Added `RIVAL_STRENGTH_BY_OFFICE_RANK` (electionEngine.ts): multiplies NPC election score by office contested — 1.0 for vigintivirate/quaestor, 1.05 tribune, 1.1 aedile, 1.3 praetor, 1.5 consul/censor/dictator. Rationale: seats-and-prestige alone already gave *some* natural difficulty scaling (vigintivirate 6 seats / quaestor 8 seats vs. consul 2 seats, plus fewer prerequisite-qualified NPC rivals at the top), but nothing scaled the *per-rival* score by the office being contested. This is the primary lever toward the target curve.
+- Added `CANVASS_FIDES_COST_BY_OFFICE_RANK`: canvassing a clan leader costs 3 Fides (unchanged) at vigintivirate/quaestor, 4 at tribune/aedile, 6 at praetor, 10 at consul. Makes a full canvassing run for the top offices a genuine Fides investment, not just a harder roll — supports "expect to lose the first consulship attempt" without touching the probability math directly.
+- Belatedly extracted the Tribune-of-the-Plebs election formula (a separate Concilium Plebis mechanic in `gameStore.endSeason`, not `resolveElection`) into `BALANCE.elections.tribuneElection` — values unchanged from their pre-P2-E inline literals (base 40%, +40%×plebs mood, +popularesRel/200, capped 90%). By inspection this already sits close to the plan's Tribune/Aedile target band (~50–60%) at "solid prep" (decent plebs mood + positive Populares relationship); left alone rather than guessed at further.
+- **Not touched:** the third permitted lever ("uncommitted-clan sympathy weights" / `wordOfMouth`, currently a flat 0–8 random regardless of office) — declined to add a third simultaneous change with no way to isolate its effect from the other two.
+
+**What would validate this:** either (a) a scripted `resolveElection` Monte Carlo harness run against representative rival pools per office band, or (b) logged hand-played runs (plan's own fallback: minimum 10 attempts per office band), comparing actual win rate against the target table (vigintivirate/quaestor ≥70%, tribune/aedile ~50–60%, praetor ~40%, consul ~25–35%). Neither was done this pass.
+
+### E4 — action-economy targets (first-pass, copied from the plan's table)
+
+`BALANCE.actionEconomy` holds the plan's stated targets directly, not derived/measured values:
+
+| Stage | Action band | Fides income/season target |
+|---|---|---|
+| Early (tier 0–1) | 3–4 | 15–25 |
+| Mid (tier 2–3) | 4–6 | 28–45 |
+| Late (tier 4–5) | 5–8 | 50–75 |
+
+No seasons have been played against these bands yet (`seasonStatsHistory` is empty until a real playtest run happens). The design stance — late-game abundance is intended, no action-cost scaling by tier, Munificence/cooldowns are the tuning levers before touching income constants — is recorded in `balance.ts`'s `actionEconomy` comment block, per the plan's instruction to keep the rationale next to the numbers.
+
+### Follow-up for the next session with real play data
+
+1. Play (or script) enough seasons at each stage to populate the Pace panel meaningfully, then re-open this log and replace "first-pass" with actual observed averages.
+2. Hand-play or simulate ≥10 attempts per office band and record actual win rates against the target table; adjust `RIVAL_STRENGTH_BY_OFFICE_RANK` / `CANVASS_FIDES_COST_BY_OFFICE_RANK` if they're off.
+3. If the Pace panel shows a stage consistently out of band, apply the levers in the order recorded in `balance.ts`'s design-stance comment — don't reach for a new mechanic.

@@ -22,6 +22,47 @@ export const OFFICE_PRESTIGE: Record<string, number> = {
   dictator:      25,
 };
 
+// ─── P2-E — summit-curve levers (FIRST-PASS / UNVERIFIED) ────────────────────
+// The plan's target win-rate curve (vigintivirate/quaestor easy, praetor/consul
+// genuine summits) isn't reachable from seats-and-prestige alone, since NPC
+// score didn't previously vary by the office being contested. These multipliers
+// are reasoned from the score formulas, not measured by playtest or simulation
+// (see rome-phase2-implementation-plan.md's "## Tuning log" — no sim harness was
+// built this pass; the user chose first-pass-only tuning). Revisit with real
+// data before trusting the exact percentages in the plan's target table.
+
+/** Multiplies calcNpcElectionScore for rivals at each office — reflects the
+ *  electorate/rival field naturally getting tougher at higher offices,
+ *  additive to (not a replacement for) the existing held-office prestige term. */
+export const RIVAL_STRENGTH_BY_OFFICE_RANK: Record<string, number> = {
+  vigintivirate: 1.0,
+  quaestor:      1.0,
+  tribune:       1.05,
+  aedile:        1.1,
+  praetor:       1.3,
+  consul:        1.5,
+  censor:        1.5,
+  dictator:      1.5,
+};
+
+/** Fides cost of canvassLeader, scaled by office band — makes a full canvassing
+ *  run for the top offices a genuine investment, not just a harder roll. */
+export const CANVASS_FIDES_COST_BY_OFFICE_RANK: Record<string, number> = {
+  vigintivirate: CANVASS_FIDES_COST,
+  quaestor:      CANVASS_FIDES_COST,
+  tribune:       4,
+  aedile:        4,
+  praetor:       6,
+  consul:        10,
+  censor:        10,
+  dictator:      10,
+};
+
+export function getCanvassFidesCost(officeId: OfficeId | null): number {
+  if (!officeId) return CANVASS_FIDES_COST;
+  return CANVASS_FIDES_COST_BY_OFFICE_RANK[officeId] ?? CANVASS_FIDES_COST;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function clamp(min: number, max: number, val: number): number {
@@ -69,11 +110,17 @@ export function isNpcEligibleForOffice(npc: ClanLeader, officeId: string): boole
 
 // ─── NPC election score ───────────────────────────────────────────────────────
 
-export function calcNpcElectionScore(npc: ClanLeader, clanInfluence: number): number {
+/**
+ * officeId is optional so existing display/legacy call sites keep working
+ * unscaled; resolveElection and generateRivals pass it to apply the P2-E
+ * rank multiplier (RIVAL_STRENGTH_BY_OFFICE_RANK) for the office being contested.
+ */
+export function calcNpcElectionScore(npc: ClanLeader, clanInfluence: number, officeId?: OfficeId): number {
   const highest   = getHighestOffice(npc.heldOffices);
   const prestige  = highest ? (OFFICE_PRESTIGE[highest] ?? 0) : 0;
   const clanBonus = Math.round(clanInfluence * 0.2);
-  return Math.round(20 + npc.skills.rhetoric * 3 + prestige + clanBonus);
+  const rankMultiplier = officeId ? (RIVAL_STRENGTH_BY_OFFICE_RANK[officeId] ?? 1.0) : 1.0;
+  return Math.round((20 + npc.skills.rhetoric * 3 + prestige + clanBonus) * rankMultiplier);
 }
 
 // ─── Player election score ────────────────────────────────────────────────────
@@ -114,7 +161,7 @@ export function generateRivals(officeId: OfficeId, state: GameState): ElectionRi
       bias:          leader.bias as string,
       baseVotes:     leader.votes,
       clanInfluence,
-      strength:      calcNpcElectionScore(leader, clanInfluence),
+      strength:      calcNpcElectionScore(leader, clanInfluence, officeId),
       highestOffice: getHighestOffice(leader.heldOffices),
     }))
     .sort((a, b) => b.strength - a.strength)
@@ -236,7 +283,7 @@ export function resolveElection(state: GameState): ElectionResult {
       .filter(l => !l.proscribed)
       .map(l => ({
         name:  l.name,
-        votes: Math.round(calcNpcElectionScore(l, clan.influence) + (Math.random() * 8 - 4)),
+        votes: Math.round(calcNpcElectionScore(l, clan.influence, office.id) + (Math.random() * 8 - 4)),
       }))
   );
 

@@ -27,6 +27,8 @@ import {
   CANVASS_MIN_RELATIONSHIP,
   CANVASS_EVENT_CHANCE,
   OFFICE_PRESTIGE,
+  RIVAL_STRENGTH_BY_OFFICE_RANK,
+  CANVASS_FIDES_COST_BY_OFFICE_RANK,
 } from '../engine/electionEngine';
 
 export const BALANCE = {
@@ -85,6 +87,22 @@ export const BALANCE = {
     canvassMinRelationship: CANVASS_MIN_RELATIONSHIP,
     canvassEventChance: CANVASS_EVENT_CHANCE,
     officePrestige: OFFICE_PRESTIGE,
+    // P2-E summit-curve levers — FIRST-PASS/UNVERIFIED, see electionEngine.ts's
+    // constant comments and the plan's "## Tuning log" appendix.
+    rivalStrengthByOfficeRank: RIVAL_STRENGTH_BY_OFFICE_RANK,
+    canvassFidesCostByOfficeRank: CANVASS_FIDES_COST_BY_OFFICE_RANK,
+    /** Tribune of the Plebs uses a separate resolution formula (Concilium
+     *  Plebis vote, not resolveElection) — gameStore.endSeason. Belated P2-A
+     *  extraction; values unchanged from the pre-P2-E inline literals. By
+     *  inspection this already lands close to the plan's Tribune/Aedile band
+     *  (~50-60%) at "solid prep" (decent plebs mood + positive Populares
+     *  relationship) — left alone rather than guessed at further. */
+    tribuneElection: {
+      baseChance: 0.40,
+      plebsWeight: 0.40,
+      popularesRelDivisor: 200,
+      ceiling: 0.90,
+    },
   },
 
   // ─── P2-C — Deterministic training ─────────────────────────────────────────
@@ -147,8 +165,40 @@ export const BALANCE = {
     aedileEffectMultiplier: 1.5,
   },
 
-  // ─── P2-E — Action economy tuning (filled in Chunk P2-E) ───────────────────
-  actionEconomy: {},
+  // ─── P2-E — Action economy tuning ───────────────────────────────────────────
+  // FIRST-PASS / UNVERIFIED: these are the plan's stated target values, not the
+  // output of a playtest or simulation pass (see rome-phase2-implementation-plan.md
+  // §P2-E and its "## Tuning log" appendix). Stage is derived from Patron Tier
+  // alone — the plan's bands (0-1 / 2-3 / 4-5) partition the six tiers cleanly,
+  // so no separate year/governorship signal is needed (engine/actionEconomyEngine.ts).
+  //
+  // Design stance: late-game Denarii/Fides abundance is INTENDED — growth must
+  // stay felt, not get taxed away. Pace is controlled by making the *marginal*
+  // small action unnecessary (everything routine is handled) while Munificence's
+  // grand acts absorb ambition. There is NO action-cost scaling by tier — this
+  // was considered and cut for cheapening earned growth (see P2-F's cut-mechanic
+  // note). If a stage's Pace panel average exceeds its action band or 8 minutes,
+  // the tuning levers are, in order: (1) Munificence cooldowns/slots, (2) small-
+  // action cooldowns where the fiction supports them, (3) income constants,
+  // (4) tier income multipliers. Structural changes require stopping and writing
+  // up the finding rather than reaching for a new mechanic.
+  actionEconomy: {
+    /** Meaningful-actions-per-season band, keyed by stage. Outside this band on
+     *  the Pace panel's last-10 average is the tuning trigger. */
+    actionBand: {
+      early: [3, 4] as [number, number],
+      mid:   [4, 6] as [number, number],
+      late:  [5, 8] as [number, number],
+    },
+    /** Fides income/season target band, for reference alongside the Pace panel — not itself flagged. */
+    fidesIncomeBand: {
+      early: [15, 25] as [number, number],
+      mid:   [28, 45] as [number, number],
+      late:  [50, 75] as [number, number],
+    },
+    /** A season running longer than this (wall-clock) is flagged on the Pace panel. */
+    maxSeasonDurationSec: 8 * 60,
+  },
 };
 
 // ─── Known un-extracted tunables ───────────────────────────────────────────

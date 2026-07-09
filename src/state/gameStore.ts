@@ -27,10 +27,10 @@ import {
 import {
   calcOfficeThreshold,
   calcCanvassRoll,
-  CANVASS_FIDES_COST,
   CANVASS_MIN_RELATIONSHIP,
   CANVASS_EVENT_CHANCE,
   generateRivals,
+  getCanvassFidesCost,
 } from '../engine/electionEngine';
 import { CANVASSING_EVENTS } from '../data/canvassingEvents';
 import type { CanvassingEvent, CanvassingEventResult } from '../data/canvassingEvents';
@@ -603,6 +603,24 @@ function turnLabel(state: GameState): string {
   return `${Math.abs(state.year)} BC · ${SEASON_NAMES[state.seasonIndex]}`;
 }
 
+// P2-E — spread into the set() call of every "meaningful action" (E1's counted-action
+// list, see plan §P2-E) on its success path only (i.e. after all guard-clause early
+// returns). Not incremented on navigation, forced event choices, End Season, or birth naming.
+function bumpActions(s: GameState): Pick<GameState, 'actionsThisSeason'> {
+  return { actionsThisSeason: s.actionsThisSeason + 1 };
+}
+
+// P2-E — tracks gross Fides/Denarii spent this season (P2-A counters, never wired
+// until now). Pass the literal cost paid, not a net delta — gains from the same
+// action (e.g. Munificence's Public Feast granting Fides) are not netted out here.
+function bumpSpend(s: GameState, spend: { fides?: number; denarii?: number }):
+  Pick<GameState, 'fidesSpentThisSeason' | 'denariiSpentThisSeason'> {
+  return {
+    fidesSpentThisSeason:   s.fidesSpentThisSeason   + (spend.fides   ?? 0),
+    denariiSpentThisSeason: s.denariiSpentThisSeason + (spend.denarii ?? 0),
+  };
+}
+
 function findClanAndLeader(clans: Clan[], leaderId: string) {
   for (const clan of clans) {
     const leader = clan.leaders.find(l => l.id === leaderId);
@@ -651,6 +669,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       fides: s.fides - 10,
       bills: [...s.bills, repealBill],
       log: [...s.log, mkLog(label, `Abrogatio proposed: ${law.name}.`, 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: 10 }),
     });
   },
 
@@ -718,9 +738,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       const tribuneCharId = finalState.tribuneCandidateId;
       const candidate = finalState.family.find(c => c.id === tribuneCharId);
       if (candidate) {
+        const te = BALANCE.elections.tribuneElection;
         const plebsScore      = finalState.rome.plebs / 100;
-        const popularesBonus  = Math.max(0, finalState.popularesRel) / 200;
-        const successChance   = Math.min(0.90, 0.40 + plebsScore * 0.40 + popularesBonus);
+        const popularesBonus  = Math.max(0, finalState.popularesRel) / te.popularesRelDivisor;
+        const successChance   = Math.min(te.ceiling, te.baseChance + plebsScore * te.plebsWeight + popularesBonus);
         const won             = Math.random() < successChance;
 
         if (won) {
@@ -785,6 +806,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       fidesSpent:         s.fidesSpentThisSeason,
       denariiIncome:      Math.max(0, (finalState.denarii - s.denarii) + s.denariiSpentThisSeason),
       denariiSpent:       s.denariiSpentThisSeason,
+      patronTierAtEnd:    finalState.patronTier,
     };
     const seasonStatsHistory = [...s.seasonStatsHistory, completedSeasonStats].slice(-40);
 
@@ -850,6 +872,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       ),
       trainedThisSeason: [...s.trainedThisSeason, characterId],
       log: [...s.log, mkLog(label, `${char.name} trains ${skill} to ${targetLevel} (−${cost} Fides).`, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: cost }),
     });
   },
 
@@ -861,6 +885,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       fides: s.fides - 10,
       lifetimeDignitas: s.lifetimeDignitas + 10,
       log: [...s.log, mkLog(label, 'A laudatio commissioned. Lifetime Dignitas +10.', 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: 10 }),
     });
   },
 
@@ -871,6 +897,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set({
       denarii: s.denarii - 50,
       log: [...s.log, mkLog(label, 'Adrogatio performed. A citizen adopted into the Brutii.', 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: 50 }),
     });
   },
 
@@ -881,6 +909,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set({
       fides: s.fides - 15,
       log: [...s.log, mkLog(label, 'Marriage arranged within the family.', 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: 15 }),
     });
   },
 
@@ -907,6 +937,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       _expandedBill: null,
       _expandedType: null,
       log: [...s.log, mkLog(label, `Voted ${vote === 'vote_for' ? 'for' : 'against'} ${bill.name}.`, 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: voteFidesCost }),
     });
   },
 
@@ -945,6 +977,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
           success ? 'good' : 'neutral'
         ),
       ],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: speechFidesCost }),
     });
   },
 
@@ -962,6 +996,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       _expandedBill: null,
       _expandedType: null,
       log: [...s.log, mkLog(label, `Filibuster delays ${bill.name} by one season.`, 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: BALANCE.senate.filibusterFidesCost }),
     });
   },
 
@@ -974,6 +1010,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       fides: s.fides - BALANCE.senate.submitBillFidesCost,
       bills: [...s.bills, newBill],
       log: [...s.log, mkLog(label, `${newBill.name} tabled in the Senate.`, 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: BALANCE.senate.submitBillFidesCost }),
     });
   },
 
@@ -1084,6 +1122,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       pendingEvents,
       activeEvent,
       log: [...s.log, mkLog(label, logMsg, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: cost.fides, denarii: cost.denarii }),
     });
   },
 
@@ -1110,6 +1150,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         ),
       })),
       log: [...s.log, mkLog(label, 'Influence purchased with a clan leader.', 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: BALANCE.diplomacy.buyInfluenceFidesCost }),
     });
     get().adjustClanReputation(found.clan.id, repDelta, found.clan.name);
   },
@@ -1132,6 +1174,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         ),
       })),
       log: [...s.log, mkLog(label, 'Dinner hosted for a clan leader. Warmth increased.', 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: BALANCE.diplomacy.inviteToDinnerDenariiCost }),
     });
     get().adjustClanReputation(found.clan.id, repDelta, found.clan.name);
   },
@@ -1154,6 +1198,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         ),
       })),
       log: [...s.log, mkLog(label, 'Alliance forged with a clan leader.', 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: BALANCE.diplomacy.forgeAllianceFidesCost }),
     });
     get().adjustClanReputation(found.clan.id, repDelta, found.clan.name);
   },
@@ -1176,6 +1222,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         ),
       })),
       log: [...s.log, mkLog(label, 'Marriage alliance arranged with a clan family.', 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: BALANCE.diplomacy.arrangeMarriageFidesCost }),
     });
     get().adjustClanReputation(found.clan.id, repDelta, found.clan.name);
   },
@@ -1193,6 +1241,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         ),
       })),
       log: [...s.log, mkLog(label, 'Intelligence gathered on a clan leader.', 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: BALANCE.diplomacy.gatherIntelligenceFidesCost }),
     });
   },
 
@@ -1204,6 +1254,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       fides: s.fides - BALANCE.diplomacy.canvassForVotesFidesCost,
       campaignVotes: { ...s.campaignVotes, [leaderId]: 'for' },
       log: [...s.log, mkLog(label, 'Canvassing complete. Clan leader support secured.', 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: BALANCE.diplomacy.canvassForVotesFidesCost }),
     });
   },
 
@@ -1252,6 +1304,11 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       ...(resourceKey ? { [resourceKey]: (s[resourceKey] as number) - action.costVal } : {}),
       log: [...s.log, mkLog(label, logMsg, 'neutral')],
       lastOfficeActionResult: { actionName: action.name, text: logMsg ?? action.desc ?? 'Done.' },
+      ...bumpActions(s),
+      ...bumpSpend(s, {
+        fides:   resourceKey === 'fides'   ? action.costVal : undefined,
+        denarii: resourceKey === 'denarii' ? action.costVal : undefined,
+      }),
     });
   },
 
@@ -1365,6 +1422,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       denarii: s.denarii - cost,
       ownedAssets: [...s.ownedAssets, newAsset],
       log: [...s.log, mkLog(label, `${def.name} acquired. (${def.tiers[0].label})`, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: cost }),
     });
   },
 
@@ -1394,6 +1453,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
           : a
       ),
       log: [...s.log, mkLog(label, `${def.name} upgraded to ${tierLabel}.`, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: cost }),
     });
   },
 
@@ -1433,6 +1494,11 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
           : t
       ),
       log: [...s.log, mkLog(label, `Trial defense: ${action.label}. Defense +${action.defenseBonus}.`, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, {
+        fides:   resource === 'fides'   ? action.cost.amount : undefined,
+        denarii: resource === 'denarii' ? action.cost.amount : undefined,
+      }),
     });
   },
 
@@ -1685,6 +1751,13 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       ...(logMsg
         ? { log: [...s.log, mkLog(label, logMsg, 'neutral')] }
         : {}),
+      ...bumpActions(s),
+      // Effect-string-driven patch can mix costs and gains; approximate "spent" as
+      // the net decrease only (a net gain isn't counted as negative spend).
+      ...bumpSpend(s, {
+        fides:   statePatch.fides   !== undefined && statePatch.fides   < s.fides   ? s.fides   - statePatch.fides   : undefined,
+        denarii: statePatch.denarii !== undefined && statePatch.denarii < s.denarii ? s.denarii - statePatch.denarii : undefined,
+      }),
     });
   },
 
@@ -1775,6 +1848,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
           ? { ...p, playerGovernor: { ...p.playerGovernor, policy } }
           : p
       ),
+      ...bumpActions(s),
     }));
   },
 
@@ -1813,6 +1887,11 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
           : p
       ),
       log: [...s.log, mkLog(label, result.logMessage, 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, {
+        fides:   rp.fides   !== undefined && rp.fides   < 0 ? -rp.fides   : undefined,
+        denarii: rp.denarii !== undefined && rp.denarii < 0 ? -rp.denarii : undefined,
+      }),
     });
   },
 
@@ -1844,6 +1923,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
           : p
       ),
       log: [...s.log, mkLog(label, `${def.name} acquired in ${provinceId}. (+${def.localSupportGain} Local Support)`, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: def.cost }),
     });
   },
 
@@ -1875,6 +1956,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
           : p
       ),
       log: [...s.log, mkLog(label, `${def.name} upgraded in ${provinceId}.`, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: upgradeCost }),
     });
   },
 
@@ -1914,6 +1997,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       clients: [...s.clients, newClient as any],
       fides: s.fides - 20,
       log: [...s.log, mkLog(label, `${clientDef.name} joins the Brutii as a provincial client.`, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: 20 }),
     });
   },
 
@@ -1970,6 +2055,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       family:         updatedFamily,
       senateResponse,
       log: [...s.log, mkLog(label, `${character.name} raises a legion in ${musterProvinceId}. (−${cost} Denarii)`, 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: cost }),
     });
   },
 
@@ -1993,6 +2080,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       denarii: s.denarii - cost,
       family:  updatedFamily,
       log: [...s.log, mkLog(label, `${character.name} musters veterans back to service. (−${cost} Denarii)`, 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: cost }),
     });
   },
 
@@ -2051,6 +2140,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         `${type.replace(/_/g, ' ')} campaign begins in ${provinceId.replace(/_/g, ' ')}.`,
         'neutral',
       )],
+      ...bumpActions(s),
     });
   },
 
@@ -2082,6 +2172,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         `${character.name} volunteers as officer in ${provinceId.replace(/_/g, ' ')}.`,
         'neutral',
       )],
+      ...bumpActions(s),
     });
   },
 
@@ -2123,6 +2214,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         `${volunteer.characterName} — officer decision ${newDecisionsResolved}/3: ${success ? 'success' : 'failed'}.`,
         success ? 'positive' : 'negative',
       )],
+      ...bumpActions(s),
     });
   },
 
@@ -2131,7 +2223,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   canvassLeader: (leaderId) => {
     const s = get();
     if (!s.campaigning) return;
-    if (s.fides < CANVASS_FIDES_COST) return;
+    const canvassCost = getCanvassFidesCost(s.campaigning); // P2-E: scaled by office band
+    if (s.fides < canvassCost) return;
     if (s.campaignVotes[leaderId] === 'for') return;
 
     let foundLeader: (typeof s.clans[0]['leaders'][0]) | null = null;
@@ -2150,7 +2243,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const playerChar = s.family.find(c => c.isPlayer);
     const rhetoric = playerChar?.skills.rhetoric ?? 0;
     const roll = calcCanvassRoll(rhetoric, foundLeader.relationship);
-    const newFides = s.fides - CANVASS_FIDES_COST;
+    const newFides = s.fides - canvassCost;
     const label = turnLabel(s);
 
     if (Math.random() < CANVASS_EVENT_CHANCE && !s.activeCanvassingEvent) {
@@ -2161,6 +2254,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         pendingCanvassLeaderId:  leaderId,
         pendingCanvassRoll:      roll,
         pendingCanvassThreshold: effectiveThreshold,
+        ...bumpActions(s),
+        ...bumpSpend(s, { fides: canvassCost }),
       });
       return;
     }
@@ -2178,6 +2273,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
           : `${foundLeader.name} was not persuaded.${clanHasRival ? ' Their gens backs a rival candidate.' : ''}`,
         success ? 'positive' : 'neutral',
       )],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: canvassCost }),
     });
   },
 

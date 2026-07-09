@@ -14,4 +14,11 @@ export interface SeasonStats {
   fidesSpent: number;
   denariiIncome: number;
   denariiSpent: number;
+  /**
+   * Patron Tier as of the end of this season (P2-E). The plan's early/mid/late
+   * action-economy stages partition cleanly on tier alone — 0-1 / 2-3 / 4-5 —
+   * so this single snapshot is enough to bucket historical seasons by stage
+   * for the DebugPanel Pace view; see engine/actionEconomyEngine.ts.
+   */
+  patronTierAtEnd: number;
 }

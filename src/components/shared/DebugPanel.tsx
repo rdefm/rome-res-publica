@@ -12,6 +12,7 @@ import {
 import { useGameStore } from '../../state/gameStore';
 import { EVENT_DEFS } from '../../data/events';
 import { BALANCE } from '../../data/balance';
+import { computeAllStagePace, type ActionEconomyStage, type StagePaceSummary } from '../../engine/actionEconomyEngine';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -231,10 +232,143 @@ function TelemetrySection() {
   );
 }
 
+// ─── Section: Pace (P2-E) ───────────────────────────────────────────────────
+// Last-10-per-stage averages read from seasonStatsHistory, bucketed by each
+// season's own patronTierAtEnd snapshot (engine/actionEconomyEngine.ts).
+// This is the tuning dashboard the plan asks be built before touching any
+// BALANCE.actionEconomy / BALANCE.elections numbers.
+
+const STAGE_LABEL: Record<ActionEconomyStage, string> = {
+  early: 'EARLY (Tier 0–1)',
+  mid:   'MID (Tier 2–3)',
+  late:  'LATE (Tier 4–5)',
+};
+
+function StagePaceCard({ summary }: { summary: StagePaceSummary }) {
+  return (
+    <View style={[paceStyles.card, summary.actionsOutOfBand && paceStyles.cardFlagged]}>
+      <View style={paceStyles.cardHeader}>
+        <Text style={paceStyles.cardTitle}>{STAGE_LABEL[summary.stage]}</Text>
+        <Text style={paceStyles.cardSample}>n={summary.sampleSize}</Text>
+      </View>
+
+      <View style={paceStyles.row}>
+        <Text style={paceStyles.rowLabel}>Actions/season</Text>
+        <Text style={[paceStyles.rowValue, summary.actionsOutOfBand && paceStyles.rowValueFlagged]}>
+          {summary.avgActions.toFixed(1)} (target {summary.actionBand[0]}–{summary.actionBand[1]})
+        </Text>
+      </View>
+      <View style={paceStyles.row}>
+        <Text style={paceStyles.rowLabel}>Duration</Text>
+        <Text style={[paceStyles.rowValue, summary.anyOverTimeBudget && paceStyles.rowValueFlagged]}>
+          {Math.round(summary.avgDurationSec)}s avg{summary.anyOverTimeBudget ? ' — some over 8m' : ''}
+        </Text>
+      </View>
+      <View style={paceStyles.row}>
+        <Text style={paceStyles.rowLabel}>Fides income / spent</Text>
+        <Text style={paceStyles.rowValue}>
+          {summary.avgFidesIncome.toFixed(1)} / {summary.avgFidesSpent.toFixed(1)}
+        </Text>
+      </View>
+      <View style={paceStyles.row}>
+        <Text style={paceStyles.rowLabel}>Denarii income / spent</Text>
+        <Text style={paceStyles.rowValue}>
+          {summary.avgDenariiIncome.toFixed(1)} / {summary.avgDenariiSpent.toFixed(1)}
+        </Text>
+      </View>
+
+      {summary.actionsOutOfBand && (
+        <Text style={paceStyles.flagNote}>
+          ⚠ Outside the {STAGE_LABEL[summary.stage].toLowerCase()} action band.
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function PaceSection() {
+  const seasonStatsHistory = useGameStore(s => s.seasonStatsHistory);
+  const summaries = computeAllStagePace(seasonStatsHistory);
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>PACE — LAST 10 SEASONS PER STAGE</Text>
+      {summaries.length === 0 ? (
+        <Text style={paceStyles.emptyText}>
+          No season history yet. Play a season and check back.
+        </Text>
+      ) : (
+        summaries.map(summary => <StagePaceCard key={summary.stage} summary={summary} />)
+      )}
+    </View>
+  );
+}
+
+const paceStyles = StyleSheet.create({
+  card: {
+    backgroundColor: COLORS.panelSurface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  cardFlagged: {
+    borderColor: COLORS.crimson,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  cardTitle: {
+    fontFamily: FONTS.display,
+    fontSize: 13,
+    color: COLORS.gold,
+    letterSpacing: 1,
+  },
+  cardSample: {
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    color: COLORS.dust,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  rowLabel: {
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    color: COLORS.dust,
+  },
+  rowValue: {
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    color: COLORS.marble,
+  },
+  rowValueFlagged: {
+    color: COLORS.crimson,
+  },
+  flagNote: {
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    color: COLORS.crimson,
+    marginTop: SPACING.xs,
+  },
+  emptyText: {
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 12,
+    color: COLORS.dust,
+  },
+});
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function DebugPanel() {
-  const [tab, setTab] = useState<'resources' | 'characters' | 'events' | 'telemetry'>('resources');
+  const [tab, setTab] = useState<'resources' | 'characters' | 'events' | 'telemetry' | 'pace'>('resources');
 
   return (
     <View style={styles.container}>
@@ -242,7 +376,7 @@ export default function DebugPanel() {
 
       {/* Tab switcher */}
       <View style={styles.tabs}>
-        {(['resources', 'characters', 'events', 'telemetry'] as const).map(t => (
+        {(['resources', 'characters', 'events', 'telemetry', 'pace'] as const).map(t => (
           <TouchableOpacity
             key={t}
             style={[styles.tab, tab === t && styles.tabActive]}
@@ -260,6 +394,7 @@ export default function DebugPanel() {
         {tab === 'characters' && <CharacterSection />}
         {tab === 'events'     && <EventsSection />}
         {tab === 'telemetry'  && <TelemetrySection />}
+        {tab === 'pace'       && <PaceSection />}
       </ScrollView>
     </View>
   );

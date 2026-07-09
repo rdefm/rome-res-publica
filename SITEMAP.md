@@ -63,7 +63,7 @@ Office ladder progression, campaigning for office, in-office actions, trials.
 **Components:**
 - `src/components/cursus/ElectionPanel.tsx` — election projection/results UI (vote shares, outcome).
 
-**Engines:** `electionEngine.ts` (thresholds, player/NPC scores, rival generation), `officeActionEngine.ts` (in-office action gating/targeting logic — large target-selector constant set + `resolveOfficeAction`), `npcConsulEngine.ts` (NPC consul assignment, antagonism level, per-turn tick), `trialEngine.ts` (build/resolve trials, corruption-trial trigger, outcome consequences), `senateResponseEngine.ts` (Senate's escalating response to unsanctioned personal levies — debate → censure → hostis → consular army).
+**Engines:** `electionEngine.ts` (thresholds, player/NPC scores, rival generation; **P2-E** — `RIVAL_STRENGTH_BY_OFFICE_RANK`/`CANVASS_FIDES_COST_BY_OFFICE_RANK` scale NPC score and canvass cost by office band, first-pass/unverified summit-curve levers, see `balance.ts`'s tuning-log pointer), `officeActionEngine.ts` (in-office action gating/targeting logic — large target-selector constant set + `resolveOfficeAction`), `npcConsulEngine.ts` (NPC consul assignment, antagonism level, per-turn tick), `trialEngine.ts` (build/resolve trials, corruption-trial trigger, outcome consequences), `senateResponseEngine.ts` (Senate's escalating response to unsanctioned personal levies — debate → censure → hostis → consular army).
 
 **Models:** `office.ts` (office ladder, actions, gates), `trial.ts`.
 
@@ -138,7 +138,7 @@ Bill voting, speeches, filibusters, Rome-wide stats, crisis tracks.
 | `ScrollModal.tsx` | Base scroll-styled modal wrapper used by many other modals. |
 | `StatBar.tsx` | Generic labeled stat/progress bar. |
 | `SettingsModal.tsx` | Settings screen (save export/import, reset, glossary access). |
-| `DebugPanel.tsx` | Dev-only panel to force-trigger events/state for testing. |
+| `DebugPanel.tsx` | Dev-only panel to force-trigger events/state for testing. Tabs: Resources, Characters, Events, Telemetry (raw `seasonStatsHistory`/`BALANCE` dump), **Pace (P2-E)** — last-10-per-stage averages via `engine/actionEconomyEngine.ts`, flags seasons outside their stage's action band or over the 8-minute time budget. |
 
 ---
 
@@ -150,6 +150,7 @@ Bill voting, speeches, filibusters, Rome-wide stats, crisis tracks.
 - `src/engine/resourceEngine.ts` — core economy: Rome stat modifiers, resource income calc (incl. P2-C household-voices term), `calcTrainingCost`, generic bill-effect-string application, faction drift, Rome stats aggregation. Used by Curia and the turn loop. Clan relationship drift moved to `reputationEngine.ts` in P2-D.
 - `src/engine/agendaEngine.ts` — pure `GameState → AgendaItem[]` — generates the to-do list shown in `AgendaTablet`/`AgendaBadge`/`EndSeasonButton`.
 - `src/engine/eventEngine.ts` — random/tutorial event eligibility, condition evaluation, picking, and choice resolution.
+- `src/engine/actionEconomyEngine.ts` — **P2-E**, pure — `deriveStage` (Patron Tier → early/mid/late), `computeStagePace`/`computeAllStagePace` (last-10-per-stage averages + band/time-budget flags from `seasonStatsHistory`). Consumed by `DebugPanel`'s Pace tab.
 
 ---
 
@@ -175,7 +176,7 @@ Bill voting, speeches, filibusters, Rome-wide stats, crisis tracks.
 | `ledger.ts` | `SeasonLedger` and its delta sub-types (resource/crisis/Rome). |
 | `gameStart.ts` | `StartDefinition`, `StartId` (start-menu options). |
 | `resources.ts` | `ResourcePool` (tiny — 5 lines). |
-| `telemetry.ts` | `SeasonStats` — local-only playtest instrumentation shape (P2-A). No network/remote analytics. |
+| `telemetry.ts` | `SeasonStats` — local-only playtest instrumentation shape (P2-A). No network/remote analytics. **P2-E** added `patronTierAtEnd`, a per-season tier snapshot the Pace panel uses to bucket history by stage. |
 
 ---
 
@@ -214,7 +215,7 @@ Grouped since most are large const arrays of definitions consumed by the matchin
 ## 10. Utils, tests, config
 
 - `src/utils/theme.ts` — `COLORS`, `FONTS`, `SPACING`, `RADIUS` and other design-token constants used by virtually every component.
-- `__tests__/` — Jest unit tests, one per engine area: `engine.test.ts` (resourceEngine, incl. P2-C household-voices income term + `calcTrainingCost`), `agendaEngine.test.ts`, `officeActionEngine.test.ts`, `officeAction.test.ts` (officeActionEngine + npcConsulEngine), `eventEngine.test.ts` (clientEngine + eventEngine), `militaryEngine.test.ts` (troopEngine), `romeStats.test.ts` (resourceEngine + crisisEngine), `reputationEngine.test.ts` (reputation tiers/clamping, `getClanStanding`, `computeReputationDelta`; P2-D — relationship anchors/yearly decay, `ageAndProcessMortality`, dangling-leader-ID election safety), `patronEngine.test.ts` (P2-B — tier gating, tier-up notice via `processSeason`; P2-D — yearly-vs-seasonal decay via `processSeason`), `training.test.ts` (P2-C — `trainCharacter` store action tested directly against `useGameStore`), `munificenceEngine.test.ts` (P2-F — requirement gating, Aedile discount math, endowment income term, `resolveElection` Grand Games vote bonus, yearly usage-reset/bonus-decay via `processSeason`, `performMunificence` store action).
+- `__tests__/` — Jest unit tests, one per engine area: `engine.test.ts` (resourceEngine, incl. P2-C household-voices income term + `calcTrainingCost`), `agendaEngine.test.ts`, `officeActionEngine.test.ts`, `officeAction.test.ts` (officeActionEngine + npcConsulEngine), `eventEngine.test.ts` (clientEngine + eventEngine), `militaryEngine.test.ts` (troopEngine), `romeStats.test.ts` (resourceEngine + crisisEngine), `reputationEngine.test.ts` (reputation tiers/clamping, `getClanStanding`, `computeReputationDelta`; P2-D — relationship anchors/yearly decay, `ageAndProcessMortality`, dangling-leader-ID election safety), `patronEngine.test.ts` (P2-B — tier gating, tier-up notice via `processSeason`; P2-D — yearly-vs-seasonal decay via `processSeason`), `training.test.ts` (P2-C — `trainCharacter` store action tested directly against `useGameStore`), `munificenceEngine.test.ts` (P2-F — requirement gating, Aedile discount math, endowment income term, `resolveElection` Grand Games vote bonus, yearly usage-reset/bonus-decay via `processSeason`, `performMunificence` store action), `actionEconomy.test.ts` (P2-E — `actionsThisSeason`/spend-counter increments on the counted-action list and exclusion of navigation/forced-event/birth-naming actions, `seasonStatsHistory` ring buffer cap, `patronTierAtEnd` snapshot), `actionEconomyEngine.test.ts` (P2-E — `deriveStage`, `computeStagePace`/`computeAllStagePace` band/time-budget flags), `electionSummitCurve.test.ts` (P2-E — `RIVAL_STRENGTH_BY_OFFICE_RANK`/`CANVASS_FIDES_COST_BY_OFFICE_RANK` wiring through `calcNpcElectionScore`/`generateRivals`/`resolveElection`; first-pass/unverified, see the plan's tuning log).
 - `app.json`, `babel.config.js`, `tsconfig.json`, `eas.json`, `package.json` — Expo/RN/TS build config; edit only for tooling/dependency changes.
 - `proxy.mjs` — local dev proxy script (check contents before assuming purpose if touching networking in dev).
 - `android/` — native Android project (Expo prebuild output); not hand-edited in normal feature work.
