@@ -523,10 +523,35 @@ function genPatronTierProximity(state: GameState): AgendaItem[] {
   }];
 }
 
+// ─── Generator 16 — Aging bonded leader (P2-D) ───────────────────────────────
+// Fires for any marriage- or alliance-anchored leader aged >= 70: a successor
+// does not inherit the bond, so it's worth cultivating a second friendship in
+// the clan before mortality takes it.
+
+function genAgingBondedLeader(state: GameState): AgendaItem[] {
+  const items: AgendaItem[] = [];
+  for (const clan of state.clans) {
+    for (const leader of clan.leaders) {
+      if ((leader.married || leader.alliance) && leader.age >= 70) {
+        items.push({
+          id: `agenda-warning-aging-leader-${leader.id}`,
+          category: 'family' as const,
+          severity: 'warning',
+          title: `${leader.name} grows old`,
+          detail: `His heir will not inherit your bond. Prepare a second friendship in the ${clan.name}.`,
+          target: { tab: 'Forum' as const, selectedLeaderId: leader.id, expandedClanId: clan.id },
+          sortWeight: 20,
+        });
+      }
+    }
+  }
+  return items;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Runs all 15 generators against the current state and returns a sorted list
+ * Runs all 16 generators against the current state and returns a sorted list
  * of agenda items. Sort order: severity (critical first) → sortWeight →
  * category (alpha tiebreak for stable ordering).
  *
@@ -550,6 +575,7 @@ export function generateAgenda(state: GameState): AgendaItem[] {
     ...genGovernorIdle(state),
     ...genHousekeeping(state),
     ...genPatronTierProximity(state),
+    ...genAgingBondedLeader(state),
   ];
 
   return items.sort((a, b) => {

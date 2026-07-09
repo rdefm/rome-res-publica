@@ -21,7 +21,9 @@ export interface ClanLeader {
   votes: number;          // bloc votes this leader controls; added to player score when canvassed
   bio: string;
   alliance?: boolean;
-  allianceTurns?: number;
+  /** Set by arrangeMarriageForum (Forum). Anchors relationship decay at 55 (P2-D) — the
+   *  bond does not carry over to a successor if this leader dies (patronEngine/reputationEngine). */
+  married?: boolean;
 
   // ── NPC career system ─────────────────────────────────────────────────────
   skills: ClanLeaderSkills;
@@ -41,6 +43,10 @@ export interface ClanLeader {
 export interface Clan {
   id: string;
   name: string;
+  /** Nominative masculine gens name (e.g. "Cornelius"), used to name procedurally
+   *  generated successors (P2-D). Derived once here rather than parsed from leader
+   *  names at runtime. */
+  gensName: string;
   sigil: string;
   influence: number; // 0–100
   desc: string;

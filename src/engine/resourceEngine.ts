@@ -451,40 +451,5 @@ export function calcRomeStats(
 }
 
 // ─── Relationship drift ───────────────────────────────────────────────────────
-
-export function applyRelationshipDrift(state: GameState): GameState['clans'] {
-  // Constitution-track relationship decay (design doc section 2.3 special effects)
-  // constitution-relationship-decay: tier 1–2 adds −1 extra per season
-  // constitution-relationship-decay-large: tier 3 adds −2 extra per season
-  // tier 4: −3 extra (−1 base + −2 extra)
-  const constitutionTier = getTierFromLevel(state.crisis.constitution.level);
-  const constitutionExtraDecay =
-    constitutionTier >= 4 ? 3 :
-    constitutionTier >= 3 ? 2 :
-    constitutionTier >= 1 ? 1 :
-    0;
-
-  return state.clans.map((clan) => ({
-    ...clan,
-    leaders: clan.leaders.map((leader) => {
-      let rel = leader.relationship;
-
-      // Base drift
-      if (rel > 0) rel = Math.max(0, rel - 2);
-      else if (rel < 0) rel = Math.min(0, rel + 1);
-
-      // Constitution-track additional decay (applied after base drift)
-      if (constitutionExtraDecay > 0) {
-        rel = Math.max(0, rel - constitutionExtraDecay);
-      }
-
-      let allianceTurns = leader.allianceTurns ?? 0;
-      let alliance = leader.alliance ?? false;
-      if (allianceTurns > 0) {
-        allianceTurns -= 1;
-        if (allianceTurns === 0) alliance = false;
-      }
-      return { ...leader, relationship: rel, alliance, allianceTurns };
-    }),
-  }));
-}
+// P2-D: relocated to reputationEngine.applyYearlyRelationshipDecay (anchor-based,
+// yearly only — replaces the old per-season decay-toward-zero here).

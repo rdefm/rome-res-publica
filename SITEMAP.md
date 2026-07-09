@@ -46,7 +46,7 @@ Relationship management with the 4 senatorial clans and their leaders; election 
 | `LeaderDetailPanel.tsx` | Expanded leader view with available Forum actions. |
 | `PatronLadderPanel.tsx` | **Live version** — shows player's patron tier ladder and unlocked actions (imported by ForumScreen). |
 
-**Engines:** `reputationEngine.ts` (reputation tier lookup, unlocked actions; `getClanStanding` derives the ally/neutral/hostile/rival badge shown on `ClanCard` from `familyReputations` + `electionRivals` — `Clan` no longer stores a static `standing` field; `computeReputationDelta` converts a Forum action's relationship gain into a vote-weighted `familyReputations` swing, called from `gameStore`'s `buyInfluence`/`inviteToDinner`/`forgeAlliance`/`arrangeMarriageForum`), `electionEngine.ts` (canvassing math, election scoring — also used by Cursus), `aiScoring.ts` (NPC leader action scoring/choice, used for clan-leader AI behavior).
+**Engines:** `reputationEngine.ts` (reputation tier lookup, unlocked actions; `getClanStanding` derives the ally/neutral/hostile/rival badge shown on `ClanCard` from `familyReputations` + `electionRivals` — `Clan` no longer stores a static `standing` field; `computeReputationDelta` converts a Forum action's relationship gain into a vote-weighted `familyReputations` swing, called from `gameStore`'s `buyInfluence`/`inviteToDinner`/`forgeAlliance`/`arrangeMarriageForum`; **P2-D** — `deriveRelationshipAnchor`/`applyYearlyRelationshipDecay` (relocated from `resourceEngine.applyRelationshipDrift`, now yearly-only, decays toward a per-leader anchor instead of toward 0) and `ageAndProcessMortality` (leader aging, mortality rolls, procedural succession — both called from `turnSequencer` step 9, gated on the Winter→Spring rollover), `electionEngine.ts` (canvassing math, election scoring — also used by Cursus), `aiScoring.ts` (NPC leader action scoring/choice, used for clan-leader AI behavior).
 
 **Models:** `clan.ts` — `Clan`, `ClanLeader`, `LeaderBias` type, `ClanStanding` type (ally/neutral/hostile/rival — derived by `reputationEngine.getClanStanding`, not stored on `Clan`).
 
@@ -147,7 +147,7 @@ Bill voting, speeches, filibusters, Rome-wide stats, crisis tracks.
 - `src/state/gameStore.ts` — **the single Zustand store** (~2000 lines); all `GameState` fields and actions live here, organized in commented sections (Turn, Resources, Domus, Curia, Forum, Cursus, Reputation, Ambitions, Clientela, Assets, Trials, Birth, Events, Office actions, Provinciae). Any new persisted field or action goes here. Forum leader actions (`buyInfluence`/`inviteToDinner`/`forgeAlliance`/`arrangeMarriageForum`) update `leader.relationship` and also call `adjustClanReputation` with a vote-weighted delta (via `reputationEngine.computeReputationDelta`), so `familyReputations` moves too.
 - `src/state/saveLoad.ts` — AsyncStorage save/load, Zod schema validation, JSON export/import via share sheet + document picker.
 - `src/engine/turnSequencer.ts` — **the season-end orchestrator** (`processSeason`); calls into most other engines in sequence (resources, crisis, bills, campaigns, aging, etc.) and returns the `SeasonLedger` diff. Start here when adding a new "happens every season" system.
-- `src/engine/resourceEngine.ts` — core economy: Rome stat modifiers, resource income calc, generic bill-effect-string application, faction drift, Rome stats aggregation, clan relationship drift. Used by Curia and the turn loop.
+- `src/engine/resourceEngine.ts` — core economy: Rome stat modifiers, resource income calc (incl. P2-C household-voices term), `calcTrainingCost`, generic bill-effect-string application, faction drift, Rome stats aggregation. Used by Curia and the turn loop. Clan relationship drift moved to `reputationEngine.ts` in P2-D.
 - `src/engine/agendaEngine.ts` — pure `GameState → AgendaItem[]` — generates the to-do list shown in `AgendaTablet`/`AgendaBadge`/`EndSeasonButton`.
 - `src/engine/eventEngine.ts` — random/tutorial event eligibility, condition evaluation, picking, and choice resolution.
 
@@ -205,7 +205,7 @@ Grouped since most are large const arrays of definitions consumed by the matchin
 | `provincialClients.ts` | 12 Italy-relevant provincial client definitions. |
 | `campaignEvents.ts` | Event cards firing during active military campaigns. |
 | `canvassingEvents.ts` | Events firing during election vote-canvassing. |
-| `clientNames.ts` | Name pools for procedurally generated clients. |
+| `clientNames.ts` | Name pools for procedurally generated clients; also `LEADER_PRAENOMINA` (P2-D — clan leader succession naming). |
 | `trialActions.ts` | Available actions during a trial. |
 
 ---
@@ -213,7 +213,7 @@ Grouped since most are large const arrays of definitions consumed by the matchin
 ## 10. Utils, tests, config
 
 - `src/utils/theme.ts` — `COLORS`, `FONTS`, `SPACING`, `RADIUS` and other design-token constants used by virtually every component.
-- `__tests__/` — Jest unit tests, one per engine area: `engine.test.ts` (resourceEngine, incl. P2-C household-voices income term + `calcTrainingCost`), `agendaEngine.test.ts`, `officeActionEngine.test.ts`, `officeAction.test.ts` (officeActionEngine + npcConsulEngine), `eventEngine.test.ts` (clientEngine + eventEngine), `militaryEngine.test.ts` (troopEngine), `romeStats.test.ts` (resourceEngine + crisisEngine), `reputationEngine.test.ts` (reputation tiers/clamping, `getClanStanding`, `computeReputationDelta`), `patronEngine.test.ts` (P2-B — tier gating, tier-up notice via `processSeason`), `training.test.ts` (P2-C — `trainCharacter` store action tested directly against `useGameStore`).
+- `__tests__/` — Jest unit tests, one per engine area: `engine.test.ts` (resourceEngine, incl. P2-C household-voices income term + `calcTrainingCost`), `agendaEngine.test.ts`, `officeActionEngine.test.ts`, `officeAction.test.ts` (officeActionEngine + npcConsulEngine), `eventEngine.test.ts` (clientEngine + eventEngine), `militaryEngine.test.ts` (troopEngine), `romeStats.test.ts` (resourceEngine + crisisEngine), `reputationEngine.test.ts` (reputation tiers/clamping, `getClanStanding`, `computeReputationDelta`; P2-D — relationship anchors/yearly decay, `ageAndProcessMortality`, dangling-leader-ID election safety), `patronEngine.test.ts` (P2-B — tier gating, tier-up notice via `processSeason`; P2-D — yearly-vs-seasonal decay via `processSeason`), `training.test.ts` (P2-C — `trainCharacter` store action tested directly against `useGameStore`).
 - `app.json`, `babel.config.js`, `tsconfig.json`, `eas.json`, `package.json` — Expo/RN/TS build config; edit only for tooling/dependency changes.
 - `proxy.mjs` — local dev proxy script (check contents before assuming purpose if touching networking in dev).
 - `android/` — native Android project (Expo prebuild output); not hand-edited in normal feature work.

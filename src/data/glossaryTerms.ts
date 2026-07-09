@@ -190,6 +190,18 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Forum',
   },
   {
+    id: 'relationship-anchor',
+    term: 'Relationship Anchor',
+    definition: 'The value a clan leader\'s relationship drifts toward once per year: 55 if marriage-linked, 40 if allied, 25 by default, or 15 if hostile. Hostile leaders never warm on their own — only your actions move them.',
+    relatedTab: 'Forum',
+  },
+  {
+    id: 'leader-succession',
+    term: 'Leader Succession',
+    definition: 'Clan leaders age and, rarely, die — at most one per year. A procedurally generated heir takes their place with reduced votes and relationship, and does not inherit marriage or alliance bonds, blackmail, or held offices.',
+    relatedTab: 'Forum',
+  },
+  {
     id: 'populares',
     term: 'Populares',
     definition: 'The popular faction — champions of the plebs, tribal assembly, and reform. Your Populares relationship improves uncanvassed vote probability in elections and bill support for populist legislation.',

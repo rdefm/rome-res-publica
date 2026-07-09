@@ -15,6 +15,16 @@ export const CLIENT_NAMES: Record<ClientType, string[]> = {
   ],
 };
 
+// ─── Leader succession (P2-D) ────────────────────────────────────────────────
+// Abbreviated Roman praenomina, matching the convention already used in
+// startingClans.ts leader names ("P. Cornelius Scipio", "Cn. Cornelius Rufus").
+// A procedurally generated successor's full name is `${praenomen} ${clan.gensName}`
+// (cognomen omitted — fully procedural, no authored content).
+
+export const LEADER_PRAENOMINA: string[] = [
+  'P.', 'Cn.', 'L.', 'M.', 'Q.', 'Ap.', 'Ti.', 'C.', 'Sex.', 'T.', 'D.', 'A.', 'Ser.',
+];
+
 export function generateClientName(type: ClientType, existingClients: Client[]): string {
   const used = new Set(
     existingClients.filter(c => c.type === type).map(c => c.name)

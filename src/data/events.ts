@@ -242,6 +242,29 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
+  // ─── P2-D — Leader death notice (weight 0, inject-only) ───────────────────
+  // Fired by turnSequencer step 9 at the yearly rollover when a clan leader's
+  // mortality roll succeeds. title/bodyText are overridden dynamically at
+  // injection time via injectNoticeEvent with the dead leader's name, clan,
+  // age, and the generated successor's details (see reputationEngine.ts).
+  {
+    id: 'evt-leader-death',
+    title: 'A Senator Has Died',
+    bodyText:
+      'Word from the Forum: a senior clan leader has died. His place falls to an heir.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      {
+        id: 'continue',
+        label: 'Rome moves on.',
+        successEffect: '',
+        failureEffect: '',
+      },
+    ],
+  },
+
   // Fired by turnSequencer step 2b when resolveElection returns contested: true.
   {
     id: 'evt-election-contested',

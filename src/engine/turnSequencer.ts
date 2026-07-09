@@ -9,7 +9,6 @@ import {
   applyFactionDrift,
   calcRomeStats,
   calcRomeStatModifiers,
-  applyRelationshipDrift,
 } from './resourceEngine';
 import {
   calcIndividualEscalation,
@@ -21,6 +20,7 @@ import {
 import { getTierFromLevel } from '../models/crisis';
 import { tickNpcCareers, resolveElection } from './electionEngine';
 import { pickRandomEvent, evalCondition, injectNoticeEvent } from './eventEngine';
+import { applyYearlyRelationshipDecay, ageAndProcessMortality } from './reputationEngine';
 import { tickAmbitions, getAmbitionDefinition } from './ambitionEngine';
 import { incrementLegacy, computeLegacyBonuses } from './legacyEngine';
 import {
@@ -515,8 +515,36 @@ export function processSeason(state: GameState): {
   const factionPatch = applyFactionDrift(s);
   s = { ...s, ...factionPatch };
 
-  // 9. Relationship drift
-  s = { ...s, clans: applyRelationshipDrift(s) };
+  // 9. Relationship anchor decay + leader aging/mortality (P2-D)
+  // Yearly only — gated on the Winter→Spring rollover, not applied per season.
+  if (crossedNewYear) {
+    s = { ...s, clans: applyYearlyRelationshipDecay(s.clans) };
+
+    const { clans: clansAfterMortality, death } = ageAndProcessMortality(s.clans);
+    s = { ...s, clans: clansAfterMortality };
+
+    if (death) {
+      const stampClause = death.biasInherited ? "a man of his father's stamp" : 'an unknown quantity';
+      let noticeBody =
+        `Word from the Forum: ${death.deadLeaderName} of the ${death.clanName} has died, aged ${death.deadLeaderAge}. ` +
+        `His place among the ${death.clanName} falls to ${death.successorName}, ${death.successorAge} — ${stampClause}. ` +
+        `Philon, practically: "Whatever ${death.deadLeaderName} owed us, Domine, died with him. Whatever he knew of us, we may hope, as well."`;
+      if (death.hadBond) {
+        noticeBody += ' The bond your family held with him does not pass to his heir.';
+      }
+      events.push(`${death.deadLeaderName} of the ${death.clanName} has died. ${death.successorName} succeeds him.`);
+      const player = s.family.find(c => c.isPlayer);
+      s = {
+        ...s,
+        pendingEvents: [...s.pendingEvents, injectNoticeEvent(
+          'evt-leader-death',
+          s.turnNumber,
+          player?.id ?? 'pc-1',
+          { title: `${death.deadLeaderName} is dead`, bodyText: noticeBody },
+        )],
+      };
+    }
+  }
 
   // 9c. Province tick
   if (s.provinces && s.provinces.length > 0) {

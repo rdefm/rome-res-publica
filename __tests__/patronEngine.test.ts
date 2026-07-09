@@ -161,3 +161,33 @@ describe('Patron Tier-up notice (turnSequencer step 18)', () => {
     expect(notices.length).toBe(0);
   });
 });
+
+// ─── P2-D: relationship decay is yearly, not seasonal (turnSequencer step 9) ─
+
+function makeTestClan(relationship: number) {
+  return {
+    id: 'testii', name: 'Gens Testia', gensName: 'Testius', sigil: '🏛️', influence: 50, desc: '',
+    leaders: [{
+      id: 'leader-1', name: 'L. Testius', title: 'Senator', emoji: '👤', age: 55,
+      sphere: 'Senate', relationship, favour: 0, blackmail: false, bias: 'optimates',
+      votes: 10, bio: '', skills: { rhetoric: 5, martial: 5, intrigus: 5 },
+      heldOffices: [], currentOffice: null, turnsLeftInOffice: null,
+    }],
+  };
+}
+
+describe('Relationship decay only applies at the yearly rollover', () => {
+  test('a mid-year season transition leaves relationship unchanged', () => {
+    // seasonIndex 0 (Spring) -> 1 (Summer): does not cross a new year.
+    const state = makeState({ seasonIndex: 0, clans: [makeTestClan(40)] });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.clans[0].leaders[0].relationship).toBe(40); // unchanged, no default anchor drift yet
+  });
+
+  test('the Winter -> Spring rollover applies exactly one decay tick', () => {
+    // seasonIndex 3 (Winter) -> 0 (Spring): crosses a new year.
+    const state = makeState({ seasonIndex: 3, clans: [makeTestClan(40)] });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.clans[0].leaders[0].relationship).toBe(37); // one decayPerYear tick toward the 25 default anchor
+  });
+});

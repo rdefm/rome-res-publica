@@ -96,8 +96,31 @@ export const BALANCE = {
     skillCap: 10,
   },
 
-  // ─── P2-D — Relationship anchors & leader mortality (filled in Chunk P2-D) ─
-  relationships: {},
+  // ─── P2-D — Relationship anchors & leader mortality ────────────────────────
+  relationships: {
+    // Anchor precedence (see reputationEngine.deriveRelationshipAnchor):
+    // marriage > alliance > hostile (relationship < 25, no bond) > default.
+    anchorMarriage: 55,
+    anchorAlliance: 40,
+    anchorDefault: 25,
+    anchorHostile: 15,
+    /** Points moved toward the anchor per year (Winter→Spring rollover only — not per season). */
+    decayPerYear: 3,
+    /** Death chance by age band, rolled once per leader per year. Hard-capped at one death/year game-wide. */
+    mortality: {
+      under50: 0,
+      band50to59: 0.03,
+      band60to69: 0.08,
+      band70to79: 0.18,
+      band80plus: 0.35,
+    },
+    successorAgeMin: 32,
+    successorAgeMax: 45,
+    /** Chance the successor inherits the predecessor's LeaderBias; otherwise random. */
+    successorBiasInheritChance: 0.6,
+    successorVotesRetention: 0.7,
+    successorRelationshipRetention: 0.4,
+  },
 
   // ─── P2-F — Munificence acts (filled in Chunk P2-F) ────────────────────────
   munificence: {},

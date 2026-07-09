@@ -1032,7 +1032,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
-          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + relationshipDelta) } : l
+          l.id === leaderId ? { ...l, relationship: Math.min(100, l.relationship + relationshipDelta), married: true } : l
         ),
       })),
       log: [...s.log, mkLog(label, 'Marriage alliance arranged with a clan family.', 'good')],
