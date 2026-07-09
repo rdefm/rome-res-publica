@@ -3,10 +3,12 @@
  * Mounted once at the App root (alongside EventModal etc.) — self-gates on
  * activeBattleSetup / activeBattle, same idiom as the other root modals.
  *
- * Chunk M5: deployment → round-by-round text-log resolution → break
- * decisions → outcome screen. No animation (that's M6).
+ * Chunk M5: deployment → round-by-round resolution → break decisions →
+ * outcome screen. Chunk M6: the live round view defaults to the animated
+ * BattlefieldView; the "Dispatches" toggle reveals M5's original LaneCard
+ * grid + text log (the accessibility fallback and debug view).
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
@@ -14,6 +16,7 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../utils/theme';
 import DeploymentBoard from '../components/battle/DeploymentBoard';
 import OrdersPanel from '../components/battle/OrdersPanel';
 import LaneCard from '../components/battle/LaneCard';
+import BattlefieldView from '../components/battle/BattlefieldView';
 import { formatBattleLog } from '../engine/battle/battleEngine';
 import { getEligibleFamilyCaptains } from '../engine/battle/musterEngine';
 import type { LaneId } from '../models/battle';
@@ -92,40 +95,53 @@ function BattleLive({
   onBreakDecision: (laneId: LaneId, decision: 'pursue' | 'wheel', targetLane?: LaneId) => void;
 }) {
   const dispatches = useMemo(() => formatBattleLog(battleState.log), [battleState.log]);
+  const [showDispatches, setShowDispatches] = useState(false);
 
   return (
     <View style={styles.liveRoot}>
       <ScrollView style={styles.laneScroll} contentContainerStyle={styles.laneScrollContent}>
-        <Text style={styles.title}>ROUND {battleState.round}</Text>
-        <View style={styles.sideRow}>
-          {LANES.map(laneId => (
-            <LaneCard
-              key={`a-${laneId}`}
-              label={`${LANE_LABEL[laneId]} (yours)`}
-              wing={battleState.attacker.wings[laneId]}
-              captainName={
-                battleState.attacker.commanderStation === laneId
-                  ? (battleState.attacker.commanderId ? characterName(battleState.attacker.commanderId) : null)
-                  : (battleState.attacker.wings[laneId].captainId ? characterName(battleState.attacker.wings[laneId].captainId) : null)
-              }
-              isCommanderHere={battleState.attacker.commanderStation === laneId}
-            />
-          ))}
-        </View>
-        <View style={styles.sideRow}>
-          {LANES.map(laneId => (
-            <LaneCard
-              key={`d-${laneId}`}
-              label={`${LANE_LABEL[laneId]} (enemy)`}
-              wing={battleState.defender.wings[laneId]}
-            />
-          ))}
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>ROUND {battleState.round}</Text>
+          <TouchableOpacity style={styles.dispatchToggle} onPress={() => setShowDispatches(v => !v)}>
+            <Text style={styles.dispatchToggleText}>{showDispatches ? 'Hide Dispatches' : 'Dispatches'}</Text>
+          </TouchableOpacity>
         </View>
 
-        <Text style={styles.dispatchHeader}>DISPATCHES</Text>
-        <View style={styles.dispatchBox}>
-          <Text style={styles.dispatchText}>{dispatches || '— the armies have not yet engaged —'}</Text>
-        </View>
+        {!showDispatches && <BattlefieldView battleState={battleState} />}
+
+        {showDispatches && (
+          <>
+            <View style={styles.sideRow}>
+              {LANES.map(laneId => (
+                <LaneCard
+                  key={`a-${laneId}`}
+                  label={`${LANE_LABEL[laneId]} (yours)`}
+                  wing={battleState.attacker.wings[laneId]}
+                  captainName={
+                    battleState.attacker.commanderStation === laneId
+                      ? (battleState.attacker.commanderId ? characterName(battleState.attacker.commanderId) : null)
+                      : (battleState.attacker.wings[laneId].captainId ? characterName(battleState.attacker.wings[laneId].captainId) : null)
+                  }
+                  isCommanderHere={battleState.attacker.commanderStation === laneId}
+                />
+              ))}
+            </View>
+            <View style={styles.sideRow}>
+              {LANES.map(laneId => (
+                <LaneCard
+                  key={`d-${laneId}`}
+                  label={`${LANE_LABEL[laneId]} (enemy)`}
+                  wing={battleState.defender.wings[laneId]}
+                />
+              ))}
+            </View>
+
+            <Text style={styles.dispatchHeader}>DISPATCHES</Text>
+            <View style={styles.dispatchBox}>
+              <Text style={styles.dispatchText}>{dispatches || '— the armies have not yet engaged —'}</Text>
+            </View>
+          </>
+        )}
       </ScrollView>
 
       {battleState.phase === 'orders' && (
@@ -243,7 +259,10 @@ const styles = StyleSheet.create({
   liveRoot: { flex: 1 },
   laneScroll: { flex: 1 },
   laneScrollContent: { padding: SPACING.md },
-  title: { fontFamily: FONTS.display, fontSize: 15, color: COLORS.gold, marginBottom: SPACING.sm },
+  title: { fontFamily: FONTS.display, fontSize: 15, color: COLORS.gold },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
+  dispatchToggle: { paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: RADIUS.sm, backgroundColor: COLORS.panelElevated },
+  dispatchToggleText: { fontFamily: FONTS.ui, fontSize: 10, color: COLORS.dust, letterSpacing: 0.5 },
   sideRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm },
   dispatchHeader: { fontFamily: FONTS.ui, fontSize: 10, color: COLORS.dust, letterSpacing: 1, marginTop: SPACING.md },
   dispatchBox: {
