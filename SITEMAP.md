@@ -175,6 +175,7 @@ Bill voting, speeches, filibusters, Rome-wide stats, crisis tracks.
 | `ledger.ts` | `SeasonLedger` and its delta sub-types (resource/crisis/Rome). |
 | `gameStart.ts` | `StartDefinition`, `StartId` (start-menu options). |
 | `resources.ts` | `ResourcePool` (tiny — 5 lines). |
+| `telemetry.ts` | `SeasonStats` — local-only playtest instrumentation shape (P2-A). No network/remote analytics. |
 
 ---
 
@@ -184,6 +185,7 @@ Grouped since most are large const arrays of definitions consumed by the matchin
 
 | File | Content |
 |---|---|
+| `balance.ts` | **The balance registry (P2-A)** — single authoritative home for tunable numbers (income, diplomacy, senate, elections, training, relationships, munificence, actionEconomy). Patron and elections numbers stay in their own files and are re-exported here; see the file's indirection-policy comment. Any new numeric literal for a tunable belongs here, not inline in engine/store code. |
 | `offices.ts` | Full 8-office Cursus Honorum ladder + all in-office actions (**large**, ~1000 lines). |
 | `events.ts` | All non-tutorial random event definitions (**largest data file**, ~1150 lines). |
 | `tutorialEvents.ts` | Scripted tutorial-only events (fired via `tutorialQueue`, not random pool). |
@@ -199,7 +201,7 @@ Grouped since most are large const arrays of definitions consumed by the matchin
 | `assetDefinitions.ts` | Personal (Domus) asset definitions. |
 | `provinceDefinitions.ts` | Italy province list + map node coordinates. |
 | `provinceAssets.ts` | Provincial asset definitions (7 types × 2 tiers). |
-| `provinceEvents.ts` | Generic province-fired events (Italy-focused for v1). |
+| `provinceEvents.ts` | Generic province-fired events (Italy-focused for v1). **Confirmed unwired (P2-A):** `PROVINCE_EVENTS` has no consumer anywhere in `src/` — dead content, not currently reachable in play. |
 | `provincialClients.ts` | 12 Italy-relevant provincial client definitions. |
 | `campaignEvents.ts` | Event cards firing during active military campaigns. |
 | `canvassingEvents.ts` | Events firing during election vote-canvassing. |
@@ -211,7 +213,7 @@ Grouped since most are large const arrays of definitions consumed by the matchin
 ## 10. Utils, tests, config
 
 - `src/utils/theme.ts` — `COLORS`, `FONTS`, `SPACING`, `RADIUS` and other design-token constants used by virtually every component.
-- `__tests__/` — Jest unit tests, one per engine area: `engine.test.ts` (resourceEngine), `agendaEngine.test.ts`, `officeActionEngine.test.ts`, `officeAction.test.ts` (officeActionEngine + npcConsulEngine), `eventEngine.test.ts` (clientEngine + eventEngine), `militaryEngine.test.ts` (troopEngine), `romeStats.test.ts` (resourceEngine + crisisEngine), `reputationEngine.test.ts` (reputation tiers/clamping, `getClanStanding`, `computeReputationDelta`).
+- `__tests__/` — Jest unit tests, one per engine area: `engine.test.ts` (resourceEngine, incl. P2-C household-voices income term + `calcTrainingCost`), `agendaEngine.test.ts`, `officeActionEngine.test.ts`, `officeAction.test.ts` (officeActionEngine + npcConsulEngine), `eventEngine.test.ts` (clientEngine + eventEngine), `militaryEngine.test.ts` (troopEngine), `romeStats.test.ts` (resourceEngine + crisisEngine), `reputationEngine.test.ts` (reputation tiers/clamping, `getClanStanding`, `computeReputationDelta`), `patronEngine.test.ts` (P2-B — tier gating, tier-up notice via `processSeason`), `training.test.ts` (P2-C — `trainCharacter` store action tested directly against `useGameStore`).
 - `app.json`, `babel.config.js`, `tsconfig.json`, `eas.json`, `package.json` — Expo/RN/TS build config; edit only for tooling/dependency changes.
 - `proxy.mjs` — local dev proxy script (check contents before assuming purpose if touching networking in dev).
 - `android/` — native Android project (Expo prebuild output); not hand-edited in normal feature work.

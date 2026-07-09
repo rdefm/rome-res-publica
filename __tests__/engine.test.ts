@@ -2,6 +2,7 @@ import {
   calcResourceIncome,
   applyFactionDrift,
   calcRomeStats,
+  calcTrainingCost,
 } from '../src/engine/resourceEngine';
 import { getCrisisStatusEffects } from '../src/engine/crisisEngine';
 import { scoreAction, chooseAction } from '../src/engine/aiScoring';
@@ -146,6 +147,55 @@ describe('calcResourceIncome', () => {
     const { fidesIncome } = calcResourceIncome(s as any);
     // base: rhetoric 6 × 2 = 12, allied leader (relationship >= 60) = +2
     expect(fidesIncome).toBe(12 + 2);
+  });
+
+  // P2-C: household-voices income term
+  test('fides income includes the household-voices term from the highest-rhetoric other family member age >= 12', () => {
+    const s = makeState({
+      family: [
+        { id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 42, skills: { rhetoric: 6, martial: 3, intrigus: 4 }, officeId: null },
+        { id: 'heir-1', name: 'Julia', role: 'daughter', isPlayer: false, age: 16, skills: { rhetoric: 4, martial: 1, intrigus: 2 }, officeId: null },
+      ],
+    });
+    const { fidesIncome } = calcResourceIncome(s as any);
+    // base: paterfamilias rhetoric 6 × 2 = 12, + best other rhetoric 4 × 1 = 4
+    expect(fidesIncome).toBe(12 + 4);
+  });
+
+  test('family members below the minimum age contribute nothing to the household-voices term', () => {
+    const s = makeState({
+      family: [
+        { id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 42, skills: { rhetoric: 6, martial: 3, intrigus: 4 }, officeId: null },
+        { id: 'child-1', name: 'Little Marcus', role: 'son', isPlayer: false, age: 8, skills: { rhetoric: 9, martial: 0, intrigus: 0 }, officeId: null },
+      ],
+    });
+    const { fidesIncome } = calcResourceIncome(s as any);
+    // base: rhetoric 6 × 2 = 12; child's rhetoric 9 ignored (age 8 < min age 12)
+    expect(fidesIncome).toBe(12);
+  });
+
+  test('household-voices term takes only the highest other rhetoric, not the sum', () => {
+    const s = makeState({
+      family: [
+        { id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 42, skills: { rhetoric: 6, martial: 3, intrigus: 4 }, officeId: null },
+        { id: 'heir-1', name: 'Julia', role: 'daughter', isPlayer: false, age: 16, skills: { rhetoric: 4, martial: 1, intrigus: 2 }, officeId: null },
+        { id: 'heir-2', name: 'Gaius', role: 'son', isPlayer: false, age: 20, skills: { rhetoric: 7, martial: 5, intrigus: 1 }, officeId: null },
+      ],
+    });
+    const { fidesIncome } = calcResourceIncome(s as any);
+    // base: 6 × 2 = 12, + best other rhetoric (7, not 4+7) × 1 = 7
+    expect(fidesIncome).toBe(12 + 7);
+  });
+});
+
+// ─── Training cost (P2-C) ─────────────────────────────────────────────────────
+
+describe('calcTrainingCost', () => {
+  test('cost scales with target level, not current level', () => {
+    expect(calcTrainingCost(0)).toBe(3);   // 0 → 1 costs 3 × 1
+    expect(calcTrainingCost(5)).toBe(18);  // 5 → 6 costs 3 × 6
+    expect(calcTrainingCost(6)).toBe(21);  // 6 → 7 costs 3 × 7 (plan's worked example)
+    expect(calcTrainingCost(9)).toBe(30);  // 9 → 10 costs 3 × 10
   });
 });
 

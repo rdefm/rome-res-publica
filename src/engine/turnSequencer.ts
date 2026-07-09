@@ -20,7 +20,7 @@ import {
 } from './crisisEngine';
 import { getTierFromLevel } from '../models/crisis';
 import { tickNpcCareers, resolveElection } from './electionEngine';
-import { pickRandomEvent, evalCondition } from './eventEngine';
+import { pickRandomEvent, evalCondition, injectNoticeEvent } from './eventEngine';
 import { tickAmbitions, getAmbitionDefinition } from './ambitionEngine';
 import { incrementLegacy, computeLegacyBonuses } from './legacyEngine';
 import {
@@ -1071,11 +1071,35 @@ export function processSeason(state: GameState): {
 
   // 18. Patron tier update and favour call-ins
   {
-    const newPatronTier = computePatronTier(s.lifetimeDignitas, s.fides);
+    const newPatronTier = computePatronTier(s.lifetimeDignitas);
     if (newPatronTier !== s.patronTier) {
       const tierDef  = PATRON_TIER_DEFINITIONS[newPatronTier];
-      const direction = newPatronTier > s.patronTier ? 'risen to' : 'fallen to';
+      const advanced  = newPatronTier > s.patronTier;
+      const direction = advanced ? 'risen to' : 'fallen to';
       events.push(`Your family has ${direction} "${tierDef.label}" on the Patron Ladder.`);
+
+      // P2-B: celebrate advancement with a Philon-voiced interstitial. Rare
+      // Dignitas-penalty demotions get the plain ledger headline above only —
+      // there's nothing to celebrate there.
+      if (advanced) {
+        const bonusLine =
+          `Your household may now sponsor ${tierDef.passiveBonus.clientSlots} clients, ` +
+          `and Fides income rises ×${tierDef.passiveBonus.fidesMultiplier.toFixed(2)}.`;
+        const noticeBody =
+          `Philon does not smile often. "Rome has taken notice, Domine. The Gens Brutia now stands as ` +
+          `${tierDef.label}. ${bonusLine} Greater names carry greater expectations."`;
+        const player = s.family.find(c => c.isPlayer);
+        s = {
+          ...s,
+          pendingEvents: [...s.pendingEvents, injectNoticeEvent(
+            'evt-patron-tier-up',
+            s.turnNumber,
+            player?.id ?? 'pc-1',
+            { title: tierDef.label, bodyText: noticeBody },
+          )],
+        };
+      }
+
       s = { ...s, patronTier: newPatronTier };
     }
 

@@ -13,22 +13,12 @@ import {
   applyTrackDelta,
 } from './crisisEngine';
 import { getTierFromLevel } from '../models/crisis';
+import { BALANCE } from '../data/balance';
 
 export interface ApplyEffectOptions {
   previewClientName?: string;
   instance?: EventInstance | null;
 }
-
-// ─── Office Fides bonus lookup ────────────────────────────────────────────────
-// offices.ts does not carry a fidesBonusPerSeason field, so we maintain
-// the lookup here per the spec.
-
-const OFFICE_FIDES_BONUS: Record<string, number> = {
-  quaestor: 3,
-  aedile:   5,
-  praetor:  7,
-  consul:   12,
-};
 
 // ─── Rome stat modifiers ──────────────────────────────────────────────────────
 
@@ -143,8 +133,16 @@ export function calcResourceIncome(state: GameState): {
 } {
   const paterfamilias = state.family.find((c) => c.isPlayer);
 
-  // Step 1: Base skill income
-  const baseIncome = (paterfamilias?.skills.rhetoric ?? 0) * 2;
+  // Step 1: Base skill income — paterfamilias rhetoric, plus a "household
+  // voices" term (P2-C): the highest rhetoric among other family members age
+  // ≥ bestOtherRhetoricMinAge. Makes training an heir's rhetoric economically
+  // meaningful, not just paterfamilias's.
+  const bestOtherRhetoric = state.family
+    .filter(c => !c.isPlayer && c.age >= BALANCE.income.bestOtherRhetoricMinAge)
+    .reduce((best, c) => Math.max(best, c.skills.rhetoric), 0);
+  const baseIncome =
+    (paterfamilias?.skills.rhetoric ?? 0) * BALANCE.income.paterfamiliasRhetoricMultiplier
+    + bestOtherRhetoric * BALANCE.income.bestOtherRhetoricMultiplier;
 
   // Step 2: Patron tier multiplier
   const patronMultiplier =
@@ -153,7 +151,7 @@ export function calcResourceIncome(state: GameState): {
   // Step 3: Office income
   const officeIncome = state.family
     .filter(c => c.isPlayer && c.officeId)
-    .reduce((sum, c) => sum + (OFFICE_FIDES_BONUS[c.officeId!] ?? 0), 0);
+    .reduce((sum, c) => sum + (BALANCE.income.officeFidesBonus[c.officeId!] ?? 0), 0);
 
   // Step 4: Clan leader relationship income
   let clanFidesIncome = 0;
@@ -220,6 +218,15 @@ export function calcResourceIncome(state: GameState): {
     + crisisDenariiDelta;  // negative at higher War/Economy tiers
 
   return { fidesIncome, denariiIncome, plebsDelta };
+}
+
+// ─── Training cost (P2-C) ─────────────────────────────────────────────────────
+// Shared by gameStore.trainCharacter (validation + apply) and
+// CharacterActionModal (cost/disabled-reason display) so the two never drift.
+
+/** Fides cost to train a skill from currentLevel to currentLevel + 1. */
+export function calcTrainingCost(currentLevel: number): number {
+  return BALANCE.training.fidesCostPerTargetLevel * (currentLevel + 1);
 }
 
 // ─── Effect string ────────────────────────────────────────────────────────────

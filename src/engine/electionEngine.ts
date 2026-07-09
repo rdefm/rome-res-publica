@@ -11,7 +11,7 @@ export const CANVASS_FIDES_COST       = 3;
 export const CANVASS_MIN_RELATIONSHIP = 25;
 export const CANVASS_EVENT_CHANCE     = 0.15;
 
-const OFFICE_PRESTIGE: Record<string, number> = {
+export const OFFICE_PRESTIGE: Record<string, number> = {
   vigintivirate: 2,
   quaestor:      5,
   tribune:       6,

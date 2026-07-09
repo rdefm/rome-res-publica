@@ -70,7 +70,11 @@ export default function EventCard({ def, instance, onChoiceMade }: EventCardProp
   }, [def.id]); // run once per card, not on every render
 
   // Addition 3 — Body text interpolation
-  const resolvedBody = def.bodyText
+  // instance.bodyText (set by injectNoticeEvent-style dynamic injections — P2-B
+  // tier-up, P2-D leader death, P2-F grand acts) overrides the static def body.
+  // Previously this field was set by npcConsulEngine but never read here — fixed
+  // in P2-B so dynamic interpolation actually reaches the player.
+  const resolvedBody = (instance.bodyText ?? def.bodyText)
     .replace('{clientName}', instance.clientName ?? previewClientName ?? 'a stranger')
     .replace('{clientType}', instance.clientType ?? 'client');
 
@@ -101,7 +105,7 @@ export default function EventCard({ def, instance, onChoiceMade }: EventCardProp
       )}
 
       {/* Title */}
-      <Text style={styles.title}>{def.title}</Text>
+      <Text style={styles.title}>{instance.title ?? def.title}</Text>
 
       {/* Body */}
       <Text style={styles.body}>{resolvedBody}</Text>

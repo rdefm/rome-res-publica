@@ -18,7 +18,7 @@ export interface Bill {
   desc: string;
   support: number;              // −100 to +100. Positive = passes at season end.
   turnsLeft: number;            // seasons until the bill expires
-  passEffect: string;           // pipe-separated effect string e.g. 'dignitas+8|crisis-5'
+  passEffect: string;           // pipe-separated effect string e.g. 'lifetimeDignitas+8|crisis-5'
   failEffect: string;
   playerVote?: 'vote_for' | 'vote_against' | 'filibuster';
   playerSubmitted?: boolean;

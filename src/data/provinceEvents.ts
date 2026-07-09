@@ -105,7 +105,7 @@ export const PROVINCE_EVENTS: ProvinceEventDefinition[] = [
       {
         id: 'attend_charm',
         label: 'Attend and charm',
-        cost: { resource: 'gratia', amount: 10 },
+        cost: { resource: 'fides', amount: 10 },
         successEffect: 'localSupport:+8,rel:+3',
         successText: 'An excellent evening. Connections made, friendships warmed.',
       },
@@ -133,7 +133,7 @@ export const PROVINCE_EVENTS: ProvinceEventDefinition[] = [
       {
         id: 'report_fully',
         label: 'Report fully to Rome',
-        successEffect: 'dignitas:+8,gravitas:+5',
+        successEffect: 'lifetimeDignitas:+8,fides:+5',
         successText: 'Your honest accounting earns respect in the Senate.',
       },
       {
@@ -145,7 +145,7 @@ export const PROVINCE_EVENTS: ProvinceEventDefinition[] = [
       {
         id: 'redirect_allies',
         label: 'Redirect to allied clans',
-        successEffect: 'gratia:+20',
+        successEffect: 'fides:+20',
         successText: 'You know who to thank. Debts incurred, favours stored.',
       },
     ],
@@ -168,7 +168,7 @@ export const PROVINCE_EVENTS: ProvinceEventDefinition[] = [
         id: 'rally_rhetoric',
         label: 'Rally with a speech',
         skillCheck: { skill: 'rhetoric', difficulty: 6 },
-        cost: { resource: 'gravitas', amount: 10 },
+        cost: { resource: 'fides', amount: 10 },
         successEffect: 'rel:+5,imperium:+2',
         successText: 'Your words move them. Pride, not pay, steadies the ranks.',
         failureEffect: 'corruption:+5,rel:-4',
@@ -195,7 +195,7 @@ export const PROVINCE_EVENTS: ProvinceEventDefinition[] = [
         id: 'outmanoeuvre',
         label: 'Outmanoeuvre them',
         skillCheck: { skill: 'intrigus', difficulty: 5 },
-        cost: { resource: 'gratia', amount: 15 },
+        cost: { resource: 'fides', amount: 15 },
         successEffect: 'localSupport:+10,rel:+5',
         successText: 'You expose their weak credentials to the local authority. They depart humiliated.',
         failureEffect: 'localSupport:-8,rel:-5',
@@ -204,13 +204,13 @@ export const PROVINCE_EVENTS: ProvinceEventDefinition[] = [
       {
         id: 'accommodate',
         label: 'Accommodate and cooperate',
-        successEffect: 'rel:+3,gratia:-5',
+        successEffect: 'rel:+3,fides:-5',
         successText: 'A gracious gesture. Rome presents a united face — at a small personal cost.',
       },
       {
         id: 'report_to_senate',
         label: 'Report interference to the Senate',
-        successEffect: 'gravitas:+5',
+        successEffect: 'fides:+5',
         successText: 'The Senate takes note. Whether they act is another matter.',
       },
     ],
@@ -233,9 +233,9 @@ export const PROVINCE_EVENTS: ProvinceEventDefinition[] = [
         id: 'enter_competition',
         label: 'Enter a family member',
         skillCheck: { skill: 'martial', difficulty: 5 },
-        successEffect: 'dignitas:+10,localSupport:+8',
+        successEffect: 'lifetimeDignitas:+10,localSupport:+8',
         successText: 'Your man competes well. Rome\'s prestige rises on the field.',
-        failureEffect: 'dignitas:-3,localSupport:+2',
+        failureEffect: 'lifetimeDignitas:-3,localSupport:+2',
         failureText: 'A respectable showing, but not a victory. Still, participation is noted.',
       },
       {

@@ -1,6 +1,27 @@
 import type { GameState } from '../state/gameStore';
-import type { EventCondition, ConditionOperator, EventDef, EventChoice } from '../models/event';
+import type { EventCondition, ConditionOperator, EventDef, EventChoice, EventInstance } from '../models/event';
 import type { ClientType } from '../models/client';
+
+// ─── Notice event injection (P2-B) ───────────────────────────────────────────
+// Shared builder for weight-0, single-choice, Philon-voiced interstitials —
+// used by P2-B (patron tier-up), P2-D (leader death), and P2-F (grand
+// munificence acts). Push the returned instance onto state.pendingEvents;
+// the def itself (weight: 0, in events.ts) supplies the fallback title/body
+// and the "Continue" choice — title/bodyText here override it dynamically.
+export function injectNoticeEvent(
+  defId: string,
+  turnNumber: number,
+  targetCharacterId: string,
+  opts: { title?: string; bodyText?: string } = {},
+): EventInstance {
+  return {
+    defId,
+    firedAtTurn: turnNumber,
+    targetCharacterId,
+    title: opts.title,
+    bodyText: opts.bodyText,
+  };
+}
 
 // ─── Operator evaluator ──────────────────────────────────────────────────────
 

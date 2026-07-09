@@ -39,9 +39,8 @@ export interface TraitDefinition {
     intrigus: number;
   }>;
   resourceBonuses?: Partial<{
-    dignitas: number;  // flat bonus per season
-    gravitas: number;
-    gratia: number;
+    lifetimeDignitas: number;  // flat bonus per season
+    fides: number;             // consolidated from the former gravitas/gratia bonuses
     imperium: number;
   }>;
   exclusiveWith?: string[]; // trait IDs that cannot coexist with this one
@@ -89,7 +88,7 @@ export const TRAIT_DEFINITIONS: TraitDefinition[] = [
     heritable: true,
     inheritanceWeight: 0.3,
     skillModifiers: { auctoritas: 5 },
-    resourceBonuses: { dignitas: 3 },
+    resourceBonuses: { lifetimeDignitas: 3 },
   },
   {
     id: 'ruthless',
@@ -126,7 +125,7 @@ export const TRAIT_DEFINITIONS: TraitDefinition[] = [
     heritable: true,
     inheritanceWeight: 0.25,
     skillModifiers: { auctoritas: 4 },
-    resourceBonuses: { dignitas: 5 },
+    resourceBonuses: { lifetimeDignitas: 5 },
     exclusiveWith: ['ruthless'],
   },
   {
@@ -136,6 +135,6 @@ export const TRAIT_DEFINITIONS: TraitDefinition[] = [
     heritable: false,
     inheritanceWeight: 0,
     skillModifiers: { auctoritas: 3, rhetoric: 2 },
-    resourceBonuses: { gravitas: 5 },
+    resourceBonuses: { fides: 5 },
   },
 ];

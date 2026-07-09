@@ -70,4 +70,7 @@ export interface EventInstance {
   clientName?: string;
   clientType?: ClientType;
   bodyText?: string;
+  /** Overrides def.title when set — dynamic interstitials (P2-B tier-up, P2-D
+   *  leader death, P2-F grand acts) via injectNoticeEvent. */
+  title?: string;
 }

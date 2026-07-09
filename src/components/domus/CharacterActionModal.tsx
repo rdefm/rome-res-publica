@@ -4,6 +4,8 @@ import type { Character } from '../../models/character';
 import { useGameStore } from '../../state/gameStore';
 import { getAmbitionDefinition } from '../../engine/ambitionEngine';
 import { TRAIT_DEFINITIONS } from '../../data/traits';
+import { BALANCE } from '../../data/balance';
+import { calcTrainingCost } from '../../engine/resourceEngine';
 import type { ActiveAmbition } from '../../models/ambition';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import ScrollModal, { PARCHMENT } from '../shared/ScrollModal';
@@ -233,17 +235,57 @@ function ActionButton({ label, cost, desc, disabled, onPress }: {
   );
 }
 
+// ─── Training section (P2-C) ───────────────────────────────────────────────
+// Deterministic, escalating-cost training — one unified mechanic for all
+// three skills, for both the player and NPC family members. Always succeeds;
+// rate-limited to once per season per character.
+
+function TrainingSection({ character }: { character: Character }) {
+  const fides = useGameStore(s => s.fides);
+  const trainedThisSeason = useGameStore(s => s.trainedThisSeason);
+  const trainCharacter = useGameStore(s => s.trainCharacter);
+  const alreadyTrainedThisSeason = trainedThisSeason.includes(character.id);
+
+  return (
+    <View>
+      <Text style={styles.sectionLabel}>TRAIN SKILL</Text>
+      {(Object.keys(SKILL_LABELS) as Array<keyof Character['skills']>).map(sk => {
+        const level = character.skills[sk];
+        const atCap = level >= BALANCE.training.skillCap;
+        const targetLevel = level + 1;
+        const cost = calcTrainingCost(level);
+
+        let disabled = false;
+        let desc = `Always succeeds. ${SKILL_LABELS[sk]} rises to ${targetLevel}.`;
+        if (atCap) {
+          disabled = true;
+          desc = `${SKILL_LABELS[sk]} is maximized (${BALANCE.training.skillCap}).`;
+        } else if (alreadyTrainedThisSeason) {
+          disabled = true;
+          desc = 'Already trained this season.';
+        } else if (fides < cost) {
+          disabled = true;
+          desc = `Need ${cost} Fides.`;
+        }
+
+        return (
+          <ActionButton
+            key={sk}
+            label={`Train ${SKILL_LABELS[sk]} (${level})`}
+            cost={atCap ? 'MAX' : `${cost} Fides`}
+            desc={desc}
+            disabled={disabled}
+            onPress={() => trainCharacter(character.id, sk)}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 export default function CharacterActionModal({ character, visible, onClose }: Props) {
-  const { fides, trainCharacter } = useGameStore();
-  const [selectedSkill, setSelectedSkill] = useState<keyof Character['skills']>('rhetoric');
-
-  function doAction(skillKey: keyof Character['skills'], cost: number) {
-    trainCharacter(character.id, skillKey, cost);
-    onClose();
-  }
-
   return (
     <ScrollModal
       visible={visible}
@@ -251,62 +293,14 @@ export default function CharacterActionModal({ character, visible, onClose }: Pr
       title={character.name}
       subtitle={`${character.role} · Age ${character.age}`}
     >
+      <TrainingSection character={character} />
       {character.isPlayer ? (
         <>
-          <ActionButton
-            label="Study Rhetoric"
-            cost="5 Fides"
-            desc="70% chance: Rhetoric +1"
-            disabled={fides < 5}
-            onPress={() => doAction('rhetoric', 5)}
-          />
-          <ActionButton
-            label="Military Drills"
-            cost="5 Fides"
-            desc="70% chance: Martial +1"
-            disabled={fides < 5}
-            onPress={() => doAction('martial', 5)}
-          />
           <TraitBadges character={character} />
           <PlayerAmbitionTracker characterId={character.id} />
         </>
       ) : (
         <>
-          <Text style={styles.sectionLabel}>CHOOSE SKILL TO TRAIN:</Text>
-          <View style={styles.skillPills}>
-            {(Object.keys(SKILL_LABELS) as Array<keyof Character['skills']>).map(sk => (
-              <TouchableOpacity
-                key={sk}
-                style={[styles.pill, selectedSkill === sk && styles.pillActive]}
-                onPress={() => setSelectedSkill(sk)}
-              >
-                <Text style={[styles.pillText, selectedSkill === sk && styles.pillTextActive]}>
-                  {SKILL_LABELS[sk]}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <ActionButton
-            label="Hire a Tutor"
-            cost="8 Fides"
-            desc={`60% chance: ${SKILL_LABELS[selectedSkill]} +1`}
-            disabled={fides < 8}
-            onPress={() => doAction(selectedSkill, 8)}
-          />
-          <ActionButton
-            label="Military Training"
-            cost="6 Fides"
-            desc="65% chance: Martial +1. Relationship +5."
-            disabled={fides < 6}
-            onPress={() => doAction('martial', 6)}
-          />
-          <ActionButton
-            label="Assign to Patron"
-            cost="4 Fides"
-            desc="50% chance: Rhetoric or Intrigus +1 (random)"
-            disabled={fides < 4}
-            onPress={() => doAction(Math.random() < 0.5 ? 'rhetoric' : 'intrigus', 4)}
-          />
           <TraitBadges character={character} />
           <NpcAmbitionDisplay character={character} />
         </>
@@ -325,33 +319,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1.5,
     marginBottom: SPACING.sm,
-  },
-  skillPills: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: SPACING.md,
-  },
-  pill: {
-    borderWidth: 1,
-    borderColor: PARCHMENT.border,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    backgroundColor: PARCHMENT.pill,
-  },
-  pillActive: {
-    borderColor: PARCHMENT.gold,
-    backgroundColor: PARCHMENT.pillActive,
-  },
-  pillText: {
-    color: PARCHMENT.body,
-    fontFamily: FONTS.ui,
-    fontSize: 12,
-  },
-  pillTextActive: {
-    color: PARCHMENT.heading,
-    fontWeight: '700',
   },
   actionBtn: {
     backgroundColor: 'rgba(200,168,112,0.25)',

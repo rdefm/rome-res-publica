@@ -10,6 +10,7 @@ import { SEVERITY_ORDER } from '../models/agenda';
 import { OFFICES, TRIBUNE_OFFICE } from '../data/offices';
 import { CORRUPTION_TRIAL_THRESHOLD } from './trialEngine';
 import { getClanStanding } from './reputationEngine';
+import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 
 // ─── Crisis tier copy ─────────────────────────────────────────────────────────
 // Labels and penalty strings sourced directly from the tier tables in
@@ -498,10 +499,34 @@ function genHousekeeping(state: GameState): AgendaItem[] {
   return items;
 }
 
+// ─── Generator 15 — Patron Tier proximity (P2-B) ─────────────────────────────
+// Fires when Lifetime Dignitas is within 15 points of the next Patron Tier
+// threshold. Laudationes, Munificence acts (P2-F), and legacy milestones all
+// convert into Lifetime Dignitas, closing the gap.
+
+function genPatronTierProximity(state: GameState): AgendaItem[] {
+  const patronTier = state.patronTier ?? 0;
+  if (patronTier >= 5) return [];  // already at max tier
+
+  const nextTierDef = PATRON_TIER_DEFINITIONS[patronTier + 1];
+  const remaining = nextTierDef.requiresDignitasTotal - (state.lifetimeDignitas ?? 0);
+  if (remaining > 15 || remaining <= 0) return [];
+
+  return [{
+    id: `agenda-opportunity-patron-tier-${nextTierDef.tier}`,
+    category: 'family' as const,
+    severity: 'opportunity',
+    title: 'The next rung is close',
+    detail: `${remaining} Lifetime Dignitas to ${nextTierDef.label}. Laudationes, munificence, and legacy milestones close the gap.`,
+    target: { tab: 'Forum' as const },
+    sortWeight: 20,
+  }];
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Runs all 14 generators against the current state and returns a sorted list
+ * Runs all 15 generators against the current state and returns a sorted list
  * of agenda items. Sort order: severity (critical first) → sortWeight →
  * category (alpha tiebreak for stable ordering).
  *
@@ -524,6 +549,7 @@ export function generateAgenda(state: GameState): AgendaItem[] {
     ...genSenateResponse(state),
     ...genGovernorIdle(state),
     ...genHousekeeping(state),
+    ...genPatronTierProximity(state),
   ];
 
   return items.sort((a, b) => {

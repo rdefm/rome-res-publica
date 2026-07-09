@@ -21,7 +21,7 @@ const ACTION_LABELS: Record<string, string> = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function PatronLadderPanel() {
-  const { patronTier, lifetimeDignitas, fides, clients } = useGameStore();
+  const { patronTier, lifetimeDignitas, clients } = useGameStore();
   const [expanded, setExpanded] = useState(true);
 
   const tierDef = PATRON_TIER_DEFINITIONS[patronTier];
@@ -30,12 +30,10 @@ export default function PatronLadderPanel() {
   const clientSlots = tierDef.passiveBonus.clientSlots;
   const clientCount = clients.length;
 
-  // Progress toward next tier
+  // Progress toward next tier — gated by Lifetime Dignitas alone (P2-B).
+  // Spending Fides can never cost you a tier, so there's no Fides requirement to show.
   const dignitasPct = nextTierDef
     ? Math.min(1, lifetimeDignitas / nextTierDef.requiresDignitasTotal)
-    : 1;
-  const fidesPct = nextTierDef
-    ? Math.min(1, fides / nextTierDef.requiresFidesPool)
     : 1;
 
   return (
@@ -83,20 +81,6 @@ export default function PatronLadderPanel() {
                 <View style={[styles.trackFill, {
                   width: `${dignitasPct * 100}%`,
                   backgroundColor: COLORS.lifetimeDignColor,
-                }]} />
-              </View>
-
-              {/* Fides pool bar */}
-              <View style={[styles.progressRow, { marginTop: SPACING.xs }]}>
-                <Text style={styles.progressLabel}>Fides Pool</Text>
-                <Text style={styles.progressVal}>
-                  {fides} / {nextTierDef.requiresFidesPool}
-                </Text>
-              </View>
-              <View style={styles.track}>
-                <View style={[styles.trackFill, {
-                  width: `${fidesPct * 100}%`,
-                  backgroundColor: COLORS.fidesColor,
                 }]} />
               </View>
             </View>

@@ -50,6 +50,14 @@ const SaveSchema = z.object({
     outcome: z.string().optional(),
     actionsUsed: z.array(z.string()),
   })).default([]),
+  // P2-A instrumentation — .default()s ensure pre-Phase-2 saves load cleanly.
+  seasonStartedAt: z.number().default(() => Date.now()),
+  actionsThisSeason: z.number().default(0),
+  fidesSpentThisSeason: z.number().default(0),
+  denariiSpentThisSeason: z.number().default(0),
+  seasonStatsHistory: z.array(z.any()).default([]),
+  // P2-C — rate-limits trainCharacter to once/season.
+  trainedThisSeason: z.array(z.string()).default([]),
 });
 
 export interface SaveProvider {

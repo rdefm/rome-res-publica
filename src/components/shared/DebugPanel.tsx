@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import { EVENT_DEFS } from '../../data/events';
+import { BALANCE } from '../../data/balance';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -208,10 +209,32 @@ function EventsSection() {
   );
 }
 
+// ─── Section: Telemetry (P2-A) ─────────────────────────────────────────────
+// Dumps BALANCE and seasonStatsHistory for tuning reference. Chunk P2-E adds
+// a richer "Pace" view (rolling averages, band/time flags) on top of the same
+// seasonStatsHistory data.
+
+function TelemetrySection() {
+  const seasonStatsHistory = useGameStore(s => s.seasonStatsHistory);
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>SEASON STATS HISTORY (last {seasonStatsHistory.length})</Text>
+      <Text style={styles.dump} selectable>
+        {JSON.stringify(seasonStatsHistory, null, 2)}
+      </Text>
+      <Text style={styles.sectionTitle}>BALANCE REGISTRY</Text>
+      <Text style={styles.dump} selectable>
+        {JSON.stringify(BALANCE, null, 2)}
+      </Text>
+    </View>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function DebugPanel() {
-  const [tab, setTab] = useState<'resources' | 'characters' | 'events'>('resources');
+  const [tab, setTab] = useState<'resources' | 'characters' | 'events' | 'telemetry'>('resources');
 
   return (
     <View style={styles.container}>
@@ -219,7 +242,7 @@ export default function DebugPanel() {
 
       {/* Tab switcher */}
       <View style={styles.tabs}>
-        {(['resources', 'characters', 'events'] as const).map(t => (
+        {(['resources', 'characters', 'events', 'telemetry'] as const).map(t => (
           <TouchableOpacity
             key={t}
             style={[styles.tab, tab === t && styles.tabActive]}
@@ -236,6 +259,7 @@ export default function DebugPanel() {
         {tab === 'resources'  && <ResourceSection />}
         {tab === 'characters' && <CharacterSection />}
         {tab === 'events'     && <EventsSection />}
+        {tab === 'telemetry'  && <TelemetrySection />}
       </ScrollView>
     </View>
   );
@@ -431,5 +455,18 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.ui,
     fontSize: 9,
     color: COLORS.marble,
+  },
+
+  // Telemetry
+  dump: {
+    fontFamily: 'Courier',
+    fontSize: 10,
+    color: COLORS.dust,
+    backgroundColor: COLORS.panelSurface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    marginBottom: SPACING.md,
   },
 });

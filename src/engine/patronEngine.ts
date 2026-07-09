@@ -2,13 +2,9 @@ import { PATRON_TIER_DEFINITIONS, type PatronTier } from '../models/patronLadder
 
 // ─── Compute current patron tier ─────────────────────────────────────────────
 
-export function computePatronTier(
-  lifetimeDignitas: number,
-  currentFides: number
-): PatronTier {
+export function computePatronTier(lifetimeDignitas: number): PatronTier {
   const eligible = PATRON_TIER_DEFINITIONS.filter(
-    t => lifetimeDignitas >= t.requiresDignitasTotal &&
-         currentFides     >= t.requiresFidesPool
+    t => lifetimeDignitas >= t.requiresDignitasTotal
   );
   const highest = eligible.sort((a, b) => b.tier - a.tier)[0];
   return (highest?.tier ?? 0) as PatronTier;

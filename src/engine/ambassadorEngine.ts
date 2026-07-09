@@ -28,7 +28,7 @@ export function resolveExpulsion(
   province: ProvinceState
 ): {
   provincePatch: Partial<ProvinceState>;
-  resourcePatch: { dignitas?: number; gratia?: number };
+  resourcePatch: { fides?: number; lifetimeDignitas?: number };
   logMessage: string;
 } {
   return {
@@ -36,7 +36,7 @@ export function resolveExpulsion(
       playerAmbassador: null,
       relationshipScore: Math.max(0, province.relationshipScore - 15),
     },
-    resourcePatch: { dignitas: -8 },
+    resourcePatch: { lifetimeDignitas: -8 },
     logMessage: `Ambassador expelled from ${province.id}. −15 Relationship, −8 Dignitas.`,
   };
 }

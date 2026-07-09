@@ -220,6 +220,28 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
+  // ─── P2-B — Patron Tier tier-up notice (weight 0, inject-only) ─────────────
+  // Fired by turnSequencer step 18 when patronTier increases. title/bodyText
+  // are overridden dynamically at injection time via injectNoticeEvent, using
+  // the newly-reached tier's name and passive bonuses (see patronEngine.ts).
+  {
+    id: 'evt-patron-tier-up',
+    title: 'Rome Takes Notice',
+    bodyText:
+      'Philon does not smile often. "Rome has taken notice, Domine. Your family\'s standing has grown."',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      {
+        id: 'continue',
+        label: 'Continue',
+        successEffect: '',
+        failureEffect: '',
+      },
+    ],
+  },
+
   // Fired by turnSequencer step 2b when resolveElection returns contested: true.
   {
     id: 'evt-election-contested',

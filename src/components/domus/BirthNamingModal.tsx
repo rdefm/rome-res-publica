@@ -89,10 +89,9 @@ export default function BirthNamingModal() {
                 if (sm.martial)    modLines.push(`${sm.martial > 0 ? '+' : ''}${sm.martial} Martial`);
                 if (sm.intrigus)   modLines.push(`${sm.intrigus > 0 ? '+' : ''}${sm.intrigus} Intrigus`);
                 const rb = def.resourceBonuses ?? {};
-                if (rb.dignitas)   modLines.push(`+${rb.dignitas} Dignitas/season`);
-                if (rb.gravitas)   modLines.push(`+${rb.gravitas} Gravitas/season`);
-                if (rb.gratia)     modLines.push(`+${rb.gratia} Gratia/season`);
-                if (rb.imperium)   modLines.push(`+${rb.imperium} Imperium/season`);
+                if (rb.lifetimeDignitas) modLines.push(`+${rb.lifetimeDignitas} Dignitas/season`);
+                if (rb.fides)            modLines.push(`+${rb.fides} Fides/season`);
+                if (rb.imperium)         modLines.push(`+${rb.imperium} Imperium/season`);
 
                 return (
                   <View key={id} style={styles.traitRow}>

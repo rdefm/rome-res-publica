@@ -186,7 +186,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   {
     id: 'patron-tier',
     term: 'Patron Tier',
-    definition: 'Your family\'s social standing in six tiers, from Client Family (Tier 0) to Prince of the Republic (Tier 5). Higher tiers multiply Fides income, expand client slots, and unlock diplomatic patron actions.',
+    definition: 'Your family\'s social standing in six tiers, from Client Family (Tier 0) to Prince of the Republic (Tier 5), gated by Lifetime Dignitas alone — spending Fides can never cost you a tier. Higher tiers multiply Fides income, expand client slots, and unlock diplomatic patron actions.',
     relatedTab: 'Forum',
   },
   {

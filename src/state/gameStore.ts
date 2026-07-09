@@ -47,6 +47,9 @@ import {
 } from '../engine/provinceEngine';
 import { getProvinceAssetDefinition } from '../data/provinceAssets';
 import { getProvincialClientDef } from '../data/provincialClients';
+import { BALANCE } from '../data/balance';
+import { calcTrainingCost } from '../engine/resourceEngine';
+import type { SeasonStats } from '../models/telemetry';
 
 export interface LogEntry {
   id: string;
@@ -87,6 +90,8 @@ export interface GameState {
   // Family (Domus)
   family: Character[];
   selectedCharacterId: string;
+  /** P2-C: character IDs already trained this season (rate-limits trainCharacter to once/season). Reset in endSeason. */
+  trainedThisSeason: string[];
 
   // Senate (Curia)
   bills: Bill[];
@@ -257,6 +262,21 @@ export interface GameState {
   // ── App lifecycle (previously untyped — formalised here) ──────────────────
   gameStarted: boolean;
   debugMode: boolean;
+
+  // ── Phase 2 — Instrumentation / telemetry (P2-A) ───────────────────────────
+  // Local-only playtest telemetry for balance tuning (Chunk P2-E). No network
+  // calls, no remote analytics — never leaves the device.
+  /** Epoch ms when the current season began. Reset on new game and after each endSeason. */
+  seasonStartedAt: number;
+  /** Count of meaningful player actions taken this season. Reset each endSeason.
+   *  The counted-action set is defined in Chunk P2-E. */
+  actionsThisSeason: number;
+  /** Fides spent on player actions this season. Reset each endSeason. */
+  fidesSpentThisSeason: number;
+  /** Denarii spent on player actions this season. Reset each endSeason. */
+  denariiSpentThisSeason: number;
+  /** Ring buffer (cap 40) of completed-season stats, pushed by endSeason before counters reset. */
+  seasonStatsHistory: SeasonStats[];
 }
 
 export interface GameActions {
@@ -269,7 +289,7 @@ export interface GameActions {
 
   // Domus
   selectCharacter: (id: string) => void;
-  trainCharacter: (characterId: string, skill: keyof Character['skills'], cost: number) => void;
+  trainCharacter: (characterId: string, skill: keyof Character['skills']) => void;
   commissionLaudatio: () => void;
   performAdrogatio: () => void;
   arrangeMarriageDomus: () => void;
@@ -443,6 +463,7 @@ export const INITIAL_STATE: GameState = {
 
   family: STARTING_FAMILY,
   selectedCharacterId: 'pc-1',
+  trainedThisSeason: [],
 
   bills: STARTING_BILLS,
   _expandedBill: null,
@@ -536,6 +557,13 @@ export const INITIAL_STATE: GameState = {
 
   gameStarted: false,
   debugMode: false,
+
+  // ── Phase 2 — Instrumentation / telemetry (P2-A) ───────────────────────────
+  seasonStartedAt: Date.now(),
+  actionsThisSeason: 0,
+  fidesSpentThisSeason: 0,
+  denariiSpentThisSeason: 0,
+  seasonStatsHistory: [],
 } as any;
 
 
@@ -716,6 +744,20 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       headlines: seasonEvents.slice(0, 5),
     };
 
+    // ── P2-A: season telemetry snapshot ─────────────────────────────────────
+    // fidesIncome/denariiIncome are derived (net change + tracked spend), not
+    // separately measured gross figures — sufficient for P2-E pace tuning.
+    const completedSeasonStats: SeasonStats = {
+      turnNumber:        s.turnNumber,
+      durationSec:        Math.round((Date.now() - s.seasonStartedAt) / 1000),
+      meaningfulActions:  s.actionsThisSeason,
+      fidesIncome:        Math.max(0, (finalState.fides - s.fides) + s.fidesSpentThisSeason),
+      fidesSpent:         s.fidesSpentThisSeason,
+      denariiIncome:      Math.max(0, (finalState.denarii - s.denarii) + s.denariiSpentThisSeason),
+      denariiSpent:       s.denariiSpentThisSeason,
+    };
+    const seasonStatsHistory = [...s.seasonStatsHistory, completedSeasonStats].slice(-40);
+
     const nextEvent       = finalState.pendingEvents[0] ?? null;
     const remainingPending = finalState.pendingEvents.slice(1);
     set({
@@ -726,6 +768,12 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       seasonOverlayEvents:    seasonEvents,
       lastSeasonLedger:       ledger,
       lastActiveAt:           Date.now(),
+      seasonStartedAt:        Date.now(),
+      actionsThisSeason:      0,
+      fidesSpentThisSeason:   0,
+      denariiSpentThisSeason: 0,
+      seasonStatsHistory,
+      trainedThisSeason:      [],
     });
 
     // Autosave — async, non-fatal. UI-only fields stripped inside saveLoad.save().
@@ -748,30 +796,31 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   selectCharacter: (id) => set({ selectedCharacterId: id }),
 
-  trainCharacter: (characterId, skill, cost) => {
+  // P2-C: deterministic, escalating-cost training. Always succeeds; costs
+  // BALANCE.training.fidesCostPerTargetLevel × targetLevel Fides; once per
+  // season per character (trainedThisSeason, reset in endSeason); capped at
+  // BALANCE.training.skillCap.
+  trainCharacter: (characterId, skill) => {
     const s = get();
-    if (s.fides < cost) return;
     const char = s.family.find((c) => c.id === characterId);
     if (!char) return;
-    const roll = Math.random();
-    const success = roll < 0.65;
+    if (s.trainedThisSeason.includes(characterId)) return;
+    const currentLevel = char.skills[skill];
+    if (currentLevel >= BALANCE.training.skillCap) return;
+    const targetLevel = currentLevel + 1;
+    const cost = calcTrainingCost(currentLevel);
+    if (s.fides < cost) return;
     const label = turnLabel(s);
-    if (success) {
-      set({
-        fides: s.fides - cost,
-        family: s.family.map((c) =>
-          c.id === characterId
-            ? { ...c, skills: { ...c.skills, [skill]: c.skills[skill] + 1 } }
-            : c
-        ),
-        log: [...s.log, mkLog(label, `${char.name} improves ${skill} by 1.`, 'good')],
-      });
-    } else {
-      set({
-        fides: s.fides - cost,
-        log: [...s.log, mkLog(label, `${char.name}'s training yields no progress this season.`, 'neutral')],
-      });
-    }
+    set({
+      fides: s.fides - cost,
+      family: s.family.map((c) =>
+        c.id === characterId
+          ? { ...c, skills: { ...c.skills, [skill]: targetLevel } }
+          : c
+      ),
+      trainedThisSeason: [...s.trainedThisSeason, characterId],
+      log: [...s.log, mkLog(label, `${char.name} trains ${skill} to ${targetLevel} (−${cost} Fides).`, 'good')],
+    });
   },
 
   commissionLaudatio: () => {
@@ -814,7 +863,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const s = get();
     const bill = s.bills.find((b) => b.id === billId);
     if (!bill) return;
-    const voteFidesCost = bill.voteGravitasCost ?? 4;
+    const voteFidesCost = bill.voteGravitasCost ?? BALANCE.senate.voteFidesCostDefault;
     if (s.fides < voteFidesCost) return;
     const delta = vote === 'vote_for'
       ? (bill.voteForSupport ?? 15)
@@ -835,7 +884,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const s = get();
     const bill = s.bills.find((b) => b.id === billId);
     if (!bill) return;
-    const speechFidesCost = bill.speechGravitasCost ?? 6;
+    const speechFidesCost = bill.speechGravitasCost ?? BALANCE.senate.speechFidesCostDefault;
     if (s.fides < speechFidesCost) return;
     const player = s.family.find((c) => c.isPlayer);
     const rhetoric = player?.skills.rhetoric ?? 0;
@@ -873,10 +922,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const s = get();
     const bill = s.bills.find((b) => b.id === billId);
     if (!bill) return;
-    if (s.fides < 8) return;
+    if (s.fides < BALANCE.senate.filibusterFidesCost) return;
     const label = turnLabel(s);
     set({
-      fides: s.fides - 8,
+      fides: s.fides - BALANCE.senate.filibusterFidesCost,
       bills: s.bills.map((b) =>
         b.id === billId ? { ...b, turnsLeft: b.turnsLeft + 1 } : b
       ),
@@ -888,11 +937,11 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   submitBill: (template) => {
     const s = get();
-    if (s.fides < 10) return;
+    if (s.fides < BALANCE.senate.submitBillFidesCost) return;
     const newBill: Bill = { ...template, id: `player-bill-${Date.now()}` };
     const label = turnLabel(s);
     set({
-      fides: s.fides - 10,
+      fides: s.fides - BALANCE.senate.submitBillFidesCost,
       bills: [...s.bills, newBill],
       log: [...s.log, mkLog(label, `${newBill.name} tabled in the Senate.`, 'neutral')],
     });
@@ -905,15 +954,15 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   buyInfluence: (leaderId) => {
     const s = get();
-    if (s.fides < 10) return;
+    if (s.fides < BALANCE.diplomacy.buyInfluenceFidesCost) return;
     const found = findClanAndLeader(s.clans, leaderId);
     if (!found) return;
     const label = turnLabel(s);
-    const relationshipDelta = 5;
+    const relationshipDelta = BALANCE.diplomacy.buyInfluenceRelationshipGain;
     const clanTotalVotes = found.clan.leaders.reduce((sum, l) => sum + l.votes, 0);
     const repDelta = computeReputationDelta(relationshipDelta, found.leader.votes, clanTotalVotes);
     set({
-      fides: s.fides - 10,
+      fides: s.fides - BALANCE.diplomacy.buyInfluenceFidesCost,
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
@@ -927,15 +976,15 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   inviteToDinner: (leaderId) => {
     const s = get();
-    if (s.denarii < 20) return;
+    if (s.denarii < BALANCE.diplomacy.inviteToDinnerDenariiCost) return;
     const found = findClanAndLeader(s.clans, leaderId);
     if (!found) return;
     const label = turnLabel(s);
-    const relationshipDelta = 8;
+    const relationshipDelta = BALANCE.diplomacy.inviteToDinnerRelationshipGain;
     const clanTotalVotes = found.clan.leaders.reduce((sum, l) => sum + l.votes, 0);
     const repDelta = computeReputationDelta(relationshipDelta, found.leader.votes, clanTotalVotes);
     set({
-      denarii: s.denarii - 20,
+      denarii: s.denarii - BALANCE.diplomacy.inviteToDinnerDenariiCost,
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
@@ -949,15 +998,15 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   forgeAlliance: (leaderId) => {
     const s = get();
-    if (s.fides < 20) return;
+    if (s.fides < BALANCE.diplomacy.forgeAllianceFidesCost) return;
     const found = findClanAndLeader(s.clans, leaderId);
     if (!found) return;
     const label = turnLabel(s);
-    const relationshipDelta = 12;
+    const relationshipDelta = BALANCE.diplomacy.forgeAllianceRelationshipGain;
     const clanTotalVotes = found.clan.leaders.reduce((sum, l) => sum + l.votes, 0);
     const repDelta = computeReputationDelta(relationshipDelta, found.leader.votes, clanTotalVotes);
     set({
-      fides: s.fides - 20,
+      fides: s.fides - BALANCE.diplomacy.forgeAllianceFidesCost,
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
@@ -971,15 +1020,15 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   arrangeMarriageForum: (leaderId) => {
     const s = get();
-    if (s.fides < 20) return;
+    if (s.fides < BALANCE.diplomacy.arrangeMarriageFidesCost) return;
     const found = findClanAndLeader(s.clans, leaderId);
     if (!found) return;
     const label = turnLabel(s);
-    const relationshipDelta = 20;
+    const relationshipDelta = BALANCE.diplomacy.arrangeMarriageRelationshipGain;
     const clanTotalVotes = found.clan.leaders.reduce((sum, l) => sum + l.votes, 0);
     const repDelta = computeReputationDelta(relationshipDelta, found.leader.votes, clanTotalVotes);
     set({
-      fides: s.fides - 20,
+      fides: s.fides - BALANCE.diplomacy.arrangeMarriageFidesCost,
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
@@ -993,10 +1042,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   gatherIntelligence: (leaderId) => {
     const s = get();
-    if (s.fides < 8) return;
+    if (s.fides < BALANCE.diplomacy.gatherIntelligenceFidesCost) return;
     const label = turnLabel(s);
     set({
-      fides: s.fides - 8,
+      fides: s.fides - BALANCE.diplomacy.gatherIntelligenceFidesCost,
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
@@ -1009,10 +1058,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   canvassForVotes: (leaderId) => {
     const s = get();
-    if (s.fides < 12) return;
+    if (s.fides < BALANCE.diplomacy.canvassForVotesFidesCost) return;
     const label = turnLabel(s);
     set({
-      fides: s.fides - 12,
+      fides: s.fides - BALANCE.diplomacy.canvassForVotesFidesCost,
       campaignVotes: { ...s.campaignVotes, [leaderId]: 'for' },
       log: [...s.log, mkLog(label, 'Canvassing complete. Clan leader support secured.', 'good')],
     });
