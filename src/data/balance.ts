@@ -314,6 +314,15 @@ export const BALANCE = {
       firstRoundMult: 1.0,
       secondRoundMult: 0.5,
       thirdPlusRoundMult: 0,
+      /** FIRST-PASS/UNVERIFIED (M2 implementation gap — the plan specified
+       *  the decay curve above but not shock's morale/casualty conversion;
+       *  chosen to land shock's per-round impact roughly on par with a
+       *  loyalty-wavering tick, per unit of raw shock delivered). Revisit
+       *  in M11's tuning pass alongside the other battle constants. */
+      moraleDeltaPerShockPoint: 0.6,
+      casualtyPctPerShockPoint: 0.3,
+      /** Safety cap so a single huge shock hit can't out-damage melee. */
+      maxCasualtyPctFromShock: 8,
     },
 
     /** Captain/commander effects. */
