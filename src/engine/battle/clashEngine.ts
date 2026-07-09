@@ -185,10 +185,13 @@ export interface BuildEffectiveSideParams {
   engagedRounds: number;
   flanked: boolean;
   overextended: boolean;
+  /** M3: a side that ordered withdrawal fights its final round at def ×1.1
+   *  (fighting retreat). 1 = no effect (the default, every other caller). */
+  withdrawDefMult?: number;
 }
 
 export function buildEffectiveSide(params: BuildEffectiveSideParams): EffectiveSideBundle {
-  const { units, formation, opposingUnits, mods, terrain, terrainRole, engagedRounds, flanked, overextended } = params;
+  const { units, formation, opposingUnits, mods, terrain, terrainRole, engagedRounds, flanked, overextended, withdrawDefMult } = params;
   const opposingClasses = new Set(opposingUnits.map(u => u.unitClass));
   const firstClash = engagedRounds === 0;
   const cMult = captainAtkDefMult(mods);
@@ -202,6 +205,7 @@ export function buildEffectiveSide(params: BuildEffectiveSideParams): EffectiveS
   const terrainDefMult = terrainRole === 'defender' ? (terrain.mods.defenderDef ?? 1) : 1;
   const flankedDefMult = flanked ? BALANCE.battle.break.wheelFlankedDefMult : 1;
   const overextendedDefMult = overextended ? BALANCE.battle.feint.successEnemyOverextendedDefMult : 1;
+  const withdrawMult = withdrawDefMult ?? 1;
 
   const statUnits: EffectiveUnitStats[] = units.map(u => {
     const base = BALANCE.battle.unitStats[u.unitClass];
@@ -223,6 +227,7 @@ export function buildEffectiveSide(params: BuildEffectiveSideParams): EffectiveS
       * terrainDefMult
       * flankedDefMult
       * overextendedDefMult
+      * withdrawMult
       * strengthFrac;
 
     const cavalryTerrainMult = isCavalry(u.unitClass) ? (terrain.mods.cavalryShock ?? 1) : 1;
@@ -389,6 +394,10 @@ export interface LaneClashContext {
   flankedB: boolean;
   overextendedA: boolean;
   overextendedB: boolean;
+  /** Set only on a side's final round after it orders withdrawal (fighting
+   *  retreat — def ×1.1). Undefined/1 for every normal round. */
+  withdrawDefMultA?: number;
+  withdrawDefMultB?: number;
 }
 
 export interface LaneClashResult {
@@ -421,6 +430,7 @@ export function resolveLaneClash(
     terrain, rng, sideAMods, sideBMods, attackerSide,
     engagedRoundsA, engagedRoundsB, formationA, formationB,
     flankedA, flankedB, overextendedA, overextendedB,
+    withdrawDefMultA, withdrawDefMultB,
   } = ctx;
 
   // ── 1. Prelude ──────────────────────────────────────────────────────────
@@ -471,12 +481,14 @@ export function resolveLaneClash(
     terrain, terrainRole: attackerSide === 'A' ? 'attacker' : 'defender',
     engagedRounds: engagedRoundsA, flanked: flankedA,
     overextended: overextendedA || (feintA?.result === 'failure'),
+    withdrawDefMult: withdrawDefMultA,
   });
   const effectiveB = buildEffectiveSide({
     units: laneBAfterFeint, formation: formationB, opposingUnits: laneAAfterFeint, mods: sideBMods,
     terrain, terrainRole: attackerSide === 'B' ? 'attacker' : 'defender',
     engagedRounds: engagedRoundsB, flanked: flankedB,
     overextended: overextendedB || (feintB?.result === 'failure'),
+    withdrawDefMult: withdrawDefMultB,
   });
 
   let modifiersSummary = `A[${effectiveA.summary}] B[${effectiveB.summary}]`;

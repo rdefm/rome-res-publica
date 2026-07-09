@@ -424,6 +424,12 @@ export const BALANCE = {
       river_crossing: { id: 'river_crossing', label: 'River Crossing',  mods: { attackerAtk: 0.85 } },
       coastal_plain:  { id: 'coastal_plain',  label: 'Coastal Plain',   mods: {} },
     } as Record<string, TerrainMod>,
+
+    /** M3 addition: an orderly withdrawal's "fighting retreat" def bonus for
+     *  the withdrawing side's final round (§Chunk M3, "Withdrawal"). */
+    withdrawal: {
+      defMult: 1.1,
+    },
   },
 
   // ─── M1 — War score & strategic layer (src/engine/warEngine.ts, M9) ────────

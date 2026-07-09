@@ -100,6 +100,12 @@ export interface SideState {
   commanderStation: LaneId | 'reserve';
   /** Set on the AI side only — see data/enemyGenerals.ts (M7). */
   generalProfileId?: string;
+  /** M3 addition: captainId (lane captain or commander) → martial rating
+   *  (0–10). clashEngine needs a numeric martial for its command multiplier
+   *  but battleEngine must stay pure (no Character import) — the caller
+   *  (eventually M4's muster bridge) resolves this once at deployment time.
+   *  An opaque id→number lookup, nothing more. */
+  captainMartialById: Record<string, number>;
 }
 
 export interface TerrainMod {
@@ -115,6 +121,16 @@ export interface TerrainMod {
 
 export type BattlePhase = 'deployment' | 'orders' | 'break_decision' | 'resolved';
 
+/** A wing that broke this round awaits a pursue/wheel decision from the side
+ *  that broke it (`submitBreakDecision`) before the round can be considered
+ *  fully resolved. M3 addition — the plan named this sub-phase but didn't
+ *  specify how BattleState tracks which lane(s) are awaiting a decision. */
+export interface PendingBreakDecision {
+  laneId: LaneId;
+  /** The side whose wing broke — the OTHER side (the victor) decides. */
+  brokenSide: BattleSide;
+}
+
 export interface BattleState {
   seed: number;
   round: number;
@@ -124,6 +140,25 @@ export interface BattleState {
   log: BattleLog;
   phase: BattlePhase;
   outcome?: BattleOutcome;
+  /** M3 addition: how many seeded-rng values have been drawn so far across
+   *  the whole battle. BattleState must stay plain data (serializable —
+   *  M5 stores it in gameStore) so the RNG itself isn't stored; instead each
+   *  orchestrator call reconstructs makeSeededRng(seed) and fast-forwards
+   *  this many draws before continuing, preserving one continuous
+   *  deterministic sequence across calls. See battleEngine.ts. */
+  rngCallsConsumed: number;
+  /** M3 addition — see PendingBreakDecision above. Empty when no decision
+   *  is outstanding (phase !== 'break_decision'). */
+  pendingBreakDecisions: PendingBreakDecision[];
+  /** M3 addition: unitId → accrued amok chance (fraction, e.g. 0.10) from
+   *  the skirmisher-prelude panic chip (clashEngine's prelude step). Keyed
+   *  by unitId across both sides (ids are unique) since amok checks need
+   *  the *cumulative* rider for a unit's whole battle, not just one round. */
+  amokChanceRiders: Record<string, number>;
+  /** M3 addition: total strength each side fielded at initBattle — needed to
+   *  turn cumulative casualties into a percentage for the crushing-victory
+   *  tier check without re-deriving it from the log. */
+  startingStrength: { attacker: number; defender: number };
 }
 
 // ─── Log ─────────────────────────────────────────────────────────────────────
