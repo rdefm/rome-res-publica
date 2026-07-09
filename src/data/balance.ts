@@ -122,8 +122,30 @@ export const BALANCE = {
     successorRelationshipRetention: 0.4,
   },
 
-  // ─── P2-F — Munificence acts (filled in Chunk P2-F) ────────────────────────
-  munificence: {},
+  // ─── P2-F — Munificence acts ────────────────────────────────────────────────
+  munificence: {
+    publicFeast: { denarii: 40, plebs: 3, fides: 2, cooldownSeasons: 2 },
+    grainLargesse: { denarii: 80, plebs: 5, unrestDelta: -3, cooldownSeasons: 2 },
+    fundTheLudi: { denarii: 120, fides: 10, plebs: 6, unrestDelta: -4, lifetimeDignitas: 4, minPatronTier: 2 },
+    grandGames: {
+      denarii: 300, plebs: 10, unrestDelta: -8, lifetimeDignitas: 8,
+      electionVoteBonus: 8, minPatronTier: 3,
+      // The vote bonus doesn't consume on first use — it's a standing bonus to every
+      // election while active, fading as the spectacle is forgotten. Recasting Grand
+      // Games refreshes it to electionVoteBonus and resets the decay clock.
+      electionVoteBonusDecayPerInterval: 1,
+      electionVoteBonusDecayIntervalYears: 2,
+    },
+    restoreTemple: { denarii: 150, lifetimeDignitas: 6, stability: 3, constitutionDelta: -2, minPatronTier: 2 },
+    publicEndowment: {
+      denarii: 400, endowmentFidesPerSeason: 1, lifetimeDignitas: 10, plebs: 4,
+      minPatronTier: 4, maxPerGame: 2,
+    },
+    /** Denarii cost multiplier and effect multiplier while the player holds Aedile
+     *  (applies to Fund the Ludi / Grand Games only — the "games" slot acts). */
+    aedileCostMultiplier: 0.5,
+    aedileEffectMultiplier: 1.5,
+  },
 
   // ─── P2-E — Action economy tuning (filled in Chunk P2-E) ───────────────────
   actionEconomy: {},

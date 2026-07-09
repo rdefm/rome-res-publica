@@ -176,6 +176,9 @@ export function calcResourceIncome(state: GameState): {
     (sum, p) => sum + calcAssetFidesOutput(p), 0
   );
 
+  // Step 6c: Munificence endowments (P2-F) — permanent Fides/season per built endowment
+  const endowmentFides = (state.endowments?.length ?? 0) * BALANCE.munificence.publicEndowment.endowmentFidesPerSeason;
+
   // Step 7: Rome stat modifier
   const romeMods = calcRomeStatModifiers(state.rome);
   const romeStatFides = romeMods.fidesDelta;
@@ -202,6 +205,7 @@ export function calcResourceIncome(state: GameState): {
     + clientFides
     + assetFides
     + provinceFidesBonus
+    + endowmentFides
     + romeStatFides
     + crisisFidesDelta   // negative at higher crisis tiers
   );

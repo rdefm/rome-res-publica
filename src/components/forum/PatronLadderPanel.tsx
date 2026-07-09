@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import { PATRON_TIER_DEFINITIONS } from '../../models/patronLadder';
+import { MUNIFICENCE_ACTS } from '../../data/munificence';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 // ─── Tier icons (stylised fasces, scaling with tier) ─────────────────────────
@@ -127,6 +128,31 @@ export default function PatronLadderPanel() {
               </View>
             </View>
           )}
+
+          {/* Munificence acts unlocked at this tier and the next (P2-F) — full
+              Munificence panel lives on Curia; this is a cross-link, not the acts themselves. */}
+          {(() => {
+            const unlockedHere = MUNIFICENCE_ACTS.filter(a => (a.requirements.minPatronTier ?? 0) === patronTier);
+            const unlockedNext = nextTierDef
+              ? MUNIFICENCE_ACTS.filter(a => a.requirements.minPatronTier === nextTierDef.tier)
+              : [];
+            if (unlockedHere.length === 0 && unlockedNext.length === 0) return null;
+            return (
+              <View style={styles.actionsSection}>
+                <Text style={styles.actionsHeading}>MUNIFICENCE ACTS</Text>
+                {unlockedHere.length > 0 && (
+                  <Text style={styles.munificenceLine}>
+                    Unlocked now: {unlockedHere.map(a => a.name).join(', ')}
+                  </Text>
+                )}
+                {unlockedNext.length > 0 && (
+                  <Text style={styles.munificenceLineMuted}>
+                    At {nextTierDef!.label}: {unlockedNext.map(a => a.name).join(', ')}
+                  </Text>
+                )}
+              </View>
+            );
+          })()}
         </View>
       )}
     </View>
@@ -326,5 +352,21 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.ui,
     fontSize: 9,
     marginTop: 1,
+  },
+
+  // ── Munificence cross-link (P2-F) ────────────────────────────────────────────
+  munificenceLine: {
+    color: COLORS.laurel,
+    fontFamily: FONTS.body,
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  munificenceLineMuted: {
+    color: COLORS.dust,
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 3,
   },
 });

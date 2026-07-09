@@ -44,7 +44,7 @@ Relationship management with the 4 senatorial clans and their leaders; election 
 | `ClanCard.tsx` | Expandable card for one clan, lists its leaders. |
 | `LeaderCard.tsx` | Compact row for one clan leader. |
 | `LeaderDetailPanel.tsx` | Expanded leader view with available Forum actions. |
-| `PatronLadderPanel.tsx` | **Live version** — shows player's patron tier ladder and unlocked actions (imported by ForumScreen). |
+| `PatronLadderPanel.tsx` | **Live version** — shows player's patron tier ladder and unlocked actions (imported by ForumScreen). **P2-F:** also cross-links which `MUNIFICENCE_ACTS` unlock at the current and next tier (acts themselves live on Curia). |
 
 **Engines:** `reputationEngine.ts` (reputation tier lookup, unlocked actions; `getClanStanding` derives the ally/neutral/hostile/rival badge shown on `ClanCard` from `familyReputations` + `electionRivals` — `Clan` no longer stores a static `standing` field; `computeReputationDelta` converts a Forum action's relationship gain into a vote-weighted `familyReputations` swing, called from `gameStore`'s `buyInfluence`/`inviteToDinner`/`forgeAlliance`/`arrangeMarriageForum`; **P2-D** — `deriveRelationshipAnchor`/`applyYearlyRelationshipDecay` (relocated from `resourceEngine.applyRelationshipDrift`, now yearly-only, decays toward a per-leader anchor instead of toward 0) and `ageAndProcessMortality` (leader aging, mortality rolls, procedural succession — both called from `turnSequencer` step 9, gated on the Winter→Spring rollover), `electionEngine.ts` (canvassing math, election scoring — also used by Cursus), `aiScoring.ts` (NPC leader action scoring/choice, used for clan-leader AI behavior).
 
@@ -102,16 +102,16 @@ Province map, governor policy, military campaigns, provincial clients, ambassado
 
 Bill voting, speeches, filibusters, Rome-wide stats, crisis tracks.
 
-**Screen:** `src/screens/CuriaScreen.tsx` — Rome stat bars, crisis panel, bill list with voting/speech/filibuster/submit actions.
+**Screen:** `src/screens/CuriaScreen.tsx` — Rome stat bars, crisis panel, bill list with voting/speech/filibuster/submit actions, **Munificence panel (P2-F)** — collapsible list of the 6 munificence acts (`MunificenceActRow`, defined in this file), cost/effect/lock-state per act, decaying Grand Games vote bonus note.
 
 **Components (shared, but Curia-specific in practice):**
 - `src/components/shared/CrisisTrackModal.tsx` — detail modal for one of the 4 crisis tracks (war/unrest/constitution/economy).
 
-**Engines:** `crisisEngine.ts` (track deltas, escalation, cascades, named-crisis lookup, status effects, military-bill pressure check), `resourceEngine.ts` (also cross-cutting — see §7; `calcRomeStatModifiers`/`calcRomeStats` are the Curia-relevant exports), `aiScoring.ts` (NPC senator bill-vote reactions via `applyNpcBillReactions`).
+**Engines:** `crisisEngine.ts` (track deltas, escalation, cascades, named-crisis lookup, status effects, military-bill pressure check), `resourceEngine.ts` (also cross-cutting — see §7; `calcRomeStatModifiers`/`calcRomeStats` are the Curia-relevant exports, plus the P2-F endowment Fides income term), `aiScoring.ts` (NPC senator bill-vote reactions via `applyNpcBillReactions`), `munificenceEngine.ts` (**P2-F**, pure — requirement gating, cost/effect Aedile-discount math, shared "games"-slot check; `gameStore.performMunificence` calls it and assembles the state patch).
 
 **Models:** `bill.ts`, `crisis.ts`.
 
-**Data:** `billTemplates.ts` (player-submittable + auto-injected bill templates, Rome-stat vote modifiers).
+**Data:** `billTemplates.ts` (player-submittable + auto-injected bill templates, Rome-stat vote modifiers), `munificence.ts` (**P2-F** — see §9).
 
 ---
 
@@ -186,7 +186,8 @@ Grouped since most are large const arrays of definitions consumed by the matchin
 | File | Content |
 |---|---|
 | `balance.ts` | **The balance registry (P2-A)** — single authoritative home for tunable numbers (income, diplomacy, senate, elections, training, relationships, munificence, actionEconomy). Patron and elections numbers stay in their own files and are re-exported here; see the file's indirection-policy comment. Any new numeric literal for a tunable belongs here, not inline in engine/store code. |
-| `offices.ts` | Full 8-office Cursus Honorum ladder + all in-office actions (**large**, ~1000 lines). |
+| `munificence.ts` | **Munificence acts (P2-F)** — `MUNIFICENCE_ACTS`: feasts, games, 5 named temple restorations, endowments. Structured `effects` (not effect strings) so Aedile's cost/effect multipliers can scale individual fields; see the file's header comment. Numbers read from `BALANCE.munificence`. |
+| `offices.ts` | Full 8-office Cursus Honorum ladder + all in-office actions (**large**, ~1000 lines). **P2-F:** Aedile's `host-public-games`/`host-grand-ludi`/`sponsor-games-state`/`sponsor-ludi`/`spectacular-munera`/`temple-restoration` were removed — superseded by the Munificence panel (Curia), which the Aedile discount now applies to instead of a separate parallel action set. |
 | `events.ts` | All non-tutorial random event definitions (**largest data file**, ~1150 lines). |
 | `tutorialEvents.ts` | Scripted tutorial-only events (fired via `tutorialQueue`, not random pool). |
 | `billTemplates.ts` | Player-submittable + auto-injected Senate bill templates, Rome-stat vote modifiers. |
@@ -213,7 +214,7 @@ Grouped since most are large const arrays of definitions consumed by the matchin
 ## 10. Utils, tests, config
 
 - `src/utils/theme.ts` — `COLORS`, `FONTS`, `SPACING`, `RADIUS` and other design-token constants used by virtually every component.
-- `__tests__/` — Jest unit tests, one per engine area: `engine.test.ts` (resourceEngine, incl. P2-C household-voices income term + `calcTrainingCost`), `agendaEngine.test.ts`, `officeActionEngine.test.ts`, `officeAction.test.ts` (officeActionEngine + npcConsulEngine), `eventEngine.test.ts` (clientEngine + eventEngine), `militaryEngine.test.ts` (troopEngine), `romeStats.test.ts` (resourceEngine + crisisEngine), `reputationEngine.test.ts` (reputation tiers/clamping, `getClanStanding`, `computeReputationDelta`; P2-D — relationship anchors/yearly decay, `ageAndProcessMortality`, dangling-leader-ID election safety), `patronEngine.test.ts` (P2-B — tier gating, tier-up notice via `processSeason`; P2-D — yearly-vs-seasonal decay via `processSeason`), `training.test.ts` (P2-C — `trainCharacter` store action tested directly against `useGameStore`).
+- `__tests__/` — Jest unit tests, one per engine area: `engine.test.ts` (resourceEngine, incl. P2-C household-voices income term + `calcTrainingCost`), `agendaEngine.test.ts`, `officeActionEngine.test.ts`, `officeAction.test.ts` (officeActionEngine + npcConsulEngine), `eventEngine.test.ts` (clientEngine + eventEngine), `militaryEngine.test.ts` (troopEngine), `romeStats.test.ts` (resourceEngine + crisisEngine), `reputationEngine.test.ts` (reputation tiers/clamping, `getClanStanding`, `computeReputationDelta`; P2-D — relationship anchors/yearly decay, `ageAndProcessMortality`, dangling-leader-ID election safety), `patronEngine.test.ts` (P2-B — tier gating, tier-up notice via `processSeason`; P2-D — yearly-vs-seasonal decay via `processSeason`), `training.test.ts` (P2-C — `trainCharacter` store action tested directly against `useGameStore`), `munificenceEngine.test.ts` (P2-F — requirement gating, Aedile discount math, endowment income term, `resolveElection` Grand Games vote bonus, yearly usage-reset/bonus-decay via `processSeason`, `performMunificence` store action).
 - `app.json`, `babel.config.js`, `tsconfig.json`, `eas.json`, `package.json` — Expo/RN/TS build config; edit only for tooling/dependency changes.
 - `proxy.mjs` — local dev proxy script (check contents before assuming purpose if touching networking in dev).
 - `android/` — native Android project (Expo prebuild output); not hand-edited in normal feature work.
@@ -237,3 +238,4 @@ Grouped since most are large const arrays of definitions consumed by the matchin
 | Change save file shape | `state/saveLoad.ts` (update Zod schema too) |
 | Change a resource/stat's on-screen look | `components/shared/ResourceBar.tsx` + `utils/theme.ts` |
 | Add a new agenda/to-do rule | `engine/agendaEngine.ts` |
+| Add/change a Munificence act | `data/munificence.ts` + `engine/munificenceEngine.ts` (numbers in `data/balance.ts`) |

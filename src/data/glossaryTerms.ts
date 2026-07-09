@@ -124,6 +124,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Cursus',
   },
   {
+    id: 'endowment',
+    term: 'Endowment',
+    definition: 'A Public Endowment (granary, portico, or fountain house) built via Munificence — a permanent gift to Rome that grants +1 Fides income every season thereafter. Limited to two per game.',
+    relatedTab: 'Curia',
+  },
+  {
     id: 'fides',
     term: 'Fides',
     definition: 'Your family\'s credibility in Roman society, spent on almost every meaningful action — Senate votes, speeches, and diplomatic ties. Income each season depends on your paterfamilias\'s Rhetoric skill, offices held, Patron Tier, clients, and assets.',
@@ -170,6 +176,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: 'Martial',
     definition: 'A character skill (0–10) determining officer performance in campaigns, governor Imperium yield, and the outcome of Martial-checked events and office actions.',
     relatedTab: 'Domus',
+  },
+  {
+    id: 'munificence',
+    term: 'Munificence',
+    definition: 'Public acts of wealth-to-standing conversion — feasts, games, temple restorations, endowments — available from the Curia screen. Costs Denarii (and sometimes Fides) for Lifetime Dignitas, plebs goodwill, and crisis relief; grander acts require a minimum Patron Tier.',
+    relatedTab: 'Curia',
   },
   {
     id: 'optimates',

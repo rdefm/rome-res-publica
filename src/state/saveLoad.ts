@@ -58,6 +58,15 @@ const SaveSchema = z.object({
   seasonStatsHistory: z.array(z.any()).default([]),
   // P2-C — rate-limits trainCharacter to once/season.
   trainedThisSeason: z.array(z.string()).default([]),
+  // P2-F — Munificence. .default()s ensure pre-Phase-2-F saves load cleanly.
+  endowments: z.array(z.string()).default([]),
+  munificenceUsage: z.record(z.string(), z.object({
+    lastUsedTurn: z.number().optional(),
+    usesThisYear: z.number().optional(),
+    totalUses: z.number().optional(),
+  })).default({}),
+  grandGamesVoteBonus: z.number().default(0),
+  grandGamesBonusYearsUntilDecay: z.number().default(0),
 });
 
 export interface SaveProvider {

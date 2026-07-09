@@ -209,51 +209,11 @@ export const OFFICES: Office[] = [
     active: true,
     inOfficeActions: [
       // ── Existing actions ──────────────────────────────────────────────────
-      {
-        id: 'host-public-games',
-        name: 'Host Public Games',
-        cost: '120 Denarii',
-        costVal: 120,
-        resource: 'denarii',
-        desc: 'Gladiatorial contests and chariot races. The plebs will adore you.',
-        effect: (state) => {
-          const clans = state.clans.map((c) => ({
-            ...c,
-            leaders: c.leaders.map((l) => ({ ...l, relationship: Math.min(100, l.relationship + 6) })),
-          }));
-          return { clans, popularesRel: Math.min(100, state.popularesRel + 15), lifetimeDignitas: state.lifetimeDignitas + 4, logMsg: 'The games are magnificent. Populares +15, Lifetime Dignitas +4, all relations +6.' };
-        },
-      },
-      {
-        id: 'host-grand-ludi',
-        name: 'Host Grand Ludi',
-        cost: '250 Denarii',
-        costVal: 250,
-        resource: 'denarii',
-        desc: 'Spectacular multi-day festival. An investment in lasting renown.',
-        effect: (state) => {
-          const clans = state.clans.map((c) => ({
-            ...c,
-            leaders: c.leaders.map((l) => ({ ...l, relationship: Math.min(100, l.relationship + 12) })),
-          }));
-          return { clans, popularesRel: Math.min(100, state.popularesRel + 25), lifetimeDignitas: state.lifetimeDignitas + 8, logMsg: 'Rome speaks of nothing else. Populares +25, Lifetime Dignitas +8, all relations +12.' };
-        },
-      },
-      {
-        id: 'sponsor-games-state',
-        name: 'Sponsor Games (State Funds)',
-        cost: '8 Fides',
-        costVal: 8,
-        resource: 'fides',
-        desc: 'Use political capital to fund games from the public treasury.',
-        effect: (state) => {
-          const clans = state.clans.map((c) => ({
-            ...c,
-            leaders: c.leaders.map((l) => ({ ...l, relationship: Math.min(100, l.relationship + 3) })),
-          }));
-          return { clans, popularesRel: Math.min(100, state.popularesRel + 8), logMsg: 'State-funded games draw modest crowds. Populares +8, all relations +3.' };
-        },
-      },
+      // P2-F: host-public-games / host-grand-ludi / sponsor-games-state removed —
+      // superseded by the Munificence panel's Fund the Ludi / Grand Games acts
+      // (Curia screen), which now unify every "hold games" mechanic in the game.
+      // Holding Aedile discounts and boosts those acts (BALANCE.munificence.aedileCostMultiplier/
+      // aedileEffectMultiplier) instead of offering a separate, parallel action here.
       {
         id: 'grain-distribution',
         name: 'Oversee Grain Distribution',
@@ -280,17 +240,8 @@ export const OFFICES: Office[] = [
       },
 
       // ── New actions ───────────────────────────────────────────────────────
-      {
-        id: 'sponsor-ludi',
-        name: 'Sponsor the Ludi (−20 to −60 Denarii)',
-        cost: '20 Denarii',
-        costVal: 20,
-        resource: 'denarii',
-        desc: 'Fund public games. Base tier: −20 Denarii for plebs+8, fides+4. Larger tiers available via spend selection.',
-        spend: { denarii: 20 },
-        successEffect: 'plebs+8|fides+4',
-        isExtreme: false,
-      },
+      // P2-F: sponsor-ludi removed — superseded by Fund the Ludi (Curia →
+      // Munificence panel), which the Aedile discount now applies to instead.
       {
         id: 'regulate-markets',
         name: 'Regulate the Markets',
@@ -302,20 +253,8 @@ export const OFFICES: Office[] = [
         successEffect: 'treasury+5|plebs+4',
         isExtreme: false,
       },
-      {
-        id: 'temple-restoration',
-        name: 'Supervise Temple Restoration (−8 Fides)',
-        cost: '8 Fides',
-        costVal: 8,
-        resource: 'fides',
-        desc: 'Fund religious building work. Earns conservative respect and lasting prestige.',
-        spend: { fides: 8 },
-        successEffect: 'lifetimeDignitas+6|stability+4',
-        consequences: [
-          { type: 'clanRelationship', targetId: 'ALL_OPTIMATES_LEADERS', delta: 5, description: 'Conservatives appreciate public piety' },
-        ],
-        isExtreme: false,
-      },
+      // P2-F: temple-restoration removed — superseded by Restore a Temple
+      // (Curia → Munificence panel; 5 named temples, once each per game).
       {
         id: 'inspect-roads',
         name: 'Inspect Provincial Roads (−6 Fides)',
@@ -331,21 +270,9 @@ export const OFFICES: Office[] = [
         ],
         isExtreme: false,
       },
-      {
-        id: 'spectacular-munera',
-        name: 'Spectacular Munera — Gladiatorial Games (Extreme) (−80 Denarii)',
-        cost: '80 Denarii',
-        costVal: 80,
-        resource: 'denarii',
-        desc: 'An unprecedented gladiatorial spectacle. Requires your Gladiator School. The plebs will love you. The Senate will resent it.',
-        spend: { denarii: 80 },
-        gate: [{ type: 'asset', key: 'gladiator-school', op: 'gte', value: 1 }],
-        successEffect: 'plebs+30|fides+20|lifetimeDignitas+8|setFlag:peoples-champion:true',
-        consequences: [
-          { type: 'clanRelationship', targetId: 'ALL_OPTIMATES_LEADERS', delta: -10, description: 'Optimates find the spectacle vulgar and dangerous' },
-        ],
-        isExtreme: true,
-      },
+      // P2-F: spectacular-munera removed — superseded by Grand Games (Curia →
+      // Munificence panel), which now owns the "peoples-champion"-style election
+      // bonus via the dedicated, decaying grandGamesVoteBonus (electionEngine).
       {
         id: 'corner-grain-supply',
         name: 'Corner the Grain Supply (Extreme)',

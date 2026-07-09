@@ -221,7 +221,12 @@ export function resolveElection(state: GameState): ElectionResult {
   // Peoples-champion bonus (Chunk 1C): +5 flat votes when flag is active
   const peoplesChampionBonus = state.flags['peoples-champion'] ? 5 : 0;
 
-  const playerTotal = PLAYER_BASE_SCORE + votingSwayBonus + lockedFor + wordOfMouth + peoplesChampionBonus;
+  // Grand Games vote bonus (P2-F): a standing bonus applied to every election while
+  // active, fading over time (ticked in turnSequencer's yearly rollover). Distinct
+  // from peoplesChampionBonus above — recasting Grand Games refreshes it to full.
+  const grandGamesBonus = state.grandGamesVoteBonus ?? 0;
+
+  const playerTotal = PLAYER_BASE_SCORE + votingSwayBonus + lockedFor + wordOfMouth + peoplesChampionBonus + grandGamesBonus;
 
   // ── NPC vote pool ──────────────────────────────────────────────────────────
   // Nota Censoria (Chunk 1C): proscribed leaders contribute 0 votes — filter them out.

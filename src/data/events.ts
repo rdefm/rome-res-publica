@@ -265,6 +265,29 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
+  // ─── P2-F — Munificence grand act notice (weight 0, inject-only) ──────────
+  // Fired immediately by gameStore.performMunificence when a grand act (Grand
+  // Games, Public Endowment) executes — shown right away, not deferred to season
+  // end. title/bodyText are overridden dynamically at injection time via
+  // injectNoticeEvent with the act's name and per-act Philon copy.
+  {
+    id: 'evt-munificence-grand-act',
+    title: 'Rome Remembers',
+    bodyText:
+      'Philon: "What Rome is given, Rome remembers, Domine."',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      {
+        id: 'continue',
+        label: 'Continue',
+        successEffect: '',
+        failureEffect: '',
+      },
+    ],
+  },
+
   // Fired by turnSequencer step 2b when resolveElection returns contested: true.
   {
     id: 'evt-election-contested',

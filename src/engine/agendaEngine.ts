@@ -11,6 +11,8 @@ import { OFFICES, TRIBUNE_OFFICE } from '../data/offices';
 import { CORRUPTION_TRIAL_THRESHOLD } from './trialEngine';
 import { getClanStanding } from './reputationEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
+import { getMunificenceAct } from '../data/munificence';
+import { isSlotUsedThisYear, getMunificenceCost } from './munificenceEngine';
 
 // ─── Crisis tier copy ─────────────────────────────────────────────────────────
 // Labels and penalty strings sourced directly from the tier tables in
@@ -548,10 +550,36 @@ function genAgingBondedLeader(state: GameState): AgendaItem[] {
   return items;
 }
 
+// ─── Generator 19 — Munificence games opportunity (P2-F) ────────────────────
+// #17/#18 are reserved by the military overhaul plan. Fires when Unrest is
+// tier >= 2, the shared 'games' slot is unused this year, and the player can
+// afford Fund the Ludi — games are a lever the player may not think to reach for.
+
+function genMunificenceGamesOpportunity(state: GameState): AgendaItem[] {
+  if (state.crisis.unrest.tier < 2) return [];
+
+  const act = getMunificenceAct('fund-the-ludi');
+  if (!act) return [];
+  if (isSlotUsedThisYear(state.munificenceUsage ?? {}, 'games')) return [];
+
+  const cost = getMunificenceCost(state, act);
+  if (state.denarii < cost.denarii) return [];
+
+  return [{
+    id: 'agenda-opportunity-munificence-games',
+    category: 'crisis' as const,
+    severity: 'opportunity',
+    title: 'The city wants games',
+    detail: 'Bread quiets a street; games quiet a city. The unrest would ease.',
+    target: { tab: 'Curia' as const },
+    sortWeight: 20,
+  }];
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Runs all 16 generators against the current state and returns a sorted list
+ * Runs all 17 generators against the current state and returns a sorted list
  * of agenda items. Sort order: severity (critical first) → sortWeight →
  * category (alpha tiebreak for stable ordering).
  *
@@ -576,6 +604,7 @@ export function generateAgenda(state: GameState): AgendaItem[] {
     ...genHousekeeping(state),
     ...genPatronTierProximity(state),
     ...genAgingBondedLeader(state),
+    ...genMunificenceGamesOpportunity(state),
   ];
 
   return items.sort((a, b) => {

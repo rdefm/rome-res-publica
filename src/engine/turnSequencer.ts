@@ -38,6 +38,7 @@ import {
 } from './trialEngine';
 import { computePatronTier, processFavourCallIns } from './patronEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
+import { BALANCE } from '../data/balance';
 import { computeTotalAssetBonuses } from './assetEngine';
 import { tickAllProvinces } from './provinceEngine';
 import { applyTroopAttrition, calcMilitaryImperium } from './troopEngine';
@@ -543,6 +544,36 @@ export function processSeason(state: GameState): {
           { title: `${death.deadLeaderName} is dead`, bodyText: noticeBody },
         )],
       };
+    }
+
+    // Munificence (P2-F) — reset the year-scoped usage fields (onceThisYear acts,
+    // the shared 'games' slot); lastUsedTurn/totalUses are not touched here.
+    const resetMunificenceUsage: typeof s.munificenceUsage = {};
+    for (const [actId, entry] of Object.entries(s.munificenceUsage ?? {})) {
+      resetMunificenceUsage[actId] = { ...entry, usesThisYear: 0 };
+    }
+    s = { ...s, munificenceUsage: resetMunificenceUsage };
+
+    // Grand Games vote bonus decay — standing bonus fades by
+    // BALANCE.munificence.grandGames.electionVoteBonusDecayPerInterval every
+    // electionVoteBonusDecayIntervalYears, until it reaches 0 (P2-F design decision:
+    // fame fades rather than being consumed by the next election).
+    if ((s.grandGamesVoteBonus ?? 0) > 0) {
+      const yearsUntilDecay = (s.grandGamesBonusYearsUntilDecay ?? 0) - 1;
+      if (yearsUntilDecay <= 0) {
+        const newBonus = Math.max(
+          0,
+          s.grandGamesVoteBonus - BALANCE.munificence.grandGames.electionVoteBonusDecayPerInterval,
+        );
+        s = {
+          ...s,
+          grandGamesVoteBonus: newBonus,
+          grandGamesBonusYearsUntilDecay:
+            newBonus > 0 ? BALANCE.munificence.grandGames.electionVoteBonusDecayIntervalYears : 0,
+        };
+      } else {
+        s = { ...s, grandGamesBonusYearsUntilDecay: yearsUntilDecay };
+      }
     }
   }
 

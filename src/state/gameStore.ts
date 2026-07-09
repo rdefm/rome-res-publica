@@ -13,7 +13,7 @@ import type { Trial } from '../models/trial';
 import type { ProvinceState, GovernorPolicy, CampaignState, OfficerVolunteerState } from '../models/province';
 import type { TroopUnit } from '../models/troop';
 import type { SenateResponseState } from '../engine/senateResponseEngine';
-import type { CrisisState } from '../models/crisis';
+import type { CrisisState, CrisisTrackId } from '../models/crisis';
 import type { OfficeActionTargetContext } from '../engine/officeActionEngine';
 // ── Phase 1 (P1-A) ────────────────────────────────────────────────────────────
 import type { StartId } from '../models/gameStart';
@@ -50,6 +50,15 @@ import { getProvincialClientDef } from '../data/provincialClients';
 import { BALANCE } from '../data/balance';
 import { calcTrainingCost } from '../engine/resourceEngine';
 import type { SeasonStats } from '../models/telemetry';
+// P2-F — Munificence
+import { getMunificenceAct } from '../data/munificence';
+import {
+  checkMunificenceRequirements,
+  getMunificenceCost,
+  getMunificenceEffects,
+} from '../engine/munificenceEngine';
+import { applyTrackDelta } from '../engine/crisisEngine';
+import { injectNoticeEvent } from '../engine/eventEngine';
 
 export interface LogEntry {
   id: string;
@@ -277,6 +286,18 @@ export interface GameState {
   denariiSpentThisSeason: number;
   /** Ring buffer (cap 40) of completed-season stats, pushed by endSeason before counters reset. */
   seasonStatsHistory: SeasonStats[];
+
+  // ── Munificence (P2-F) ───────────────────────────────────────────────────────
+  /** Ids of built Public Endowments. Each grants +BALANCE.munificence.publicEndowment.endowmentFidesPerSeason Fides/season (resourceEngine). */
+  endowments: string[];
+  /** Per-act usage tracking, keyed by MunificenceAct id. usesThisYear resets at the yearly rollover (turnSequencer, same gate as P2-D). */
+  munificenceUsage: Record<string, { lastUsedTurn?: number; usesThisYear?: number; totalUses?: number }>;
+  /** Standing (non-consumed) vote bonus from Grand Games — applied to every election in electionEngine while > 0.
+   *  Decays by BALANCE.munificence.grandGames.electionVoteBonusDecayPerInterval every
+   *  electionVoteBonusDecayIntervalYears (turnSequencer yearly rollover). Recasting Grand Games refreshes it. */
+  grandGamesVoteBonus: number;
+  /** Years remaining until the next decay tick on grandGamesVoteBonus. 0 when the bonus is inactive. */
+  grandGamesBonusYearsUntilDecay: number;
 }
 
 export interface GameActions {
@@ -301,6 +322,9 @@ export interface GameActions {
   speechBill: (billId: string, direction: 'for' | 'against') => void;
   filibusterBill: (billId: string) => void;
   submitBill: (template: Omit<Bill, 'id'>) => void;
+
+  // Munificence (P2-F)
+  performMunificence: (actId: string) => void;
 
   // Forum
   expandClan: (clanId: string) => void;
@@ -564,6 +588,12 @@ export const INITIAL_STATE: GameState = {
   fidesSpentThisSeason: 0,
   denariiSpentThisSeason: 0,
   seasonStatsHistory: [],
+
+  // ── Munificence (P2-F) ───────────────────────────────────────────────────────
+  endowments: [],
+  munificenceUsage: {},
+  grandGamesVoteBonus: 0,
+  grandGamesBonusYearsUntilDecay: 0,
 } as any;
 
 
@@ -944,6 +974,116 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       fides: s.fides - BALANCE.senate.submitBillFidesCost,
       bills: [...s.bills, newBill],
       log: [...s.log, mkLog(label, `${newBill.name} tabled in the Senate.`, 'neutral')],
+    });
+  },
+
+  // ─── Munificence (P2-F) ─────────────────────────────────────────────────────
+  // Wealth-to-standing conversion: feasts, games, temple restorations, endowments.
+  // Requirement/cost/effect math lives in munificenceEngine.ts (Aedile discount,
+  // shared 'games' slot, cooldowns); this action assembles the state patch.
+
+  performMunificence: (actId) => {
+    const s = get();
+    const act = getMunificenceAct(actId);
+    if (!act) return;
+
+    const check = checkMunificenceRequirements(s, act);
+    if (!check.ok) {
+      console.warn(`[performMunificence] Blocked (${actId}): ${check.reason}`);
+      return;
+    }
+
+    const cost = getMunificenceCost(s, act);
+    const effects = getMunificenceEffects(s, act);
+    const label = turnLabel(s);
+
+    // Crisis track deltas (unrest relief, constitution boost from temples)
+    let crisis = s.crisis;
+    if (effects.crisisDeltas) {
+      for (const [trackId, delta] of Object.entries(effects.crisisDeltas) as [CrisisTrackId, number][]) {
+        crisis = { ...crisis, [trackId]: applyTrackDelta(crisis[trackId], delta) };
+      }
+    }
+
+    // Rome stats
+    const rome = {
+      ...s.rome,
+      plebs:     Math.min(100, s.rome.plebs + (effects.plebs ?? 0)),
+      stability: Math.min(100, s.rome.stability + (effects.stability ?? 0)),
+    };
+
+    // Usage record — lastUsedTurn drives cooldowns, usesThisYear the shared 'games'
+    // slot and onceThisYear acts, totalUses the per-game caps (temples, endowments).
+    const prevUsage = s.munificenceUsage[actId] ?? {};
+    const munificenceUsage = {
+      ...s.munificenceUsage,
+      [actId]: {
+        lastUsedTurn: s.turnNumber,
+        usesThisYear: (prevUsage.usesThisYear ?? 0) + 1,
+        totalUses:    (prevUsage.totalUses ?? 0) + 1,
+      },
+    };
+
+    const endowments = effects.grantsEndowment ? [...s.endowments, actId] : s.endowments;
+
+    // Grand Games vote bonus: a standing bonus (electionEngine), not one-shot —
+    // recasting always refreshes to full and resets the decay clock (P2-F design decision).
+    let grandGamesVoteBonus = s.grandGamesVoteBonus;
+    let grandGamesBonusYearsUntilDecay = s.grandGamesBonusYearsUntilDecay;
+    if (effects.electionVoteBonus !== undefined) {
+      grandGamesVoteBonus = effects.electionVoteBonus;
+      grandGamesBonusYearsUntilDecay = BALANCE.munificence.grandGames.electionVoteBonusDecayIntervalYears;
+    }
+
+    // Games acts reset the "no games" unrest-escalation counter (crisisEngine
+    // calcUnrestEscalation reads seasonsSinceAedileGames — previously nothing ever
+    // reset it; Fund the Ludi / Grand Games are now the one games system that does).
+    const flags = act.requirements.slot === 'games'
+      ? { ...s.flags, seasonsSinceAedileGames: 0 }
+      : s.flags;
+
+    const effectParts: string[] = [];
+    if (effects.plebs)            effectParts.push(`Plebs +${effects.plebs}`);
+    if (effects.fides)            effectParts.push(`Fides +${effects.fides}`);
+    if (effects.lifetimeDignitas) effectParts.push(`Lifetime Dignitas +${effects.lifetimeDignitas}`);
+    if (effects.stability)        effectParts.push(`Stability +${effects.stability}`);
+    if (effects.grantsEndowment)  effectParts.push('permanent Fides income');
+    if (effects.electionVoteBonus !== undefined) effectParts.push(`+${effects.electionVoteBonus} votes at the next election`);
+    const logMsg = `${act.name} performed.${effectParts.length ? ' ' + effectParts.join(', ') + '.' : ''}`;
+
+    // Grand acts trigger a Philon interstitial — shown immediately (not deferred
+    // to season end), reusing the P2-B/P2-D injectNoticeEvent pattern.
+    let pendingEvents = s.pendingEvents;
+    let activeEvent = s.activeEvent;
+    if (act.isGrandAct) {
+      const player = s.family.find(c => c.isPlayer);
+      const bodyText = act.id === 'grand-games'
+        ? 'Philon, aglow: "Rome roared your name today, Domine. Ten thousand strangers now consider themselves your personal friends. Some of them vote."'
+        : 'Philon, quietly proud: "A gift to the city that outlives us both, Domine. Rome does not easily forget who paid for its bread, or its water."';
+      const notice = injectNoticeEvent(
+        'evt-munificence-grand-act', s.turnNumber, player?.id ?? 'pc-1', { title: act.name, bodyText },
+      );
+      if (activeEvent) {
+        pendingEvents = [...pendingEvents, notice];
+      } else {
+        activeEvent = notice;
+      }
+    }
+
+    set({
+      denarii: s.denarii - cost.denarii,
+      fides:   s.fides - cost.fides + (effects.fides ?? 0),
+      rome,
+      crisis,
+      lifetimeDignitas: s.lifetimeDignitas + (effects.lifetimeDignitas ?? 0),
+      munificenceUsage,
+      endowments,
+      grandGamesVoteBonus,
+      grandGamesBonusYearsUntilDecay,
+      flags,
+      pendingEvents,
+      activeEvent,
+      log: [...s.log, mkLog(label, logMsg, 'good')],
     });
   },
 
