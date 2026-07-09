@@ -78,10 +78,15 @@ export class LocalSaveProvider implements SaveProvider {
   async save(state: GameState): Promise<void> {
     // Strip UI-only fields that should never persist across sessions.
     // agendaVisible / uiNavRequest / activeEvent are transient modal state.
+    // Military Overhaul M5: a battle in progress does not survive an app
+    // restart — same treatment as activeEvent (re-enter/re-launch instead).
     const {
       agendaVisible: _av,
       uiNavRequest:  _unr,
       activeEvent:   _ae,
+      activeBattle:      _ab,
+      activeBattleSetup: _abs,
+      activeBattleBridgeCtx: _abbc,
       ...persistedState
     } = state as any;
     const json = JSON.stringify(persistedState);

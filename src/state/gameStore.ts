@@ -66,6 +66,15 @@ import {
   resolveRansomChoice,
   type BattleBridgeContext,
 } from '../engine/battle/musterEngine';
+// Military Overhaul M5 — battle session (deployment, orders, break decisions)
+import type {
+  Deployment, SideOrders, LaneId, LaneAssignment, TerrainMod, BattleUnit, UnitClass, Veterancy,
+} from '../models/battle';
+import {
+  initBattle, submitOrders, submitBreakDecision,
+  type DeploySideInput,
+} from '../engine/battle/battleEngine';
+import { musterArmy, getEligibleFamilyCaptains } from '../engine/battle/musterEngine';
 
 export interface LogEntry {
   id: string;
@@ -184,6 +193,26 @@ export interface GameState {
 
   // ── Military (Chunk M) ──────────────────────────────────────────────────
   senateResponse: SenateResponseState | null;
+
+  // ── Military Overhaul M5 — battle session state ─────────────────────────
+  // Transient UI/session state — stripped before save (saveLoad.ts), same
+  // treatment as activeEvent. Deployment is staged client-side (local
+  // component state in DeploymentBoard, seeded from activeBattleSetup) —
+  // battleEngine.initBattle only runs once "Give Battle" commits it, which
+  // is when activeBattle actually appears.
+  activeBattleSetup: {
+    attackerInput: DeploySideInput;
+    defenderInput: DeploySideInput;
+    terrain: TerrainMod;
+    seed: number;
+    bridgeCtx: BattleBridgeContext;
+  } | null;
+  activeBattle: BattleState | null;
+  /** Carried over from activeBattleSetup.bridgeCtx at commitDeployment time
+   *  (activeBattleSetup itself is cleared once the battle starts) — needed
+   *  by returnFromBattle to call resolveBattleOutcome (M4) once the battle
+   *  finishes, arbitrarily many rounds later. */
+  activeBattleBridgeCtx: BattleBridgeContext | null;
 
   // ── Canvassing ──────────────────────────────────────────────────────────
   activeCanvassingEvent: CanvassingEvent | null;
@@ -409,9 +438,9 @@ export interface GameActions {
 
   // ── Military Overhaul M4 — battle bridge ──────────────────────────────────
   // Thin wrappers over musterEngine.ts's pure functions (per the plan's
-  // cross-chunk note). No `activeBattle` session state yet (M5) — callers
-  // pass the finished BattleState/BattleOutcome directly, which is also
-  // exactly what a headless debug harness needs.
+  // cross-chunk note). Callers pass the finished BattleState/BattleOutcome
+  // directly (M5's returnFromBattle is the one production caller now; this
+  // shape is also exactly what a headless debug harness needs).
   resolveBattleOutcome: (
     battleState: BattleState,
     romeSide: BattleSide,
@@ -421,6 +450,24 @@ export interface GameActions {
   payRansom: (characterId: string) => void;
   negotiateRansom: (characterId: string) => void;
   refuseRansom: (characterId: string) => void;
+
+  // ── Military Overhaul M5 — battle session (deployment, orders, UI entry) ──
+  /** Debug-only entry point (DebugPanel "Launch Sandbox Battle" — M11 expands
+   *  this into a full army builder). Musters the player's own family/troops
+   *  as the attacker (synthesizing a small starting force if they have none,
+   *  so the M4 write-back has real records to exercise) against a synthetic
+   *  Carthaginian defender, and stages it in activeBattleSetup. */
+  startSandboxBattle: () => void;
+  /** DeploymentBoard calls this once the player presses "Give Battle" — runs
+   *  battleEngine.initBattle with the (possibly player-edited) deployments
+   *  staged locally in the component, and sets activeBattle. */
+  commitDeployment: (attackerDeployment: Deployment, defenderDeployment: Deployment) => void;
+  cancelDeployment: () => void;
+  submitBattleOrders: (ordersAttacker: SideOrders, ordersDefender: SideOrders) => void;
+  submitBattleBreakDecision: (laneId: LaneId, decision: 'pursue' | 'wheel', targetLane?: LaneId) => void;
+  /** "Return to Rome" — applies the M4 write-back via resolveBattleOutcome
+   *  using the bridgeCtx captured at deployment time, then clears activeBattle. */
+  returnFromBattle: () => void;
 
   // ── Canvassing ──────────────────────────────────────────────────────────
   canvassLeader: (leaderId: string) => void;
@@ -476,6 +523,51 @@ export interface GameActions {
 let _logId = 0;
 function mkLog(turn: string, text: string, type: LogEntry['type'] = 'neutral'): LogEntry {
   return { id: `log-${_logId++}`, turn, text, type };
+}
+
+// ─── Military Overhaul M5 — sandbox battle helpers ───────────────────────────
+// Debug-only content (DebugPanel "Launch Sandbox Battle"). M11 replaces this
+// with a real army builder — kept intentionally minimal here.
+
+/** Spreads units across the three lanes (cavalry restricted to wings, per
+ *  battleEngine.initBattle's validation), all in 'line' formation, no
+ *  captains assigned — the player can reassign everything on the
+ *  DeploymentBoard before committing. */
+function buildDefaultDeployment(units: BattleUnit[]): Deployment {
+  const isCavalry = (u: BattleUnit) => u.unitClass === 'cavalry_heavy' || u.unitClass === 'cavalry_light';
+  const cavalry = units.filter(isCavalry);
+  const rest = units.filter(u => !isCavalry(u));
+
+  const left: BattleUnit[] = [];
+  const centre: BattleUnit[] = [];
+  const right: BattleUnit[] = [];
+
+  cavalry.forEach((u, i) => (i % 2 === 0 ? left : right).push(u));
+  rest.forEach((u, i) => {
+    const slot = i % 3;
+    (slot === 0 ? left : slot === 1 ? centre : right).push(u);
+  });
+
+  const lanes: Record<LaneId, LaneAssignment> = {
+    left:   { units: left,   captainId: null, formation: 'line' },
+    centre: { units: centre, captainId: null, formation: 'line' },
+    right:  { units: right,  captainId: null, formation: 'line' },
+  };
+  return { lanes, reserve: [], commanderStation: 'centre' };
+}
+
+/** A fixed, flavorful Carthaginian preset — no strategic backing (enemy
+ *  armies aren't strategic records in this game, per musterEngine.ts). */
+function buildSandboxDefenderArmy(): BattleUnit[] {
+  const mk = (id: string, unitClass: UnitClass, veterancy: Veterancy = 'trained'): BattleUnit => ({
+    id, unitClass, strength: 90, veterancy, loyalty: 60, elephantSteady: false,
+  });
+  return [
+    mk('cart-1', 'spear_foot'), mk('cart-2', 'spear_foot'), mk('cart-3', 'spear_foot'),
+    mk('cart-4', 'skirmisher'), mk('cart-5', 'skirmisher'),
+    mk('cart-6', 'cavalry_light'), mk('cart-7', 'cavalry_heavy'),
+    mk('cart-8', 'elephant', 'veteran'),
+  ];
 }
 
 export const INITIAL_FAMILY_REPUTATIONS: Record<string, number> = Object.fromEntries(
@@ -558,6 +650,11 @@ export const INITIAL_STATE: GameState = {
 
   // Military (Chunk M)
   senateResponse: null,
+
+  // Military Overhaul M5 — battle session
+  activeBattleSetup: null,
+  activeBattle: null,
+  activeBattleBridgeCtx: null,
 
   // Canvassing
   activeCanvassingEvent: null,
@@ -2177,6 +2274,118 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       lifetimeDignitas: Math.max(0, s.lifetimeDignitas + result.lifetimeDignitasDelta),
       log: [...s.log, mkLog(label, result.logMessage, 'bad')],
     });
+  },
+
+  // ── Military Overhaul M5 — battle session ─────────────────────────────────
+
+  startSandboxBattle: () => {
+    const s = get();
+    const player = s.family.find(c => c.isPlayer);
+    if (!player) return;
+
+    // Debug/sandbox only — synthesize a small starting force if the player
+    // has none, so the M4 write-back has real strategic records to exercise
+    // end-to-end. M11 replaces this with a full army builder.
+    let attackerCharacter = player;
+    // Defensive optional-chaining: older saves/characters may predate these
+    // fields (see startingFamily.ts's fix in this same chunk).
+    if ((player.raisedLegions?.length ?? 0) === 0 && (player.veterans?.length ?? 0) === 0) {
+      const classes: UnitClass[] = ['legionary', 'legionary', 'legionary', 'spear_foot', 'spear_foot', 'cavalry_light'];
+      const synthTroops: TroopUnit[] = classes.map((unitClass, i) => ({
+        id: `sandbox-troop-${Date.now()}-${i}`,
+        type: 'raised',
+        strength: 8,
+        campaignsSurvived: 0,
+        yearsInactive: 0,
+        bondToCommander: 55,
+        musterProvinceId: s.provinces[0]?.id ?? 'sicilia',
+        unitClass,
+        veterancy: 'trained',
+      }));
+      attackerCharacter = { ...player, raisedLegions: synthTroops };
+      set({ family: s.family.map(c => (c.id === player.id ? attackerCharacter : c)) });
+    }
+
+    const attackerUnits = musterArmy(attackerCharacter);
+    const captains = getEligibleFamilyCaptains(s.family, player.id, s.flags);
+    const attackerRoster: Record<string, number> = { [player.id]: player.skills.martial };
+    for (const c of captains) attackerRoster[c.characterId] = c.martial;
+
+    const attackerInput: DeploySideInput = {
+      label: attackerCharacter.name,
+      deployment: buildDefaultDeployment(attackerUnits),
+      commanderId: player.id,
+      roster: { martialById: attackerRoster },
+    };
+    const defenderInput: DeploySideInput = {
+      label: 'Carthage',
+      deployment: buildDefaultDeployment(buildSandboxDefenderArmy()),
+      commanderId: null,
+      roster: { martialById: {} },
+    };
+
+    const bridgeCtx: BattleBridgeContext = {
+      troopOwnerCharacterId: attackerCharacter.id,
+      legateRoster: {},
+      turnNumber: s.turnNumber,
+    };
+
+    set({
+      activeBattleSetup: {
+        attackerInput, defenderInput,
+        terrain: BALANCE.battle.terrains.open_plain,
+        seed: Math.floor(Math.random() * 1e9),
+        bridgeCtx,
+      },
+    });
+  },
+
+  commitDeployment: (attackerDeployment, defenderDeployment) => {
+    const s = get();
+    if (!s.activeBattleSetup) return;
+    const { attackerInput, defenderInput, terrain, seed, bridgeCtx } = s.activeBattleSetup;
+    try {
+      const battleState = initBattle(
+        { ...attackerInput, deployment: attackerDeployment },
+        { ...defenderInput, deployment: defenderDeployment },
+        terrain, seed,
+      );
+      set({ activeBattle: battleState, activeBattleSetup: null, activeBattleBridgeCtx: bridgeCtx });
+    } catch (e) {
+      const label = turnLabel(s);
+      set({ log: [...s.log, mkLog(label, `Invalid deployment: ${(e as Error).message}`, 'bad')] });
+    }
+  },
+
+  cancelDeployment: () => set({ activeBattleSetup: null }),
+
+  submitBattleOrders: (ordersAttacker, ordersDefender) => {
+    const s = get();
+    if (!s.activeBattle) return;
+    try {
+      set({ activeBattle: submitOrders(s.activeBattle, ordersAttacker, ordersDefender) });
+    } catch (e) {
+      console.warn('[M5] submitBattleOrders failed:', e);
+    }
+  },
+
+  submitBattleBreakDecision: (laneId, decision, targetLane) => {
+    const s = get();
+    if (!s.activeBattle) return;
+    try {
+      set({ activeBattle: submitBreakDecision(s.activeBattle, laneId, decision, targetLane) });
+    } catch (e) {
+      console.warn('[M5] submitBattleBreakDecision failed:', e);
+    }
+  },
+
+  returnFromBattle: () => {
+    const s = get();
+    const battle = s.activeBattle;
+    if (battle?.phase === 'resolved' && battle.outcome && s.activeBattleBridgeCtx) {
+      get().resolveBattleOutcome(battle, 'attacker', battle.outcome, s.activeBattleBridgeCtx);
+    }
+    set({ activeBattle: null, activeBattleSetup: null, activeBattleBridgeCtx: null });
   },
 
   updateLocalSupportForPlayer: (provinceId, delta) => {

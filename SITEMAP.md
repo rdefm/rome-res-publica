@@ -115,10 +115,29 @@ Bill voting, speeches, filibusters, Rome-wide stats, crisis tracks.
 
 ---
 
+## 5a. Military Overhaul — Battle System (cross-cutting, not tab-bound)
+
+Set-piece battles ("The Legate's Line" — see `rome-military-implementation-plan.md`). Not one of the 5 tabs — `BattleScreen` is a full-screen native `Modal` mounted at the `App.tsx` root (§6), reached today only via `DebugPanel`'s "battle" tab ("Launch Sandbox Battle" — M11 replaces this with a real campaign entry point and a full army builder).
+
+**Screen:** `src/screens/BattleScreen.tsx` — orchestrates deployment → round-by-round text-log resolution → break-decision interstitials → outcome screen. No animation (M6 adds that on top of the same `RoundLogEntry` data). Chunk M5.
+
+**Components** — `src/components/battle/`
+| File | Summary |
+|---|---|
+| `DeploymentBoard.tsx` | Pre-battle staging UI — entirely local component state until "Give Battle" commits it (`gameStore.commitDeployment`). Tap-to-select-then-tap-to-place unit assignment, per-lane formation/captain pickers (gated by `clashEngine.isFeintGated`/`requiresCaptain`, mirroring `battleEngine.getValidOrders`' legality logic for the not-yet-started battle), commander station selector, advantage-pip chevrons (reuses `clashEngine.buildEffectiveSide`, never shows raw numbers per invariant 6). |
+| `OrdersPanel.tsx` | Per-round order controls during the 'orders' phase — formation changes, one-lane reserve commit, withdraw toggle, "Resolve Round". Reads `battleEngine.getValidOrders` as the single source of legality. |
+| `LaneCard.tsx` | Read-only WingState display (units, formation, captain, morale bar, broken/flanked/overextended badges) — used for both sides during the round-resolution view. Deployment has its own inline lane rendering in `DeploymentBoard.tsx` (different affordances). |
+
+**Store wiring (`gameStore.ts`):** `activeBattleSetup`/`activeBattle`/`activeBattleBridgeCtx` (transient session state, stripped before save — see `saveLoad.ts`) + thin wrapper actions `startSandboxBattle`/`commitDeployment`/`cancelDeployment`/`submitBattleOrders`/`submitBattleBreakDecision`/`returnFromBattle`. `returnFromBattle` calls the M4 `resolveBattleOutcome` action using the `bridgeCtx` captured at deployment time, then clears the session.
+
+**Engines:** see §7's `engine/battle/` entry (`clashEngine.ts`, `battleEngine.ts`, `musterEngine.ts`).
+
+---
+
 ## 6. App shell & cross-feature UI
 
 **Root:**
-- `App.tsx` — navigation container, bottom tab navigator (registers all 5 screens), global error boundary, app-foreground/background autosave + "welcome back" trigger, agenda auto-open logic, mounts global modals (`EventModal`, `AmbitionSelectionModal`, `AgendaTablet`, `WelcomeBackModal`) above the tab navigator.
+- `App.tsx` — navigation container, bottom tab navigator (registers all 5 screens), global error boundary, app-foreground/background autosave + "welcome back" trigger, agenda auto-open logic, mounts global modals (`EventModal`, `AmbitionSelectionModal`, `AgendaTablet`, `WelcomeBackModal`) above the tab navigator. **Military Overhaul M5** — also mounts `BattleScreen`, its own full-screen native `Modal` (not one of the stacked overlay modals) that takes over the screen whenever `activeBattleSetup`/`activeBattle` is set.
 
 **Shared components** — `src/components/shared/` (used across multiple tabs):
 | File | Summary |
@@ -138,13 +157,13 @@ Bill voting, speeches, filibusters, Rome-wide stats, crisis tracks.
 | `ScrollModal.tsx` | Base scroll-styled modal wrapper used by many other modals. |
 | `StatBar.tsx` | Generic labeled stat/progress bar. |
 | `SettingsModal.tsx` | Settings screen (save export/import, reset, glossary access). |
-| `DebugPanel.tsx` | Dev-only panel to force-trigger events/state for testing. Tabs: Resources, Characters, Events, Telemetry (raw `seasonStatsHistory`/`BALANCE` dump), **Pace (P2-E)** — last-10-per-stage averages via `engine/actionEconomyEngine.ts`, flags seasons outside their stage's action band or over the 8-minute time budget. |
+| `DebugPanel.tsx` | Dev-only panel to force-trigger events/state for testing. Tabs: Resources, Characters, Events, **Battle (M5)** — "Launch Sandbox Battle" entry point (§5a), Telemetry (raw `seasonStatsHistory`/`BALANCE` dump), **Pace (P2-E)** — last-10-per-stage averages via `engine/actionEconomyEngine.ts`, flags seasons outside their stage's action band or over the 8-minute time budget. Rendered inside `DomusScreen.tsx` when `debugMode` is true (debug-start bypass). |
 
 ---
 
 ## 7. State, engine core, and turn loop
 
-- `src/state/gameStore.ts` — **the single Zustand store** (~2000 lines); all `GameState` fields and actions live here, organized in commented sections (Turn, Resources, Domus, Curia, Forum, Cursus, Reputation, Ambitions, Clientela, Assets, Trials, Birth, Events, Office actions, Provinciae). Any new persisted field or action goes here. Forum leader actions (`buyInfluence`/`inviteToDinner`/`forgeAlliance`/`arrangeMarriageForum`) update `leader.relationship` and also call `adjustClanReputation` with a vote-weighted delta (via `reputationEngine.computeReputationDelta`), so `familyReputations` moves too. **Military Overhaul M4** — thin wrappers over `musterEngine.ts`: `resolveBattleOutcome` (takes a finished `BattleState`/`BattleOutcome` directly — no `activeBattle` session state yet, that's M5) and `payRansom`/`negotiateRansom`/`refuseRansom` (queued-state resolution for `character.captivity`, mirroring the Trial system's shape).
+- `src/state/gameStore.ts` — **the single Zustand store** (~2000 lines); all `GameState` fields and actions live here, organized in commented sections (Turn, Resources, Domus, Curia, Forum, Cursus, Reputation, Ambitions, Clientela, Assets, Trials, Birth, Events, Office actions, Provinciae). Any new persisted field or action goes here. Forum leader actions (`buyInfluence`/`inviteToDinner`/`forgeAlliance`/`arrangeMarriageForum`) update `leader.relationship` and also call `adjustClanReputation` with a vote-weighted delta (via `reputationEngine.computeReputationDelta`), so `familyReputations` moves too. **Military Overhaul M4** — thin wrappers over `musterEngine.ts`: `resolveBattleOutcome` (takes a finished `BattleState`/`BattleOutcome` directly) and `payRansom`/`negotiateRansom`/`refuseRansom` (queued-state resolution for `character.captivity`, mirroring the Trial system's shape). **M5** adds the battle session itself — `activeBattleSetup`/`activeBattle`/`activeBattleBridgeCtx` plus `startSandboxBattle`/`commitDeployment`/`cancelDeployment`/`submitBattleOrders`/`submitBattleBreakDecision`/`returnFromBattle` — see §5a.
 - `src/state/saveLoad.ts` — AsyncStorage save/load, Zod schema validation, JSON export/import via share sheet + document picker.
 - `src/engine/turnSequencer.ts` — **the season-end orchestrator** (`processSeason`); calls into most other engines in sequence (resources, crisis, bills, campaigns, aging, etc.) and returns the `SeasonLedger` diff. Start here when adding a new "happens every season" system.
 - `src/engine/resourceEngine.ts` — core economy: Rome stat modifiers, resource income calc (incl. P2-C household-voices term), `calcTrainingCost`, generic bill-effect-string application, faction drift, Rome stats aggregation. Used by Curia and the turn loop. Clan relationship drift moved to `reputationEngine.ts` in P2-D.

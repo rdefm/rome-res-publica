@@ -133,7 +133,7 @@ export function battleUnitToTroop(original: TroopUnit, unit: BattleUnit): TroopU
  *  means a single character's army is the unit of muster — mixing multiple
  *  characters' troops into one deployment is a future concern, not M4's. */
 export function musterArmy(character: Character): BattleUnit[] {
-  return [...character.raisedLegions, ...character.veterans].map(troopToBattleUnit);
+  return [...(character.raisedLegions ?? []), ...(character.veterans ?? [])].map(troopToBattleUnit);
 }
 
 // ─── Captains & legates ──────────────────────────────────────────────────────

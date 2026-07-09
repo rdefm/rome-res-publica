@@ -210,6 +210,37 @@ function EventsSection() {
   );
 }
 
+// ─── Section: Battle (Military Overhaul M5) ────────────────────────────────
+// Entry point for the set-piece battle system. Musters the player's own
+// family/troops (synthesizing a small starting force if they have none, so
+// the M4 write-back has real records to exercise) against a preset
+// Carthaginian defender. M11 replaces this with a full army builder.
+
+function BattleSection() {
+  const startSandboxBattle = useGameStore(s => s.startSandboxBattle);
+  const activeBattle = useGameStore(s => s.activeBattle);
+  const activeBattleSetup = useGameStore(s => s.activeBattleSetup);
+  const inProgress = !!activeBattle || !!activeBattleSetup;
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>SANDBOX BATTLE</Text>
+      <Text style={styles.eventId}>
+        Launches a full set-piece battle: deployment, round-by-round orders, break decisions,
+        and an outcome that writes back to real game state via musterEngine.applyBattleOutcome.
+      </Text>
+      <TouchableOpacity style={styles.eventRow} onPress={startSandboxBattle} disabled={inProgress}>
+        <View style={styles.eventRowInner}>
+          <Text style={styles.eventTitle}>⚔ Launch Sandbox Battle</Text>
+          <Text style={styles.eventId}>
+            {inProgress ? 'A battle is already in progress' : 'Opens the deployment screen'}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 // ─── Section: Telemetry (P2-A) ─────────────────────────────────────────────
 // Dumps BALANCE and seasonStatsHistory for tuning reference. Chunk P2-E adds
 // a richer "Pace" view (rolling averages, band/time flags) on top of the same
@@ -368,7 +399,7 @@ const paceStyles = StyleSheet.create({
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function DebugPanel() {
-  const [tab, setTab] = useState<'resources' | 'characters' | 'events' | 'telemetry' | 'pace'>('resources');
+  const [tab, setTab] = useState<'resources' | 'characters' | 'events' | 'battle' | 'telemetry' | 'pace'>('resources');
 
   return (
     <View style={styles.container}>
@@ -376,7 +407,7 @@ export default function DebugPanel() {
 
       {/* Tab switcher */}
       <View style={styles.tabs}>
-        {(['resources', 'characters', 'events', 'telemetry', 'pace'] as const).map(t => (
+        {(['resources', 'characters', 'events', 'battle', 'telemetry', 'pace'] as const).map(t => (
           <TouchableOpacity
             key={t}
             style={[styles.tab, tab === t && styles.tabActive]}
@@ -393,6 +424,7 @@ export default function DebugPanel() {
         {tab === 'resources'  && <ResourceSection />}
         {tab === 'characters' && <CharacterSection />}
         {tab === 'events'     && <EventsSection />}
+        {tab === 'battle'     && <BattleSection />}
         {tab === 'telemetry'  && <TelemetrySection />}
         {tab === 'pace'       && <PaceSection />}
       </ScrollView>

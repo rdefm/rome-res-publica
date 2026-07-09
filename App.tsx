@@ -16,6 +16,7 @@ import AmbitionSelectionModal from './src/components/shared/AmbitionSelectionMod
 import BirthNamingModal from './src/components/domus/BirthNamingModal';
 import AgendaTablet from './src/components/shared/AgendaTablet';
 import WelcomeBackModal from './src/components/shared/WelcomeBackModal';
+import BattleScreen from './src/screens/BattleScreen';
 import { generateAgenda } from './src/engine/agendaEngine';
 import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle } from './src/components/shared/TabBar';
 import StartMenuScreen from './src/screens/StartMenuScreen';
@@ -192,7 +193,9 @@ function GameRoot() {
         <StatusBar style="light" backgroundColor={COLORS.bg} />
         <ResourceBar />
         <AppNavigator />
-        {/* Modal priority: EventModal → AmbitionSelectionModal → AgendaTablet → WelcomeBackModal */}
+        {/* Modal priority: EventModal → AmbitionSelectionModal → AgendaTablet → WelcomeBackModal.
+            BattleScreen is its own full-screen native Modal (Military Overhaul M5) — it takes
+            over the whole screen whenever a battle is staging/active, regardless of DOM order. */}
         <EventModal />
         <AmbitionSelectionModal />
         <AgendaTablet />
@@ -200,6 +203,7 @@ function GameRoot() {
           visible={showWelcomeBack}
           onDismiss={() => setShowWelcomeBack(false)}
         />
+        <BattleScreen />
       </View>
     </NavigationContainer>
   );

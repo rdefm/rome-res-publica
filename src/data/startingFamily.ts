@@ -20,6 +20,8 @@ export const STARTING_FAMILY: Character[] = [
     reputationScores: {},
     formalImperium: 0,
     militaryImperium: 0,
+    raisedLegions: [],
+    veterans: [],
   },
   {
     id: 'npc-wife',
@@ -40,6 +42,8 @@ export const STARTING_FAMILY: Character[] = [
     reputationScores: {},
     formalImperium: 0,
     militaryImperium: 0,
+    raisedLegions: [],
+    veterans: [],
   },
   {
     id: 'npc-son',
@@ -60,6 +64,8 @@ export const STARTING_FAMILY: Character[] = [
     reputationScores: {},
     formalImperium: 0,
     militaryImperium: 0,
+    raisedLegions: [],
+    veterans: [],
   },
   {
     id: 'npc-daughter',
@@ -79,5 +85,7 @@ export const STARTING_FAMILY: Character[] = [
     reputationScores: {},
     formalImperium: 0,
     militaryImperium: 0,
+    raisedLegions: [],
+    veterans: [],
   },
 ];
