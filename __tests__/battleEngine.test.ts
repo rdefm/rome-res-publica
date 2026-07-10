@@ -181,19 +181,32 @@ describe('full battles run to completion', () => {
     }
     roundsAtEnd.sort((a, b) => a - b);
     const median = roundsAtEnd[Math.floor(roundsAtEnd.length / 2)];
-    // M11 BASELINE (verified by direct run, 60 seeds): median = 10 rounds,
-    // min = max = 10. That's ABOVE the plan's eventual M11 target band
-    // (4–7, p90 ≤ 10) — flagged here, not silently fixed, since M3's own
-    // "Done when" only requires recording it, and structural/constant
-    // tuning is explicitly M11's job. The min=max=10 tightness is itself
-    // notable: two IDENTICAL legionary-only armies with no captains have
-    // almost no RNG variance in this engine (only feint orders roll dice,
-    // and none were issued here), so a mirror matchup resolves in a nearly
-    // fixed number of rounds — worth a look in M11 alongside the length
-    // itself (mirror matches may need more randomness, not just fewer
-    // rounds, to feel less like a foregone conclusion).
-    expect(median).toBeGreaterThanOrEqual(1);
-    expect(median).toBeLessThanOrEqual(12);
+    // M11 TUNED (verified by direct run, 60 seeds): median = 4 rounds,
+    // min = max = 4 — within the plan's target band (4–7, p90 ≤ 10). The
+    // pre-tuning baseline was median=10 (BALANCE.battle.morale.
+    // casualtyDrainMult was 0.8); M11 raised it to 1.8 specifically because
+    // invariant 4 ("morale wins battles, not annihilation") means the
+    // morale-drain rate, not the raw casualty rate, is the right lever for
+    // battle LENGTH — it shortens fights without making them bloodier.
+    // The min=max=4 tightness (two IDENTICAL legionary-only armies, no
+    // captains, so no feint/amok RNG ever fires) is UNCHANGED by that
+    // tuning and was never actually a length problem — the real bug behind
+    // it was in battleEngine.ts's checkRoutDefeat/submitBreakDecision: a
+    // symmetric clash reliably put BOTH sides at 2-broken-wings in the same
+    // round, and (a) checkRoutDefeat's iteration order made the attacker
+    // lose every such tie, while (b) submitBreakDecision's pendingBreak
+    // Decisions filter kept only laneId (not laneId+side), silently
+    // dropping one side's break resolution whenever both sides broke the
+    // same-named lane the same round. Together these made mirror battles
+    // resolve defender-favor 100/100, not the ~50/50 a coin-flip mirror
+    // should show — caught by M11's simulateBattles harness explicitly
+    // measuring win rate (this test never had before). Fixed: simultaneous
+    // double-breaks now resolve by remaining strength, tied strength falls
+    // back to the round's own seeded rng; pendingBreakDecisions removal is
+    // now keyed on (laneId, brokenSide). Verified via the harness at
+    // n=300: attackerWinRate 50.3%/49.7%.
+    expect(median).toBeGreaterThanOrEqual(4);
+    expect(median).toBeLessThanOrEqual(7);
   });
 
   test('determinism end-to-end: same seed + same deployment objects reproduce an identical outcome and log', () => {

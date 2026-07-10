@@ -233,6 +233,16 @@ export const BALANCE = {
         note: 'spear def +2; incoming shock from elephant ×0.25' },
       { subjectClass: 'cavalry_heavy', vsClass: 'spear_foot', atkDelta: -2,
         note: 'cavalry atk −2 vs spear wall (stacks with the shock negation above)' },
+      /** M11 tuning pass: without this, a braced spear wall neutralizes an
+       *  elephant's SHOCK (via the incomingShockMult rule above) but not its
+       *  base melee atk — elephants kept winning ≥60% of harness trials
+       *  against the plan's own "prepared counter" (skirmisher+spear+
+       *  open_ranks) composition, the opposite of the target. Mirrors the
+       *  cavalry_heavy rule immediately above (braced spears blunt a charge
+       *  regardless of what's doing the charging), one point sharper since
+       *  elephants are the explicitly-designed "gamble" unit. */
+      { subjectClass: 'elephant', vsClass: 'spear_foot', atkDelta: -1,
+        note: 'elephant atk −1 vs spear wall (braced spears blunt the charge; stacks with the shock negation above)' },
       { subjectClass: 'cavalry_light', vsClass: 'cavalry_heavy', incomingShockMult: 0.5, firstClashOnly: true,
         note: 'first-clash incoming shock ×0.5 (evasion)' },
       { subjectClass: 'cavalry_light', vsClass: 'skirmisher', atkDelta: 2,
@@ -379,7 +389,7 @@ export const BALANCE = {
       seedPerAvgWeightedMoraleWeight: 10,
       clampMin: 20,
       clampMax: 100,
-      casualtyDrainMult: 0.8,
+      casualtyDrainMult: 1.8,
       brokenThreshold: 0,
       /** Once a side has 2 broken wings, its remaining wing takes this extra
        *  drain automatically each round. */

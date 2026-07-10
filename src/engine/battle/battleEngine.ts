@@ -724,7 +724,7 @@ export function submitOrders(state: BattleState, ordersAttacker: SideOrders, ord
     return { ...nextState, phase: 'break_decision' };
   }
 
-  const endCheck = checkRoutDefeat(nextState);
+  const endCheck = checkRoutDefeat(nextState, rng);
   if (endCheck) {
     const outcome = computeOutcome(nextState, endCheck, rng);
     return { ...nextState, log: [...newLog, { type: 'battle_end', round, outcome }], phase: 'resolved', outcome };
@@ -753,13 +753,34 @@ function applyRoutCascade(side: SideState, log: RoundLogEntry[], round: number, 
 }
 
 /** Returns the defeated side if the rout condition (≥2 broken wings) is
- *  met, else null. */
-function checkRoutDefeat(state: BattleState): BattleSide | null {
-  for (const sideKey of ['attacker', 'defender'] as const) {
-    const side = state[sideKey];
-    const brokenCount = LANES.filter(l => side.wings[l].broken).length;
-    if (brokenCount >= 2) return sideKey;
+ *  met, else null.
+ *
+ *  M11 FIX: both sides can cross the ≥2-broken-wings threshold in the SAME
+ *  round (a fully symmetric clash — e.g. mirrored armies — has no per-round
+ *  RNG at all unless feint/amok gate in, so both wings can break in lockstep
+ *  every round). The original version iterated ['attacker', 'defender'] and
+ *  returned whichever it found first, which meant the attacker lost EVERY
+ *  simultaneous double-break, deterministically — surfaced by M11's
+ *  simulateBattles harness as a 0%/100% mirror-army win split against the
+ *  plan's 47–53% target. Simultaneous collapse is now resolved by whichever
+ *  side has less total remaining strength (they lost the exchange more
+ *  badly); an exact-strength tie falls back to this round's own seeded rng
+ *  (consistent with computeOutcome's rng usage immediately after — the
+ *  battle is terminal at this point, so the extra draw need not be folded
+ *  into rngCallsConsumed). */
+function checkRoutDefeat(state: BattleState, rng: RngFn): BattleSide | null {
+  const attackerBroken = LANES.filter(l => state.attacker.wings[l].broken).length >= 2;
+  const defenderBroken = LANES.filter(l => state.defender.wings[l].broken).length >= 2;
+  if (attackerBroken && defenderBroken) {
+    const attackerStrength = totalArmyStrength(state.attacker);
+    const defenderStrength = totalArmyStrength(state.defender);
+    if (attackerStrength !== defenderStrength) {
+      return attackerStrength < defenderStrength ? 'attacker' : 'defender';
+    }
+    return rngPercent(rng) < 50 ? 'attacker' : 'defender';
   }
+  if (attackerBroken) return 'attacker';
+  if (defenderBroken) return 'defender';
   return null;
 }
 
@@ -774,6 +795,19 @@ export function submitBreakDecision(
   if (state.phase !== 'break_decision') {
     throw new Error(`submitBreakDecision called while phase is '${state.phase}', expected 'break_decision'`);
   }
+  // M11 FIX: matched by laneId ALONE, `find` here would be ambiguous whenever
+  // both sides' same-named lane break in the same round (e.g. mirrored
+  // armies' 'left' wings breaking together) — pendingBreakDecisions can
+  // legitimately hold two entries with the same laneId, one per side. `find`
+  // picking the first (always attacker-before-defender, per the wing-break
+  // detection loop's iteration order) is fine as the resolution target for
+  // THIS call, matching the established caller convention of always
+  // resolving pendingBreakDecisions[0]; but see the matching fix below —
+  // the ORIGINAL bug was `remainingPending`'s filter dropping BOTH same-
+  // laneId entries instead of just this one, silently discarding the other
+  // side's break decision (it was never pursued/wheeled, giving that side's
+  // lane a free pass). Surfaced by M11's simulateBattles harness as a
+  // mirror-army win rate of 0%/100% instead of the plan's 47–53% target.
   const pending = state.pendingBreakDecisions.find(d => d.laneId === laneId);
   if (!pending) throw new Error(`No pending break decision for lane '${laneId}'`);
 
@@ -860,7 +894,7 @@ export function submitBreakDecision(
       const withBreak = { ...recheckSide, wings: { ...recheckSide.wings, [targetLane]: { ...recheckWing, broken: true } } };
       if (brokenRecheckSideKey === 'attacker') attacker = withBreak; else defender = withBreak;
       log.push({ type: 'wing_break', round: state.round, laneId: targetLane, side: brokenRecheckSideKey });
-      const remainingPending = state.pendingBreakDecisions.filter(d => d.laneId !== laneId);
+      const remainingPending = state.pendingBreakDecisions.filter(d => !(d.laneId === laneId && d.brokenSide === brokenSideKey));
       const newState: BattleState = {
         ...state, attacker, defender, log: [...state.log, ...log],
         rngCallsConsumed: state.rngCallsConsumed + callsThisTime(),
@@ -870,7 +904,7 @@ export function submitBreakDecision(
     }
   }
 
-  const remainingPending = state.pendingBreakDecisions.filter(d => d.laneId !== laneId);
+  const remainingPending = state.pendingBreakDecisions.filter(d => !(d.laneId === laneId && d.brokenSide === brokenSideKey));
   const newLog = [...state.log, ...log];
   const rngCallsConsumed = state.rngCallsConsumed + callsThisTime();
   const intermediateState: BattleState = { ...state, attacker, defender, log: newLog, rngCallsConsumed, pendingBreakDecisions: remainingPending };
@@ -879,9 +913,9 @@ export function submitBreakDecision(
     return { ...intermediateState, phase: 'break_decision' };
   }
 
-  const endCheck = checkRoutDefeat(intermediateState);
+  const { rng: outcomeRng } = makeContinuedRng(intermediateState.seed, intermediateState.rngCallsConsumed);
+  const endCheck = checkRoutDefeat(intermediateState, outcomeRng);
   if (endCheck) {
-    const { rng: outcomeRng } = makeContinuedRng(intermediateState.seed, intermediateState.rngCallsConsumed);
     const outcome = computeOutcome(intermediateState, endCheck, outcomeRng);
     return { ...intermediateState, log: [...newLog, { type: 'battle_end', round: state.round, outcome }], phase: 'resolved', outcome };
   }

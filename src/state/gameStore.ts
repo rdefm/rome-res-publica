@@ -81,6 +81,12 @@ import { musterArmy, getEligibleFamilyCaptains } from '../engine/battle/musterEn
 import { chooseDeployment } from '../engine/battle/battleAi';
 import { ENEMY_GENERAL_LIST, ENEMY_GENERALS } from '../data/enemyGenerals';
 import { makeSeededRng } from '../utils/seededRng';
+// Military Overhaul M11 — sandbox army builder (DebugPanel). Both sides go
+// through battleAi.chooseDeployment (i.e. every side is a "stock profile"
+// per the plan's army-builder spec) — the player can still hand-edit the
+// result on DeploymentBoard before committing, same as every other sandbox
+// entry point. The headless harness (battleSim.ts's simulateBattles) is
+// called directly by DebugPanel — a pure function, no store involvement.
 // Military Overhaul M9 — war score & set-piece scheduling
 import type { WarState } from '../models/war';
 import { scheduleSetPiece, applyTreatyEffects, buildTreatyBill, getDesperationTier, type TreatySide } from '../engine/warEngine';
@@ -477,6 +483,24 @@ export interface GameActions {
    *  so the M4 write-back has real records to exercise) against a synthetic
    *  Carthaginian defender, and stages it in activeBattleSetup. */
   startSandboxBattle: () => void;
+  /** Military Overhaul M11 — DebugPanel's full army builder. Both sides are
+   *  built entirely from the given unit lists and staged via
+   *  battleAi.chooseDeployment against the given stock general profiles
+   *  (decoupled from the player's real family/troops, unlike
+   *  startSandboxBattle — this is for reproducing arbitrary compositions,
+   *  not roleplaying the current save). No M4/M8 write-back bridge context
+   *  is meaningful here (no real strategic-layer army to update), so
+   *  returnFromBattle no-ops its resolveBattleOutcome call for this session
+   *  (bridgeCtx.troopOwnerCharacterId is set to a sentinel that doesn't
+   *  match any real character). */
+  startCustomSandboxBattle: (
+    attackerUnits: BattleUnit[],
+    attackerGeneralProfileId: string,
+    defenderUnits: BattleUnit[],
+    defenderGeneralProfileId: string,
+    terrainId: string,
+    seed?: number,
+  ) => void;
   /** DeploymentBoard calls this once the player presses "Give Battle" — runs
    *  battleEngine.initBattle with the (possibly player-edited) deployments
    *  staged locally in the component, and sets activeBattle. */
@@ -2466,6 +2490,60 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         attackerInput, defenderInput,
         terrain,
         seed,
+        bridgeCtx,
+      },
+    });
+  },
+
+  startCustomSandboxBattle: (attackerUnits, attackerGeneralProfileId, defenderUnits, defenderGeneralProfileId, terrainId, seed) => {
+    const s = get();
+    const attackerProfile = ENEMY_GENERALS[attackerGeneralProfileId] ?? ENEMY_GENERAL_LIST[0];
+    const defenderProfile = ENEMY_GENERALS[defenderGeneralProfileId] ?? ENEMY_GENERAL_LIST[0];
+    const terrain = BALANCE.battle.terrains[terrainId] ?? BALANCE.battle.terrains.open_plain;
+    const battleSeed = seed ?? Math.floor(Math.random() * 1e9);
+
+    // Same RNG-offset convention as startSandboxBattle — see its comment.
+    const attackerHand = drawStratagemHand(attackerProfile.martial, attackerUnits, terrain, makeSeededRng(battleSeed ^ 0x51ed270b));
+    const defenderHand = drawStratagemHand(defenderProfile.martial, defenderUnits, terrain, makeSeededRng(battleSeed ^ 0x2545f491));
+    const attackerDeployed = chooseDeployment(attackerProfile, attackerUnits, terrain, attackerHand, makeSeededRng(battleSeed ^ 0x6a09e667));
+    const defenderDeployed = chooseDeployment(defenderProfile, defenderUnits, terrain, defenderHand, makeSeededRng(battleSeed ^ 0x9e3779b9));
+
+    const attackerInput: DeploySideInput = {
+      label: `${attackerProfile.name} ${attackerProfile.epithet}`,
+      deployment: attackerDeployed.deployment,
+      commanderId: attackerDeployed.commanderId,
+      roster: attackerDeployed.roster,
+      generalProfileId: attackerProfile.id,
+      stratagemHand: attackerHand,
+    };
+    const defenderInput: DeploySideInput = {
+      label: `${defenderProfile.name} ${defenderProfile.epithet}`,
+      deployment: defenderDeployed.deployment,
+      commanderId: defenderDeployed.commanderId,
+      roster: defenderDeployed.roster,
+      generalProfileId: defenderProfile.id,
+      stratagemHand: defenderHand,
+    };
+
+    // Decoupled from the real family/strategic layer (see this action's
+    // type-doc comment) — troopOwnerCharacterId is a sentinel no real
+    // Character will ever match, so applyBattleOutcome's write-back is a
+    // safe no-op (musterEngine.ts's family.map/find calls all degrade to
+    // "no character found" branches) while the battle still plays out
+    // through the exact same DeploymentBoard/BattleScreen/returnFromBattle
+    // pipeline as every other sandbox entry point.
+    const bridgeCtx: BattleBridgeContext = {
+      troopOwnerCharacterId: 'sandbox-custom-no-owner',
+      legateRoster: {},
+      enemyFieldedElephants: defenderUnits.some(u => u.unitClass === 'elephant'),
+      turnNumber: s.turnNumber,
+    };
+
+    set({
+      activeBattleSetup: {
+        attackerInput, defenderInput,
+        terrain,
+        seed: battleSeed,
         bridgeCtx,
       },
     });

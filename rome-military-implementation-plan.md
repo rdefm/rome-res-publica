@@ -422,3 +422,36 @@ All targets demonstrated by harness output pasted into the tuning log; sandbox u
 3. No single battle moves warScore more than 25; a war can be ended at all three thresholds via a Senate-ratified treaty, and the Senate refusing a treaty is a playable, survivable state.
 4. Each of the 4 enemy generals is distinguishable in play; each unit class has a demonstrated competitive role per the M11 harness stats.
 5. All engine code is pure, seeded, and covered by the M2/M3 test suites; the whole battle layer is exercisable headless from the debug harness.
+
+## Tuning log (Chunk M11)
+
+Harness: `src/engine/battle/battleSim.ts`'s `simulateBattles`, exercised via `__tests__/battleSim.test.ts` (regression locks) and DebugPanel's "HEADLESS HARNESS" panel (ad hoc). All figures below are direct harness output, not estimates.
+
+### Two structural fixes (found by the harness, not by design — reported and approved before applying)
+
+Building the harness's first target (mirror-army win rate) immediately surfaced two pre-existing `battleEngine.ts` bugs that no prior test caught, because no prior test measured win-rate *distribution* — only round counts:
+
+1. **`checkRoutDefeat` iteration-order bias.** A fully symmetric clash (e.g. two identical armies, no captains — nothing that draws RNG) puts both sides at ≥2-broken-wings in the *same* round. The original function iterated `['attacker', 'defender']` and returned whichever it found first, so the attacker lost every such tie — mirror battles resolved defender-favor 300/300, not ~50/50. Fixed: simultaneous double-breaks now resolve by remaining total army strength; an exact-strength tie falls back to the round's own seeded rng.
+2. **`submitBreakDecision` pending-decision collision.** `pendingBreakDecisions` can legitimately hold two entries with the same `laneId` (one per side) when both sides' same-named lane breaks in the same round. The removal filter matched on `laneId` alone, so resolving one side's break silently discarded the *other* side's pending decision too — it was never pursued/wheeled, handing that side's lane a free pass. Fixed: removal is now keyed on `(laneId, brokenSide)`.
+
+Both are in `src/engine/battle/battleEngine.ts` (`checkRoutDefeat`, `submitBreakDecision`). See the inline comments at each site for the full before/after. Verified against the full M2–M10 test suite (162 tests) — no regressions.
+
+### BALANCE.battle changes
+
+- `morale.casualtyDrainMult`: `0.8` → `1.8`. This is the length lever, not `melee.baseCasualtyRate` — per invariant 4 ("morale wins battles, not annihilation"), shortening fights should come from wings breaking sooner, not from armies bleeding out faster. Dropped the canonical mirror-army battle from a fixed 10 rounds to a fixed 4 (two identical armies still have ~no RNG, so min=median=max, just at a lower number).
+- Added one matchup rule: `{ subjectClass: 'elephant', vsClass: 'spear_foot', atkDelta: -1 }` (mirrors the existing `cavalry_heavy` vs `spear_foot` rule one point milder). Without it, the plan's own "prepared counter" composition (skirmisher+spear+open_ranks) only neutralizes an elephant's *shock* (the existing `incomingShockMult` rules), not its base melee atk — elephants kept winning ≥60% of trials against their designated counter, the opposite of the target.
+
+### Target-by-target results (harness output, verified via `__tests__/battleSim.test.ts`)
+
+| Target | Result |
+|---|---|
+| Mirror armies 47–53% either side | 50.3% / 49.7% (n=300, trivial mode, identical 9-legionary armies) |
+| Median battle length 4–7 rounds, p90 ≤ 10 | median=4, p90=4 (same mirror scenario, n=300) |
+| Every unit class wins ≥55% in some composition vs naive all-legionary | All 5 non-legionary classes hit 100% (n=150–300 each) via combined-arms comps (wedge+captain cavalry flanks carrying a class embedded in the winning wing; spear_foot holds centre in shield_wall while cavalry wins the flanks; elephant flanks vs a legionary-only defender need no help). Naive `line`-formation swaps alone did *not* clear the bar for any class except elephant — legionary's stats have no built-in weakness, so beating it cleanly requires actual formation/captain tactics, not just a class swap. See `__tests__/battleSim.test.ts` for the exact compositions. |
+| AI-vs-AI crushing outcomes 15–30% | 20.8% (mixed 9-unit armies, all 4 general profiles round-robin, n=20/pairing × 12 pairings = 240 trials) |
+| Elephant army vs prepared counter (skirmisher+spear+open_ranks) loses ≥60% | Elephant side loses 62.8% (n=200, trivial mode, 9 elephants vs a 9-unit skirmisher/spear open_ranks mix) |
+| Cannae double envelopment ≥40% (M3 regression) | Reverified unaffected by the above changes — still 100/100 both-wings-broken, wheel exercised, at n=100 (`__tests__/battleEngine.test.ts`) |
+
+### Known rare edge case (flagged, not fixed)
+
+The elephant-vs-prepared-counter scenario leaves ~0.5–2% of trials (n=200) unresolved within the 60-round safety cap: amok events remove elephant units and deal strength damage without draining morale (only melee/shock casualties feed `calcCasualtyDrain`), so a lane can occasionally grind down to a couple of low-strength survivors on each side without either wing's morale pool ever crossing zero. Bounded (`expect(agg.unresolved).toBeLessThanOrEqual(4)`) rather than fixed — it's a rare tail on a synthetic all-elephant composition unlikely to occur in real play (armies are never literally 9 elephants), and a real fix (morale-linked amok damage, or a hard round cap with a forced-withdrawal resolution) is a structural engine change outside this chunk's constant-only tuning mandate. Worth a look if a future chunk touches amok or morale drain again.
