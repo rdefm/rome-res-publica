@@ -343,6 +343,21 @@ export const EVENT_DEFS: EventDef[] = [
       { id: 'continue', label: 'Continue', successEffect: '', failureEffect: '' },
     ],
   },
+  // Military Overhaul M9 — warEngine.ts injects this whenever |warScore|
+  // newly crosses the sue/forced/dictate threshold for an active war.
+  // Title/body are always overridden via injectNoticeEvent's opts (see
+  // buildThresholdNotice) — dispatch voice, terse, per invariant 7.
+  {
+    id: 'evt-war-threshold-notice',
+    title: 'The War Turns',
+    bodyText: 'The balance of the war has shifted.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      { id: 'continue', label: 'Continue', successEffect: '', failureEffect: '' },
+    ],
+  },
 
   // Fired by turnSequencer step 2b when resolveElection returns contested: true.
   {

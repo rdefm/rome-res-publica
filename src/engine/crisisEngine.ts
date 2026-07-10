@@ -81,6 +81,20 @@ function calcWarEscalation(state: GameState): number {
     delta += 5;
   }
 
+  // Military Overhaul M9 — one term from warScore trajectory, kept
+  // deliberately separate from warEngine.ts (per the plan's "do not merge
+  // the systems" instruction): losing a war badly adds War-track pressure;
+  // winning big eases it. Reads state.wars as it stood BEFORE this season's
+  // processWarSeason step runs (step 5 here, war-score updates land later
+  // in the 9-series) — same "one season behind" relationship every other
+  // crisis input already has with its producing system (e.g. province
+  // relationshipScore vs. step 9c's province tick).
+  for (const war of (state.wars ?? [])) {
+    if (!war.active) continue;
+    if (war.warScore < -20) delta += 2;
+    else if (war.warScore >= 20) delta -= 1;
+  }
+
   return Math.round(delta);
 }
 

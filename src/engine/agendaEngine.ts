@@ -13,6 +13,7 @@ import { getClanStanding } from './reputationEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import { getMunificenceAct } from '../data/munificence';
 import { isSlotUsedThisYear, getMunificenceCost } from './munificenceEngine';
+import { BALANCE } from '../data/balance';
 
 // ─── Crisis tier copy ─────────────────────────────────────────────────────────
 // Labels and penalty strings sourced directly from the tier tables in
@@ -551,9 +552,12 @@ function genAgingBondedLeader(state: GameState): AgendaItem[] {
 }
 
 // ─── Generator 19 — Munificence games opportunity (P2-F) ────────────────────
-// #17/#18 are reserved by the military overhaul plan. Fires when Unrest is
-// tier >= 2, the shared 'games' slot is unused this year, and the player can
-// afford Fund the Ludi — games are a lever the player may not think to reach for.
+// #17/#18 were reserved here since M4 but couldn't be built until
+// WarState/SetPieceOffer existed as live state (M9) — they're defined below
+// this one, after the Public API marker's original position, since this
+// generator was written first. Fires when Unrest is tier >= 2, the shared
+// 'games' slot is unused this year, and the player can afford Fund the
+// Ludi — games are a lever the player may not think to reach for.
 
 function genMunificenceGamesOpportunity(state: GameState): AgendaItem[] {
   if (state.crisis.unrest.tier < 2) return [];
@@ -576,10 +580,61 @@ function genMunificenceGamesOpportunity(state: GameState): AgendaItem[] {
   }];
 }
 
+// ─── Generator 17 — Pending set-piece offer (Military Overhaul M9) ──────────
+// Reserved since M4 (couldn't be built until WarState/SetPieceOffer were
+// actually live state — that only happens in M9). A dedicated, blocking
+// SetPieceOfferModal is the primary resolution path; this item is a
+// secondary reminder for the AgendaTablet's comprehensive to-do view,
+// matching every other generator's role here.
+
+function genPendingSetPiece(state: GameState): AgendaItem[] {
+  const items: AgendaItem[] = [];
+  for (const war of (state.wars ?? [])) {
+    if (!war.active || !war.pendingSetPiece) continue;
+    items.push({
+      id: `agenda-critical-set-piece-${war.id}`,
+      category: 'military' as const,
+      severity: 'critical',
+      title: `The armies will meet at ${war.pendingSetPiece.siteName}`,
+      detail: 'Give battle, or decline and let the moment pass.',
+      target: { tab: 'Provinciae' as const },
+      sortWeight: 0,
+    });
+  }
+  return items;
+}
+
+// ─── Generator 18 — Peace threshold reached (Military Overhaul M9) ──────────
+// Fires once |warScore| crosses the "sue" threshold for an active war —
+// unlocks the negotiation entry point M10 builds (Curia). Framing differs
+// by who's winning; the war may still be a long way from a treaty, this is
+// just "the option now exists."
+
+function genWarPeaceThreshold(state: GameState): AgendaItem[] {
+  const items: AgendaItem[] = [];
+  for (const war of (state.wars ?? [])) {
+    if (!war.active) continue;
+    if (Math.abs(war.warScore) < BALANCE.war.thresholds.sue) continue;
+    const winning = war.warScore > 0;
+    items.push({
+      id: `agenda-critical-war-peace-${war.id}`,
+      category: 'military' as const,
+      severity: 'critical',
+      title: winning ? `${capitalize(war.enemyId)} may treat for peace` : `Rome may be forced to terms`,
+      detail: winning
+        ? `The war has turned decisively enough that ${capitalize(war.enemyId)} may accept terms.`
+        : `The war has turned badly enough that terms may soon be forced on Rome.`,
+      target: { tab: 'Curia' as const },
+      sortWeight: 0,
+    });
+  }
+  return items;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Runs all 17 generators against the current state and returns a sorted list
+ * Runs all 19 generators against the current state and returns a sorted list
  * of agenda items. Sort order: severity (critical first) → sortWeight →
  * category (alpha tiebreak for stable ordering).
  *
@@ -605,6 +660,8 @@ export function generateAgenda(state: GameState): AgendaItem[] {
     ...genPatronTierProximity(state),
     ...genAgingBondedLeader(state),
     ...genMunificenceGamesOpportunity(state),
+    ...genPendingSetPiece(state),
+    ...genWarPeaceThreshold(state),
   ];
 
   return items.sort((a, b) => {

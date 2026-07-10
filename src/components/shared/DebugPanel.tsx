@@ -241,6 +241,65 @@ function BattleSection() {
   );
 }
 
+// ─── Section: War (Military Overhaul M9) ───────────────────────────────────
+// No real "declare war" trigger exists anywhere in the app yet (Phase 3A
+// supplies one) — this is the only way to start/advance a war today.
+
+function WarSection() {
+  const wars = useGameStore(s => s.wars);
+  const startWar = useGameStore(s => s.startWar);
+  const endWar = useGameStore(s => s.endWar);
+  const forceSetPieceOffer = useGameStore(s => s.forceSetPieceOffer);
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>WAR SCORE (M9)</Text>
+      <Text style={styles.eventId}>
+        processWarSeason runs every season end for each active war (skirmish drift, weariness,
+        threshold notices, the provisional set-piece scheduler). No in-game "declare war" trigger
+        exists yet — Phase 3A supplies one; this panel is the only entry point today.
+      </Text>
+      <TouchableOpacity
+        style={styles.eventRow}
+        onPress={() => startWar('carthage', 'major', null)}
+      >
+        <View style={styles.eventRowInner}>
+          <Text style={styles.eventTitle}>⚔ Declare War on Carthage</Text>
+          <Text style={styles.eventId}>No-ops if already at war with Carthage</Text>
+        </View>
+      </TouchableOpacity>
+
+      {wars.length === 0 && <Text style={styles.emptyText}>No wars yet.</Text>}
+      {wars.map(war => (
+        <View key={war.id} style={styles.eventRow}>
+          <View style={styles.eventRowInner}>
+            <Text style={styles.eventTitle}>
+              {war.active ? '⚔' : '☮'} {war.enemyId} ({war.scale}) — score {war.warScore}, weariness {war.weariness}
+            </Text>
+            <Text style={styles.eventId}>
+              {war.pendingSetPiece
+                ? `Pending offer: ${war.pendingSetPiece.siteName} (expires turn ${war.pendingSetPiece.expiresTurn})`
+                : 'No pending offer'}
+            </Text>
+            {war.active && (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                <TouchableOpacity onPress={() => forceSetPieceOffer(war.id)} disabled={!!war.pendingSetPiece}>
+                  <Text style={[styles.flagNote, war.pendingSetPiece ? { opacity: 0.4 } : null]}>
+                    Force Set-Piece Offer
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => endWar(war.id)}>
+                  <Text style={styles.flagNote}>End War</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 // ─── Section: Telemetry (P2-A) ─────────────────────────────────────────────
 // Dumps BALANCE and seasonStatsHistory for tuning reference. Chunk P2-E adds
 // a richer "Pace" view (rolling averages, band/time flags) on top of the same
@@ -399,7 +458,7 @@ const paceStyles = StyleSheet.create({
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function DebugPanel() {
-  const [tab, setTab] = useState<'resources' | 'characters' | 'events' | 'battle' | 'telemetry' | 'pace'>('resources');
+  const [tab, setTab] = useState<'resources' | 'characters' | 'events' | 'battle' | 'war' | 'telemetry' | 'pace'>('resources');
 
   return (
     <View style={styles.container}>
@@ -407,7 +466,7 @@ export default function DebugPanel() {
 
       {/* Tab switcher */}
       <View style={styles.tabs}>
-        {(['resources', 'characters', 'events', 'battle', 'telemetry', 'pace'] as const).map(t => (
+        {(['resources', 'characters', 'events', 'battle', 'war', 'telemetry', 'pace'] as const).map(t => (
           <TouchableOpacity
             key={t}
             style={[styles.tab, tab === t && styles.tabActive]}
@@ -425,6 +484,7 @@ export default function DebugPanel() {
         {tab === 'characters' && <CharacterSection />}
         {tab === 'events'     && <EventsSection />}
         {tab === 'battle'     && <BattleSection />}
+        {tab === 'war'        && <WarSection />}
         {tab === 'telemetry'  && <TelemetrySection />}
         {tab === 'pace'       && <PaceSection />}
       </ScrollView>
@@ -635,5 +695,16 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.sm,
     padding: SPACING.sm,
     marginBottom: SPACING.md,
+  },
+  emptyText: {
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 12,
+    color: COLORS.dust,
+  },
+  flagNote: {
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    color: COLORS.crimson,
   },
 });

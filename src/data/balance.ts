@@ -580,6 +580,33 @@ export const BALANCE = {
      *  scaled well below a 'major' foreign war's enemy army size. M9's
      *  scheduler multiplies its enemy-army-size formula by this factor. */
     scaleArmyMultiplier: { major: 1.0, local: 0.4 },
+
+    /** M9 — src/engine/warEngine.ts. FIRST-PASS/UNVERIFIED (the plan gives
+     *  the scheduler's shape but not every constant — same treatment as
+     *  M7's stratagem draw weights): the scheduler is explicitly provisional
+     *  (Phase 3A replaces scheduleSetPiece wholesale, see warEngine.ts's
+     *  seam comment), so these are reasonable starting numbers, not tuned
+     *  ones. Revisit in a future tuning pass alongside M11's battle numbers. */
+    setPieceOffer: {
+      chancePerSeason: 0.25,
+      minSpacingTurns: 2,
+      expiryTurns: 3,
+      baseCohorts: 10,
+      warScoreDivisor: 10,
+      minCohorts: 4,
+      maxCohorts: 16,
+      /** Decline OR let the offer expire unanswered — same consequence either way. */
+      declineWarScorePenalty: -3,
+      declineLifetimeDignitasPenalty: -2,
+    },
+    /** Skirmish drift: magnitude is uniform in [skirmishDriftMin,
+     *  skirmishDriftMax] (existing M1 constants); sign is biased toward
+     *  Rome when the campaigning character's army strength / martial clear
+     *  these baselines. */
+    skirmish: {
+      strengthBaseline: 300,
+      martialBaseline: 5,
+    },
   },
 };
 

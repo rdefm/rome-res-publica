@@ -245,4 +245,43 @@ describe('generateAgenda', () => {
     expect(getAgendaBadgeCount(state3)).toBe(0);
   });
 
+  // ─── Military Overhaul M9 — generators #17/#18 ─────────────────────────────
+
+  function makeWar(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'war-carthage-1', active: true, enemyId: 'carthage', scale: 'major', provinceId: null,
+      warScore: 0, startedTurn: 1, lastSetPieceTurn: 1, weariness: 0,
+      pendingSetPiece: null, treaty: null,
+      ...overrides,
+    } as any;
+  }
+
+  test('#17 fires when an active war has a pending set-piece offer', () => {
+    const offer = { id: 'offer-1', siteName: 'Agrigentum', terrainId: 'open_plain', enemyArmy: [], enemyGeneralId: 'hanno_cautious', expiresTurn: 5 };
+    const state = makeState({ wars: [makeWar({ pendingSetPiece: offer })] } as any);
+    const items = getCriticalItems(state);
+    expect(items.some(i => i.id === 'agenda-critical-set-piece-war-carthage-1' && i.title.includes('Agrigentum'))).toBe(true);
+  });
+
+  test('#17 does not fire without a pending offer, or for an inactive war', () => {
+    const state = makeState({ wars: [makeWar(), makeWar({ id: 'w2', active: false, pendingSetPiece: { id: 'x', siteName: 'X', terrainId: 'open_plain', enemyArmy: [], enemyGeneralId: 'hanno_cautious', expiresTurn: 5 } })] } as any);
+    const items = getCriticalItems(state);
+    expect(items.some(i => i.category === 'military')).toBe(false);
+  });
+
+  test('#18 fires once |warScore| crosses the sue threshold, framed by who is winning', () => {
+    const losing = makeState({ wars: [makeWar({ warScore: -45 })] } as any);
+    const winning = makeState({ wars: [makeWar({ warScore: 45 })] } as any);
+    const notYet = makeState({ wars: [makeWar({ warScore: 20 })] } as any);
+
+    expect(getCriticalItems(losing).some(i => i.id === 'agenda-critical-war-peace-war-carthage-1' && i.title.includes('forced'))).toBe(true);
+    expect(getCriticalItems(winning).some(i => i.id === 'agenda-critical-war-peace-war-carthage-1' && i.title.toLowerCase().includes('peace'))).toBe(true);
+    expect(getCriticalItems(notYet).some(i => i.id === 'agenda-critical-war-peace-war-carthage-1')).toBe(false);
+  });
+
+  test('a state with no wars field at all does not crash generateAgenda (pre-M9 saves)', () => {
+    const state = makeState();
+    expect(() => generateAgenda(state)).not.toThrow();
+  });
+
 });

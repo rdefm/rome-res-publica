@@ -17,6 +17,7 @@ import BirthNamingModal from './src/components/domus/BirthNamingModal';
 import AgendaTablet from './src/components/shared/AgendaTablet';
 import WelcomeBackModal from './src/components/shared/WelcomeBackModal';
 import BattleScreen from './src/screens/BattleScreen';
+import SetPieceOfferModal from './src/components/shared/SetPieceOfferModal';
 import { generateAgenda } from './src/engine/agendaEngine';
 import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle } from './src/components/shared/TabBar';
 import StartMenuScreen from './src/screens/StartMenuScreen';
@@ -195,7 +196,9 @@ function GameRoot() {
         <AppNavigator />
         {/* Modal priority: EventModal → AmbitionSelectionModal → AgendaTablet → WelcomeBackModal.
             BattleScreen is its own full-screen native Modal (Military Overhaul M5) — it takes
-            over the whole screen whenever a battle is staging/active, regardless of DOM order. */}
+            over the whole screen whenever a battle is staging/active, regardless of DOM order.
+            SetPieceOfferModal (M9) self-gates OFF whenever a battle is in progress, so it never
+            stacks with BattleScreen. */}
         <EventModal />
         <AmbitionSelectionModal />
         <AgendaTablet />
@@ -203,6 +206,7 @@ function GameRoot() {
           visible={showWelcomeBack}
           onDismiss={() => setShowWelcomeBack(false)}
         />
+        <SetPieceOfferModal />
         <BattleScreen />
       </View>
     </NavigationContainer>

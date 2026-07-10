@@ -3,7 +3,7 @@
 // §Chunk M7. Pure content: personality knobs battleAi.ts reads to make
 // decisions and flavour text the pre-battle scene can show. No logic here.
 
-import type { FormationId } from '../models/battle';
+import type { FormationId, UnitClass } from '../models/battle';
 import type { StratagemId } from './stratagems';
 
 export interface GeneralProfile {
@@ -13,6 +13,12 @@ export interface GeneralProfile {
   /** Commander martial (0–10) — drives captain/commander stat bonus and
    *  this general's own stratagem hand size, same formula as the player. */
   martial: number;
+  /** M9 — relative weight per unit class this general's armies favour.
+   *  warEngine.ts's set-piece scheduler allocates a generated enemy army's
+   *  cohort count proportionally to these weights (never 'legionary' —
+   *  that's Rome's class; Carthage fields spear_foot/skirmisher/cavalry/
+   *  elephant, matching gameStore.ts's existing sandbox defender army). */
+  armyComposition: Partial<Record<UnitClass, number>>;
   /** 0–1. Drives wedge/advance frequency and pursue-vs-wheel bias. */
   aggression: number;
   /** Rounds this general waits before committing reserves to a struggling lane. */
@@ -41,6 +47,7 @@ export const ENEMY_GENERALS: Record<string, GeneralProfile> = {
     name: 'Hanno',
     epithet: 'the Cautious',
     martial: 5,
+    armyComposition: { spear_foot: 4, skirmisher: 2, cavalry_light: 1 },
     aggression: 0.2,
     reservePatience: 4,
     formationPreferenceWeights: { shield_wall: 3, line: 2, open_ranks: 1, wedge: 0.2 },
@@ -57,6 +64,7 @@ export const ENEMY_GENERALS: Record<string, GeneralProfile> = {
     name: 'Hamilcar',
     epithet: 'the Fox',
     martial: 6,
+    armyComposition: { cavalry_light: 3, skirmisher: 3, spear_foot: 2, cavalry_heavy: 1 },
     aggression: 0.5,
     reservePatience: 3,
     formationPreferenceWeights: { line: 2, shield_wall: 1.5, open_ranks: 1, wedge: 1 },
@@ -74,6 +82,7 @@ export const ENEMY_GENERALS: Record<string, GeneralProfile> = {
     name: 'Bomilcar',
     epithet: 'the Bull',
     martial: 7,
+    armyComposition: { cavalry_heavy: 3, elephant: 2, spear_foot: 2, skirmisher: 1 },
     aggression: 0.9,
     reservePatience: 1,
     formationPreferenceWeights: { wedge: 4, line: 1, shield_wall: 0.3, open_ranks: 0.3 },
@@ -91,6 +100,7 @@ export const ENEMY_GENERALS: Record<string, GeneralProfile> = {
     name: 'Xanthippus',
     epithet: 'the Drillmaster',
     martial: 6,
+    armyComposition: { spear_foot: 5, skirmisher: 1, cavalry_light: 1 },
     aggression: 0.4,
     reservePatience: 2,
     formationPreferenceWeights: { shield_wall: 3, line: 2, open_ranks: 0.5, wedge: 0.5 },

@@ -79,8 +79,11 @@ import { musterArmy, getEligibleFamilyCaptains } from '../engine/battle/musterEn
 // orders/break decisions are computed in BattleScreen.tsx, which already
 // owns the live battleState and the store's thin submit* wrappers).
 import { chooseDeployment } from '../engine/battle/battleAi';
-import { ENEMY_GENERAL_LIST } from '../data/enemyGenerals';
+import { ENEMY_GENERAL_LIST, ENEMY_GENERALS } from '../data/enemyGenerals';
 import { makeSeededRng } from '../utils/seededRng';
+// Military Overhaul M9 — war score & set-piece scheduling
+import type { WarState } from '../models/war';
+import { scheduleSetPiece } from '../engine/warEngine';
 
 export interface LogEntry {
   id: string;
@@ -199,6 +202,14 @@ export interface GameState {
 
   // ── Military (Chunk M) ──────────────────────────────────────────────────
   senateResponse: SenateResponseState | null;
+
+  // ── Military Overhaul M9 — war score & set-piece scheduling ─────────────
+  // An array (not a single `war`) — a deliberate scope decision to support
+  // multiple concurrent wars as more regions are added later. Persisted
+  // (survives save/load); each war starts/ends via the debug actions below
+  // until Phase 3A supplies a real trigger — see warEngine.ts's header
+  // comment for the full reconciliation.
+  wars: WarState[];
 
   // ── Military Overhaul M5 — battle session state ─────────────────────────
   // Transient UI/session state — stripped before save (saveLoad.ts), same
@@ -477,6 +488,28 @@ export interface GameActions {
    *  using the bridgeCtx captured at deployment time, then clears activeBattle. */
   returnFromBattle: () => void;
 
+  // ── Military Overhaul M9 — war score & set-piece scheduling ──────────────
+  /** Debug-only entry point (no real "declare war" trigger exists yet — see
+   *  warEngine.ts's header comment). No-ops if an active war already exists
+   *  against the same enemyId. */
+  startWar: (enemyId: string, scale: WarState['scale'], provinceId?: string | null) => void;
+  /** Debug-only — marks a war inactive (kept in `wars` for any later
+   *  treaty/history reference, not removed). */
+  endWar: (warId: string) => void;
+  /** Debug-only — bypasses the scheduler's spacing/roll gate (still goes
+   *  through warEngine.scheduleSetPiece, the sole offer source). No-ops if
+   *  an offer is already pending for this war. */
+  forceSetPieceOffer: (warId: string) => void;
+  /** SetPieceOfferModal's "Give Battle" — musters the player's own army as
+   *  attacker, deploys the offer's pre-generated enemy army (via
+   *  battleAi.chooseDeployment) as defender, and stages activeBattleSetup
+   *  exactly like startSandboxBattle, but with bridgeCtx.warId set so
+   *  returnFromBattle's write-back feeds the outcome back into this war. */
+  acceptSetPieceOffer: (warId: string) => void;
+  /** SetPieceOfferModal's "Decline" — same consequence as an unanswered
+   *  offer expiring (see BALANCE.war.setPieceOffer). */
+  declineSetPieceOffer: (warId: string) => void;
+
   // ── Canvassing ──────────────────────────────────────────────────────────
   canvassLeader: (leaderId: string) => void;
   resolveCanvassingEvent: (optionId: string) => void;
@@ -658,6 +691,9 @@ export const INITIAL_STATE: GameState = {
 
   // Military (Chunk M)
   senateResponse: null,
+
+  // Military Overhaul M9 — war score
+  wars: [],
 
   // Military Overhaul M5 — battle session
   activeBattleSetup: null,
@@ -2464,6 +2500,121 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       get().resolveBattleOutcome(battle, 'attacker', battle.outcome, s.activeBattleBridgeCtx);
     }
     set({ activeBattle: null, activeBattleSetup: null, activeBattleBridgeCtx: null });
+  },
+
+  // ── Military Overhaul M9 — war score & set-piece scheduling ──────────────
+
+  startWar: (enemyId, scale, provinceId = null) => {
+    const s = get();
+    if (s.wars.some(w => w.active && w.enemyId === enemyId && w.scale === scale)) return;
+    const newWar: WarState = {
+      id: `war-${enemyId}-${Date.now()}`,
+      active: true,
+      enemyId,
+      scale,
+      provinceId: provinceId ?? null,
+      warScore: 0,
+      startedTurn: s.turnNumber,
+      // Immediately eligible for a scheduler roll — no mandatory dead
+      // multi-turn wait before the first offer can appear.
+      lastSetPieceTurn: s.turnNumber - BALANCE.war.setPieceOffer.minSpacingTurns,
+      weariness: 0,
+      pendingSetPiece: null,
+      treaty: null,
+    };
+    const label = turnLabel(s);
+    set({
+      wars: [...s.wars, newWar],
+      log: [...s.log, mkLog(label, `Rome declares war on ${enemyId}.`, 'bad')],
+    });
+  },
+
+  endWar: (warId) => {
+    set(s => ({
+      wars: s.wars.map(w => (w.id === warId ? { ...w, active: false, pendingSetPiece: null } : w)),
+    }));
+  },
+
+  forceSetPieceOffer: (warId) => {
+    const s = get();
+    const war = s.wars.find(w => w.id === warId);
+    if (!war || !war.active || war.pendingSetPiece) return;
+    const offer = scheduleSetPiece(s, war, Math.random, { forceRoll: true });
+    if (!offer) return;
+    set({
+      wars: s.wars.map(w => (w.id === warId ? { ...w, pendingSetPiece: offer, lastSetPieceTurn: s.turnNumber } : w)),
+    });
+  },
+
+  acceptSetPieceOffer: (warId) => {
+    const s = get();
+    const war = s.wars.find(w => w.id === warId);
+    const offer = war?.pendingSetPiece;
+    const player = s.family.find(c => c.isPlayer);
+    if (!war || !offer || !player) return;
+
+    const attackerUnits = musterArmy(player);
+    const captains = getEligibleFamilyCaptains(s.family, player.id, s.flags);
+    const attackerRoster: Record<string, number> = { [player.id]: player.skills.martial };
+    for (const c of captains) attackerRoster[c.characterId] = c.martial;
+
+    const terrain = BALANCE.battle.terrains[offer.terrainId] ?? BALANCE.battle.terrains.open_plain;
+    const seed = Math.floor(Math.random() * 1e9);
+    // Same RNG-offset convention as startSandboxBattle — see its comment.
+    const attackerHand = drawStratagemHand(player.skills.martial, attackerUnits, terrain, makeSeededRng(seed ^ 0x51ed270b));
+
+    const generalProfile = ENEMY_GENERALS[offer.enemyGeneralId] ?? ENEMY_GENERAL_LIST[0];
+    const defenderHand = drawStratagemHand(generalProfile.martial, offer.enemyArmy, terrain, makeSeededRng(seed ^ 0x2545f491));
+    // offer.enemyArmy was already generated by warEngine.scheduleSetPiece —
+    // chooseDeployment only lays it out into lanes/reserve, it does not
+    // regenerate the army.
+    const aiDeployment = chooseDeployment(generalProfile, offer.enemyArmy, terrain, defenderHand, makeSeededRng(seed ^ 0x9e3779b9));
+
+    const attackerInput: DeploySideInput = {
+      label: player.name,
+      deployment: buildDefaultDeployment(attackerUnits),
+      commanderId: player.id,
+      roster: { martialById: attackerRoster },
+      stratagemHand: attackerHand,
+    };
+    const defenderInput: DeploySideInput = {
+      label: `Carthage (${generalProfile.name} ${generalProfile.epithet})`,
+      deployment: aiDeployment.deployment,
+      commanderId: aiDeployment.commanderId,
+      roster: aiDeployment.roster,
+      generalProfileId: generalProfile.id,
+      stratagemHand: defenderHand,
+    };
+
+    const bridgeCtx: BattleBridgeContext = {
+      troopOwnerCharacterId: player.id,
+      legateRoster: {},
+      enemyFieldedElephants: offer.enemyArmy.some(u => u.unitClass === 'elephant'),
+      provinceId: war.provinceId ?? undefined,
+      turnNumber: s.turnNumber,
+      warId: war.id,
+    };
+
+    set({
+      wars: s.wars.map(w => (w.id === warId ? { ...w, pendingSetPiece: null } : w)),
+      activeBattleSetup: { attackerInput, defenderInput, terrain, seed, bridgeCtx },
+    });
+  },
+
+  declineSetPieceOffer: (warId) => {
+    const s = get();
+    const war = s.wars.find(w => w.id === warId);
+    if (!war || !war.pendingSetPiece) return;
+    const so = BALANCE.war.setPieceOffer;
+    const siteName = war.pendingSetPiece.siteName;
+    const label = turnLabel(s);
+    set({
+      wars: s.wars.map(w => (w.id === warId
+        ? { ...w, warScore: Math.min(100, Math.max(-100, w.warScore + so.declineWarScorePenalty)), pendingSetPiece: null }
+        : w)),
+      lifetimeDignitas: s.lifetimeDignitas + so.declineLifetimeDignitasPenalty,
+      log: [...s.log, mkLog(label, `Rome declines battle at ${siteName}.`, 'bad')],
+    });
   },
 
   updateLocalSupportForPlayer: (provinceId, delta) => {

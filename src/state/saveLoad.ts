@@ -67,6 +67,8 @@ const SaveSchema = z.object({
   })).default({}),
   grandGamesVoteBonus: z.number().default(0),
   grandGamesBonusYearsUntilDecay: z.number().default(0),
+  // Military Overhaul M9 — .default([]) ensures pre-M9 saves load cleanly.
+  wars: z.array(z.any()).default([]),
 });
 
 export interface SaveProvider {

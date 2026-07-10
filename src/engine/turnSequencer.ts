@@ -43,6 +43,7 @@ import { BALANCE } from '../data/balance';
 import { computeTotalAssetBonuses } from './assetEngine';
 import { tickAllProvinces } from './provinceEngine';
 import { applyTroopAttrition, calcMilitaryImperium } from './troopEngine';
+import { processWarSeason } from './warEngine';
 import { tickSenateResponse } from './senateResponseEngine';
 import { calcAntagonismLevel, tickNpcConsul } from './npcConsulEngine';
 import { TRIAL_ACTIONS } from '../data/trialActions';
@@ -769,6 +770,24 @@ export function processSeason(state: GameState): {
       };
     });
     s = { ...s, family: updatedFamily };
+  }
+
+  // 9d3. Military Overhaul M9 — war score season tick. Skirmish drift,
+  // weariness, threshold-crossing notices, and the provisional set-piece
+  // scheduler (warEngine.ts's seam) for every active war. Placed right
+  // after 9d2 (both are military-upkeep-adjacent); crisis escalation (step
+  // 5, earlier) reads state.wars as it stood BEFORE this step runs — see
+  // crisisEngine.ts's calcWarEscalation comment for why that's consistent
+  // with every other crisis input in this file.
+  {
+    const warResult = processWarSeason(s);
+    s = {
+      ...s,
+      wars: warResult.wars,
+      pendingEvents: [...s.pendingEvents, ...warResult.noticeEvents],
+      lifetimeDignitas: s.lifetimeDignitas + warResult.lifetimeDignitasDelta,
+    };
+    events.push(...warResult.events);
   }
 
   // 9e. Recalculate militaryImperium
