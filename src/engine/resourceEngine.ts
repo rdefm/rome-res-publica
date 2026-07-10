@@ -278,7 +278,7 @@ export function applyEffectString(
     if (segment === 'continueAsCadet') {
       const cadet = (patch as any).cadetBranch ?? state.cadetBranch;
       if (cadet) {
-        Object.assign(patch, promoteCadetToParterfamilias(cadet));
+        Object.assign(patch, promoteCadetToParterfamilias(cadet, { ...state, ...patch } as GameState));
       }
       continue;
     }

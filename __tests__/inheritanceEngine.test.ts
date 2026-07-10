@@ -166,9 +166,15 @@ describe('generateCadet', () => {
 });
 
 describe('promoteCadetToParterfamilias', () => {
+  const stateStub = {
+    highestOfficeEverHeld: null as string | null,
+    heldOffices: [] as string[],
+    paterfamiliasGenerations: 1,
+  } as any;
+
   test('promotes the cadet into a fresh 2-person family, halves the legacy multiplier, clears cursus', () => {
     const cadet = makeCadet();
-    const patch = promoteCadetToParterfamilias(cadet);
+    const patch = promoteCadetToParterfamilias(cadet, stateStub);
     expect(patch.family).toHaveLength(2);
     const newHead = patch.family!.find(c => c.id === cadet.id)!;
     expect(newHead.isPlayer).toBe(true);
@@ -182,6 +188,7 @@ describe('promoteCadetToParterfamilias', () => {
     expect(patch.heldOffices).toEqual([]);
     expect(patch.pendingSuccession).toBeNull();
     expect(patch.regency).toBeNull();
+    expect(patch.paterfamiliasGenerations).toBe(2);
   });
 });
 

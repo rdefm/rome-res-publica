@@ -236,7 +236,8 @@ export function applySuccession(state: GameState, heirId: string, isAlternative:
     // A fresh reign starts a fresh cursus — the offices/campaign state on
     // GameState belonged to the deceased (this codebase tracks "the
     // player's" career at the GameState level, not per-Character — see
-    // this function's header comment).
+    // this function's header comment). Before clearing it, P3-E's
+    // cross-generation tracking fields capture what's about to be lost.
     currentOffice: null,
     officeSeasons: 0,
     heldOffices: [],
@@ -244,6 +245,10 @@ export function applySuccession(state: GameState, heirId: string, isAlternative:
     campaigningCharacterId: null,
     campaignVotes: {},
     electionRivals: [],
+    highestOfficeEverHeld: getHighestOffice(
+      [state.highestOfficeEverHeld, ...state.heldOffices].filter((id): id is string => !!id)
+    ),
+    paterfamiliasGenerations: state.paterfamiliasGenerations + 1,
   };
 
   if (heir.age < r.regencyMinorAge) {
@@ -309,7 +314,7 @@ export function generateCadet(): CadetBranch {
  *  this only returns `family` + cursus fields + the cadet-consumption
  *  flags; the caller (gameStore's continueAsCadet: token) is responsible
  *  for NOT touching anything else. */
-export function promoteCadetToParterfamilias(cadet: CadetBranch): Partial<GameState> {
+export function promoteCadetToParterfamilias(cadet: CadetBranch, state: GameState): Partial<GameState> {
   const spouseName = `${ROMAN_NAMES_FEMALE[Math.floor(Math.random() * ROMAN_NAMES_FEMALE.length)]} Brutia`;
   const newPaterfamilias: Character = {
     id: cadet.id,
@@ -368,5 +373,9 @@ export function promoteCadetToParterfamilias(cadet: CadetBranch): Partial<GameSt
     campaigningCharacterId: null,
     campaignVotes: {},
     electionRivals: [],
+    highestOfficeEverHeld: getHighestOffice(
+      [state.highestOfficeEverHeld, ...state.heldOffices].filter((id): id is string => !!id)
+    ),
+    paterfamiliasGenerations: state.paterfamiliasGenerations + 1,
   };
 }

@@ -792,10 +792,21 @@ export const BALANCE = {
      *  events for the comparable magnitude) — low, so it's rare relative to
      *  the rest of the event pool. */
     visitWeight: 4,
-    /** Legacy multiplier applied once continueAsCadet fires. Read by a
-     *  future epilogue chunk (P3-E) — unconsumed until then, same
-     *  "field exists now" treatment as pendingEpilogue (P3-A). */
+    /** Legacy multiplier applied once continueAsCadet fires. Read by
+     *  epilogueEngine.ts (P3-E). */
     legacyPenaltyMult: 0.5,
+  },
+
+  /** Phase 3, Chunk P3-E — Endings. FIRST-PASS/UNVERIFIED, same treatment
+   *  as every other constant group in this file. */
+  epilogue: {
+    /** GameState.crisisLevel (the 4-track average) at/above this triggers
+     *  the "Republic Falls" hard terminal. Literally 100 requires every
+     *  track maxed simultaneously — extreme, but that's the point of a
+     *  terminal ending; kept as a named constant rather than a hardcoded
+     *  100 so a future tuning pass can soften it without touching engine
+     *  code. */
+    crisisTerminalThreshold: 100,
   },
 };
 

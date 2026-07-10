@@ -88,7 +88,8 @@ import { makeSeededRng } from '../utils/seededRng';
 // entry point. The headless harness (battleSim.ts's simulateBattles) is
 // called directly by DebugPanel — a pure function, no store involvement.
 // Military Overhaul M9 — war score & set-piece scheduling
-import type { WarState, WarTerminalOutcome } from '../models/war';
+import type { WarState } from '../models/war';
+import type { AncestorRecord, EpilogueOutcome } from '../models/epilogue';
 import { scheduleSetPiece, applyTreatyEffects, buildTreatyBill, getDesperationTier, phaseForYear, type TreatySide } from '../engine/warEngine';
 import { generateCadet } from '../engine/inheritanceEngine';
 
@@ -152,9 +153,35 @@ export interface GameState {
    *  in turnSequencer.ts/musterEngine.ts). */
   cadetBranchUsed: boolean;
   /** 1 normally; BALANCE.cadet.legacyPenaltyMult (0.5) once a cadet
-   *  continuation has occurred. Read by a future epilogue chunk (P3-E) —
-   *  unconsumed until then. */
+   *  continuation has occurred. Read by epilogueEngine.ts (P3-E). */
   legacyPenaltyMult: number;
+
+  // ── Phase 3, Chunk P3-E — cross-generation tracking ──────────────────────
+  // heldOffices/currentOffice are cleared on every succession (a fresh
+  // cursus per P3-C/D's applySuccession/promoteCadetToParterfamilias — this
+  // codebase tracks "the player's" career at the GameState level, not per-
+  // Character), so the epilogue's "highest office ever held in the family"
+  // and "how many generations" need their own persistent fields, updated
+  // right before that clearing happens each succession.
+  /** OfficeId of the single highest-prestige office any paterfamilias this
+   *  run has held, across all generations. Null if none ever held one. */
+  highestOfficeEverHeld: string | null;
+  /** Count of paterfamilias this run has had, including the starting one
+   *  (so this starts at 1, not 0). */
+  paterfamiliasGenerations: number;
+  /** GameState.year at run start (startGame) — always -264 today (no
+   *  alternate starts exist), stored rather than assumed so a future start
+   *  variant doesn't need epilogueEngine.ts touched. */
+  gensFoundedYear: number;
+  /** Set true once an epilogue has fired (E1) — App.tsx routes a finished
+   *  save back to the start menu / Hall rather than a dead board on
+   *  reopen, unless Endless mode (P3-F) un-finishes it. */
+  runFinished: boolean;
+  /** The record built the moment runFinished flips true — plain JSON data
+   *  (not transient UI-only state like activeBattle/activeEvent), so it is
+   *  NOT stripped before save; EpilogueScreen reads it directly rather than
+   *  re-deriving or re-fetching from the Hall's cross-run storage. */
+  currentEpilogueRecord: AncestorRecord | null;
 
   // Senate (Curia)
   bills: Bill[];
@@ -243,14 +270,13 @@ export interface GameState {
   // ── Phase 3, Chunk P3-A/P3-D — epilogue signal ───────────────────────────
   /** Set by warEngine.processWarSeason (statePatch.pendingEpilogue) when a
    *  'major'-scale war concludes (P3-A — 'victory'/'exhaustion'/'humbled'),
-   *  or by the extinction path (P3-D — 'gens_ends', a second extinction
-   *  with no cadet continuation left) when there is no living family
-   *  member eligible to be paterfamilias. Unconsumed until a future
-   *  epilogue chunk (P3-E) — reading/clearing it is not this chunk's job.
-   *  Widened from P3-A's original WarTerminalOutcome-only type; P3-E's own
-   *  EpilogueOutcome (adding 'republic_falls') should replace this inline
-   *  union when that chunk builds models/epilogue.ts. */
-  pendingEpilogue: WarTerminalOutcome | 'gens_ends';
+   *  by the extinction path (P3-D — 'gens_ends'), or by the Crisis-100
+   *  hard terminal (P3-E — 'republic_falls'). Consumed exactly once by
+   *  gameStore.endSeason's epilogue-detection block, which builds the
+   *  AncestorRecord and sets runFinished — see that block's comment.
+   *  Typed via models/epilogue.ts's EpilogueOutcome (the P3-A/D inline
+   *  unions this replaced are gone now that P3-E's full type exists). */
+  pendingEpilogue: EpilogueOutcome | null;
 
   // ── Military Overhaul M5 — battle session state ─────────────────────────
   // Transient UI/session state — stripped before save (saveLoad.ts), same
@@ -398,6 +424,13 @@ export interface GameActions {
   // Turn
   endSeason: () => void;
   dismissSeasonOverlay: () => void;
+
+  // ── Phase 3, Chunk P3-E ───────────────────────────────────────────────────
+  /** From EpilogueScreen — routes back to StartMenuScreen (App.tsx's
+   *  existing `if (!gameStarted)` gate). Does not clear the finished save;
+   *  reopening it (Continue) re-shows the same epilogue, which is
+   *  correct — nothing to acknowledge/dismiss beyond navigating away. */
+  returnToStartMenu: () => void;
 
   // Resources
   spendResource: (resource: 'fides' | 'denarii', amount: number) => void;
@@ -727,6 +760,11 @@ export const INITIAL_STATE: GameState = {
   cadetBranch: null,
   cadetBranchUsed: false,
   legacyPenaltyMult: 1,
+  highestOfficeEverHeld: null,
+  paterfamiliasGenerations: 1,
+  gensFoundedYear: -264,
+  runFinished: false,
+  currentEpilogueRecord: null,
 
   bills: STARTING_BILLS,
   _expandedBill: null,
@@ -1060,6 +1098,23 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     };
     const seasonStatsHistory = [...s.seasonStatsHistory, completedSeasonStats].slice(-40);
 
+    // ── Phase 3, Chunk P3-E — epilogue detection ─────────────────────────────
+    // pendingEpilogue can be set by warEngine.ts (victory/exhaustion/humbled),
+    // inheritanceEngine.ts's extinction path (gens_ends), or turnSequencer.ts's
+    // Crisis-100 check (republic_falls) — all upstream of this point, inside
+    // processSeason. This is the single place that turns that signal into an
+    // actual AncestorRecord, exactly once (guarded on !runFinished so a save
+    // reload or an extra endSeason call never double-records the same run).
+    if (finalState.pendingEpilogue && !finalState.runFinished) {
+      const { buildAncestorRecord } = require('../engine/epilogueEngine');
+      const { appendAncestorRecord } = require('./ancestorStore');
+      const record = buildAncestorRecord(finalState, finalState.pendingEpilogue);
+      finalState = { ...finalState, runFinished: true, currentEpilogueRecord: record };
+      appendAncestorRecord(record).catch((e: Error) =>
+        console.warn('[P3-E] Hall of Ancestors write failed:', e)
+      );
+    }
+
     const nextEvent       = finalState.pendingEvents[0] ?? null;
     const remainingPending = finalState.pendingEvents.slice(1);
     set({
@@ -1084,6 +1139,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   },
 
   dismissSeasonOverlay: () => set({ seasonOverlayVisible: false, seasonOverlayEvents: [] }),
+
+  returnToStartMenu: () => set({ gameStarted: false }),
 
   // ─── Resources ───────────────────────────────────────────────────────────────
 

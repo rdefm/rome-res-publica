@@ -17,6 +17,7 @@ import BirthNamingModal from './src/components/domus/BirthNamingModal';
 import AgendaTablet from './src/components/shared/AgendaTablet';
 import WelcomeBackModal from './src/components/shared/WelcomeBackModal';
 import BattleScreen from './src/screens/BattleScreen';
+import EpilogueScreen from './src/screens/EpilogueScreen';
 import SetPieceOfferModal from './src/components/shared/SetPieceOfferModal';
 import { generateAgenda } from './src/engine/agendaEngine';
 import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle } from './src/components/shared/TabBar';
@@ -198,7 +199,9 @@ function GameRoot() {
             BattleScreen is its own full-screen native Modal (Military Overhaul M5) — it takes
             over the whole screen whenever a battle is staging/active, regardless of DOM order.
             SetPieceOfferModal (M9) self-gates OFF whenever a battle is in progress, so it never
-            stacks with BattleScreen. */}
+            stacks with BattleScreen. EpilogueScreen (Phase 3, P3-E) self-gates on runFinished —
+            takes over the whole screen once a run ends, same idiom, outranking everything else
+            here since nothing is actionable once a run is finished. */}
         <EventModal />
         <AmbitionSelectionModal />
         <AgendaTablet />
@@ -208,6 +211,7 @@ function GameRoot() {
         />
         <SetPieceOfferModal />
         <BattleScreen />
+        <EpilogueScreen />
       </View>
     </NavigationContainer>
   );

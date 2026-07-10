@@ -79,8 +79,10 @@ const SaveSchema = z.object({
   // schema value), so unlisted fields are never stripped.
   wars: z.array(z.any()).default([]),
   // Phase 3, Chunk P3-A — .default(null) ensures pre-P3-A saves load cleanly.
-  // Widened by P3-D to add 'gens_ends' — see gameStore.ts's field comment.
-  pendingEpilogue: z.enum(['victory', 'exhaustion', 'humbled', 'gens_ends']).nullable().default(null),
+  // Widened by P3-D ('gens_ends') and P3-E ('republic_falls') — see
+  // gameStore.ts's field comment; now matches models/epilogue.ts's full
+  // EpilogueOutcome.
+  pendingEpilogue: z.enum(['victory', 'exhaustion', 'humbled', 'republic_falls', 'gens_ends']).nullable().default(null),
   // Phase 3, Chunk P3-C — .default(null) ensures pre-P3-C saves load cleanly.
   pendingSuccession: z.any().nullable().default(null),
   regency: z.any().nullable().default(null),
@@ -91,6 +93,15 @@ const SaveSchema = z.object({
   cadetBranch: z.any().nullable().default(null),
   cadetBranchUsed: z.boolean().default(false),
   legacyPenaltyMult: z.number().default(1),
+  // Phase 3, Chunk P3-E — .default()s ensure pre-P3-E saves load cleanly.
+  // A save from before these fields existed has no way to know its true
+  // highest office/generation count — null/1 are honest "unknown" defaults,
+  // not retroactively computed.
+  highestOfficeEverHeld: z.any().nullable().default(null),
+  paterfamiliasGenerations: z.number().default(1),
+  gensFoundedYear: z.number().default(-264),
+  runFinished: z.boolean().default(false),
+  currentEpilogueRecord: z.any().nullable().default(null),
 });
 
 export interface SaveProvider {

@@ -351,6 +351,16 @@ export function processSeason(state: GameState): {
 
   s = { ...s, crisis: updatedCrisis, crisisLevel: newCrisisLevel };
 
+  // Phase 3, Chunk P3-E — Crisis-100 hard terminal ("The Republic Falls").
+  // Previously "escalating penalties but no hard stop" (verified — this is
+  // the first place crisisLevel is ever checked against a ceiling). Fires
+  // once and only once: gated on pendingEpilogue not already being set, so
+  // it can never override a war outcome or gens_ends that landed the same
+  // season, and never re-fires once set.
+  if (!s.pendingEpilogue && newCrisisLevel >= BALANCE.epilogue.crisisTerminalThreshold) {
+    s = { ...s, pendingEpilogue: 'republic_falls' };
+  }
+
   const TRACK_LABELS: Record<CrisisTrackId, string> = {
     war: 'War', unrest: 'Unrest', constitution: 'Constitution', economy: 'Economy',
   };

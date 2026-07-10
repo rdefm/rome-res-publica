@@ -1098,3 +1098,47 @@ describe('processSeason — natural death wiring (P3-C)', () => {
     expect(nextState.pendingEpilogue).toBe('gens_ends');
   });
 });
+
+// ─── Phase 3, Chunk P3-E — Crisis-100 hard terminal ─────────────────────────
+
+describe('processSeason — Crisis-100 terminal (P3-E)', () => {
+  test('fires republic_falls once all four crisis tracks are maxed', () => {
+    const state = makeState({
+      crisis: {
+        war:          { id: 'war',          level: 100, tier: 4, namedCrisis: 'Existential Threat' },
+        unrest:       { id: 'unrest',       level: 100, tier: 4, namedCrisis: 'Open Revolt' },
+        constitution: { id: 'constitution', level: 100, tier: 4, namedCrisis: 'Republic in Peril' },
+        economy:      { id: 'economy',      level: 100, tier: 4, namedCrisis: 'Economic Collapse' },
+      },
+    });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.pendingEpilogue).toBe('republic_falls');
+  });
+
+  test('does not fire below the threshold', () => {
+    const state = makeState({
+      crisis: {
+        war:          { id: 'war',          level: 50, tier: 2, namedCrisis: null },
+        unrest:       { id: 'unrest',       level: 50, tier: 2, namedCrisis: null },
+        constitution: { id: 'constitution', level: 50, tier: 2, namedCrisis: null },
+        economy:      { id: 'economy',      level: 50, tier: 2, namedCrisis: null },
+      },
+    });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.pendingEpilogue).toBeFalsy();
+  });
+
+  test('never overrides an outcome already set the same season (e.g. a war conclusion)', () => {
+    const state = makeState({
+      pendingEpilogue: 'victory' as any,
+      crisis: {
+        war:          { id: 'war',          level: 100, tier: 4, namedCrisis: 'Existential Threat' },
+        unrest:       { id: 'unrest',       level: 100, tier: 4, namedCrisis: 'Open Revolt' },
+        constitution: { id: 'constitution', level: 100, tier: 4, namedCrisis: 'Republic in Peril' },
+        economy:      { id: 'economy',      level: 100, tier: 4, namedCrisis: 'Economic Collapse' },
+      },
+    });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.pendingEpilogue).toBe('victory');
+  });
+});
