@@ -68,6 +68,15 @@ const SaveSchema = z.object({
   grandGamesVoteBonus: z.number().default(0),
   grandGamesBonusYearsUntilDecay: z.number().default(0),
   // Military Overhaul M9 — .default([]) ensures pre-M9 saves load cleanly.
+  // M10 grew WarState.treaty's inner shape (stage/resolvedTurn/initiator on
+  // TreatyState) and TREATY_TERMS-referencing termIds — still covered by
+  // this z.any() element type, so no schema change was needed for that part.
+  // `provinces` (which M10's treaty engine can now add Sicily entries to)
+  // isn't listed in this schema at all and never was — like every other
+  // unlisted GameState field, it passes through unvalidated: parse() here is
+  // a validation gate only, its result is discarded (see load()/importSave()
+  // below, which both return the original `parsed` object, not the parsed
+  // schema value), so unlisted fields are never stripped.
   wars: z.array(z.any()).default([]),
 });
 

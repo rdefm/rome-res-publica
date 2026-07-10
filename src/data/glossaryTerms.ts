@@ -11,7 +11,7 @@ export interface GlossaryTerm {
 }
 
 // ─── Term list ────────────────────────────────────────────────────────────────
-// ~41 terms. Sorted alphabetically by term for the Tabularium display.
+// ~52 terms. Sorted alphabetically by term for the Tabularium display.
 // All definitions sourced strictly from game-manual.md.
 
 export const GLOSSARY_TERMS: GlossaryTerm[] = [
@@ -212,6 +212,18 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: 'Patron Tier',
     definition: 'Your family\'s social standing in six tiers, from Client Family (Tier 0) to Prince of the Republic (Tier 5), gated by Lifetime Dignitas alone — spending Fides can never cost you a tier. Higher tiers multiply Fides income, expand client slots, and unlock diplomatic patron actions.',
     relatedTab: 'Forum',
+  },
+  {
+    id: 'peace-negotiation',
+    term: 'Peace Negotiation',
+    definition: 'Once War Score crosses a threshold, terms can be discussed: sue for peace lets the losing side propose a minor package; forced negotiation opens full term-shopping within a budget; dictated terms let the winner take everything affordable. A tabled treaty must still be ratified by the Senate.',
+    relatedTab: 'Curia',
+  },
+  {
+    id: 'treaty-terms',
+    term: 'Treaty Terms',
+    definition: 'Individual clauses — indemnities, prisoner return, ceded territory, fleet limits, or a face-saving clause — assembled into a package within the negotiating side\'s War Score budget. Optimates and Populares react differently to each term, seeding the ratification bill\'s starting support.',
+    relatedTab: 'Curia',
   },
   {
     id: 'relationship-anchor',

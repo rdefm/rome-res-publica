@@ -80,7 +80,7 @@ Province map, governor policy, military campaigns, provincial clients, ambassado
 **Components** — `src/components/provinciae/`
 | File | Summary |
 |---|---|
-| `MapView.tsx` | Renders the Italia province map with tappable province nodes. |
+| `MapView.tsx` | Renders the Italia province map with tappable province nodes. **M10** — also renders `SICILY_PROVINCES` overlaid near the map's southern edge (no Mediterranean art exists yet); see §5c. |
 | `ProvinceSheet.tsx` | **Large** (1000+ lines) bottom-sheet container tabbing between a province's Overview/Assets/Military/Diplomacy sections; imports `PolicyBoard`, `DiplomatDesk`, `ProvinceAssetGrid`, `MilitaryTab`. |
 | `LatiumSheet.tsx` | Special sheet for the home region (Rome stats, crisis tracks) instead of a regular province. |
 | `PolicyBoard.tsx` | **Live version** — governor policy sliders (taxation/security notches). |
@@ -94,7 +94,7 @@ Province map, governor policy, military campaigns, provincial clients, ambassado
 
 **Models:** `province.ts` (largest model file — province state, governor policy, campaign state, ambassador state), `troop.ts`.
 
-**Data:** `provinceDefinitions.ts` (Italy province list + map node coordinates), `provinceAssets.ts`, `provinceEvents.ts`, `provincialClients.ts`, `campaignEvents.ts` (event cards during active campaigns).
+**Data:** `provinceDefinitions.ts` (Italy province list + map node coordinates; **M10** added `SICILY_PROVINCES` + `buildProvinceState` — see §5c), `provinceAssets.ts`, `provinceEvents.ts`, `provincialClients.ts`, `campaignEvents.ts` (event cards during active campaigns).
 
 ---
 
@@ -102,7 +102,7 @@ Province map, governor policy, military campaigns, provincial clients, ambassado
 
 Bill voting, speeches, filibusters, Rome-wide stats, crisis tracks.
 
-**Screen:** `src/screens/CuriaScreen.tsx` — Rome stat bars, crisis panel, bill list with voting/speech/filibuster/submit actions, **Munificence panel (P2-F)** — collapsible list of the 6 munificence acts (`MunificenceActRow`, defined in this file), cost/effect/lock-state per act, decaying Grand Games vote bonus note.
+**Screen:** `src/screens/CuriaScreen.tsx` — Rome stat bars, crisis panel, bill list with voting/speech/filibuster/submit actions, **Munificence panel (P2-F)** — collapsible list of the 6 munificence acts (`MunificenceActRow`, defined in this file), cost/effect/lock-state per act, decaying Grand Games vote bonus note. **M10** — a "War & Peace" panel opens `components/war/NegotiationScreen.tsx` for any war past the sue threshold; see §5c.
 
 **Components (shared, but Curia-specific in practice):**
 - `src/components/shared/CrisisTrackModal.tsx` — detail modal for one of the 4 crisis tracks (war/unrest/constitution/economy).
@@ -154,6 +154,28 @@ The strategic wrapper around the battle system above: `GameState.wars: WarState[
 **musterEngine.ts write-back:** `BattleBridgeContext` gained `warId?: string` — when set, `applyBattleOutcome` applies `outcome.warScoreDelta` to the matching `WarState` (re-clamped to -100..100 — `battleEngine.ts` already caps the single-battle swing; this guards the war's running total against overflow near either end) and clears `pendingSetPiece`. Rome is always cast as battle `attacker` in every M9 flow, so no sign negation is needed (see `battleEngine.ts`'s `warScoreDelta` sign-convention comment).
 
 **DebugPanel.tsx:** new "war" tab — Declare War on Carthage, per-war state dump (score/weariness/pending offer), Force Set-Piece Offer (bypasses the scheduler's spacing/roll gate but still goes through `scheduleSetPiece`), End War.
+
+---
+
+## 5c. Military Overhaul — Peace: Negotiation & Senate Ratification (M10, cross-cutting)
+
+Wars end at a table, and the table answers to the Senate. Builds on §5b's `WarState`/`getDesperationTier` — nothing here replaces the provisional scheduler (still M9's seam).
+
+**Data:** `src/data/treatyTerms.ts` (new) — `TREATY_TERMS`: 7 bidirectional terms (indemnity minor/major, prisoner return, Sicily west/all, fleet limitation, face-saver clause) — one entry serves both "Rome wins" and "Rome loses" framings (`effectsAsWinner`/`effectsAsLoser`) rather than mirrored ids, per an explicit M10 scope decision to keep the menu at the plan's "~8 terms" cap. `getTreatyTerm(id)` lookup. Pure content — all logic lives in `warEngine.ts`.
+
+**Models:** `models/war.ts` — `TreatyState` fleshed out from M9's placeholder (`stage: 'ai_offer' | 'senate_vote' | 'auto_ratified'`, `resolvedTurn`, `initiator`) + new `TreatyTerm`/`TreatyTermFactionReaction`/`TreatyTermWarEndFlags` types.
+
+**Engine (`warEngine.ts`, same file as §5b — no new engine file, matching the plan's file list):** `computeTreatyBudget(warScore)` (`|warScore| − thresholdBase + treatyBudgetAllowance[tier]` — 0 at the sue tier itself, matching "sue is accept/refuse only, not term-shopping"), `computePackagePrice(termIds)`, `calcFactionReactionModifier(termIds, state)` (clan-bias-weighted bill support seed, parallel to `billTemplates.calcRomeStatVoteModifier`), `composeAiOffer`/`composeAiTreaty` (AI term selection weighted by `GeneralProfile.aggression`), `applyTreatyEffects(termIds, state, winner)` (the "war-end fields" that don't fit the flat effect-string vocabulary: province cession via `provinceDefinitions.buildProvinceState`, prisoner release, the face-saver's loser-dignity grant — everything else routes through the existing `resourceEngine.applyEffectString`), `buildTreatyBill` (composes the Senate bill), and `losingSide(warScore)`. `processWarSeason` (§5b) gained: sue-tier threshold crossing while Rome is winning auto-generates the enemy's `ai_offer`; a tabled `senate_vote` treaty's pass/fail is detected each season by checking `state.bills`/`state.passedBills` for the reconstructable id `treaty-${war.id}-${treaty.proposedTurn}` (no new turnSequencer step — see below); the 4-turn re-table lockout clears once elapsed; Rome losing at the dictate tier auto-ratifies an AI-composed treaty with no vote at all ("Rome dictated to"). Returns a new `WarSeasonResult.statePatch: Partial<GameState>` for the denarii/family/provinces/bills changes a resolved treaty can produce.
+
+**turnSequencer.ts:** the plan's Cross-Chunk Notes say this file is touched only by M9's one step — M10 honors that by *widening* the existing step 9d3 merge (not adding a new step) to also spread `warResult.statePatch` and merge `lifetimeDignitas` from both the pre-existing delta path and the new statePatch path.
+
+**Sicily provinces (`provinceDefinitions.ts` + `components/provinciae/MapView.tsx`):** no Mediterranean-map province existed anywhere before M10 (`ProvinceMap`'s `'mediterranean'`/`'east'` were pure type-level future-proofing). `sicily_west`/`sicily_east` are now real `ProvinceDefinition`s, absent from `buildInitialProvinceStates()` (Carthage still holds them) and added to `state.provinces` only when ceded by treaty. Since no Mediterranean map art exists, both are overlaid onto the existing `map_italia.png` near its southern edge (`nodeY` 0.90–0.96) — a deliberate geographic approximation, not a claim Sicily is part of the peninsula; `MapView.tsx` now renders `[...ITALY_PROVINCES, ...SICILY_PROVINCES]`, relying on its pre-existing "no matching ProvinceState → render nothing" guard to keep them invisible pre-cession. `getProvinceDefinition` searches both lists; `buildProvinceState(def)` was extracted from `buildInitialProvinceStates` so the treaty engine can reuse it for the mid-game addition.
+
+**Store wiring (`gameStore.ts`):** `acceptAiTreatyOffer`/`refuseAiTreatyOffer` (sue-tier, ungated) and `tableTreaty` (forced/dictate-tier, gated on `currentOffice === 'consul'` — negotiation is a consular act, an M10 scope decision).
+
+**UI:** `src/components/war/NegotiationScreen.tsx` (new) — a `ScrollModal`, three modes by `war.treaty.stage`: no treaty (term-shopping picker with a running budget/price), `'ai_offer'` (read-only terms, Accept/Refuse), `'senate_vote'` (status only — vote from the bill list). `CuriaScreen.tsx` gained a "WAR & PEACE" panel (any active war past the sue threshold) that opens it.
+
+**Glossary:** `glossaryTerms.ts` gained Peace Negotiation and Treaty Terms.
 
 ---
 

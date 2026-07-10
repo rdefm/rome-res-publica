@@ -1,13 +1,17 @@
 import {
   processWarSeason, scheduleSetPiece, getDesperationTier,
+  computeTreatyBudget, computePackagePrice, calcFactionReactionModifier,
+  composeAiOffer, composeAiTreaty, applyTreatyEffects, buildTreatyBill, losingSide,
 } from '../src/engine/warEngine';
 import { BALANCE } from '../src/data/balance';
 import { WAR_SITES } from '../src/data/warSites';
 import { ENEMY_GENERAL_LIST } from '../src/data/enemyGenerals';
+import { TREATY_TERMS } from '../src/data/treatyTerms';
 import { makeSeededRng } from '../src/utils/seededRng';
 import type { Character } from '../src/models/character';
 import type { TroopUnit } from '../src/models/troop';
-import type { WarState } from '../src/models/war';
+import type { WarState, TreatyState } from '../src/models/war';
+import type { Clan } from '../src/models/clan';
 import type { GameState } from '../src/state/gameStore';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -50,6 +54,32 @@ function makeWar(overrides: Partial<WarState> = {}): WarState {
     id: 'war-carthage-1', active: true, enemyId: 'carthage', scale: 'major', provinceId: null,
     warScore: 0, startedTurn: 1, lastSetPieceTurn: -1, weariness: 0,
     pendingSetPiece: null, treaty: null,
+    ...overrides,
+  };
+}
+
+function makeTreaty(overrides: Partial<TreatyState> = {}): TreatyState {
+  return {
+    id: 'treaty-war-carthage-1-10', proposedTurn: 10, resolvedTurn: null,
+    termIds: ['indemnity_minor'], ratified: null, initiator: 'rome', stage: 'senate_vote',
+    ...overrides,
+  };
+}
+
+function makeClan(overrides: Partial<Clan> = {}): Clan {
+  return {
+    id: 'clan-test', name: 'Test Clan', gensName: 'Testia', sigil: '🏛', influence: 50,
+    desc: '', leaders: [],
+    ...overrides,
+  };
+}
+
+function makeLeader(overrides: Partial<Clan['leaders'][0]> = {}): Clan['leaders'][0] {
+  return {
+    id: 'leader-test', name: 'Test Leader', title: 'Senator', emoji: '👤', age: 50,
+    sphere: 'politics', relationship: 0, favour: 0, blackmail: false, bias: 'optimates',
+    votes: 5, bio: '', skills: { rhetoric: 5, martial: 5, intrigus: 5 },
+    heldOffices: [], currentOffice: null, turnsLeftInOffice: null,
     ...overrides,
   };
 }
@@ -317,6 +347,256 @@ describe('processWarSeason', () => {
     const result = processWarSeason(state, () => 0.9);
     expect(result.events.some(e => e.includes('carthage') && e.includes('warScore'))).toBe(true);
     expect(result.events.some(e => e.includes('a-revolt') && e.includes('warScore'))).toBe(true);
+  });
+});
+
+// ─── Chunk M10 — Peace: Negotiation & Senate Ratification ──────────────────
+
+describe('computeTreatyBudget', () => {
+  test('0 below the sue threshold', () => {
+    expect(computeTreatyBudget(20)).toBe(0);
+    expect(computeTreatyBudget(-20)).toBe(0);
+  });
+
+  test('0 exactly at the sue threshold (thresholdBase cancels)', () => {
+    expect(computeTreatyBudget(40)).toBe(0);
+    expect(computeTreatyBudget(-40)).toBe(0);
+  });
+
+  test('forced tier: |warScore| - 40 + 10', () => {
+    expect(computeTreatyBudget(70)).toBe(70 - 40 + 10);
+    expect(computeTreatyBudget(-70)).toBe(70 - 40 + 10);
+  });
+
+  test('dictate tier: |warScore| - 40 + 30', () => {
+    expect(computeTreatyBudget(90)).toBe(90 - 40 + 30);
+    expect(computeTreatyBudget(100)).toBe(100 - 40 + 30);
+    expect(computeTreatyBudget(-90)).toBe(90 - 40 + 30);
+  });
+});
+
+describe('computePackagePrice', () => {
+  test('sums term prices', () => {
+    expect(computePackagePrice(['indemnity_minor', 'prisoner_return'])).toBe(5 + 5);
+  });
+
+  test('face-saver has a negative price', () => {
+    expect(computePackagePrice(['face_saver'])).toBe(-1);
+    expect(computePackagePrice(['indemnity_minor', 'face_saver'])).toBe(5 - 1);
+  });
+
+  test('unknown term ids contribute 0', () => {
+    expect(computePackagePrice(['not-a-real-term'])).toBe(0);
+  });
+});
+
+describe('calcFactionReactionModifier', () => {
+  test('0 for an empty package', () => {
+    expect(calcFactionReactionModifier([], makeState())).toBe(0);
+  });
+
+  test('a clan-heavy optimates senate reacts positively to an optimates-favoured term', () => {
+    const state = makeState({
+      optimatesRel: 50,
+      clans: [makeClan({ leaders: [makeLeader({ bias: 'optimates' }), makeLeader({ id: 'l2', bias: 'optimates' })] })],
+    });
+    expect(calcFactionReactionModifier(['sicily_all'], state)).toBeGreaterThan(0);
+  });
+
+  test('result is clamped within BALANCE.war.treaty.factionReactionClamp', () => {
+    const manyOptimates = Array.from({ length: 20 }, (_, i) => makeLeader({ id: `l${i}`, bias: 'optimates' }));
+    const state = makeState({ optimatesRel: 100, clans: [makeClan({ leaders: manyOptimates })] });
+    const allTermIds = TREATY_TERMS.map(t => t.id);
+    const clamp = BALANCE.war.treaty.factionReactionClamp;
+    expect(Math.abs(calcFactionReactionModifier(allTermIds, state))).toBeLessThanOrEqual(clamp);
+  });
+});
+
+describe('composeAiOffer / composeAiTreaty', () => {
+  const cautiousGeneral = ENEMY_GENERAL_LIST.find(g => g.aggression < 0.5)!;
+  const aggressiveGeneral = ENEMY_GENERAL_LIST.find(g => g.aggression >= 0.5)!;
+
+  test('composeAiOffer returns only valid, cheap term ids', () => {
+    const offer = composeAiOffer(cautiousGeneral, makeSeededRng(1));
+    expect(offer.length).toBeGreaterThan(0);
+    for (const id of offer) {
+      const term = TREATY_TERMS.find(t => t.id === id);
+      expect(term).toBeDefined();
+      expect(term!.warScorePrice).toBeLessThanOrEqual(6);
+    }
+  });
+
+  test('an aggressive general offers no more terms than a cautious one', () => {
+    const cautious = composeAiOffer(cautiousGeneral, () => 0);
+    const aggressive = composeAiOffer(aggressiveGeneral, () => 0);
+    expect(aggressive.length).toBeLessThanOrEqual(cautious.length);
+  });
+
+  test('composeAiTreaty never exceeds the general-weighted spend cap', () => {
+    const budget = 40;
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const cautiousPicks = composeAiTreaty(budget, cautiousGeneral, makeSeededRng(seed));
+      expect(computePackagePrice(cautiousPicks)).toBeLessThanOrEqual(Math.round(budget * 0.7));
+      const aggressivePicks = composeAiTreaty(budget, aggressiveGeneral, makeSeededRng(seed));
+      expect(computePackagePrice(aggressivePicks)).toBeLessThanOrEqual(budget);
+    }
+  });
+
+  test('composeAiTreaty never selects mutually exclusive terms together', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6, 7]) {
+      const picks = composeAiTreaty(100, aggressiveGeneral, makeSeededRng(seed));
+      expect(picks.includes('sicily_west') && picks.includes('sicily_all')).toBe(false);
+    }
+  });
+});
+
+describe('applyTreatyEffects', () => {
+  test('winner=rome with sicily_west adds the province to state.provinces', () => {
+    const state = makeState();
+    const patch = applyTreatyEffects(['sicily_west'], state, 'rome');
+    expect(patch.provinces?.some(p => p.id === 'sicily_west')).toBe(true);
+  });
+
+  test('does not duplicate a province already present', () => {
+    const state = makeState({ provinces: [{ id: 'sicily_west' } as any] });
+    const patch = applyTreatyEffects(['sicily_west'], state, 'rome');
+    const count = (patch.provinces ?? state.provinces).filter(p => p.id === 'sicily_west').length;
+    expect(count).toBe(1);
+  });
+
+  test('winner=enemy does not cede any province', () => {
+    const state = makeState();
+    const patch = applyTreatyEffects(['sicily_west'], state, 'enemy');
+    expect(patch.provinces).toBeUndefined();
+  });
+
+  test('prisoner_return clears captivity on every captured family member', () => {
+    const state = makeState({
+      family: [
+        makeCharacter({ id: 'pc-1' }),
+        makeCharacter({ id: 'c2', isPlayer: false, captivity: { status: 'awaiting_ransom', demandDenarii: 100, capturedTurn: 5 } }),
+      ],
+    });
+    const patch = applyTreatyEffects(['prisoner_return'], state, 'rome');
+    expect(patch.family?.find(c => c.id === 'c2')?.captivity).toBeNull();
+  });
+
+  test('indemnity_minor: winner gains denarii, loser loses denarii', () => {
+    const state = makeState({ denarii: 300 });
+    const winPatch = applyTreatyEffects(['indemnity_minor'], state, 'rome');
+    expect(winPatch.denarii).toBe(400);
+    const losePatch = applyTreatyEffects(['indemnity_minor'], state, 'enemy');
+    expect(losePatch.denarii).toBe(200);
+  });
+});
+
+describe('buildTreatyBill', () => {
+  test('id matches the reconstructable format treaty-<warId>-<turnNumber>', () => {
+    const state = makeState({ turnNumber: 42 });
+    const war = makeWar();
+    const bill = buildTreatyBill(war, ['indemnity_minor'], state, 'rome');
+    expect(bill.id).toBe(`treaty-${war.id}-42`);
+  });
+});
+
+describe('processWarSeason — treaty resolution (Chunk M10)', () => {
+  test('a passed ratification bill ends the war and applies its effects', () => {
+    const treaty = makeTreaty({ termIds: ['sicily_west'], proposedTurn: 10 });
+    const state = makeState({
+      turnNumber: 12,
+      wars: [makeWar({ warScore: 75, startedTurn: 1, lastSetPieceTurn: 12, treaty })],
+      passedBills: [{ id: `treaty-war-carthage-1-10`, name: 'Treaty with Carthage', passedOnTurn: 12 }] as any,
+    });
+    const result = processWarSeason(state, () => 0);
+    expect(result.wars[0].active).toBe(false);
+    expect(result.wars[0].treaty?.ratified).toBe(true);
+    expect(result.statePatch.provinces?.some(p => p.id === 'sicily_west')).toBe(true);
+  });
+
+  test('a passed ratification queues a Triumph petition for the player when Rome wins', () => {
+    const treaty = makeTreaty({ termIds: ['indemnity_minor'], proposedTurn: 10 });
+    const state = makeState({
+      turnNumber: 12,
+      wars: [makeWar({ warScore: 75, startedTurn: 1, lastSetPieceTurn: 12, treaty })],
+      passedBills: [{ id: `treaty-war-carthage-1-10`, name: 'Treaty with Carthage', passedOnTurn: 12 }] as any,
+    });
+    const result = processWarSeason(state, () => 0);
+    expect(result.statePatch.bills?.some(b => b.id.startsWith('triumph-pc-1'))).toBe(true);
+  });
+
+  test('a failed/expired ratification keeps the war active, penalises warScore, and locks the treaty out', () => {
+    const treaty = makeTreaty({ termIds: ['indemnity_minor'], proposedTurn: 5 });
+    const state = makeState({
+      turnNumber: 9,
+      wars: [makeWar({ warScore: 75, startedTurn: 1, lastSetPieceTurn: 9, treaty })],
+      bills: [], passedBills: [],
+    });
+    const result = processWarSeason(state, () => 0);
+    expect(result.wars[0].active).toBe(true);
+    expect(result.wars[0].treaty?.ratified).toBe(false);
+    expect(result.wars[0].treaty?.resolvedTurn).toBe(9);
+    // warScore moved down by at least the fail penalty net of that season's drift.
+    expect(result.wars[0].warScore).toBeLessThan(75 + BALANCE.war.skirmishDriftMax);
+  });
+
+  test('a still-pending ratification bill is left untouched', () => {
+    const treaty = makeTreaty({ termIds: ['indemnity_minor'], proposedTurn: 9 });
+    const state = makeState({
+      turnNumber: 10,
+      wars: [makeWar({ warScore: 75, startedTurn: 1, lastSetPieceTurn: 10, treaty })],
+      bills: [{ id: 'treaty-war-carthage-1-9', support: 0 } as any],
+      passedBills: [],
+    });
+    const result = processWarSeason(state, () => 0);
+    expect(result.wars[0].active).toBe(true);
+    expect(result.wars[0].treaty?.ratified).toBeNull();
+  });
+
+  test('the re-table lockout clears once retableLockoutTurns has elapsed since a failed vote', () => {
+    const lockoutTurns = BALANCE.war.treaty.retableLockoutTurns;
+    const treaty = makeTreaty({ ratified: false, resolvedTurn: 10, proposedTurn: 5 });
+    const state = makeState({
+      turnNumber: 10 + lockoutTurns,
+      wars: [makeWar({ warScore: 75, startedTurn: 1, lastSetPieceTurn: 10 + lockoutTurns, treaty })],
+    });
+    const result = processWarSeason(state, () => 0);
+    expect(result.wars[0].treaty).toBeNull();
+  });
+
+  test('the re-table lockout does NOT clear before retableLockoutTurns has elapsed', () => {
+    const treaty = makeTreaty({ ratified: false, resolvedTurn: 10, proposedTurn: 5 });
+    const state = makeState({
+      turnNumber: 11,
+      wars: [makeWar({ warScore: 75, startedTurn: 1, lastSetPieceTurn: 11, treaty })],
+    });
+    const result = processWarSeason(state, () => 0);
+    expect(result.wars[0].treaty).not.toBeNull();
+  });
+
+  test('Rome losing at the dictate tier auto-ratifies terms with no vote', () => {
+    const state = makeState({
+      turnNumber: 20,
+      wars: [makeWar({ warScore: -95, startedTurn: 1, lastSetPieceTurn: 20 })],
+    });
+    const result = processWarSeason(state, () => 0.5);
+    expect(result.wars[0].active).toBe(false);
+    expect(result.wars[0].treaty?.stage).toBe('auto_ratified');
+    expect(result.wars[0].treaty?.ratified).toBe(true);
+    expect(result.statePatch.flags?.[`campaign-failure-epilogue-${state.wars[0].id}`]).toBe(true);
+  });
+
+  test('crossing into the sue tier while Rome is winning auto-generates an AI offer', () => {
+    // Default fixture (martial 6 >= baseline 5, army strength << baseline) drifts
+    // POSITIVE regardless of rng (sign only depends on those two signals) — rng
+    // here only sets the magnitude. 0.99 -> max magnitude (3): 38 + 3 = 41, crossing 40.
+    const state = makeState({
+      turnNumber: 3,
+      wars: [makeWar({ warScore: 38, startedTurn: 1, lastSetPieceTurn: 3 })],
+    });
+    const result = processWarSeason(state, () => 0.99);
+    expect(result.wars[0].warScore).toBe(41);
+    expect(result.wars[0].treaty?.stage).toBe('ai_offer');
+    expect(result.wars[0].treaty?.initiator).toBe('enemy');
   });
 });
 

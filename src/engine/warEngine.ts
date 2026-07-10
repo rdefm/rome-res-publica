@@ -29,14 +29,18 @@
 // "which army is on campaign" signal to hook into.
 
 import type { GameState } from '../state/gameStore';
-import type { WarState, SetPieceOffer, WarScale } from '../models/war';
+import type { WarState, SetPieceOffer, WarScale, TreatyState, TreatyTerm } from '../models/war';
 import type { EventInstance } from '../models/event';
 import type { BattleUnit, UnitClass } from '../models/battle';
+import type { Bill } from '../models/bill';
 import { BALANCE } from '../data/balance';
 import { WAR_SITES } from '../data/warSites';
 import { ENEMY_GENERAL_LIST, type GeneralProfile } from '../data/enemyGenerals';
 import { musterArmy } from './battle/musterEngine';
 import { injectNoticeEvent } from './eventEngine';
+import { applyEffectString } from './resourceEngine';
+import { TREATY_TERMS, getTreatyTerm } from '../data/treatyTerms';
+import { buildProvinceState, getProvinceDefinition } from '../data/provinceDefinitions';
 
 // ─── Small helpers ───────────────────────────────────────────────────────────
 
@@ -212,6 +216,221 @@ export function scheduleSetPiece(
   };
 }
 
+// ─── Peace: Negotiation & Senate Ratification (Chunk M10) ──────────────────
+// src/data/treatyTerms.ts holds the term catalog (content only); every piece
+// of logic around it lives here rather than in a new engine file — the
+// plan's M10 "Files to create" list is just treatyTerms.ts +
+// NegotiationScreen.tsx, and the plan's own Cross-Chunk Notes say
+// turnSequencer.ts is touched only by M9's one step, not again by M10. So
+// treaty resolution (a tabled bill passing/failing, or the dictate-tier
+// Rome-as-loser auto-ratify) is detected from *inside* processWarSeason,
+// which turnSequencer.ts already calls once per season — see this section's
+// bottom half and processWarSeason's step 6/7 below for how that works
+// without a new turnSequencer step. turnSequencer.ts's existing M9 merge
+// block is widened (not replaced) to apply the resulting statePatch.
+
+export type TreatySide = 'rome' | 'enemy';
+
+/** Which side is currently losing this war, from warScore's sign. Ties
+ *  (warScore === 0) have no loser — callers gate on getDesperationTier
+ *  first, which is 'none' at 0 regardless. */
+export function losingSide(warScore: number): TreatySide | null {
+  if (warScore > 0) return 'enemy';
+  if (warScore < 0) return 'rome';
+  return null;
+}
+
+/** Budget = |warScore| − thresholdBase + treatyBudgetAllowance[tier]. See
+ *  BALANCE.war.treaty's header comment for why this is 0 at the sue tier
+ *  itself (matching the plan's "sue tier is accept/refuse only, not real
+ *  term-shopping" framing). */
+export function computeTreatyBudget(warScore: number): number {
+  const t = BALANCE.war.treaty;
+  const tier = getDesperationTier(warScore);
+  if (tier === 'none') return 0;
+  return Math.max(0, Math.abs(warScore) - t.thresholdBase + t.treatyBudgetAllowance[tier]);
+}
+
+/** Total warScore-budget price of a term package. The face-saver term's
+ *  price is negative, so including it reduces this below the sum of
+ *  everything else. */
+export function computePackagePrice(termIds: string[]): number {
+  return termIds.reduce((sum, id) => sum + (getTreatyTerm(id)?.warScorePrice ?? 0), 0);
+}
+
+// ─── Faction reaction → bill support ────────────────────────────────────────
+// Parallel to billTemplates.ts's calcRomeStatVoteModifier (same ±clamp
+// shape) — reuses the clan bias fields per the plan's explicit instruction,
+// rather than a wholly new mechanism. FIRST-PASS/UNVERIFIED weighting, like
+// every other M10 constant (see BALANCE.war.treaty's header comment).
+
+export function calcFactionReactionModifier(termIds: string[], state: GameState): number {
+  const terms = termIds.map(getTreatyTerm).filter((t): t is TreatyTerm => !!t);
+  if (terms.length === 0) return 0;
+
+  const leaders = (state.clans ?? []).flatMap(c => c.leaders);
+  const optimatesCount = leaders.filter(l => l.bias === 'optimates').length;
+  const popularesCount = leaders.filter(l => l.bias === 'populares').length;
+
+  const totalOptimates = terms.reduce((s, t) => s + t.factionReaction.optimates, 0);
+  const totalPopulares = terms.reduce((s, t) => s + t.factionReaction.populares, 0);
+
+  // Each faction's pull on the vote scales with how many clan leaders hold
+  // that bias, plus the existing global optimatesRel/popularesRel dial —
+  // a faction that's both numerous AND already well-disposed reacts hardest.
+  const optimatesWeight = (optimatesCount + Math.max(0, state.optimatesRel) / 20) / 5;
+  const popularesWeight = (popularesCount + Math.max(0, state.popularesRel) / 20) / 5;
+
+  const raw = totalOptimates * optimatesWeight + totalPopulares * popularesWeight;
+  const clamp = BALANCE.war.treaty.factionReactionClamp;
+  return Math.max(-clamp, Math.min(clamp, Math.round(raw)));
+}
+
+// ─── AI term composition ─────────────────────────────────────────────────────
+
+/** Sue-tier AI offer: the losing side (when it's the AI) proposes a small,
+ *  cheap package the player just accepts/refuses — no term shopping. Higher
+ *  aggression generals offer less (fewer/cheaper terms); cautious ones are
+ *  more conciliatory. */
+export function composeAiOffer(general: GeneralProfile, rng: () => number = Math.random): string[] {
+  const count = BALANCE.war.treaty.aiOfferTermCount;
+  const affordable = TREATY_TERMS
+    .filter(t => t.warScorePrice >= 0 && t.warScorePrice <= 6)
+    .sort(() => rng() - 0.5);
+  const take = general.aggression >= 0.5 ? Math.max(1, count - 1) : count;
+  return affordable.slice(0, take).map(t => t.id);
+}
+
+/** Forced/dictate-tier Rome-as-loser composition: the AI spends up to its
+ *  budget, weighted by general aggression — an aggressive general spends the
+ *  whole budget (including Sicily, if affordable); a cautious one leaves
+ *  budget on the table and favours the face-saver clause. */
+export function composeAiTreaty(budget: number, general: GeneralProfile, rng: () => number = Math.random): string[] {
+  const shuffled = [...TREATY_TERMS].sort(() => rng() - 0.5);
+  const spendCap = general.aggression >= 0.5 ? budget : Math.round(budget * 0.7);
+  const picked: string[] = [];
+  let spent = 0;
+  for (const term of shuffled) {
+    if (term.mutuallyExclusiveWith?.some(id => picked.includes(id))) continue;
+    if (spent + term.warScorePrice > spendCap) continue;
+    picked.push(term.id);
+    spent += term.warScorePrice;
+  }
+  return picked;
+}
+
+// ─── Effect application ──────────────────────────────────────────────────────
+
+/** Applies a resolved treaty's full effect set: the generic numeric/flag
+ *  parts (via applyEffectString — same parser every other bill uses) plus
+ *  the war-end fields that don't fit that vocabulary (province transfer,
+ *  prisoner release, the face-saver's loser-dignity grant). `winner` is
+ *  which side WON the war this treaty ends (not who initiated it) —
+ *  determines whether each term's effectsAsWinner or effectsAsLoser applies. */
+export function applyTreatyEffects(
+  termIds: string[],
+  state: GameState,
+  winner: TreatySide,
+): Partial<GameState> {
+  const terms = termIds.map(getTreatyTerm).filter((t): t is TreatyTerm => !!t);
+  let patch: Partial<GameState> = {};
+  let working = state;
+
+  for (const term of terms) {
+    const effectStr = winner === 'rome' ? term.effectsAsWinner : term.effectsAsLoser;
+    if (!effectStr) continue;
+    const stepPatch = applyEffectString(effectStr, working);
+    patch = { ...patch, ...stepPatch };
+    working = { ...working, ...stepPatch };
+  }
+
+  // Face-saver: the LOSING side's standing commander gets the dignity grant.
+  // Rome's "standing commander" is always the player paterfamilias — see
+  // this file's header comment (musterEngine's existing precedent).
+  if (winner === 'enemy') {
+    const faceSaver = terms.find(t => t.warEndFlags?.faceSaverLoserDignitas);
+    if (faceSaver?.warEndFlags?.faceSaverLoserDignitas) {
+      patch.lifetimeDignitas = (patch.lifetimeDignitas ?? working.lifetimeDignitas) + faceSaver.warEndFlags.faceSaverLoserDignitas;
+    }
+  }
+
+  // Province cession — only when Rome is the winner. No mechanic exists for
+  // Rome losing a province it already holds, so the loser-side mirror of a
+  // cession term is dignity/imperium loss only (effectsAsLoser, above).
+  if (winner === 'rome') {
+    const provinceIds = [...new Set(terms.flatMap(t => t.warEndFlags?.provinceTransferToRome ?? []))];
+    const newProvinces = provinceIds
+      .filter(id => !working.provinces.some(p => p.id === id))
+      .map(getProvinceDefinition)
+      .filter((d): d is NonNullable<typeof d> => !!d)
+      .map(buildProvinceState);
+    if (newProvinces.length > 0) {
+      patch.provinces = [...(patch.provinces ?? working.provinces), ...newProvinces];
+    }
+  }
+
+  // Prisoner return — symmetric, applies regardless of who won.
+  if (terms.some(t => t.warEndFlags?.prisonerReturn)) {
+    const family = patch.family ?? working.family;
+    patch.family = family.map(c => (c.captivity ? { ...c, captivity: null } : c));
+  }
+
+  return patch;
+}
+
+function capitalizeEnemyId(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** Composes the Bill pushed into state.bills when a package is tabled
+ *  (gameStore.tableTreaty). Its own passEffect/failEffect only carry the
+ *  SIMPLE top-level numeric consequences the generic bill pipeline already
+ *  applies every season (a flat crisis-war easing on pass; the negotiating
+ *  consul's dignitas hit on fail) — the real term effects (denarii,
+ *  province, prisoners, the nested war.warScore penalty) are applied by
+ *  applyTreatyEffects via processWarSeason's detection below, never through
+ *  the generic per-bill loop, to avoid double-applying anything. */
+export function buildTreatyBill(war: WarState, termIds: string[], state: GameState, winner: TreatySide): Bill {
+  const t = BALANCE.war.treaty;
+  const enemyLabel = capitalizeEnemyId(war.enemyId);
+  const winnerLabel = winner === 'rome' ? 'Rome' : enemyLabel;
+  const price = computePackagePrice(termIds);
+
+  return {
+    id: `treaty-${war.id}-${state.turnNumber}`,
+    name: `Treaty with ${enemyLabel}`,
+    desc: `A negotiated peace with ${enemyLabel}, favouring ${winnerLabel}. ${termIds.length} term(s) — package price ${price}.`,
+    type: 'military',
+    support: calcFactionReactionModifier(termIds, state),
+    turnsLeft: t.ratificationTurnsLeft,
+    passEffect: 'crisis-war-8',
+    failEffect: `lifetimeDignitas${t.failNegotiatingConsulDignitasPenalty}`,
+    playerSubmitted: true,
+    repealable: false,
+  };
+}
+
+/** Near-duplicate of turnSequencer.ts's private buildTriumphBill, adapted
+ *  for a war-ending treaty rather than a province campaign — deliberately
+ *  NOT imported from turnSequencer.ts, which itself imports processWarSeason
+ *  from this file; importing back would create a circular module
+ *  dependency. Kept in sync by hand (small, stable shape). */
+function buildWarTriumphBill(character: GameState['family'][0], state: GameState, war: WarState): Bill {
+  const baseSupport = 10 + Math.round(character.skills.martial / 2);
+  return {
+    id: `triumph-${character.id}-${state.year}`,
+    name: `Triumph for ${character.name}`,
+    desc: `A petition to honour ${character.name}'s victory over ${capitalizeEnemyId(war.enemyId)} with a Triumph.`,
+    passEffect: `lifetimeDignitas+20|fides+15|plebs+5|crisis-war-5|setFlag:triumph-granted-${character.id}:true`,
+    failEffect: `fides-5|setFlag:triumph-denied-${character.id}:true`,
+    turnsLeft: 4,
+    support: baseSupport,
+    type: 'military',
+    repealable: false,
+    playerSubmitted: false,
+  };
+}
+
 // ─── processWarSeason — the turnSequencer hook ──────────────────────────────
 
 export interface WarSeasonResult {
@@ -224,12 +443,24 @@ export interface WarSeasonResult {
   noticeEvents: EventInstance[];
   /** Accumulated across all wars this season (declines/expiries only). */
   lifetimeDignitasDelta: number;
+  /** M10 — accumulated GameState patch from any treaty that resolved (pass,
+   *  fail, or dictate-tier auto-ratify) this season: denarii, family
+   *  (prisoner release), provinces (Sicily cession), bills (a triumph
+   *  petition), lifetimeDignitas (face-saver). Empty object when nothing
+   *  resolved. Applied by turnSequencer.ts's existing M9 step (widened, not
+   *  replaced, for M10 — see that file's comment at the call site). */
+  statePatch: Partial<GameState>;
+}
+
+function winnerFromWarScore(warScore: number): TreatySide {
+  return warScore >= 0 ? 'rome' : 'enemy';
 }
 
 export function processWarSeason(state: GameState, rng: () => number = Math.random): WarSeasonResult {
   const events: string[] = [];
   const noticeEvents: EventInstance[] = [];
   let lifetimeDignitasDelta = 0;
+  let statePatch: Partial<GameState> = {};
 
   const player = state.family.find(c => c.isPlayer) ?? null;
   const playerId = player?.id ?? 'pc-1';
@@ -237,11 +468,17 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
   const playerArmyStrength = playerArmy.reduce((s, u) => s + u.strength, 0);
   const playerMartial = player?.skills.martial ?? 0;
   const so = BALANCE.war.setPieceOffer;
+  const t = BALANCE.war.treaty;
 
   const wars = (state.wars ?? []).map(war => {
     if (!war.active) return war;
     let next: WarState = { ...war };
     const beforeScore = next.warScore;
+
+    // "General chosen round-robin from enemyGenerals.ts" — same
+    // deterministic cycling scheduleSetPiece uses, reused here for any
+    // AI term composition this war needs this season.
+    const general = ENEMY_GENERAL_LIST[state.turnNumber % ENEMY_GENERAL_LIST.length];
 
     // 1. Skirmish drift.
     next.warScore = clampScore(next.warScore + rollSkirmishDrift(playerArmyStrength, playerMartial, rng));
@@ -254,11 +491,31 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
     next.weariness += 1;
 
     // 3. Threshold-crossing notice (also where desperation's tier changes
-    // become visible to the player, per getDesperationTier above).
+    // become visible to the player, per getDesperationTier above). When
+    // Rome just crossed INTO the sue tier as the WINNER (enemy losing), the
+    // losing AI side "initiates" per the plan — auto-generate its minor
+    // offer here rather than waiting on a separate player action.
     const crossing = detectThresholdCrossing(beforeScore, next.warScore);
     if (crossing) {
       noticeEvents.push(buildThresholdNotice(playerId, state.turnNumber, crossing));
       events.push(`War with ${next.enemyId}: ${crossing.headline}`);
+
+      if (crossing.tier === 'sue' && crossing.winning && !next.treaty) {
+        const offerTermIds = composeAiOffer(general, rng);
+        next = {
+          ...next,
+          treaty: {
+            id: `treaty-offer-${next.id}-${state.turnNumber}`,
+            proposedTurn: state.turnNumber,
+            resolvedTurn: null,
+            termIds: offerTermIds,
+            ratified: null,
+            initiator: 'enemy',
+            stage: 'ai_offer',
+          },
+        };
+        events.push(`${capitalizeEnemyId(next.enemyId)} sends terms for Rome to consider.`);
+      }
     }
 
     // 4. A stale, unanswered offer expires with the same consequence as an
@@ -281,11 +538,101 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
       }
     }
 
+    // 6. Chunk M10 — resolve a tabled ratification bill. gameStore.tableTreaty
+    // pushed a Bill with id `treaty-${war.id}-${treaty.proposedTurn}` into
+    // state.bills; by the time this step runs, turnSequencer's earlier
+    // "resolve bills" step (same processSeason call) has already either
+    // moved it to state.passedBills, dropped it (expired without passing —
+    // its failEffect already applied the negotiating consul's dignitas
+    // penalty), or left it untouched in state.bills (still pending).
+    if (next.treaty?.stage === 'senate_vote' && next.treaty.ratified === null) {
+      const billId = `treaty-${next.id}-${next.treaty.proposedTurn}`;
+      const passed = (state.passedBills ?? []).some(b => b.id === billId);
+      const stillPending = state.bills.some(b => b.id === billId);
+
+      if (passed) {
+        const winner = winnerFromWarScore(next.warScore);
+        const effectPatch = applyTreatyEffects(next.treaty.termIds, { ...state, ...statePatch }, winner);
+        statePatch = { ...statePatch, ...effectPatch };
+        next = {
+          ...next,
+          active: false,
+          pendingSetPiece: null,
+          treaty: { ...next.treaty, ratified: true, resolvedTurn: state.turnNumber },
+        };
+        noticeEvents.push(injectNoticeEvent(`evt-war-treaty-ratified-${next.id}`, state.turnNumber, playerId, {
+          title: 'Peace With Honour',
+          bodyText: `The Senate has ratified peace with ${capitalizeEnemyId(next.enemyId)}. The war is over.`,
+        }));
+        events.push(`Peace ratified with ${capitalizeEnemyId(next.enemyId)}.`);
+
+        if (winner === 'rome' && player) {
+          const currentBills = statePatch.bills ?? state.bills;
+          const alreadyQueued = currentBills.some(b => b.id.startsWith(`triumph-${player.id}`))
+            || (state.passedBills ?? []).some(b => b.id.startsWith(`triumph-${player.id}`));
+          if (!alreadyQueued) {
+            statePatch = { ...statePatch, bills: [...currentBills, buildWarTriumphBill(player, state, next)] };
+            events.push(`⚔ ${player.name} is eligible for a Triumph. A petition has been tabled in the Senate.`);
+          }
+        }
+      } else if (!stillPending) {
+        // Failed/expired without passing.
+        next = {
+          ...next,
+          warScore: clampScore(next.warScore + t.failWarScorePenalty),
+          treaty: { ...next.treaty, ratified: false, resolvedTurn: state.turnNumber },
+        };
+        events.push(`Ratification fails — ${capitalizeEnemyId(next.enemyId)} takes heart. The war continues.`);
+      }
+      // else: still pending, no-op — the vote hasn't resolved yet.
+    }
+
+    // 6b. Re-table lockout expiry — once retableLockoutTurns has passed
+    // since a failed ratification, clear the treaty so a new package can
+    // be composed and tabled.
+    if (next.treaty?.ratified === false && next.treaty.resolvedTurn !== null
+        && state.turnNumber - next.treaty.resolvedTurn >= t.retableLockoutTurns) {
+      next = { ...next, treaty: null };
+    }
+
+    // 7. Rome-as-loser dictate-tier auto-ratify — "Rome dictated to". No
+    // vote: the AI composes terms per its general's aggression and they
+    // apply immediately. Only fires when no treaty is already in flight.
+    if (!next.treaty && getDesperationTier(next.warScore) === 'dictate' && losingSide(next.warScore) === 'rome') {
+      const budget = computeTreatyBudget(next.warScore);
+      const termIds = composeAiTreaty(budget, general, rng);
+      const effectPatch = applyTreatyEffects(termIds, { ...state, ...statePatch }, 'enemy');
+      statePatch = {
+        ...statePatch,
+        ...effectPatch,
+        flags: { ...(statePatch.flags ?? state.flags), [`campaign-failure-epilogue-${next.id}`]: true },
+      };
+      next = {
+        ...next,
+        active: false,
+        pendingSetPiece: null,
+        treaty: {
+          id: `treaty-dictated-${next.id}-${state.turnNumber}`,
+          proposedTurn: state.turnNumber,
+          resolvedTurn: state.turnNumber,
+          termIds,
+          ratified: true,
+          initiator: 'enemy',
+          stage: 'auto_ratified',
+        },
+      };
+      noticeEvents.push(injectNoticeEvent(`evt-war-dictated-terms-${next.id}`, state.turnNumber, playerId, {
+        title: 'Terms Dictated',
+        bodyText: `Rome could resist no longer. ${capitalizeEnemyId(next.enemyId)} has dictated terms — the war is over.`,
+      }));
+      events.push(`Rome is forced to accept dictated terms from ${capitalizeEnemyId(next.enemyId)}.`);
+    }
+
     const seasonDelta = next.warScore - beforeScore;
     events.push(`War with ${next.enemyId}: warScore ${seasonDelta >= 0 ? '+' : ''}${seasonDelta} (now ${next.warScore}).`);
 
     return next;
   });
 
-  return { wars, events, noticeEvents, lifetimeDignitasDelta };
+  return { wars, events, noticeEvents, lifetimeDignitasDelta, statePatch };
 }

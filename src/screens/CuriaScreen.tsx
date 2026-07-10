@@ -24,6 +24,8 @@ import {
   getMunificenceCost,
   getMunificenceEffects,
 } from '../engine/munificenceEngine';
+import { getDesperationTier } from '../engine/warEngine';
+import NegotiationScreen from '../components/war/NegotiationScreen';
 
 // ─── Crisis track configuration ───────────────────────────────────────────────
 
@@ -743,13 +745,19 @@ const modal = StyleSheet.create({
 // ─── CuriaScreen ──────────────────────────────────────────────────────────────
 
 export default function CuriaScreen() {
-  const { rome, crisis, bills, activeLaws, fides, turnNumber, grandGamesVoteBonus } = useGameStore();
+  const { rome, crisis, bills, activeLaws, fides, turnNumber, grandGamesVoteBonus, wars } = useGameStore();
   const [submitVisible, setSubmitVisible] = useState(false);
   const [activeLawsExpanded, setActiveLawsExpanded] = useState(true);
   const [munificenceExpanded, setMunificenceExpanded] = useState(true);
   const [romeStatModal, setRomeStatModal] = useState<RomeStat | null>(null);
   const [crisisModal, setCrisisModal] = useState<CrisisTrackId | null>(null);
+  const [negotiationWarId, setNegotiationWarId] = useState<string | null>(null);
   const romeMods = calcRomeStatModifiers(rome);
+
+  // Military Overhaul M10 — any active war that's reached the sue threshold
+  // unlocks the negotiation entry point (agendaEngine's generator #18 also
+  // points here — see its target: { tab: 'Curia' }).
+  const negotiableWars = (wars ?? []).filter(w => w.active && getDesperationTier(w.warScore) !== 'none');
 
   const TRACK_ORDER: CrisisTrackId[] = ['war', 'unrest', 'constitution', 'economy'];
 
@@ -803,6 +811,37 @@ export default function CuriaScreen() {
             <CrisisTrackCell trackId={TRACK_ORDER[3]} track={crisis[TRACK_ORDER[3]]} onPress={() => setCrisisModal(TRACK_ORDER[3])} />
           </View>
         </View>
+
+        {/* Military Overhaul M10 — War & Peace */}
+        {negotiableWars.length > 0 && (
+          <View style={styles.panel}>
+            <InfoTap termId="peace-negotiation">
+              <Text style={styles.panelTitle}>WAR &amp; PEACE</Text>
+            </InfoTap>
+            <Text style={styles.panelSub}>
+              The war has reached a threshold where terms may be discussed.
+            </Text>
+            {negotiableWars.map(w => (
+              <TouchableOpacity
+                key={w.id}
+                style={styles.warRow}
+                onPress={() => setNegotiationWarId(w.id)}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.warRowLabel}>
+                    War with {w.enemyId.charAt(0).toUpperCase() + w.enemyId.slice(1)}
+                  </Text>
+                  <Text style={styles.warRowSub}>
+                    warScore {w.warScore >= 0 ? '+' : ''}{w.warScore}
+                    {w.treaty?.stage === 'ai_offer' && ' — terms offered'}
+                    {w.treaty?.stage === 'senate_vote' && ' — awaiting Senate vote'}
+                  </Text>
+                </View>
+                <Text style={styles.warRowArrow}>›</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {/* Active bills */}
         <View style={styles.billsHeader}>
@@ -886,6 +925,14 @@ export default function CuriaScreen() {
           onClose={() => setCrisisModal(null)}
         />
       )}
+
+      {negotiationWarId && (
+        <NegotiationScreen
+          warId={negotiationWarId}
+          visible={!!negotiationWarId}
+          onClose={() => setNegotiationWarId(null)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -902,6 +949,16 @@ const styles = StyleSheet.create({
   // Crisis 2×2 grid
   crisisRow: { flexDirection: 'row' },
   crisisGap: { width: SPACING.sm },
+  // War & Peace (M10)
+  warRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: COLORS.panelElevated, borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: RADIUS.sm, paddingHorizontal: SPACING.sm, paddingVertical: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
+  warRowLabel: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 13, fontWeight: '600' },
+  warRowSub: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, marginTop: 2 },
+  warRowArrow: { color: COLORS.dust, fontSize: 18, marginLeft: SPACING.sm },
   // Bills
   billsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
   sectionLabel: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' },

@@ -779,13 +779,25 @@ export function processSeason(state: GameState): {
   // 5, earlier) reads state.wars as it stood BEFORE this step runs — see
   // crisisEngine.ts's calcWarEscalation comment for why that's consistent
   // with every other crisis input in this file.
+  //
+  // M10 WIDENING (per the plan's Cross-Chunk Notes: turnSequencer.ts is only
+  // touched by M9's one step, not a new one for M10) — a treaty resolving
+  // (pass/fail/dictate-auto-ratify) this season can now also patch denarii,
+  // family (prisoner release), provinces (Sicily cession), and bills (a
+  // triumph petition) via warResult.statePatch. lifetimeDignitas is merged
+  // explicitly rather than just spread, since both the pre-existing
+  // lifetimeDignitasDelta path (set-piece decline) and the new statePatch
+  // path (face-saver clause) can independently want to change it the same
+  // season.
   {
     const warResult = processWarSeason(s);
+    const mergedLifetimeDignitas = (warResult.statePatch.lifetimeDignitas ?? s.lifetimeDignitas) + warResult.lifetimeDignitasDelta;
     s = {
       ...s,
+      ...warResult.statePatch,
       wars: warResult.wars,
       pendingEvents: [...s.pendingEvents, ...warResult.noticeEvents],
-      lifetimeDignitas: s.lifetimeDignitas + warResult.lifetimeDignitasDelta,
+      lifetimeDignitas: mergedLifetimeDignitas,
     };
     events.push(...warResult.events);
   }

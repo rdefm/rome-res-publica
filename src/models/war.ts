@@ -35,15 +35,80 @@ export interface SetPieceOffer {
   expiresTurn: number;
 }
 
-/** Minimal placeholder — full shape (terms, budget, faction reactions) is
- *  specified in Chunk M10 (src/data/treatyTerms.ts). */
+// ─── Chunk M10 — Peace: Negotiation & Senate Ratification ────────────────────
+
+/** Support delta applied to the ratification bill per faction, scaled by how
+ *  many clan leaders carry that bias (see warEngine.ts's
+ *  calcFactionReactionModifier). Positive = that faction favours the term. */
+export interface TreatyTermFactionReaction {
+  optimates: number;
+  populares: number;
+}
+
+/** Effects that don't fit the flat `key±N` / colon-token effect-string
+ *  vocabulary (resourceEngine.ts's applyEffectString) — applied by
+ *  warEngine.ts's applyTreatyEffects, not the generic bill pass/fail path. */
+export interface TreatyTermWarEndFlags {
+  /** Clears `captivity` on every family member who has it set. */
+  prisonerReturn?: boolean;
+  /** Province ids (from provinceDefinitions.ts's SICILY_PROVINCES) added to
+   *  state.provinces when Rome is the winning side applying this term.
+   *  Never removes a Roman province — no mechanic for that exists yet, so
+   *  the Rome-as-loser mirror of a cession term is dignity/imperium loss
+   *  only (see effectsAsLoser), not an actual transfer away from Rome. */
+  provinceTransferToRome?: string[];
+  /** Face-saver clause: shaves this many points off the total package's
+   *  warScore price and grants the LOSING side's standing commander this
+   *  much lifetimeDignitas (Rome's commander if Rome lost; otherwise this
+   *  is flavour-only since the AI has no dignitas stat). */
+  faceSaverPriceDiscount?: number;
+  faceSaverLoserDignitas?: number;
+}
+
+/** A single term in the treatyTerms.ts catalog. Bidirectional by design
+ *  (per the M10 scope decision) — one entry serves both "Rome wins" and
+ *  "Rome loses" framings rather than doubling the menu with mirrored ids. */
+export interface TreatyTerm {
+  id: string;
+  label: string;
+  description: string;
+  /** Cost in warScore-budget points to include this term in a package.
+   *  The face-saver term's price is negative (see faceSaverPriceDiscount). */
+  warScorePrice: number;
+  /** Existing effect-string vocabulary, applied when Rome is the winning
+   *  side proposing/receiving this term. */
+  effectsAsWinner: string;
+  /** Existing effect-string vocabulary, applied when Rome is the losing
+   *  side conceding this term. */
+  effectsAsLoser: string;
+  warEndFlags?: TreatyTermWarEndFlags;
+  factionReaction: TreatyTermFactionReaction;
+  /** Term ids that can't be selected alongside this one in the same package
+   *  (e.g. sicily_all supersedes sicily_west). Enforced by NegotiationScreen
+   *  at selection time, not by the engine. */
+  mutuallyExclusiveWith?: string[];
+}
+
 export interface TreatyState {
   id: string;
   proposedTurn: number;
+  /** Turn the vote/decision resolved (pass, fail, or auto-ratify) — null
+   *  while pending. Drives the 4-turn re-table lockout after a failed
+   *  ratification (see BALANCE.war.treaty.retableLockoutTurns). */
+  resolvedTurn: number | null;
   /** Term ids from the M10 treatyTerms.ts catalog. */
   termIds: string[];
-  /** null = pending a Senate vote. */
+  /** null = pending a decision (Senate vote, or player accept/refuse at
+   *  'ai_offer' stage); true = ratified; false = rejected/expired. */
   ratified: boolean | null;
+  /** Who tabled/proposed this treaty — determines which side's win/loss
+   *  framing (effectsAsWinner/effectsAsLoser) applies at resolution. */
+  initiator: 'rome' | 'enemy';
+  /** 'ai_offer' = lightweight sue-tier accept/refuse, no Senate vote.
+   *  'senate_vote' = full package tabled as a bill through the normal
+   *  pipeline. 'auto_ratified' = Rome-as-loser dictate-tier terms applied
+   *  immediately with no vote (Rome dictated to). */
+  stage: 'ai_offer' | 'senate_vote' | 'auto_ratified';
 }
 
 export interface WarState {

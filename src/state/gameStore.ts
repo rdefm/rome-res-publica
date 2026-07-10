@@ -83,7 +83,7 @@ import { ENEMY_GENERAL_LIST, ENEMY_GENERALS } from '../data/enemyGenerals';
 import { makeSeededRng } from '../utils/seededRng';
 // Military Overhaul M9 — war score & set-piece scheduling
 import type { WarState } from '../models/war';
-import { scheduleSetPiece } from '../engine/warEngine';
+import { scheduleSetPiece, applyTreatyEffects, buildTreatyBill, getDesperationTier, type TreatySide } from '../engine/warEngine';
 
 export interface LogEntry {
   id: string;
@@ -509,6 +509,23 @@ export interface GameActions {
   /** SetPieceOfferModal's "Decline" — same consequence as an unanswered
    *  offer expiring (see BALANCE.war.setPieceOffer). */
   declineSetPieceOffer: (warId: string) => void;
+
+  // ── Military Overhaul M10 — peace: negotiation & Senate ratification ─────
+  /** Sue-tier AI offer, "Accept" — applies the offer's terms immediately
+   *  (no Senate vote at this tier), ends the war. No-ops without a pending
+   *  war.treaty at stage 'ai_offer'. */
+  acceptAiTreatyOffer: (warId: string) => void;
+  /** Sue-tier AI offer, "Refuse" — costs nothing mechanical per the plan
+   *  beyond a small dignitas ding (BALANCE.war.treaty
+   *  .refuseAiOfferLifetimeDignitasPenalty); war continues, offer cleared. */
+  refuseAiTreatyOffer: (warId: string) => void;
+  /** Tables a term package as a special Senate bill (warEngine.buildTreatyBill),
+   *  through the existing bill pipeline — resolves on a normal season-end
+   *  pass like any other bill. Gated on currentOffice === 'consul' per the
+   *  M10 scope decision (negotiation is a consular act). No-ops if the war
+   *  already has a treaty pending, or during the 4-turn re-table lockout
+   *  after a failed ratification. */
+  tableTreaty: (warId: string, termIds: string[]) => void;
 
   // ── Canvassing ──────────────────────────────────────────────────────────
   canvassLeader: (leaderId: string) => void;
@@ -2614,6 +2631,68 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         : w)),
       lifetimeDignitas: s.lifetimeDignitas + so.declineLifetimeDignitasPenalty,
       log: [...s.log, mkLog(label, `Rome declines battle at ${siteName}.`, 'bad')],
+    });
+  },
+
+  // ── Military Overhaul M10 — peace: negotiation & Senate ratification ─────
+
+  acceptAiTreatyOffer: (warId) => {
+    const s = get();
+    const war = s.wars.find(w => w.id === warId);
+    if (!war || war.treaty?.stage !== 'ai_offer' || war.treaty.ratified !== null) return;
+
+    const winner: TreatySide = war.warScore >= 0 ? 'rome' : 'enemy';
+    const effectPatch = applyTreatyEffects(war.treaty.termIds, s, winner);
+    const label = turnLabel(s);
+    set({
+      ...effectPatch,
+      wars: s.wars.map(w => (w.id === warId
+        ? { ...w, active: false, pendingSetPiece: null, treaty: { ...w.treaty!, ratified: true, resolvedTurn: s.turnNumber } }
+        : w)),
+      log: [...s.log, mkLog(label, `Rome accepts terms from ${war.enemyId}. The war is over.`, 'good')],
+    });
+  },
+
+  refuseAiTreatyOffer: (warId) => {
+    const s = get();
+    const war = s.wars.find(w => w.id === warId);
+    if (!war || war.treaty?.stage !== 'ai_offer' || war.treaty.ratified !== null) return;
+
+    const label = turnLabel(s);
+    set({
+      wars: s.wars.map(w => (w.id === warId ? { ...w, treaty: null } : w)),
+      lifetimeDignitas: s.lifetimeDignitas + BALANCE.war.treaty.refuseAiOfferLifetimeDignitasPenalty,
+      log: [...s.log, mkLog(label, `Rome refuses terms from ${war.enemyId}. The war continues.`, 'neutral')],
+    });
+  },
+
+  tableTreaty: (warId, termIds) => {
+    const s = get();
+    if (s.currentOffice !== 'consul') return;
+    const war = s.wars.find(w => w.id === warId);
+    if (!war || war.treaty) return;
+    if (getDesperationTier(war.warScore) === 'none') return;
+
+    const winner: TreatySide = war.warScore >= 0 ? 'rome' : 'enemy';
+    const bill = buildTreatyBill(war, termIds, s, winner);
+    const label = turnLabel(s);
+    set({
+      bills: [...s.bills, bill],
+      wars: s.wars.map(w => (w.id === warId
+        ? {
+            ...w,
+            treaty: {
+              id: bill.id,
+              proposedTurn: s.turnNumber,
+              resolvedTurn: null,
+              termIds,
+              ratified: null,
+              initiator: 'rome',
+              stage: 'senate_vote',
+            },
+          }
+        : w)),
+      log: [...s.log, mkLog(label, `A treaty with ${war.enemyId} is tabled before the Senate.`, 'neutral')],
     });
   },
 

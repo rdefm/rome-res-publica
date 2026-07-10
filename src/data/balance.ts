@@ -607,6 +607,40 @@ export const BALANCE = {
       strengthBaseline: 300,
       martialBaseline: 5,
     },
+
+    /** M10 — src/engine/warEngine.ts / src/data/treatyTerms.ts. FIRST-PASS/
+     *  UNVERIFIED (same treatment as setPieceOffer above — the plan gives
+     *  the negotiation flow's shape but not every constant). Per-term
+     *  warScorePrice values are content, living directly on each
+     *  TreatyTerm in treatyTerms.ts, not here — these are the systemic
+     *  numbers that apply across every negotiation. */
+    treaty: {
+      /** Budget = |warScore| − thresholdBase + treatyBudgetAllowance[tier].
+       *  thresholdBase is BALANCE.war.thresholds.sue (40) — at the sue tier
+       *  itself this yields 0 (no real term-shopping budget), matching the
+       *  plan's "only accept/refuse a minor AI offer" framing for that tier. */
+      thresholdBase: 40,
+      treatyBudgetAllowance: { sue: 0, forced: 10, dictate: 30 },
+      /** calcFactionReactionModifier's clamp range — mirrors
+       *  calcRomeStatVoteModifier's ±10 in billTemplates.ts. */
+      factionReactionClamp: 10,
+      /** Seasons a ratification bill stays in the queue before expiring
+       *  (failing) if support never clears the pass threshold. */
+      ratificationTurnsLeft: 3,
+      /** Consequences of a failed/expired ratification vote. */
+      failWarScorePenalty: -5,
+      failNegotiatingConsulDignitasPenalty: -5,
+      /** Seasons before the same treaty (by term set) can be re-tabled
+       *  after a failed ratification. */
+      retableLockoutTurns: 4,
+      /** Term count for the lightweight sue-tier AI offer (Carthage losing,
+       *  proposes a minor package the player just accepts/refuses). */
+      aiOfferTermCount: 2,
+      /** Refusing a sue-tier AI offer costs nothing mechanical per the plan,
+       *  but does ding relationship with the initiating side's sympathetic
+       *  faction — mirrors declineSetPieceOffer's dignitas-only cost. */
+      refuseAiOfferLifetimeDignitasPenalty: -2,
+    },
   },
 };
 
