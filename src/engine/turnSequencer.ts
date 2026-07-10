@@ -115,9 +115,19 @@ export function processSeason(state: GameState): {
   }
 
   // 1. Advance season / year
+  //
+  // Phase 3, Chunk P3-A — pre-existing bug fix (flagged during ripeness-curve
+  // work, reported and approved before applying): `year` is stored negative
+  // (INITIAL_STATE.year = -264) and every display site reads Math.abs(year).
+  // This previously did `s.year - 1` at the Winter→Spring crossing, which
+  // moves the stored value FURTHER negative — so the displayed BC year
+  // climbed (264 → 265 → 266...) instead of descending toward the historical
+  // 241 BC end of the First Punic War. `+1` moves it toward 0, so the
+  // displayed year correctly descends (264 → 263 → ...). Ripeness math
+  // (warEngine.computeRipeness) depends on this direction being correct.
   const newSeasonIndex = (s.seasonIndex + 1) % 4;
   const crossedNewYear = newSeasonIndex === 0;
-  const newYear = crossedNewYear ? s.year - 1 : s.year;
+  const newYear = crossedNewYear ? s.year + 1 : s.year;
   s = { ...s, seasonIndex: newSeasonIndex, year: newYear, turnNumber: s.turnNumber + 1 };
 
   const seasonNames = ['Spring', 'Summer', 'Autumn', 'Winter'];

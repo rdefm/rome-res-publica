@@ -651,6 +651,46 @@ export const BALANCE = {
        *  faction — mirrors declineSetPieceOffer's dignitas-only cost. */
       refuseAiOfferLifetimeDignitasPenalty: -2,
     },
+
+    /** Phase 3, Chunk P3-A — historical ripeness curve. Purely additive on
+     *  top of the M9/M10 desperation-tier system above (`thresholds` /
+     *  `treaty`): it does NOT change when negotiation unlocks — the
+     *  sue/forced/dictate tiers stay flat, unmodified constants. It only
+     *  scales the bar for how a 'major'-scale war's eventual conclusion
+     *  gets CLASSIFIED once a treaty actually ratifies (see warEngine.ts's
+     *  classifyTerminalOutcome): the same warScore that reads as a merely
+     *  adequate peace early in the war can read as a decisive Victory once
+     *  ripeness has climbed. FIRST-PASS/UNVERIFIED, same treatment as every
+     *  other M9/M10 constant here — a future tuning pass may revise. */
+    ripeness: {
+      /** Historical First Punic War bracket — elapsed/ripeness math keys off these. */
+      startYear: 264,
+      historicalEndYear: 241,
+      /** Years elapsed (|GameState.year| counting down from startYear) before
+       *  ripeness begins climbing off 0. */
+      floorYears: 4,
+      /** Years elapsed at which ripeness reaches 1.0 (≈ historical length). */
+      fullYears: 20,
+      /** phaseForYear cosmetics: first N years elapsed are always 'opening'. */
+      openingPhaseYears: 3,
+      /** phaseForYear cosmetics: ripeness at/above this reads as 'ripe'. */
+      ripePhaseThreshold: 0.7,
+      /** phaseForYear cosmetics: |warScore| under this reads as 'grinding'
+       *  (a stalemate) rather than 'escalation'. */
+      grindingWarScoreBand: 15,
+      /** Ripeness-interpolated warScore bounds a ratified/auto-ratified
+       *  'major' war's ending must clear to classify as Victory/Humbled
+       *  outright, per classifyTerminalOutcome. Anything ratified in
+       *  between reads as Exhaustion — a negotiated peace that isn't a
+       *  blowout either way. (No separate weariness-gated exhaustion
+       *  threshold yet — nothing can force a conclusion on weariness alone
+       *  until P3-B's sue-for-peace lever exists; this classifies whatever
+       *  the EXISTING treaty system already produced.) */
+      thresholds: {
+        victory: { hard: 92, easy: 55 },
+        humbled: { hard: -92, easy: -55 },
+      },
+    },
   },
 };
 

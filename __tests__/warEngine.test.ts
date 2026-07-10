@@ -2,7 +2,9 @@ import {
   processWarSeason, scheduleSetPiece, getDesperationTier,
   computeTreatyBudget, computePackagePrice, calcFactionReactionModifier,
   composeAiOffer, composeAiTreaty, applyTreatyEffects, buildTreatyBill, losingSide,
+  computeRipeness, terminalThresholds, phaseForYear, classifyTerminalOutcome,
 } from '../src/engine/warEngine';
+import { processSeason } from '../src/engine/turnSequencer';
 import { BALANCE } from '../src/data/balance';
 import { WAR_SITES } from '../src/data/warSites';
 import { ENEMY_GENERAL_LIST } from '../src/data/enemyGenerals';
@@ -54,6 +56,8 @@ function makeWar(overrides: Partial<WarState> = {}): WarState {
     id: 'war-carthage-1', active: true, enemyId: 'carthage', scale: 'major', provinceId: null,
     warScore: 0, startedTurn: 1, lastSetPieceTurn: -1, weariness: 0,
     pendingSetPiece: null, treaty: null,
+    // P3-A
+    phase: 'opening', ignitedYear: -264, endedYear: null, terminalOutcome: null,
     ...overrides,
   };
 }
@@ -634,5 +638,177 @@ describe('DONE-WHEN: 20-season simulation', () => {
     // notices are exercised by the dedicated tests above; here we just need
     // the whole loop to run cleanly for 20 seasons.
     expect(noticesSeen).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ─── Phase 3, Chunk P3-A — Historical Ripeness ──────────────────────────────
+
+describe('computeRipeness', () => {
+  test('0 at the historical start year (264 BC)', () => {
+    expect(computeRipeness(-264)).toBe(0);
+  });
+
+  test('0 for every year up to and including floorYears elapsed', () => {
+    const floor = BALANCE.war.ripeness.floorYears;
+    expect(computeRipeness(-264 + floor)).toBe(0);
+  });
+
+  test('monotonically non-decreasing as the year descends from 264 toward 241', () => {
+    let prev = -1;
+    for (let year = -264; year >= -241; year++) {
+      const r = computeRipeness(year);
+      expect(r).toBeGreaterThanOrEqual(prev);
+      prev = r;
+    }
+  });
+
+  test('reaches 1.0 at fullYears elapsed, before the historical end year', () => {
+    const { startYear, fullYears, historicalEndYear } = BALANCE.war.ripeness;
+    const yearAtFull = -(startYear - fullYears);
+    // Only meaningful if that year is still before/at the historical end —
+    // guards the test against a future BALANCE tweak making fullYears > the
+    // 264->241 span, which would make this assertion vacuous rather than wrong.
+    if (Math.abs(yearAtFull) >= historicalEndYear) {
+      expect(computeRipeness(yearAtFull)).toBe(1);
+    }
+  });
+
+  test('pinned at 1 at and past the historical end year (241 BC)', () => {
+    expect(computeRipeness(-241)).toBe(1);
+    expect(computeRipeness(-200)).toBe(1);
+    expect(computeRipeness(-1)).toBe(1);
+  });
+});
+
+describe('terminalThresholds', () => {
+  test('hard bounds at ripeness 0', () => {
+    const t = BALANCE.war.ripeness.thresholds;
+    expect(terminalThresholds(0)).toEqual({ victory: t.victory.hard, humbled: t.humbled.hard });
+  });
+
+  test('easy bounds at ripeness 1', () => {
+    const t = BALANCE.war.ripeness.thresholds;
+    expect(terminalThresholds(1)).toEqual({ victory: t.victory.easy, humbled: t.humbled.easy });
+  });
+
+  test('victory threshold shrinks and humbled threshold rises (toward 0) as ripeness climbs', () => {
+    const low = terminalThresholds(0);
+    const high = terminalThresholds(1);
+    expect(high.victory).toBeLessThan(low.victory);
+    expect(high.humbled).toBeGreaterThan(low.humbled);
+  });
+});
+
+describe('phaseForYear', () => {
+  test('opening in the first openingPhaseYears', () => {
+    expect(phaseForYear(-264, 0)).toBe('opening');
+  });
+
+  test('ripe once ripeness clears ripePhaseThreshold', () => {
+    expect(phaseForYear(-241, 0)).toBe('ripe');
+  });
+
+  test('grinding when warScore sits inside the flat band, mid-war, not yet ripe', () => {
+    // elapsed=3 (just past openingPhaseYears), ripeness still 0 (below floorYears=4).
+    expect(phaseForYear(-261, 5)).toBe('grinding');
+  });
+
+  test('escalation when warScore is well outside the grinding band, mid-war, not yet ripe', () => {
+    expect(phaseForYear(-261, 50)).toBe('escalation');
+  });
+});
+
+describe('classifyTerminalOutcome', () => {
+  test('dictated-against-Rome is always humbled, regardless of score/ripeness', () => {
+    expect(classifyTerminalOutcome(100, 1, true)).toBe('humbled');
+  });
+
+  test('victory when warScore clears the ripeness-scaled victory bound', () => {
+    const th = terminalThresholds(0);
+    expect(classifyTerminalOutcome(th.victory, 0, false)).toBe('victory');
+  });
+
+  test('humbled when warScore clears the ripeness-scaled humbled bound', () => {
+    const th = terminalThresholds(0);
+    expect(classifyTerminalOutcome(th.humbled, 0, false)).toBe('humbled');
+  });
+
+  test('exhaustion for a middling ratified score between both bounds', () => {
+    expect(classifyTerminalOutcome(10, 0.5, false)).toBe('exhaustion');
+  });
+
+  test('the same warScore can flip from exhaustion to victory as ripeness climbs (easier late)', () => {
+    const midScore = terminalThresholds(1).victory; // clears the EASY bound only
+    expect(classifyTerminalOutcome(midScore, 0, false)).toBe('exhaustion');
+    expect(classifyTerminalOutcome(midScore, 1, false)).toBe('victory');
+  });
+});
+
+describe('processWarSeason — terminal outcome tagging (P3-A)', () => {
+  test('a ratified major-war treaty tags terminalOutcome, endedYear, and statePatch.pendingEpilogue', () => {
+    const treaty = makeTreaty({ termIds: ['indemnity_minor'], proposedTurn: 10 });
+    const state = makeState({
+      turnNumber: 12,
+      year: -264,
+      wars: [makeWar({ warScore: 95, scale: 'major', startedTurn: 1, lastSetPieceTurn: 12, treaty })],
+      passedBills: [{ id: `treaty-war-carthage-1-10`, name: 'Treaty with Carthage', passedOnTurn: 12 }] as any,
+    });
+    const result = processWarSeason(state, () => 0);
+    expect(result.wars[0].terminalOutcome).toBe('victory');
+    expect(result.wars[0].endedYear).toBe(-264);
+    expect(result.statePatch.pendingEpilogue).toBe('victory');
+  });
+
+  test('a ratified local-war (revolt) treaty does NOT tag a terminalOutcome or pendingEpilogue', () => {
+    const treaty = makeTreaty({ termIds: ['indemnity_minor'], proposedTurn: 10, id: 'treaty-war-carthage-1-10' });
+    const state = makeState({
+      turnNumber: 12,
+      wars: [makeWar({ warScore: 95, scale: 'local', startedTurn: 1, lastSetPieceTurn: 12, treaty })],
+      passedBills: [{ id: `treaty-war-carthage-1-10`, name: 'Treaty', passedOnTurn: 12 }] as any,
+    });
+    const result = processWarSeason(state, () => 0);
+    expect(result.wars[0].terminalOutcome).toBeNull();
+    expect(result.statePatch.pendingEpilogue).toBeUndefined();
+  });
+
+  test('Rome dictated to (major war) tags humbled regardless of ripeness', () => {
+    // The dictate-tier auto-ratify branch always classifies humbled — it
+    // never consults terminalThresholds, so ripeness is irrelevant here.
+    const state = makeState({
+      turnNumber: 20,
+      year: -264,
+      wars: [makeWar({ warScore: -95, scale: 'major', startedTurn: 1, lastSetPieceTurn: 20 })],
+    });
+    const result = processWarSeason(state, () => 0.5);
+    expect(result.wars[0].terminalOutcome).toBe('humbled');
+    expect(result.statePatch.pendingEpilogue).toBe('humbled');
+  });
+
+  test('phase is recomputed each active season from the current year/warScore', () => {
+    const state = makeState({ year: -241, wars: [makeWar({ warScore: 0 })] });
+    const result = processWarSeason(state, () => 0.9); // no-op-ish drift direction doesn't matter here
+    expect(result.wars[0].phase).toBe('ripe');
+  });
+});
+
+// ─── Phase 3, Chunk P3-A — calendar-direction fix (pre-existing bug) ────────
+// Discovered while building ripeness math: turnSequencer.ts's year rollover
+// previously moved the stored (negative) year FURTHER negative each
+// Winter->Spring crossing, so the displayed BC year climbed instead of
+// descending toward 241. Regression-locks the fix (reported/approved before
+// applying — see that file's comment at the call site).
+
+describe('processSeason — calendar direction', () => {
+  test('the displayed BC year descends (264 -> 263) after a full year elapses', () => {
+    let state = makeState({ year: -264, seasonIndex: 3, turnNumber: 1 }); // Winter -> next tick crosses into a new year
+    const { nextState } = processSeason(state as any);
+    expect(nextState.seasonIndex).toBe(0); // Spring
+    expect(Math.abs(nextState.year)).toBe(263);
+  });
+
+  test('mid-year season advances do not touch the year', () => {
+    const state = makeState({ year: -264, seasonIndex: 0, turnNumber: 1 }); // Spring -> Summer
+    const { nextState } = processSeason(state as any);
+    expect(nextState.year).toBe(-264);
   });
 });

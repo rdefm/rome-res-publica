@@ -88,8 +88,8 @@ import { makeSeededRng } from '../utils/seededRng';
 // entry point. The headless harness (battleSim.ts's simulateBattles) is
 // called directly by DebugPanel — a pure function, no store involvement.
 // Military Overhaul M9 — war score & set-piece scheduling
-import type { WarState } from '../models/war';
-import { scheduleSetPiece, applyTreatyEffects, buildTreatyBill, getDesperationTier, type TreatySide } from '../engine/warEngine';
+import type { WarState, WarTerminalOutcome } from '../models/war';
+import { scheduleSetPiece, applyTreatyEffects, buildTreatyBill, getDesperationTier, phaseForYear, type TreatySide } from '../engine/warEngine';
 
 export interface LogEntry {
   id: string;
@@ -216,6 +216,13 @@ export interface GameState {
   // until Phase 3A supplies a real trigger — see warEngine.ts's header
   // comment for the full reconciliation.
   wars: WarState[];
+
+  // ── Phase 3, Chunk P3-A — war terminal-outcome → epilogue signal ────────
+  /** Set by warEngine.processWarSeason (statePatch.pendingEpilogue) when a
+   *  'major'-scale war concludes. Unconsumed until a future epilogue chunk
+   *  — reading/clearing it is not this chunk's job (see warEngine.ts's
+   *  classifyTerminalOutcome doc comment). */
+  pendingEpilogue: WarTerminalOutcome;
 
   // ── Military Overhaul M5 — battle session state ─────────────────────────
   // Transient UI/session state — stripped before save (saveLoad.ts), same
@@ -735,6 +742,7 @@ export const INITIAL_STATE: GameState = {
 
   // Military Overhaul M9 — war score
   wars: [],
+  pendingEpilogue: null,
 
   // Military Overhaul M5 — battle session
   activeBattleSetup: null,
@@ -2032,6 +2040,19 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   loadGame: (savedState) => set({
     ...INITIAL_STATE,
     ...savedState,
+    // P3-A — a save written before phase/ignitedYear/endedYear/terminalOutcome
+    // existed on WarState has wars entries missing them; the top-level
+    // INITIAL_STATE spread above only backfills whole missing FIELDS, not
+    // missing keys inside an array's elements, so each war is normalised here.
+    wars: (savedState.wars ?? []).map(w => ({
+      ...w,
+      // Approximation only — a pre-P3-A save has no record of the true
+      // ignition/end year, so both fall back to "now" / unknown.
+      phase: w.phase ?? phaseForYear(savedState.year, w.warScore),
+      ignitedYear: w.ignitedYear ?? savedState.year,
+      endedYear: w.endedYear ?? null,
+      terminalOutcome: w.terminalOutcome ?? null,
+    })),
     // Always reset transient UI state — these must not be loaded from disk
     gameStarted:   true,
     debugMode:     false,
@@ -2616,6 +2637,11 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       weariness: 0,
       pendingSetPiece: null,
       treaty: null,
+      // P3-A
+      phase: phaseForYear(s.year, 0),
+      ignitedYear: s.year,
+      endedYear: null,
+      terminalOutcome: null,
     };
     const label = turnLabel(s);
     set({
@@ -2626,7 +2652,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   endWar: (warId) => {
     set(s => ({
-      wars: s.wars.map(w => (w.id === warId ? { ...w, active: false, pendingSetPiece: null } : w)),
+      wars: s.wars.map(w => (w.id === warId ? { ...w, active: false, pendingSetPiece: null, phase: 'ended' as const, endedYear: s.year } : w)),
     }));
   },
 

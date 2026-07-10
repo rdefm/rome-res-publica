@@ -179,6 +179,20 @@ Wars end at a table, and the table answers to the Senate. Builds on §5b's `WarS
 
 ---
 
+## 5d. Phase 3, Chunk P3-A — Historical Ripeness (cross-cutting)
+
+**Scope note:** `rome-phase3-implementation-plan.md` was written assuming the military overhaul wasn't built yet, and its P3-A spec calls for a brand-new singular `war: WarState`/`warEngine.ts`. By the time P3-A was actually implemented, M1–M11 above already existed — the plans were built in the opposite order the Phase 3 doc anticipated. Resolved by extending §5b/§5c's existing `wars: WarState[]`/`warEngine.ts` in place rather than creating a parallel war model; see `models/war.ts`'s and `warEngine.ts`'s own header comments for the full reconciliation. The M9/M10 desperation-tier/treaty system (sue/forced/dictate, negotiation, ratification) is **unmodified** — P3-A only adds a ripeness-scaled *classification* layered on top of whatever that system already produces.
+
+**Models (`models/war.ts`):** `WarPhase` (cosmetic narrative stage, no mechanic gates on it) and `WarTerminalOutcome` (`'victory' | 'exhaustion' | 'humbled' | null`) — both added to `WarState` alongside new `ignitedYear`/`endedYear` fields.
+
+**Engine (`warEngine.ts`):** `computeRipeness(year)` (0 at 264 BC, climbs after `BALANCE.war.ripeness.floorYears` elapsed, pinned at 1 at/past 241 BC — reads `GameState.year`, the calendar, not any one war's `ignitedYear`), `terminalThresholds(ripeness)` (interpolates `BALANCE.war.ripeness.thresholds`' hard→easy victory/humbled warScore bounds), `phaseForYear(year, warScore)` (cosmetic only), and `classifyTerminalOutcome(finalWarScore, ripeness, dictatedAgainstRome)` — called from inside `processWarSeason` at both existing war-conclusion points (a ratified `senate_vote`/`ai_offer` treaty, and the Rome-as-loser dictate-tier auto-ratify) for `scale === 'major'` wars only; sets `WarState.terminalOutcome`/`endedYear` and `WarSeasonResult.statePatch.pendingEpilogue` (unconsumed until a future epilogue chunk). `'local'`-scale wars (province revolts) never receive a terminal classification.
+
+**Store (`gameStore.ts`):** new `GameState.pendingEpilogue: WarTerminalOutcome` field; `startWar` sets the new WarState fields at creation; `loadGame` normalises pre-P3-A saves' `wars` entries (missing `phase`/`ignitedYear`/`endedYear`/`terminalOutcome`) since the top-level `INITIAL_STATE` spread only backfills whole missing fields, not keys inside an already-present array's elements.
+
+**Pre-existing bug fixed in the same chunk (reported/approved before applying):** `turnSequencer.ts`'s year rollover did `year - 1` on a negative-stored year (`INITIAL_STATE.year = -264`), which moved the displayed BC year *further* from 241 (264 → 265 → 266...) instead of toward it — inverting the whole premise a ripeness curve needs. Fixed to `year + 1`; see that file's step-1 comment.
+
+---
+
 ## 6. App shell & cross-feature UI
 
 **Root:**
@@ -239,7 +253,7 @@ Wars end at a table, and the table answers to the Senate. Builds on §5b's `WarS
 | `agenda.ts` | `AgendaItem`, severity/category, `TabName`. |
 | `ledger.ts` | `SeasonLedger` and its delta sub-types (resource/crisis/Rome). |
 | `battle.ts` | **Military Overhaul M1** — set-piece battle types: `BattleUnit`, `Deployment`, `SideOrders`, `WingState`, `BattleState`, `BattleLog`/`RoundLogEntry`, `BattleOutcome`. Types only — engine lives in `src/engine/battle/` (from M2 onward). **M7** additions: `PreBattleStratagemPick`, `Deployment.preBattleStratagems`, `SideOrders.stratagemLaneId`, `WingState.stratagemMods` (Caltrops/Testudo), `SideState.stratagemHand`/`stratagemsPlayed`/`reserveLockedUntilRound`/`incomingElephantAmokRiderPct`/`wheelBonusMult` — all optional/additive, see `data/stratagems.ts`. |
-| `war.ts` | **Military Overhaul M1** — `WarState`, `SetPieceOffer`, `TreatyState` (placeholder, full shape in M10). `enemyId` is a plain string and `scale`/`provinceId` distinguish a major foreign war from a local/revolt war — see the file's header comment for why this departs from the plan's single-war draft. **M9** made the multi-war shape real: `GameState.wars: WarState[]` (see §5b) — this chunk only ever populates it with one major war, but the array was chosen specifically so more regions/wars can be added later without a schema change. |
+| `war.ts` | **Military Overhaul M1** — `WarState`, `SetPieceOffer`, `TreatyState` (placeholder, full shape in M10). `enemyId` is a plain string and `scale`/`provinceId` distinguish a major foreign war from a local/revolt war — see the file's header comment for why this departs from the plan's single-war draft. **M9** made the multi-war shape real: `GameState.wars: WarState[]` (see §5b) — this chunk only ever populates it with one major war, but the array was chosen specifically so more regions/wars can be added later without a schema change. **Phase 3, P3-A** (see §5d) added `WarPhase`/`WarTerminalOutcome` + `WarState.phase`/`ignitedYear`/`endedYear`/`terminalOutcome`, extending this model in place rather than the Phase 3 plan's originally-envisioned parallel singular `war` field. |
 | `gameStart.ts` | `StartDefinition`, `StartId` (start-menu options). |
 | `resources.ts` | `ResourcePool` (tiny — 5 lines). |
 | `telemetry.ts` | `SeasonStats` — local-only playtest instrumentation shape (P2-A). No network/remote analytics. **P2-E** added `patronTierAtEnd`, a per-season tier snapshot the Pace panel uses to bucket history by stage. |

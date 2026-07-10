@@ -111,6 +111,33 @@ export interface TreatyState {
   stage: 'ai_offer' | 'senate_vote' | 'auto_ratified';
 }
 
+// ─── Phase 3, Chunk P3-A — Historical Ripeness ────────────────────────────
+// EXTENDS the M9/M10 war model above rather than replacing it (see
+// rome-phase3-implementation-plan.md §0's reconciliation note, resolved by
+// direct decision when P3-A was scoped: the military overhaul's `wars:
+// WarState[]` / warEngine.ts already existed when Phase 3 began, in the
+// opposite build order the Phase 3 plan anticipated — so Phase 3 extends
+// them in place instead of creating a parallel singular `war: WarState`).
+//
+// `phase` is cosmetic/agenda-flavour only (no mechanic gates on it, per the
+// plan's invariant 2 framing) — narrative flavour for agenda copy in a
+// later chunk. `terminalOutcome` is a NEW classification layered on top of
+// the EXISTING treaty/ratification system (M10): it does not change how or
+// when a war ends (that's still purely the desperation-tier/treaty
+// machinery in warEngine.ts, untouched by this chunk) — it only tags what
+// kind of ending a 'major'-scale war's conclusion counts as, for a future
+// epilogue chunk (P3-E) to read via GameState.pendingEpilogue. 'local'-scale
+// wars (province revolts) never receive a terminalOutcome — they keep
+// ending via the plain treaty flow with no epilogue hook.
+
+/** Cosmetic narrative stage — no mechanic reads this to gate anything. */
+export type WarPhase = 'not_started' | 'opening' | 'escalation' | 'grinding' | 'ripe' | 'ended';
+
+/** Set only on a 'major'-scale war once it concludes (treaty ratifies, or
+ *  the dictate-tier Rome-as-loser auto-ratify fires). null while active or
+ *  for any 'local'-scale war. */
+export type WarTerminalOutcome = 'victory' | 'exhaustion' | 'humbled' | null;
+
 export interface WarState {
   id: string;
   active: boolean;
@@ -127,4 +154,12 @@ export interface WarState {
   weariness: number;
   pendingSetPiece: SetPieceOffer | null;
   treaty: TreatyState | null;
+  /** P3-A — cosmetic narrative stage, recomputed each active season. */
+  phase: WarPhase;
+  /** P3-A — the calendar year (GameState.year) this war was started via startWar. */
+  ignitedYear: number;
+  /** P3-A — the calendar year this war's `active` flag flipped false. null while active. */
+  endedYear: number | null;
+  /** P3-A — set once, at the season this war concludes. See WarTerminalOutcome. */
+  terminalOutcome: WarTerminalOutcome;
 }

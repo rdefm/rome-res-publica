@@ -78,6 +78,8 @@ const SaveSchema = z.object({
   // below, which both return the original `parsed` object, not the parsed
   // schema value), so unlisted fields are never stripped.
   wars: z.array(z.any()).default([]),
+  // Phase 3, Chunk P3-A — .default(null) ensures pre-P3-A saves load cleanly.
+  pendingEpilogue: z.enum(['victory', 'exhaustion', 'humbled']).nullable().default(null),
 });
 
 export interface SaveProvider {

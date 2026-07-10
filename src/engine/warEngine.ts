@@ -29,7 +29,7 @@
 // "which army is on campaign" signal to hook into.
 
 import type { GameState } from '../state/gameStore';
-import type { WarState, SetPieceOffer, WarScale, TreatyState, TreatyTerm } from '../models/war';
+import type { WarState, SetPieceOffer, WarScale, TreatyState, TreatyTerm, WarPhase, WarTerminalOutcome } from '../models/war';
 import type { EventInstance } from '../models/event';
 import type { BattleUnit, UnitClass } from '../models/battle';
 import type { Bill } from '../models/bill';
@@ -120,6 +120,83 @@ function buildThresholdNotice(playerId: string, turnNumber: number, crossing: Th
     title: crossing.winning ? 'The Balance Tips' : 'The War Turns Against Us',
     bodyText: crossing.headline,
   });
+}
+
+// ─── Phase 3, Chunk P3-A — Historical Ripeness ──────────────────────────────
+// Purely additive on top of the desperation-tier system above — see
+// BALANCE.war.ripeness's header comment and models/war.ts's WarPhase/
+// WarTerminalOutcome doc comment for the full reconciliation. Ripeness reads
+// GameState.year directly (the calendar), not any one war's ignitedYear —
+// it represents how far into Rome's whole historical conflict window we
+// are, not how long a particular WarState has been active.
+
+/** 0 (264 BC, war effectively cannot be decisively won/lost/exhausted yet)
+ *  → 1 (241 BC and beyond, thresholds fully relaxed). `year` is
+ *  GameState.year — negative, magnitude counting DOWN from startYear as
+ *  play proceeds (see turnSequencer.ts's rollover comment). */
+export function computeRipeness(year: number): number {
+  const r = BALANCE.war.ripeness;
+  const absYear = Math.abs(year);
+  if (absYear <= r.historicalEndYear) return 1;
+  const elapsed = r.startYear - absYear;
+  const span = r.fullYears - r.floorYears;
+  return Math.max(0, Math.min(1, (elapsed - r.floorYears) / span));
+}
+
+function interpolateThreshold(hard: number, easy: number, ripeness: number): number {
+  return hard + (easy - hard) * ripeness;
+}
+
+export interface TerminalThresholds {
+  /** warScore at/above which a concluded 'major' war reads as Victory. */
+  victory: number;
+  /** warScore at/below which a concluded 'major' war reads as Humbled (negative). */
+  humbled: number;
+}
+
+/** Interpolates BALANCE.war.ripeness.thresholds' hard→easy pairs by ripeness.
+ *  At ripeness 0 these sit at their `hard` (extreme) values; at ripeness 1,
+ *  their `easy` (moderate) values. */
+export function terminalThresholds(ripeness: number): TerminalThresholds {
+  const t = BALANCE.war.ripeness.thresholds;
+  return {
+    victory: interpolateThreshold(t.victory.hard, t.victory.easy, ripeness),
+    humbled: interpolateThreshold(t.humbled.hard, t.humbled.easy, ripeness),
+  };
+}
+
+/** Cosmetic/agenda-flavour narrative stage — no mechanic gates on this
+ *  beyond copy selection (per the Phase 3 plan's invariant 2). */
+export function phaseForYear(year: number, warScore: number): WarPhase {
+  const r = BALANCE.war.ripeness;
+  const elapsed = r.startYear - Math.abs(year);
+  if (elapsed < r.openingPhaseYears) return 'opening';
+  if (computeRipeness(year) >= r.ripePhaseThreshold) return 'ripe';
+  if (Math.abs(warScore) < r.grindingWarScoreBand) return 'grinding';
+  return 'escalation';
+}
+
+/** Classifies how a 'major' war's conclusion reads, once the EXISTING
+ *  treaty/desperation-tier system (above) has actually ended it — this
+ *  function does not itself end a war or gate anything; it only tags the
+ *  ending processWarSeason already produced. `dictatedAgainstRome` is true
+ *  only for the Rome-as-loser dictate-tier auto-ratify path (§7 below),
+ *  which always reads as Humbled regardless of the ripeness-scaled bounds —
+ *  "terms dictated to us" is unambiguous. Everything else (a Senate-
+ *  ratified treaty, at any stage) is classified by where the final warScore
+ *  landed relative to terminalThresholds(ripeness): Victory or Humbled if
+ *  it cleared one of the decisive bounds, Exhaustion otherwise (a
+ *  negotiated peace that wasn't a blowout either way). */
+export function classifyTerminalOutcome(
+  finalWarScore: number,
+  ripeness: number,
+  dictatedAgainstRome: boolean,
+): NonNullable<WarTerminalOutcome> {
+  if (dictatedAgainstRome) return 'humbled';
+  const th = terminalThresholds(ripeness);
+  if (finalWarScore >= th.victory) return 'victory';
+  if (finalWarScore <= th.humbled) return 'humbled';
+  return 'exhaustion';
 }
 
 // ─── Skirmish drift ──────────────────────────────────────────────────────────
@@ -446,9 +523,12 @@ export interface WarSeasonResult {
   /** M10 — accumulated GameState patch from any treaty that resolved (pass,
    *  fail, or dictate-tier auto-ratify) this season: denarii, family
    *  (prisoner release), provinces (Sicily cession), bills (a triumph
-   *  petition), lifetimeDignitas (face-saver). Empty object when nothing
-   *  resolved. Applied by turnSequencer.ts's existing M9 step (widened, not
-   *  replaced, for M10 — see that file's comment at the call site). */
+   *  petition), lifetimeDignitas (face-saver). P3-A additionally sets
+   *  `pendingEpilogue` here when a 'major' war concludes this season (see
+   *  classifyTerminalOutcome) — unconsumed until a future epilogue chunk.
+   *  Empty object when nothing resolved. Applied by turnSequencer.ts's
+   *  existing M9 step (widened, not replaced, for M10/P3-A — see that
+   *  file's comment at the call site). */
   statePatch: Partial<GameState>;
 }
 
@@ -489,6 +569,10 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
       next.warScore = moveToward(next.warScore, BALANCE.war.wearinessDriftPerSeason, 0);
     }
     next.weariness += 1;
+
+    // 2b. Phase 3, Chunk P3-A — cosmetic phase recompute. No mechanic reads
+    // this beyond a future chunk's agenda copy (see WarPhase's doc comment).
+    next.phase = phaseForYear(state.year, next.warScore);
 
     // 3. Threshold-crossing notice (also where desperation's tier changes
     // become visible to the player, per getDesperationTier above). When
@@ -560,6 +644,14 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
           pendingSetPiece: null,
           treaty: { ...next.treaty, ratified: true, resolvedTurn: state.turnNumber },
         };
+        // P3-A — classify the conclusion (major wars only; see
+        // classifyTerminalOutcome's doc comment). Purely a tag on top of
+        // the ratification this block already performed.
+        if (next.scale === 'major') {
+          const outcome = classifyTerminalOutcome(next.warScore, computeRipeness(state.year), false);
+          next = { ...next, terminalOutcome: outcome, endedYear: state.year };
+          statePatch = { ...statePatch, pendingEpilogue: outcome };
+        }
         noticeEvents.push(injectNoticeEvent(`evt-war-treaty-ratified-${next.id}`, state.turnNumber, playerId, {
           title: 'Peace With Honour',
           bodyText: `The Senate has ratified peace with ${capitalizeEnemyId(next.enemyId)}. The war is over.`,
@@ -621,6 +713,12 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
           stage: 'auto_ratified',
         },
       };
+      // P3-A — dictated-against-Rome always classifies as Humbled outright
+      // (see classifyTerminalOutcome's doc comment) — no ripeness check needed.
+      if (next.scale === 'major') {
+        next = { ...next, terminalOutcome: 'humbled', endedYear: state.year };
+        statePatch = { ...statePatch, pendingEpilogue: 'humbled' as const };
+      }
       noticeEvents.push(injectNoticeEvent(`evt-war-dictated-terms-${next.id}`, state.turnNumber, playerId, {
         title: 'Terms Dictated',
         bodyText: `Rome could resist no longer. ${capitalizeEnemyId(next.enemyId)} has dictated terms — the war is over.`,
