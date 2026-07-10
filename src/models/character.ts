@@ -56,4 +56,12 @@ export interface Character {
   // (startingFamily.ts, birth/inheritance) don't all need updating; absent
   // is equivalent to null (not captured).
   captivity?: CaptivityState | null;
+
+  // Military Overhaul M8 — unit lifecycle. Tracks who last commanded this
+  // character's own troops in a set-piece battle, so musterEngine.ts can
+  // detect a commander change (-10 loyalty) at the NEXT battle write-back.
+  // Optional/absent = "no battle fought yet under this system" (not treated
+  // as a change on the first battle). See musterEngine.ts's header comment
+  // for the full "commander changed" interpretation.
+  lastLoyaltyCommanderId?: string | null;
 }

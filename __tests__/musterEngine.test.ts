@@ -8,13 +8,15 @@ import {
   applyCharacterDeath,
   resolveRansomChoice,
   applyBattleOutcome,
+  promotedVeterancy,
+  computeElephantLanes,
   type BattleBridgeContext,
 } from '../src/engine/battle/musterEngine';
 import { BALANCE } from '../src/data/balance';
 import type { Character } from '../src/models/character';
 import type { TroopUnit } from '../src/models/troop';
 import type { Clan } from '../src/models/clan';
-import type { BattleState, BattleOutcome, SideState, WingState, LaneId } from '../src/models/battle';
+import type { BattleState, BattleOutcome, SideState, WingState, LaneId, BattleUnit } from '../src/models/battle';
 import type { GameState } from '../src/state/gameStore';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -107,6 +109,16 @@ function makeBattleState(overrides: { attacker?: Partial<SideState>; defender?: 
     defender: makeSideState({ label: 'Carthage', ...overrides.defender }),
     log: [], phase: 'resolved', rngCallsConsumed: 0, pendingBreakDecisions: [],
     amokChanceRiders: {}, startingStrength: { attacker: 300, defender: 300 },
+  };
+}
+
+let unitCounter = 0;
+function makeBattleUnit(overrides: Partial<BattleUnit> = {}): BattleUnit {
+  unitCounter += 1;
+  return {
+    id: `u${unitCounter}`, unitClass: 'legionary', strength: 80,
+    veterancy: 'trained', loyalty: 55, elephantSteady: false,
+    ...overrides,
   };
 }
 
@@ -476,5 +488,241 @@ describe('applyBattleOutcome', () => {
     const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, turnNumber: 10 };
     const { ledgerNotes } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
     expect(ledgerNotes[0]).toContain('wins');
+  });
+
+  // ─── M8: loyalty deltas ────────────────────────────────────────────────────
+
+  test('a shared victory grants +10 loyalty to surviving units', () => {
+    const troop = makeTroop({ id: 't1', bondToCommander: 50 });
+    const state = makeState({ family: [makeCharacter({ raisedLegions: [troop] })] });
+    const finalUnit = { ...troopToBattleUnit(troop), strength: 80 };
+    const rome = makeSideState({ commanderId: 'pc-1', wings: { left: makeWing('left', { units: [finalUnit] }), centre: makeWing('centre'), right: makeWing('right') } });
+    const battleState = makeBattleState({ attacker: rome });
+    const outcome = makeOutcome({ victor: 'attacker' });
+    const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, turnNumber: 10 };
+
+    const { state: next } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
+    expect(next.family[0].raisedLegions[0].bondToCommander).toBe(50 + BALANCE.battle.lifecycle.loyaltyGainPerVictoryShared);
+  });
+
+  test('a defeat costs -15 loyalty, clamped at 0', () => {
+    const troop = makeTroop({ id: 't1', bondToCommander: 5 });
+    const state = makeState({ family: [makeCharacter({ raisedLegions: [troop] })] });
+    const finalUnit = { ...troopToBattleUnit(troop), strength: 40 };
+    const rome = makeSideState({ commanderId: 'pc-1', wings: { left: makeWing('left', { units: [finalUnit] }), centre: makeWing('centre'), right: makeWing('right') } });
+    const battleState = makeBattleState({ attacker: rome });
+    const outcome = makeOutcome({ victor: 'defender', tier: 'clear' });
+    const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, turnNumber: 10 };
+
+    const { state: next } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
+    expect(next.family[0].raisedLegions[0].bondToCommander).toBe(0); // 5 - 15 clamped
+  });
+
+  test('a withdrawal applies no victory/defeat loyalty delta', () => {
+    const troop = makeTroop({ id: 't1', bondToCommander: 50 });
+    const state = makeState({ family: [makeCharacter({ raisedLegions: [troop] })] });
+    const finalUnit = { ...troopToBattleUnit(troop), strength: 40 };
+    const rome = makeSideState({ commanderId: 'pc-1', wings: { left: makeWing('left', { units: [finalUnit] }), centre: makeWing('centre'), right: makeWing('right') } });
+    const battleState = makeBattleState({ attacker: rome });
+    const outcome = makeOutcome({ victor: 'withdrawal', tier: 'marginal', warScoreDelta: -4 });
+    const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, turnNumber: 10 };
+
+    const { state: next } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
+    expect(next.family[0].raisedLegions[0].bondToCommander).toBe(50);
+  });
+
+  test('no commander-change penalty on the first battle fought under this system', () => {
+    const troop = makeTroop({ id: 't1', bondToCommander: 50 });
+    const character = makeCharacter({ raisedLegions: [troop] }); // lastLoyaltyCommanderId absent
+    const state = makeState({ family: [character] });
+    const finalUnit = { ...troopToBattleUnit(troop), strength: 80 };
+    const rome = makeSideState({ commanderId: 'son-1', wings: { left: makeWing('left', { units: [finalUnit] }), centre: makeWing('centre'), right: makeWing('right') } });
+    const battleState = makeBattleState({ attacker: rome });
+    const outcome = makeOutcome({ victor: 'attacker' });
+    const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, turnNumber: 10 };
+
+    const { state: next } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
+    expect(next.family[0].raisedLegions[0].bondToCommander).toBe(50 + BALANCE.battle.lifecycle.loyaltyGainPerVictoryShared);
+    expect(next.family[0].lastLoyaltyCommanderId).toBe('son-1'); // stamped for next time
+  });
+
+  test('a changed commander (vs the previously recorded one) costs an extra -10, stacked with the victory/defeat delta', () => {
+    const troop = makeTroop({ id: 't1', bondToCommander: 50 });
+    const character = makeCharacter({ raisedLegions: [troop], lastLoyaltyCommanderId: 'pc-1' });
+    const state = makeState({ family: [character] });
+    const finalUnit = { ...troopToBattleUnit(troop), strength: 80 };
+    // Same battle, commanded by 'son-1' this time — a change from the recorded 'pc-1'.
+    const rome = makeSideState({ commanderId: 'son-1', wings: { left: makeWing('left', { units: [finalUnit] }), centre: makeWing('centre'), right: makeWing('right') } });
+    const battleState = makeBattleState({ attacker: rome });
+    const outcome = makeOutcome({ victor: 'attacker' });
+    const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, turnNumber: 10 };
+
+    const { state: next } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
+    const lc = BALANCE.battle.lifecycle;
+    expect(next.family[0].raisedLegions[0].bondToCommander).toBe(50 + lc.loyaltyGainPerVictoryShared + lc.loyaltyLossCommanderChange);
+    expect(next.family[0].lastLoyaltyCommanderId).toBe('son-1');
+  });
+
+  // ─── M8: elephantSteady write-back ─────────────────────────────────────────
+
+  describe('elephantSteady write-back', () => {
+    test('units in a lane with a surviving elephant (either side) become elephantSteady', () => {
+      const troop = makeTroop({ id: 't1' });
+      const state = makeState({ family: [makeCharacter({ raisedLegions: [troop] })] });
+      const finalUnit = { ...troopToBattleUnit(troop), strength: 60 };
+      const enemyElephant = makeBattleUnit({ id: 'enemy-ele', unitClass: 'elephant' });
+      const rome = makeSideState({ commanderId: 'pc-1', wings: { left: makeWing('left', { units: [finalUnit] }), centre: makeWing('centre'), right: makeWing('right') } });
+      const carthage = makeSideState({ label: 'Carthage', wings: { left: makeWing('left', { units: [enemyElephant] }), centre: makeWing('centre'), right: makeWing('right') } });
+      const battleState = makeBattleState({ attacker: rome, defender: carthage });
+      const outcome = makeOutcome({ victor: 'attacker' });
+      const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, turnNumber: 10 };
+
+      const { state: next } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
+      expect(next.family[0].raisedLegions[0].elephantSteady).toBe(true);
+    });
+
+    test('units in a lane where an elephant went amok (and is gone by battle end) still become elephantSteady', () => {
+      const troop = makeTroop({ id: 't1' });
+      const state = makeState({ family: [makeCharacter({ raisedLegions: [troop] })] });
+      const finalUnit = { ...troopToBattleUnit(troop), strength: 60 };
+      const rome = makeSideState({ commanderId: 'pc-1', wings: { left: makeWing('left', { units: [finalUnit] }), centre: makeWing('centre'), right: makeWing('right') } });
+      const battleState = makeBattleState({ attacker: rome });
+      const withAmokLog: BattleState = { ...battleState, log: [{ type: 'amok', round: 3, laneId: 'left', unitId: 'dead-ele', casualties: [] }] };
+      const outcome = makeOutcome({ victor: 'attacker' });
+      const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, turnNumber: 10 };
+
+      const { state: next } = applyBattleOutcome(state, withAmokLog, 'attacker', outcome, ctx);
+      expect(next.family[0].raisedLegions[0].elephantSteady).toBe(true);
+    });
+
+    test('a lane with no elephants (ever) does not grant elephantSteady', () => {
+      const troop = makeTroop({ id: 't1' });
+      const state = makeState({ family: [makeCharacter({ raisedLegions: [troop] })] });
+      const finalUnit = { ...troopToBattleUnit(troop), strength: 60 };
+      const rome = makeSideState({ commanderId: 'pc-1', wings: { left: makeWing('left', { units: [finalUnit] }), centre: makeWing('centre'), right: makeWing('right') } });
+      const battleState = makeBattleState({ attacker: rome });
+      const outcome = makeOutcome({ victor: 'attacker' });
+      const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, turnNumber: 10 };
+
+      const { state: next } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
+      expect(next.family[0].raisedLegions[0].elephantSteady).toBe(false);
+    });
+
+    test('is sticky — a unit already elephantSteady stays so even in a battle with no elephants', () => {
+      const troop = makeTroop({ id: 't1', elephantSteady: true });
+      const state = makeState({ family: [makeCharacter({ raisedLegions: [troop] })] });
+      const finalUnit = { ...troopToBattleUnit(troop), strength: 60, elephantSteady: false };
+      const rome = makeSideState({ commanderId: 'pc-1', wings: { left: makeWing('left', { units: [finalUnit] }), centre: makeWing('centre'), right: makeWing('right') } });
+      const battleState = makeBattleState({ attacker: rome });
+      const outcome = makeOutcome({ victor: 'attacker' });
+      const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, turnNumber: 10 };
+
+      const { state: next } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
+      expect(next.family[0].raisedLegions[0].elephantSteady).toBe(true);
+    });
+  });
+
+  // ─── M8: captured elephants ─────────────────────────────────────────────────
+
+  describe('captured elephants', () => {
+    const originalRandom = Math.random;
+    afterEach(() => { Math.random = originalRandom; });
+
+    test('a crushing victory over an elephant-fielding enemy can capture one, below the roll threshold', () => {
+      Math.random = () => 0.0; // always "succeeds" the capture roll
+      const state = makeState({ family: [makeCharacter()] });
+      const battleState = makeBattleState({ attacker: makeSideState({ commanderId: 'pc-1' }) });
+      const outcome = makeOutcome({ victor: 'attacker', tier: 'crushing' });
+      const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, turnNumber: 10, enemyFieldedElephants: true };
+
+      const { state: next, ledgerNotes } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
+      const captured = next.family[0].veterans.find(t => t.unitClass === 'elephant');
+      expect(captured).toBeDefined();
+      expect(captured?.veterancy).toBe('raw');
+      expect(captured?.bondToCommander).toBe(BALANCE.battle.elephant.capturedElephantStartingLoyalty);
+      expect(next.pendingEvents.some(e => e.defId === 'evt-captured-elephant-notice')).toBe(true);
+      expect(ledgerNotes.some(n => n.includes('Carthage'))).toBe(true);
+    });
+
+    test('above the roll threshold, no elephant is captured', () => {
+      Math.random = () => 0.999;
+      const state = makeState({ family: [makeCharacter()] });
+      const battleState = makeBattleState({ attacker: makeSideState({ commanderId: 'pc-1' }) });
+      const outcome = makeOutcome({ victor: 'attacker', tier: 'crushing' });
+      const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, turnNumber: 10, enemyFieldedElephants: true };
+
+      const { state: next } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
+      expect(next.family[0].veterans.find(t => t.unitClass === 'elephant')).toBeUndefined();
+    });
+
+    test('no roll at all when the enemy fielded no elephants', () => {
+      Math.random = () => 0.0;
+      const state = makeState({ family: [makeCharacter()] });
+      const battleState = makeBattleState({ attacker: makeSideState({ commanderId: 'pc-1' }) });
+      const outcome = makeOutcome({ victor: 'attacker', tier: 'crushing' });
+      const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, turnNumber: 10, enemyFieldedElephants: false };
+
+      const { state: next } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
+      expect(next.family[0].veterans.find(t => t.unitClass === 'elephant')).toBeUndefined();
+    });
+
+    test('no roll on a merely clear (non-crushing) victory', () => {
+      Math.random = () => 0.0;
+      const state = makeState({ family: [makeCharacter()] });
+      const battleState = makeBattleState({ attacker: makeSideState({ commanderId: 'pc-1' }) });
+      const outcome = makeOutcome({ victor: 'attacker', tier: 'clear' });
+      const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, turnNumber: 10, enemyFieldedElephants: true };
+
+      const { state: next } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
+      expect(next.family[0].veterans.find(t => t.unitClass === 'elephant')).toBeUndefined();
+    });
+  });
+});
+
+// ─── M8: promotedVeterancy ───────────────────────────────────────────────────
+
+describe('promotedVeterancy', () => {
+  test('thresholds: 2 -> trained, 5 -> veteran (without a crushing victory, caps below legendary)', () => {
+    expect(promotedVeterancy(makeTroop({ campaignsSurvived: 0 }))).toBe('raw');
+    expect(promotedVeterancy(makeTroop({ campaignsSurvived: 1 }))).toBe('raw');
+    expect(promotedVeterancy(makeTroop({ campaignsSurvived: 2 }))).toBe('trained');
+    expect(promotedVeterancy(makeTroop({ campaignsSurvived: 4 }))).toBe('trained');
+    expect(promotedVeterancy(makeTroop({ campaignsSurvived: 5 }))).toBe('veteran');
+    expect(promotedVeterancy(makeTroop({ campaignsSurvived: 20 }))).toBe('veteran'); // no crushing win yet
+  });
+
+  test('legendary requires BOTH 9+ engagedBattles AND a recorded crushing victory', () => {
+    const noVictory = makeTroop({ campaignsSurvived: 9, wonCrushingVictory: false });
+    const withVictory = makeTroop({ campaignsSurvived: 9, wonCrushingVictory: true });
+    expect(promotedVeterancy(noVictory)).toBe('veteran');
+    expect(promotedVeterancy(withVictory)).toBe('legendary');
+  });
+
+  test('never downgrades a tier the unit already holds (e.g. from TroopType derivation)', () => {
+    const seasonedButFresh = makeTroop({ type: 'seasoned_veteran', campaignsSurvived: 0 });
+    expect(promotedVeterancy(seasonedButFresh)).toBe('legendary');
+
+    const explicitLegendaryNoWins = makeTroop({ veterancy: 'legendary', campaignsSurvived: 0 });
+    expect(promotedVeterancy(explicitLegendaryNoWins)).toBe('legendary');
+  });
+});
+
+// ─── M8: computeElephantLanes ────────────────────────────────────────────────
+
+describe('computeElephantLanes', () => {
+  test('includes a lane with a surviving elephant on either side', () => {
+    const rome = makeSideState({ wings: { left: makeWing('left'), centre: makeWing('centre', { units: [makeBattleUnit({ unitClass: 'elephant' })] }), right: makeWing('right') } });
+    const battleState = makeBattleState({ attacker: rome });
+    expect(computeElephantLanes(battleState)).toEqual(new Set(['centre']));
+  });
+
+  test('includes a lane recorded in an amok log entry even with no surviving elephant', () => {
+    const battleState = makeBattleState();
+    const withLog: BattleState = { ...battleState, log: [{ type: 'amok', round: 2, laneId: 'right', unitId: 'x', casualties: [] }] };
+    expect(computeElephantLanes(withLog)).toEqual(new Set(['right']));
+  });
+
+  test('empty when neither condition holds anywhere', () => {
+    expect(computeElephantLanes(makeBattleState())).toEqual(new Set());
   });
 });

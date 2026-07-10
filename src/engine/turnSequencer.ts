@@ -3,6 +3,7 @@ import type { Client, ClientType } from '../models/client';
 import type { EventInstance } from '../models/event';
 import type { CrisisTrackId } from '../models/crisis';
 import type { Bill } from '../models/bill';
+import type { TroopUnit } from '../models/troop';
 import {
   calcResourceIncome,
   applyEffectString,
@@ -720,6 +721,52 @@ export function processSeason(state: GameState): {
     const updatedFamily = s.family.map(c => {
       if ((c.veterans ?? []).length === 0) return c;
       return { ...c, veterans: applyTroopAttrition(c.veterans, 1) };
+    });
+    s = { ...s, family: updatedFamily };
+  }
+
+  // 9d2. Military Overhaul M8 — unit lifecycle: loyalty season tick.
+  // +5/season while a character personally commands an unresolved
+  // activeCampaign (the existing abstract campaign system's closest analog
+  // to "on campaign, same commander" for the new set-piece muster — see
+  // musterEngine.ts's header comment for the fuller reconciliation, incl.
+  // the caveat that the personal-commander campaign flow is currently
+  // stubbed at the UI layer and so a started campaign never resolves —
+  // this tick still fires correctly off activeCampaign's own fields
+  // regardless). Otherwise idle decay toward 50, once per year only
+  // (Winter -> Spring rollover), same cadence as every other yearly-only
+  // system in this file (see crossedNewYear above). Applies to BOTH
+  // raisedLegions and veterans, unlike 9d's attrition (veterans only).
+  {
+    const commandingCharacterIds = new Set(
+      s.provinces
+        .map(p => p.activeCampaign)
+        .filter((c): c is NonNullable<typeof c> => !!c && !c.resolved && c.commanderCharacterId !== null)
+        .map(c => c.commanderCharacterId as string),
+    );
+    const lc = BALANCE.battle.lifecycle;
+    const moveToward = (current: number, step: number, target: number): number => {
+      if (current > target) return Math.max(target, current - step);
+      if (current < target) return Math.min(target, current + step);
+      return current;
+    };
+    const clampLoyalty = (v: number) => Math.min(100, Math.max(0, v));
+    const updatedFamily = s.family.map(c => {
+      const hasTroops = (c.raisedLegions?.length ?? 0) > 0 || (c.veterans?.length ?? 0) > 0;
+      if (!hasTroops) return c;
+      const onCampaign = commandingCharacterIds.has(c.id);
+      if (!onCampaign && !crossedNewYear) return c;
+      const applyTick = (t: TroopUnit): TroopUnit => {
+        const newLoyalty = onCampaign
+          ? t.bondToCommander + lc.loyaltyGainPerCampaignSeason
+          : moveToward(t.bondToCommander, Math.abs(lc.idleLoyaltyDecayPerYear), lc.idleLoyaltyDecayTarget);
+        return { ...t, bondToCommander: clampLoyalty(newLoyalty) };
+      };
+      return {
+        ...c,
+        raisedLegions: (c.raisedLegions ?? []).map(applyTick),
+        veterans: (c.veterans ?? []).map(applyTick),
+      };
     });
     s = { ...s, family: updatedFamily };
   }

@@ -191,3 +191,74 @@ describe('Relationship decay only applies at the yearly rollover', () => {
     expect(nextState.clans[0].leaders[0].relationship).toBe(37); // one decayPerYear tick toward the 25 default anchor
   });
 });
+
+// ─── Military Overhaul M8: unit lifecycle loyalty season tick (step 9d2) ────
+
+function makeTroopFixture(overrides: Record<string, any> = {}) {
+  return {
+    id: 'troop-1', type: 'raised', strength: 8, campaignsSurvived: 0,
+    yearsInactive: 0, bondToCommander: 50, musterProvinceId: 'sicilia',
+    ...overrides,
+  };
+}
+
+/** Mirrors officeAction.test.ts's "doesn't crash turnSequencer" minimal
+ *  ProvinceState fixture. */
+function makeProvinceFixture(activeCampaign: Record<string, any> | null, overrides: Record<string, any> = {}) {
+  return {
+    id: 'sicilia',
+    relationshipScore: 60, localSupport: 50,
+    infrastructureRating: 20, infraStagnationSeasons: 0, lastInfraScore: 20,
+    revoltActive: false, incorporationBillAvailable: false, warDeclarationAvailable: false,
+    playerGovernor: null, npcRoleHolder: null, playerAmbassador: null, ownedAssets: [],
+    activeCampaign, officerVolunteer: null,
+    ...overrides,
+  };
+}
+
+function withRaisedLegions(troops: any[], overrides: Record<string, any> = {}) {
+  return makeState({ family: [{ ...makeState().family[0], raisedLegions: troops }], ...overrides });
+}
+
+describe('Military Overhaul M8 — unit lifecycle loyalty season tick', () => {
+  test('+5/season while personally commanding an unresolved activeCampaign', () => {
+    const troop = makeTroopFixture({ bondToCommander: 50 });
+    const campaign = { id: 'camp-1', provinceId: 'sicilia', type: 'conquest', commanderCharacterId: 'pc-1',
+      campaignProgress: 10, enemyStrength: 40, turnsElapsed: 1, localSupportBonus: false,
+      resolved: false, outcome: null, activeEventId: null };
+    const state = withRaisedLegions([troop], { provinces: [makeProvinceFixture(campaign)] });
+
+    const { nextState } = processSeason(state as any);
+    expect(nextState.family[0].raisedLegions[0].bondToCommander).toBe(55);
+  });
+
+  test('no gain when the campaign is resolved, or commanded by someone else', () => {
+    const resolvedCampaign = { id: 'camp-1', provinceId: 'sicilia', type: 'conquest', commanderCharacterId: 'pc-1',
+      campaignProgress: 100, enemyStrength: 0, turnsElapsed: 5, localSupportBonus: false,
+      resolved: true, outcome: 'victory', activeEventId: null };
+    const troopA = makeTroopFixture({ id: 't-resolved', bondToCommander: 50 });
+    const stateResolved = withRaisedLegions([troopA], { seasonIndex: 0, provinces: [makeProvinceFixture(resolvedCampaign)] });
+    expect(processSeason(stateResolved as any).nextState.family[0].raisedLegions[0].bondToCommander).toBe(50);
+
+    const othersCampaign = { id: 'camp-2', provinceId: 'sicilia', type: 'conquest', commanderCharacterId: 'son-1',
+      campaignProgress: 10, enemyStrength: 40, turnsElapsed: 1, localSupportBonus: false,
+      resolved: false, outcome: null, activeEventId: null };
+    const troopB = makeTroopFixture({ id: 't-other-commander', bondToCommander: 50 });
+    const stateOther = withRaisedLegions([troopB], { seasonIndex: 0, provinces: [makeProvinceFixture(othersCampaign)] });
+    expect(processSeason(stateOther as any).nextState.family[0].raisedLegions[0].bondToCommander).toBe(50);
+  });
+
+  test('idle decay toward 50 applies only at the Winter -> Spring rollover, never past the target', () => {
+    const above = makeTroopFixture({ id: 't-above', bondToCommander: 60 });
+    const below = makeTroopFixture({ id: 't-below', bondToCommander: 40 });
+    const atTarget = makeTroopFixture({ id: 't-at-target', bondToCommander: 51 }); // within one tick of 50
+
+    const midYear = withRaisedLegions([above, below, atTarget], { seasonIndex: 0 }); // Spring -> Summer, no rollover
+    const midYearResult = processSeason(midYear as any).nextState;
+    expect(midYearResult.family[0].raisedLegions.map((t: any) => t.bondToCommander)).toEqual([60, 40, 51]);
+
+    const rollover = withRaisedLegions([above, below, atTarget], { seasonIndex: 3 }); // Winter -> Spring, rollover
+    const rolloverResult = processSeason(rollover as any).nextState;
+    expect(rolloverResult.family[0].raisedLegions.map((t: any) => t.bondToCommander)).toEqual([58, 42, 50]);
+  });
+});

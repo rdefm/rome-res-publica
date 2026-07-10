@@ -328,6 +328,21 @@ export const EVENT_DEFS: EventDef[] = [
       { id: 'continue', label: 'Continue', successEffect: '', failureEffect: '' },
     ],
   },
+  // Military Overhaul M8 — this ONE is a Rome-context notice (fires after
+  // the battle, about integrating a captured elephant into the army), so
+  // Philon's voice is in-register here per invariant 7 — unlike the three
+  // above, which are battle dispatches.
+  {
+    id: 'evt-captured-elephant-notice',
+    title: 'Beasts of War, Now Ours',
+    bodyText: 'The beasts of Carthage now eat from Roman hands. Philon is against it.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      { id: 'continue', label: 'Continue', successEffect: '', failureEffect: '' },
+    ],
+  },
 
   // Fired by turnSequencer step 2b when resolveElection returns contested: true.
   {

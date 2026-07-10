@@ -26,4 +26,14 @@ export interface TroopUnit {
   /** Battle veterancy tier. M8 owns its ongoing lifecycle (promotion
    *  thresholds); M4 only seeds an initial value. */
   veterancy?: Veterancy;
+
+  // ── Military Overhaul M8 — unit lifecycle ───────────────────────────────
+  /** True once this unit has fought in/opposite a lane containing elephants
+   *  in ANY set-piece battle (musterEngine.ts applies this at write-back).
+   *  Sticky — never cleared. */
+  elephantSteady?: boolean;
+  /** True once this unit has survived a crushing set-piece victory — the
+   *  legendary veterancy tier additionally requires this (see
+   *  BALANCE.battle.lifecycle). Sticky — never cleared. */
+  wonCrushingVictory?: boolean;
 }

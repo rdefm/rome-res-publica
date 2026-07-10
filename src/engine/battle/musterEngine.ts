@@ -128,6 +128,82 @@ export function battleUnitToTroop(original: TroopUnit, unit: BattleUnit): TroopU
   };
 }
 
+// ─── M8: unit lifecycle (veterancy promotion, loyalty, elephant tracking) ──
+
+const VET_TIER_INDEX: Record<Veterancy, number> = { raw: 0, trained: 1, veteran: 2, legendary: 3 };
+const VET_TIER_BY_INDEX: Veterancy[] = ['raw', 'trained', 'veteran', 'legendary'];
+
+function clampVet(v: number): number {
+  return Math.min(VET_TIER_BY_INDEX.length - 1, Math.max(0, v));
+}
+
+/** Recomputes veterancy from campaignsSurvived (engagedBattles) thresholds,
+ *  taking the MAX against the unit's current tier — promotion only, never a
+ *  downgrade. Needed because a TroopType-derived tier (e.g. 'seasoned_veteran'
+ *  → 'legendary', per deriveVeterancyFromTroopType) can already exceed what
+ *  campaignsSurvived alone would justify; this function must not undo that. */
+export function promotedVeterancy(troop: TroopUnit): Veterancy {
+  const current = troop.veterancy ?? deriveVeterancyFromTroopType(troop.type);
+  const t = BALANCE.battle.lifecycle.veterancyThresholds;
+  let computed = 0;
+  if (troop.campaignsSurvived >= t.trained) computed = 1;
+  if (troop.campaignsSurvived >= t.veteran) computed = 2;
+  if (troop.campaignsSurvived >= t.legendary && troop.wonCrushingVictory) computed = 3;
+  return VET_TIER_BY_INDEX[clampVet(Math.max(VET_TIER_INDEX[current], computed))];
+}
+
+export interface LifecycleUpdateOpts {
+  /** Already-signed delta (may be 0) — combines victory/defeat/commander-change. */
+  loyaltyDelta: number;
+  /** This unit ended the battle in (or opposite) a lane that contained elephants. */
+  elephantSteady: boolean;
+  /** This battle was a crushing victory for Rome's side. */
+  crushingVictory: boolean;
+}
+
+/** Applied AFTER battleUnitToTroop's 1:1 strength/veterancy/loyalty mapping
+ *  — layers the M8 season-independent, per-battle lifecycle effects on top:
+ *  loyalty delta (clamped), sticky elephantSteady/wonCrushingVictory flags,
+ *  and veterancy re-promotion (now that wonCrushingVictory may have just
+ *  flipped true, possibly unlocking legendary this same write-back). */
+export function applyLifecycleUpdates(troop: TroopUnit, opts: LifecycleUpdateOpts): TroopUnit {
+  const wonCrushingVictory = troop.wonCrushingVictory || opts.crushingVictory;
+  const elephantSteady = troop.elephantSteady || opts.elephantSteady;
+  const withFlags: TroopUnit = {
+    ...troop,
+    bondToCommander: clamp(troop.bondToCommander + opts.loyaltyDelta, 0, 100),
+    elephantSteady,
+    wonCrushingVictory,
+  };
+  return { ...withFlags, veterancy: promotedVeterancy(withFlags) };
+}
+
+const LANES_M8: LaneId[] = ['left', 'centre', 'right'];
+
+/** Lanes considered to have "contained elephants" this battle, for
+ *  elephantSteady eligibility — union of (a) either side's SURVIVING
+ *  elephants in the final state, and (b) any lane where an elephant went
+ *  amok (removed from play, but the log records the lane). FIRST-PASS
+ *  simplification (documented deviation): a unit that fought an elephant
+ *  which was later destroyed by ordinary melee/shock (not amok) in the
+ *  SAME lane won't be credited — clashEngine/battleEngine don't track
+ *  historical per-lane composition beyond the log's typed entries, and
+ *  reconstructing it would be materially more engine surgery than this
+ *  chunk's scope. Revisit if this undercounts noticeably in play. */
+export function computeElephantLanes(battleState: BattleState): Set<LaneId> {
+  const lanes = new Set<LaneId>();
+  const hasElephant = (units: BattleUnit[]) => units.some(u => u.unitClass === 'elephant');
+  for (const laneId of LANES_M8) {
+    if (hasElephant(battleState.attacker.wings[laneId].units) || hasElephant(battleState.defender.wings[laneId].units)) {
+      lanes.add(laneId);
+    }
+  }
+  for (const entry of battleState.log) {
+    if (entry.type === 'amok') lanes.add(entry.laneId);
+  }
+  return lanes;
+}
+
 /** Musters one character's whole personal force (raised legions + veterans)
  *  into BattleUnits. The plan's "one Roman field army at a time" invariant
  *  means a single character's army is the unit of muster — mixing multiple
@@ -338,6 +414,13 @@ export function buildRansomDemandNotice(
   });
 }
 
+export function buildCapturedElephantNotice(playerCharacterId: string, turnNumber: number): EventInstance {
+  return injectNoticeEvent('evt-captured-elephant-notice', turnNumber, playerCharacterId, {
+    title: 'Beasts of War, Now Ours',
+    bodyText: 'The beasts of Carthage now eat from Roman hands. Philon is against it.',
+  });
+}
+
 // ─── applyBattleOutcome — the main write-back bridge ────────────────────────
 
 export interface BattleBridgeContext {
@@ -351,6 +434,12 @@ export interface BattleBridgeContext {
    *  note 6. Undefined for sandbox/unlinked battles. */
   provinceId?: string;
   turnNumber: number;
+  /** M8 — did the ENEMY side field any elephant-class units at deployment?
+   *  Set by the caller from the pre-battle Deployment (survival by
+   *  battle's end is irrelevant — a crushing victory is likely to have
+   *  destroyed them). Drives the captured-elephant roll below. Undefined =
+   *  false (no elephants, no roll) — safe default for older callers. */
+  enemyFieldedElephants?: boolean;
 }
 
 export interface ApplyBattleOutcomeResult {
@@ -383,8 +472,18 @@ export function applyBattleOutcome(
   const rome = battleState[romeSide];
   const ledgerNotes: string[] = [];
 
-  const finalUnits = [...LANES.flatMap(l => rome.wings[l].units), ...rome.reserve];
-  const finalBySourceRef = new Map(finalUnits.filter(u => u.sourceRef).map(u => [u.sourceRef as string, u]));
+  // M8: lane info is needed alongside each surviving unit (elephantSteady
+  // eligibility is lane-scoped) — flatMap into {unit, laneId} pairs instead
+  // of a flat unit array.
+  type FinalUnitInfo = { unit: BattleUnit; laneId: LaneId | 'reserve' };
+  const finalUnitInfos: FinalUnitInfo[] = [
+    ...LANES.flatMap(l => rome.wings[l].units.map(unit => ({ unit, laneId: l as LaneId }))),
+    ...rome.reserve.map(unit => ({ unit, laneId: 'reserve' as const })),
+  ];
+  const finalBySourceRef = new Map(
+    finalUnitInfos.filter(i => i.unit.sourceRef).map(i => [i.unit.sourceRef as string, i]),
+  );
+  const elephantLanes = computeElephantLanes(battleState);
 
   let family = state.family;
   let flags = state.flags;
@@ -397,17 +496,46 @@ export function applyBattleOutcome(
 
   const playerId = family.find(c => c.isPlayer)?.id ?? ctx.troopOwnerCharacterId;
 
-  // 1. Troop write-back — only the mustering character's arrays.
+  // M8: per-battle loyalty delta + commander-change detection, shared by
+  // every one of this character's surviving units this write-back.
+  const isVictory = outcome.victor === romeSide;
+  const isDefeat = outcome.victor !== romeSide && outcome.victor !== 'withdrawal';
+  const troopOwner = family.find(c => c.id === ctx.troopOwnerCharacterId);
+  const priorCommanderId = troopOwner?.lastLoyaltyCommanderId ?? null;
+  const commanderChanged = rome.commanderId !== null && priorCommanderId !== null && rome.commanderId !== priorCommanderId;
+  const lc = BALANCE.battle.lifecycle;
+  const loyaltyDelta =
+    (isVictory ? lc.loyaltyGainPerVictoryShared : isDefeat ? lc.loyaltyLossPerDefeat : 0)
+    + (commanderChanged ? lc.loyaltyLossCommanderChange : 0);
+  if (commanderChanged) {
+    ledgerNotes.push(`${troopOwner?.name ?? 'The army'}'s troops feel the change in command.`);
+  }
+
+  // 1. Troop write-back — only the mustering character's arrays. Layers M8's
+  // lifecycle updates (loyalty delta, veterancy promotion, elephantSteady,
+  // wonCrushingVictory) on top of M4's 1:1 strength/veterancy mapping.
   family = family.map(character => {
     if (character.id !== ctx.troopOwnerCharacterId) return character;
     const updateArray = (arr: TroopUnit[]): TroopUnit[] =>
       arr
         .map(troop => {
-          const finalUnit = finalBySourceRef.get(troop.id);
-          return finalUnit ? battleUnitToTroop(troop, finalUnit) : null;
+          const info = finalBySourceRef.get(troop.id);
+          if (!info) return null;
+          const mapped = battleUnitToTroop(troop, info.unit);
+          if (!mapped) return null;
+          return applyLifecycleUpdates(mapped, {
+            loyaltyDelta,
+            elephantSteady: info.laneId !== 'reserve' && elephantLanes.has(info.laneId),
+            crushingVictory: outcome.tier === 'crushing' && isVictory,
+          });
         })
         .filter((t): t is TroopUnit => t !== null);
-    return { ...character, raisedLegions: updateArray(character.raisedLegions), veterans: updateArray(character.veterans) };
+    return {
+      ...character,
+      raisedLegions: updateArray(character.raisedLegions),
+      veterans: updateArray(character.veterans),
+      lastLoyaltyCommanderId: rome.commanderId,
+    };
   });
 
   // 2. Character fates.
@@ -469,10 +597,30 @@ export function applyBattleOutcome(
         return { ...p, activeCampaign: { ...p.activeCampaign, resolved: true, outcome: 'victory' as const } };
       });
     }
-    const isDefeat = outcome.victor !== romeSide && outcome.victor !== 'withdrawal';
     if (isDefeat) {
       flags = { ...flags, [`defeatedGeneral-${rome.commanderId}`]: true };
     }
+  }
+
+  // 4. Captured elephants (M8) — crushing victory over an elephant-fielding
+  // enemy, once per battle, independent of captainOutcomes.
+  if (outcome.tier === 'crushing' && isVictory && ctx.enemyFieldedElephants && Math.random() < BALANCE.battle.elephant.capturedElephantChance) {
+    const ownerTroops = [...(troopOwner?.raisedLegions ?? []), ...(troopOwner?.veterans ?? [])];
+    const fallbackProvinceId = ctx.provinceId ?? ownerTroops[0]?.musterProvinceId ?? provinces[0]?.id ?? 'latium';
+    const capturedElephant: TroopUnit = {
+      id: `captured-elephant-${ctx.turnNumber}-${Math.floor(Math.random() * 1e9)}`,
+      type: 'raised',
+      strength: 10,
+      campaignsSurvived: 0,
+      yearsInactive: 0,
+      bondToCommander: BALANCE.battle.elephant.capturedElephantStartingLoyalty,
+      musterProvinceId: fallbackProvinceId,
+      unitClass: 'elephant',
+      veterancy: 'raw',
+    };
+    family = family.map(c => (c.id === ctx.troopOwnerCharacterId ? { ...c, veterans: [...c.veterans, capturedElephant] } : c));
+    pendingEvents = [...pendingEvents, buildCapturedElephantNotice(playerId, ctx.turnNumber)];
+    ledgerNotes.push('The beasts of Carthage now eat from Roman hands.');
   }
 
   const commanderName = rome.commanderId ? (state.family.find(c => c.id === rome.commanderId)?.name ?? null) : null;

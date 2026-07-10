@@ -496,6 +496,50 @@ export const BALANCE = {
         heavyCavalryStrengthFraction: 0.2,
       },
     },
+
+    /** M8 — unit lifecycle (src/engine/battle/musterEngine.ts, gameStore.ts's
+     *  Donative action, turnSequencer.ts's season tick). `campaignsSurvived`
+     *  is TroopUnit's existing field, reused as "engagedBattles" (see M4's
+     *  baseline note in musterEngine.ts) — thresholds below read it
+     *  directly. `bondToCommander` is likewise reused as "loyalty". */
+    lifecycle: {
+      /** engagedBattles (campaignsSurvived) thresholds. legendary ALSO
+       *  requires TroopUnit.wonCrushingVictory (sticky, set at write-back)
+       *  — see musterEngine.ts's promotedVeterancy. Promotion never
+       *  downgrades an already-higher tier (e.g. a 'seasoned_veteran'-type
+       *  troop's M4-derived 'legendary' veterancy survives even at 0
+       *  engagedBattles). */
+      veterancyThresholds: { trained: 2, veteran: 5, legendary: 9 },
+      /** New levy starting loyalty — wired into gameStore.raiseLevy
+       *  (DEVIATION: was inline 50 pre-M8; updated to match this constant
+       *  since the plan specifies the number directly). Sandbox debug synth
+       *  troops (gameStore.startSandboxBattle) are untouched — debug-only
+       *  content, not the real levy path. */
+      newLevyLoyalty: 40,
+      /** Applied once per season, at battle write-back, or at the yearly
+       *  rollover respectively — see musterEngine.ts/turnSequencer.ts. */
+      loyaltyGainPerCampaignSeason: 5,
+      loyaltyGainPerVictoryShared: 10,
+      loyaltyLossPerDefeat: -15,
+      /** DEVIATION (documented in musterEngine.ts): applied at BATTLE
+       *  write-back (comparing Character.lastLoyaltyCommanderId against
+       *  that battle's commanderId), not as a season-tick check — "the
+       *  army's commander changed" is a battle-time fact in this codebase,
+       *  not something with its own season-to-season identity. */
+      loyaltyLossCommanderChange: -10,
+      /** Between wars (not on an active personally-commanded campaign):
+       *  decays toward this target by this amount, once per year
+       *  (Winter→Spring rollover only, matching every other yearly-cadence
+       *  system in this codebase). */
+      idleLoyaltyDecayPerYear: -2,
+      idleLoyaltyDecayTarget: 50,
+      /** Donative (gameStore.payDonative) — army-scope (a character's full
+       *  raisedLegions + veterans), once per year via the existing generic
+       *  `<key>-cooldown` numeric-flags decay pass. */
+      donativeDenariiPerCohort: 20,
+      donativeLoyaltyGain: 15,
+      donativeCooldownSeasons: 4,
+    },
   },
 
   // ─── M1 — War score & strategic layer (src/engine/warEngine.ts, M9) ────────

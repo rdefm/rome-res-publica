@@ -437,6 +437,8 @@ export interface GameActions {
   raiseLevy: (characterId: string, musterProvinceId: string) => void;
   musterVeterans: (characterId: string) => void;
   disbandTroops: (characterId: string, troopIds: string[]) => void;
+  /** Military Overhaul M8 — army-scope, once per year (see the action's own comment). */
+  payDonative: (characterId: string) => void;
   updateLocalSupportForPlayer: (provinceId: string, delta: number) => void;
   startCampaign: (provinceId: string, type: CampaignState['type']) => void;
   volunteerOfficer: (provinceId: string, characterId: string) => void;
@@ -2149,7 +2151,9 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       strength:          4,
       campaignsSurvived: 0,
       yearsInactive:     0,
-      bondToCommander:   50,
+      // Military Overhaul M8: was inline 50 pre-M8 — now the balance
+      // registry's constant, per the lifecycle spec's "new levies 40".
+      bondToCommander:   BALANCE.battle.lifecycle.newLevyLoyalty,
       musterProvinceId,
     };
 
@@ -2214,10 +2218,59 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set(s => ({
       family: s.family.map(c =>
         c.id === characterId
-          ? { ...c, raisedLegions: c.raisedLegions.filter(t => !troopIds.includes(t.id)) }
+          ? {
+              ...c,
+              raisedLegions: c.raisedLegions.filter(t => !troopIds.includes(t.id)),
+              // Military Overhaul M8: veterans (incl. captured elephants,
+              // which only ever land in this array) are now disbandable
+              // too — the "retain vs disband" tension the plan calls for
+              // has to apply to a unit's whole lifecycle, not just its
+              // first (raisedLegions) posting.
+              veterans: c.veterans.filter(t => !troopIds.includes(t.id)),
+            }
           : c
       ),
     }));
+  },
+
+  // ── Military Overhaul M8 — Donative ───────────────────────────────────────
+  // Army-scope (a character's FULL raisedLegions + veterans, regardless of
+  // which province each unit is stationed in): +15 loyalty to every unit,
+  // once per year via the existing generic `<key>-cooldown` numeric-flags
+  // decay pass (turnSequencer.ts's "Decrement all numeric cooldown flags"
+  // step — see musterEngine.ts's baseline note 4 for the precedent).
+  payDonative: (characterId) => {
+    const s = get();
+    const character = s.family.find(c => c.id === characterId);
+    if (!character) return;
+    const cooldownKey = `donative-cooldown-${characterId}`;
+    if (s.flags[cooldownKey]) return;
+
+    const troops = [...character.raisedLegions, ...character.veterans];
+    if (troops.length === 0) return;
+
+    const lc = BALANCE.battle.lifecycle;
+    const cost = lc.donativeDenariiPerCohort * troops.length;
+    if (s.denarii < cost) return;
+
+    const grant = (t: TroopUnit): TroopUnit => ({
+      ...t, bondToCommander: Math.min(100, t.bondToCommander + lc.donativeLoyaltyGain),
+    });
+    const updatedFamily = s.family.map(c =>
+      c.id === characterId
+        ? { ...c, raisedLegions: c.raisedLegions.map(grant), veterans: c.veterans.map(grant) }
+        : c
+    );
+
+    const label = turnLabel(s);
+    set({
+      denarii: s.denarii - cost,
+      family: updatedFamily,
+      flags: { ...s.flags, [cooldownKey]: lc.donativeCooldownSeasons },
+      log: [...s.log, mkLog(label, `${character.name} pays a donative to the army. (+${lc.donativeLoyaltyGain} loyalty, −${cost} Denarii)`, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: cost }),
+    });
   },
 
   // ── Military Overhaul M4 — battle bridge ──────────────────────────────────
@@ -2348,6 +2401,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const bridgeCtx: BattleBridgeContext = {
       troopOwnerCharacterId: attackerCharacter.id,
       legateRoster: {},
+      // Military Overhaul M8 — drives the post-battle captured-elephant
+      // roll; computed from the enemy's DEPLOYED army (survival by
+      // battle's end is irrelevant, see musterEngine.ts's comment).
+      enemyFieldedElephants: defenderArmy.some(u => u.unitClass === 'elephant'),
       turnNumber: s.turnNumber,
     };
 

@@ -118,6 +118,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Cursus',
   },
   {
+    id: 'donative',
+    term: 'Donative',
+    definition: "A cash payment to an army's own troops, once per year, that raises their loyalty. Costs Denarii per unit and applies to every unit a commander fields, wherever they're stationed.",
+    relatedTab: 'Provinciae',
+  },
+  {
     id: 'election',
     term: 'Elections',
     definition: 'Resolved in Winter at the end of the season. Vote totals reflect actions taken during the preceding seasons — canvassing, speeches, client sway, and faction relationships.',
@@ -170,6 +176,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: 'Lifetime Dignitas',
     definition: 'A permanent, never-spent prestige score that gates your Patron Tier. Unlike other resources it only rises — certain catastrophic events can reduce it, but normal resource spending cannot.',
     relatedTab: 'Forum',
+  },
+  {
+    id: 'loyalty',
+    term: 'Loyalty',
+    definition: "A unit's bond to its commander (0–100). It rises on campaign and after shared victories, falls after defeats or a change of command, and can be topped up with a Donative — low loyalty risks desertion.",
+    relatedTab: 'Provinciae',
   },
   {
     id: 'martial',
@@ -285,9 +297,21 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Cursus',
   },
   {
+    id: 'veterancy',
+    term: 'Veterancy',
+    definition: 'A unit\'s battle experience tier — raw, trained, veteran, or legendary — earned by surviving set-piece battles (legendary also requires a crushing victory). Higher tiers fight harder and hold morale better.',
+    relatedTab: 'Provinciae',
+  },
+  {
     id: 'vigintivirate',
     term: 'Vigintivirate',
     definition: 'The entry-level magistracy, open at age 18. Completing the Board of Twenty is the first formal step in political life, though its direct resource bonus is limited.',
     relatedTab: 'Cursus',
+  },
+  {
+    id: 'war-score',
+    term: 'War Score',
+    definition: 'A running −100…+100 measure of how a war is going. Crossing key thresholds unlocks suing for peace, forced negotiation, or dictating terms — no single battle can swing it by more than a capped amount.',
+    relatedTab: 'Provinciae',
   },
 ];
