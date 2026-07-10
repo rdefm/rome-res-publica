@@ -682,14 +682,57 @@ export const BALANCE = {
        *  'major' war's ending must clear to classify as Victory/Humbled
        *  outright, per classifyTerminalOutcome. Anything ratified in
        *  between reads as Exhaustion — a negotiated peace that isn't a
-       *  blowout either way. (No separate weariness-gated exhaustion
-       *  threshold yet — nothing can force a conclusion on weariness alone
-       *  until P3-B's sue-for-peace lever exists; this classifies whatever
-       *  the EXISTING treaty system already produced.) */
+       *  blowout either way. */
       thresholds: {
         victory: { hard: 92, easy: 55 },
         humbled: { hard: -92, easy: -55 },
       },
+      /** P3-B — ripeness-interpolated `weariness` bound at/above which
+       *  `warEngine.peaceReachable` flips a 'major' war's `peaceOffered`
+       *  true (surfaces bill-sue-for-peace). Deliberately far below the
+       *  hard/easy pairs above at ripeness 0 — the whole point of this
+       *  lever is to let the player END an overlong, non-decisive war
+       *  before it would ever clear a decisive victory/humbled bound. */
+      exhaustionWeariness: { hard: 45, easy: 20 },
+      /** P3-B — flat (not ripeness-scaled) `weariness` bar for the
+       *  flags['war-weariness-high'] flag, gating the "murmur" flavour
+       *  event — a softer, earlier signal than peaceOffered itself, so it
+       *  can foreshadow before the real lever appears. First-pass/unverified. */
+      weariedFlagThreshold: 15,
+    },
+
+    /** P3-B — the war-funding bill (see warEngine.ts's queueWarFundingBill).
+     *  FIRST-PASS/UNVERIFIED, same treatment as every other M9/M10/P3-A
+     *  constant in this group. */
+    funding: {
+      /** Seasons between auto-tabled war-funding bills for the same war
+       *  (any outcome — pass, fail, or expiry) — keeps it from reappearing
+       *  every single season. */
+      recurTurns: 4,
+      treasuryCost: 15,
+      crisisWarEaseOnPass: 6,
+      crisisWarSpikeOnFail: 8,
+      /** Applied directly to WarState.warScore on pass only (detected via
+       *  the reconstructable bill id, same pattern as the M10 treaty bill —
+       *  not expressible through the generic passEffect string, since
+       *  warScore lives inside a specific WarState, not top-level GameState). */
+      warScoreBonusOnPass: 6,
+      /** calcRomeStatVoteModifier-style ±clamp on the support bias term
+       *  (Optimates favour funding the legions; Populares wary of the cost). */
+      supportBiasClamp: 10,
+    },
+
+    /** P3-B — the sue-for-peace bill (see warEngine.ts's queueSueForPeaceBill).
+     *  FIRST-PASS/UNVERIFIED. Passing forces a negotiated end — see
+     *  classifyTerminalOutcome; the crisis/dignitas numbers here are the
+     *  bill's ordinary pass/fail flavour, not the war-ending logic itself. */
+    sueForPeace: {
+      crisisWarEaseOnPass: 10,
+      crisisWarSpikeOnFail: 5,
+      failSponsorDignitasPenalty: -3,
+      /** Opposite bias from funding's supportBiasClamp — Populares favour
+       *  ending the war, Optimates penalise the motion. */
+      supportBiasClamp: 10,
     },
   },
 };

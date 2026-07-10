@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import { EVENT_DEFS } from '../../data/events';
+import { WAR_EVENT_DEFS } from '../../data/warEvents';
 import { BALANCE } from '../../data/balance';
 import { computeAllStagePace, type ActionEconomyStage, type StagePaceSummary } from '../../engine/actionEconomyEngine';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
@@ -175,7 +176,7 @@ function CharacterSection() {
 function EventsSection() {
   const [search, setSearch] = useState('');
 
-  const filtered = EVENT_DEFS.filter(e =>
+  const filtered = [...EVENT_DEFS, ...WAR_EVENT_DEFS].filter(e =>
     e.title.toLowerCase().includes(search.toLowerCase()) ||
     e.id.toLowerCase().includes(search.toLowerCase())
   );

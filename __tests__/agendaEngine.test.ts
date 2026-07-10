@@ -279,6 +279,41 @@ describe('generateAgenda', () => {
     expect(getCriticalItems(notYet).some(i => i.id === 'agenda-critical-war-peace-war-carthage-1')).toBe(false);
   });
 
+  // ─── Phase 3, Chunk P3-B — #20 war status / #21 sue-for-peace opportunity ──
+
+  test('#20 fires a status line for an active major war, warning once the War track is tier >= 2', () => {
+    const calm = makeState({ wars: [makeWar({ phase: 'escalation' })] } as any);
+    const hot = makeState({
+      wars: [makeWar({ phase: 'grinding' })],
+      crisis: { ...calm.crisis, war: { id: 'war', level: 45, tier: 2, namedCrisis: 'Active Conflict' } },
+    } as any);
+    const calmItem = generateAgenda(calm).find(i => i.id === 'agenda-war-status-war-carthage-1');
+    const hotItem = generateAgenda(hot).find(i => i.id === 'agenda-war-status-war-carthage-1');
+    expect(calmItem?.severity).toBe('info');
+    expect(hotItem?.severity).toBe('warning');
+  });
+
+  test('#20 does not fire for an inactive war or a local-scale revolt', () => {
+    const state = makeState({
+      wars: [makeWar({ active: false }), makeWar({ id: 'w2', scale: 'local' })],
+    } as any);
+    expect(generateAgenda(state).some(i => i.id.startsWith('agenda-war-status-'))).toBe(false);
+  });
+
+  test('#21 fires only when peaceOffered is true, distinct from #18\'s warScore-tier condition', () => {
+    // Low warScore (below #18's sue threshold) but peaceOffered true — #21
+    // fires, #18 does not. Demonstrates the two are independently gated.
+    const state = makeState({ wars: [makeWar({ warScore: 5, peaceOffered: true })] } as any);
+    const items = getCriticalItems(state);
+    expect(items.some(i => i.id === 'agenda-critical-sue-for-peace-war-carthage-1')).toBe(true);
+    expect(items.some(i => i.id === 'agenda-critical-war-peace-war-carthage-1')).toBe(false);
+  });
+
+  test('#21 does not fire when peaceOffered is false, even at a decisive warScore', () => {
+    const state = makeState({ wars: [makeWar({ warScore: 95, peaceOffered: false })] } as any);
+    expect(getCriticalItems(state).some(i => i.id === 'agenda-critical-sue-for-peace-war-carthage-1')).toBe(false);
+  });
+
   test('a state with no wars field at all does not crash generateAgenda (pre-M9 saves)', () => {
     const state = makeState();
     expect(() => generateAgenda(state)).not.toThrow();

@@ -321,9 +321,33 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Cursus',
   },
   {
+    id: 'war-funding',
+    term: 'War Funding',
+    definition: 'A recurring Senate bill while a major war is active — passing it costs the treasury but eases War pressure and strengthens the campaign; letting it fail lets War pressure climb.',
+    relatedTab: 'Curia',
+  },
+  {
     id: 'war-score',
     term: 'War Score',
     definition: 'A running −100…+100 measure of how a war is going. Crossing key thresholds unlocks suing for peace, forced negotiation, or dictating terms — no single battle can swing it by more than a capped amount.',
     relatedTab: 'Provinciae',
+  },
+  {
+    id: 'war-weariness',
+    term: 'War Weariness',
+    definition: 'Accrues every season a war stays active, independent of who is winning. Once it climbs far enough — sooner as the war drags closer to its historical end — sitting on a stalemate becomes resolvable on its own via the Sue for Peace lever, whatever War Score currently reads.',
+    relatedTab: 'Provinciae',
+  },
+  {
+    id: 'sue-for-peace',
+    term: 'Sue for Peace',
+    definition: 'A Senate motion, available once a war\'s weariness clears a threshold, to end it now on a negotiated peace rather than ride War Score to a decisive edge. Populares tend to favour it; Optimates tend to resist.',
+    relatedTab: 'Curia',
+  },
+  {
+    id: 'peace-of-exhaustion',
+    term: 'Peace of Exhaustion',
+    definition: 'How history remembers a war that ended in a negotiated peace rather than a decisive Roman victory or defeat — the two sides simply stopped, worn down rather than beaten.',
+    relatedTab: 'Curia',
   },
 ];

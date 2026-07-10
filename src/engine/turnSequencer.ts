@@ -48,6 +48,7 @@ import { tickSenateResponse } from './senateResponseEngine';
 import { calcAntagonismLevel, tickNpcConsul } from './npcConsulEngine';
 import { TRIAL_ACTIONS } from '../data/trialActions';
 import { EVENT_DEFS } from '../data/events';
+import { WAR_EVENT_DEFS } from '../data/warEvents';
 import { OFFICES } from '../data/offices';
 import { AUTO_BILL_TEMPLATES, BILL_TEMPLATES, HISTORICAL_BILL_TEMPLATES } from '../data/billTemplates';
 import { getProvinceDefinition } from '../data/provinceDefinitions';
@@ -990,9 +991,18 @@ export function processSeason(state: GameState): {
         s = { ...s, tutorialQueue: tutorialQueue.slice(1) };
       }
       // gate.wait (both false): leave queue intact, no event this season
+    } else if (!(s.wars ?? []).some(w => w.enemyId === 'carthage')) {
+      // Phase 3, Chunk P3-B — Mamertine ignition: guaranteed once eligible
+      // (tutorial queue empty, per the branch above; no Carthage war yet),
+      // not weighted into the random pool — the plan wants this "fires in
+      // the first or second year", which a competing-on-weight pick can't
+      // promise. The guard is permanent — once any 'carthage' WarState
+      // exists (any branch of evt-war-mamertines creates one via the
+      // startWar: effect token), this never fires again.
+      chosenDef = getEventDef('evt-war-mamertines') as typeof chosenDef;
     } else {
       // Normal random event — tutorial queue exhausted or standard start
-      chosenDef = pickRandomEvent(EVENT_DEFS, s);
+      chosenDef = pickRandomEvent([...EVENT_DEFS, ...WAR_EVENT_DEFS], s);
     }
 
     if (chosenDef) {

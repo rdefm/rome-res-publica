@@ -162,4 +162,14 @@ export interface WarState {
   endedYear: number | null;
   /** P3-A — set once, at the season this war concludes. See WarTerminalOutcome. */
   terminalOutcome: WarTerminalOutcome;
+  /** P3-B — true once weariness clears the ripeness-scaled bar computed by
+   *  warEngine.peaceReachable, for a 'major' war only. Surfaces the
+   *  bill-sue-for-peace lever (see warEngine.ts's queueSueForPeaceBill) and
+   *  gates agenda #21. Always false for 'local'-scale wars. */
+  peaceOffered: boolean;
+  /** P3-B — GameState.turnNumber the war-funding bill was last auto-tabled
+   *  for this war (any outcome). −Infinity until the first offer, mirroring
+   *  lastSetPieceTurn's "immediately eligible" convention. Gates re-offering
+   *  via BALANCE.war.funding.recurTurns. */
+  lastFundingOfferTurn: number;
 }

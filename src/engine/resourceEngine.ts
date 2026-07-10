@@ -2,6 +2,7 @@ import type { GameState } from '../state/gameStore';
 import type { Client, ClientType } from '../models/client';
 import type { EventInstance } from '../models/event';
 import type { CrisisTrackId } from '../models/crisis';
+import type { WarState, WarScale } from '../models/war';
 import { parseEffect } from '../models/bill';
 import { generateClientName } from '../data/clientNames';
 import { computeTotalAssetBonuses } from './assetEngine';
@@ -340,6 +341,71 @@ export function applyEffectString(
             ),
           })) as any;
         }
+        continue;
+      }
+
+      // Phase 3, P3-B — startWar:enemyId:scale:openingWarScoreDelta
+      // Scripted ignition events (evt-war-mamertines) trigger war state
+      // through this token rather than a direct store-action call — keeps
+      // event content routed through the same generic effect-string
+      // vocabulary every other event uses, matching this file's existing
+      // colon-token pattern (setFlag/addClient/blackmail/leaderRel above).
+      // Mirrors gameStore.startWar's WarState construction — deliberately
+      // NOT imported from there (this file has no store access, and
+      // gameStore.ts already imports FROM warEngine.ts, which itself
+      // imports FROM this file; importing gameStore.ts here would be
+      // circular). Kept in sync by hand — small, stable shape, same
+      // tradeoff warEngine.ts's buildWarTriumphBill already accepts for an
+      // identical reason (see that function's header comment).
+      if (key === 'startWar') {
+        const enemyId = parts[1];
+        const scale = (parts[2] ?? 'major') as WarScale;
+        const openingDelta = parseInt(parts[3] ?? '0', 10);
+        const wars = patch.wars ?? state.wars ?? [];
+        const alreadyActive = wars.some((w: WarState) => w.active && w.enemyId === enemyId && w.scale === scale);
+        if (!alreadyActive) {
+          const newWar: WarState = {
+            id: `war-${enemyId}-${state.turnNumber}`,
+            active: true,
+            enemyId,
+            scale,
+            provinceId: null,
+            warScore: Math.min(100, Math.max(-100, openingDelta)),
+            startedTurn: state.turnNumber,
+            lastSetPieceTurn: state.turnNumber - BALANCE.war.setPieceOffer.minSpacingTurns,
+            weariness: 0,
+            pendingSetPiece: null,
+            treaty: null,
+            // Ignition always fires within the first few years (see
+            // evt-war-mamertines' condition gate) — always 'opening' under
+            // phaseForYear's own logic for so little elapsed time, so this
+            // avoids importing warEngine.ts here just to recompute it.
+            phase: 'opening',
+            ignitedYear: state.year,
+            endedYear: null,
+            terminalOutcome: null,
+            peaceOffered: false,
+            lastFundingOfferTurn: state.turnNumber - BALANCE.war.funding.recurTurns,
+          };
+          patch.wars = [...wars, newWar];
+        }
+        continue;
+      }
+
+      // Phase 3, P3-B — warScoreDelta:enemyId:±N. Periodic war events
+      // (warEvents.ts) move a specific active war's score through this
+      // token, same reasoning as startWar: above — warScore lives inside a
+      // WarState, not a top-level GameState key, so the generic
+      // key±N parser can't reach it.
+      if (key === 'warScoreDelta') {
+        const enemyId = parts[1];
+        const delta = parseInt(parts[2] ?? '0', 10);
+        const wars = patch.wars ?? state.wars ?? [];
+        patch.wars = wars.map((w: WarState) =>
+          w.active && w.enemyId === enemyId
+            ? { ...w, warScore: Math.min(100, Math.max(-100, w.warScore + delta)) }
+            : w
+        );
         continue;
       }
 

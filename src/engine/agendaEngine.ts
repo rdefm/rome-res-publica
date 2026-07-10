@@ -631,10 +631,68 @@ function genWarPeaceThreshold(state: GameState): AgendaItem[] {
   return items;
 }
 
+// ─── Generator 20 — War status (Phase 3, Chunk P3-B) ────────────────────────
+// One line on how the war is going, keyed off WarState.phase (cosmetic —
+// see that type's doc comment) and warScore's sign. `warning` once the War
+// crisis track is tier ≥ 2, `info` otherwise — mirrors CRISIS_TIER_LABELS'
+// own tier-2 cutoff for "the war is now a real strain" framing.
+
+const WAR_PHASE_COPY: Record<string, string> = {
+  not_started: 'The war has not yet begun.',
+  opening: 'The war is young — too early to call.',
+  escalation: 'The war presses on, one side or the other gaining ground.',
+  grinding: 'The war has settled into a grinding stalemate.',
+  ripe: 'The war has run long enough that its end feels close, one way or another.',
+  ended: 'The war is over.',
+};
+
+function genWarStatus(state: GameState): AgendaItem[] {
+  const items: AgendaItem[] = [];
+  for (const war of (state.wars ?? [])) {
+    if (!war.active || war.scale !== 'major') continue;
+    const warTier = state.crisis.war.tier;
+    const leaning = war.warScore > 10 ? ' Rome has the better of it.' : war.warScore < -10 ? ' Rome is losing ground.' : '';
+    items.push({
+      id: `agenda-war-status-${war.id}`,
+      category: 'military' as const,
+      severity: warTier >= 2 ? 'warning' : 'info',
+      title: `The war with ${capitalize(war.enemyId)}`,
+      detail: (WAR_PHASE_COPY[war.phase] ?? WAR_PHASE_COPY.escalation) + leaning,
+      target: { tab: 'Curia' as const },
+      sortWeight: 40,
+    });
+  }
+  return items;
+}
+
+// ─── Generator 21 — Sue-for-peace opportunity (Phase 3, Chunk P3-B) ────────
+// Distinct from Generator 18 (genWarPeaceThreshold, Military Overhaul M9):
+// #18 fires off the warScore-based desperation tier (the M9/M10 negotiation
+// surface); #21 fires off the ripeness/weariness-gated abstract lever this
+// chunk adds (WarState.peaceOffered — see warEngine.peaceReachable), which
+// can be true independent of warScore's sign. Both can be true at once.
+
+function genSueForPeaceOpportunity(state: GameState): AgendaItem[] {
+  const items: AgendaItem[] = [];
+  for (const war of (state.wars ?? [])) {
+    if (!war.active || war.scale !== 'major' || !war.peaceOffered) continue;
+    items.push({
+      id: `agenda-critical-sue-for-peace-${war.id}`,
+      category: 'military' as const,
+      severity: 'critical',
+      title: `Sue for peace with ${capitalize(war.enemyId)}?`,
+      detail: `The war has worn on long enough that a motion to seek terms now — whatever they may be — can pass the Senate.`,
+      target: { tab: 'Curia' as const },
+      sortWeight: 0,
+    });
+  }
+  return items;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Runs all 19 generators against the current state and returns a sorted list
+ * Runs all 21 generators against the current state and returns a sorted list
  * of agenda items. Sort order: severity (critical first) → sortWeight →
  * category (alpha tiebreak for stable ordering).
  *
@@ -662,6 +720,8 @@ export function generateAgenda(state: GameState): AgendaItem[] {
     ...genMunificenceGamesOpportunity(state),
     ...genPendingSetPiece(state),
     ...genWarPeaceThreshold(state),
+    ...genWarStatus(state),
+    ...genSueForPeaceOpportunity(state),
   ];
 
   return items.sort((a, b) => {

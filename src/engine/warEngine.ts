@@ -199,6 +199,47 @@ export function classifyTerminalOutcome(
   return 'exhaustion';
 }
 
+/** Phase 3, Chunk P3-B — true once `weariness` clears the ripeness-scaled
+ *  `BALANCE.war.ripeness.exhaustionWeariness` bound. Drives WarState.
+ *  peaceOffered (major wars only), which gates the bill-sue-for-peace lever
+ *  and agenda #21 — a war deep into a stalemate becomes resolvable by the
+ *  player even when warScore itself is nowhere near a decisive bound. */
+export function peaceReachable(weariness: number, ripeness: number): boolean {
+  const t = BALANCE.war.ripeness.exhaustionWeariness;
+  return weariness >= interpolateThreshold(t.hard, t.easy, ripeness);
+}
+
+/** Phase 3, Chunk P3-B — the outcome-specific terminal notice for a
+ *  'major' war's conclusion (Philon-framed, back-in-Rome register per
+ *  invariant 7 — never the battle dispatch voice). Fired instead of the
+ *  M10 treaty/dictate blocks' generic "Peace With Honour"/"Terms Dictated"
+ *  notice, which stays as-is for 'local'-scale wars (no terminalOutcome,
+ *  no epilogue hook). Single "Continue" choice, dead-ends at the current
+ *  screen — TODO(P3-E): route to the epilogue screen once it exists. */
+function buildTerminalOutcomeNotice(
+  outcome: NonNullable<WarTerminalOutcome>,
+  enemyId: string,
+  playerId: string,
+  turnNumber: number,
+): EventInstance {
+  const enemy = capitalizeEnemyId(enemyId);
+  const copy: Record<NonNullable<WarTerminalOutcome>, { title: string; bodyText: string }> = {
+    victory: {
+      title: 'Victory',
+      bodyText: `The war with ${enemy} is over. Rome has won it.`,
+    },
+    exhaustion: {
+      title: 'Peace of Exhaustion',
+      bodyText: `The war with ${enemy} is over — not a triumph, but an end. Both sides had bled enough to want it.`,
+    },
+    humbled: {
+      title: 'Rome Humbled',
+      bodyText: `The war with ${enemy} is over. Rome did not win it.`,
+    },
+  };
+  return injectNoticeEvent(`evt-war-outcome-${outcome}`, turnNumber, playerId, copy[outcome]);
+}
+
 // ─── Skirmish drift ──────────────────────────────────────────────────────────
 
 function rollSkirmishDrift(playerArmyStrength: number, playerMartial: number, rng: () => number): number {
@@ -508,6 +549,54 @@ function buildWarTriumphBill(character: GameState['family'][0], state: GameState
   };
 }
 
+// ─── Phase 3, Chunk P3-B — war-funding & sue-for-peace bills ───────────────
+// Dynamically constructed and auto-queued from inside processWarSeason,
+// exactly like buildWarTriumphBill above — the plan's own instruction is to
+// reuse that ONE existing injected-bill route, not invent a second. Both
+// bills' REAL war-state consequences (a warScore bump; ending the war) are
+// not expressible through the generic passEffect string (which only knows
+// top-level GameState keys) — so, like the M10 treaty bill, they're
+// detected by reconstructable id against state.bills/passedBills the
+// following season(s) inside processWarSeason (see that function's §8/§9).
+
+function calcWarBillSupportBias(state: GameState, favoursOptimates: boolean, clamp: number): number {
+  const lean = state.optimatesRel - state.popularesRel; // > 0 = Rome currently Optimates-leaning
+  const raw = Math.round((favoursOptimates ? lean : -lean) / 10);
+  return Math.max(-clamp, Math.min(clamp, raw));
+}
+
+export function buildWarFundingBill(war: WarState, state: GameState): Bill {
+  const f = BALANCE.war.funding;
+  return {
+    id: `war-funding-${war.id}-${state.turnNumber}`,
+    name: `War Funding: ${capitalizeEnemyId(war.enemyId)}`,
+    desc: `Legions in the field need silver and grain. The Senate must vote the funds, or watch the war effort falter.`,
+    type: 'military',
+    support: calcWarBillSupportBias(state, true, f.supportBiasClamp),
+    turnsLeft: 3,
+    passEffect: `treasury-${f.treasuryCost}|crisis-war-${f.crisisWarEaseOnPass}`,
+    failEffect: `crisis-war+${f.crisisWarSpikeOnFail}`,
+    repealable: false,
+    playerSubmitted: false,
+  };
+}
+
+export function buildSueForPeaceBill(war: WarState, state: GameState): Bill {
+  const sp = BALANCE.war.sueForPeace;
+  return {
+    id: `sue-for-peace-${war.id}-${state.turnNumber}`,
+    name: `Sue for Peace: ${capitalizeEnemyId(war.enemyId)}`,
+    desc: `The war has ground on long enough. A motion to seek terms with ${capitalizeEnemyId(war.enemyId)}, whatever they may be.`,
+    type: 'military',
+    support: calcWarBillSupportBias(state, false, sp.supportBiasClamp),
+    turnsLeft: 3,
+    passEffect: `crisis-war-${sp.crisisWarEaseOnPass}`,
+    failEffect: `crisis-war+${sp.crisisWarSpikeOnFail}|lifetimeDignitas${sp.failSponsorDignitasPenalty}`,
+    repealable: false,
+    playerSubmitted: false,
+  };
+}
+
 // ─── processWarSeason — the turnSequencer hook ──────────────────────────────
 
 export interface WarSeasonResult {
@@ -573,6 +662,13 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
     // 2b. Phase 3, Chunk P3-A — cosmetic phase recompute. No mechanic reads
     // this beyond a future chunk's agenda copy (see WarPhase's doc comment).
     next.phase = phaseForYear(state.year, next.warScore);
+
+    // 2c. Phase 3, Chunk P3-B — peaceOffered recompute (major wars only).
+    // Independent of the desperation-tier/treaty machinery above — this is
+    // the ripeness/weariness-gated abstract lever, not the warScore-gated one.
+    if (next.scale === 'major' && !next.terminalOutcome) {
+      next.peaceOffered = peaceReachable(next.weariness, computeRipeness(state.year));
+    }
 
     // 3. Threshold-crossing notice (also where desperation's tier changes
     // become visible to the player, per getDesperationTier above). When
@@ -651,11 +747,16 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
           const outcome = classifyTerminalOutcome(next.warScore, computeRipeness(state.year), false);
           next = { ...next, terminalOutcome: outcome, endedYear: state.year };
           statePatch = { ...statePatch, pendingEpilogue: outcome };
+          // P3-B — the outcome-specific notice replaces the generic one
+          // below for major wars; local-scale revolts keep the generic one
+          // (no terminalOutcome, no epilogue hook to point at).
+          noticeEvents.push(buildTerminalOutcomeNotice(outcome, next.enemyId, playerId, state.turnNumber));
+        } else {
+          noticeEvents.push(injectNoticeEvent(`evt-war-treaty-ratified-${next.id}`, state.turnNumber, playerId, {
+            title: 'Peace With Honour',
+            bodyText: `The Senate has ratified peace with ${capitalizeEnemyId(next.enemyId)}. The war is over.`,
+          }));
         }
-        noticeEvents.push(injectNoticeEvent(`evt-war-treaty-ratified-${next.id}`, state.turnNumber, playerId, {
-          title: 'Peace With Honour',
-          bodyText: `The Senate has ratified peace with ${capitalizeEnemyId(next.enemyId)}. The war is over.`,
-        }));
         events.push(`Peace ratified with ${capitalizeEnemyId(next.enemyId)}.`);
 
         if (winner === 'rome' && player) {
@@ -718,12 +819,84 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
       if (next.scale === 'major') {
         next = { ...next, terminalOutcome: 'humbled', endedYear: state.year };
         statePatch = { ...statePatch, pendingEpilogue: 'humbled' as const };
+        // P3-B — outcome-specific notice replaces the generic one below,
+        // same reasoning as the ratified-treaty block above.
+        noticeEvents.push(buildTerminalOutcomeNotice('humbled', next.enemyId, playerId, state.turnNumber));
+      } else {
+        noticeEvents.push(injectNoticeEvent(`evt-war-dictated-terms-${next.id}`, state.turnNumber, playerId, {
+          title: 'Terms Dictated',
+          bodyText: `Rome could resist no longer. ${capitalizeEnemyId(next.enemyId)} has dictated terms — the war is over.`,
+        }));
       }
-      noticeEvents.push(injectNoticeEvent(`evt-war-dictated-terms-${next.id}`, state.turnNumber, playerId, {
-        title: 'Terms Dictated',
-        bodyText: `Rome could resist no longer. ${capitalizeEnemyId(next.enemyId)} has dictated terms — the war is over.`,
-      }));
       events.push(`Rome is forced to accept dictated terms from ${capitalizeEnemyId(next.enemyId)}.`);
+    }
+
+    // 8. Phase 3, Chunk P3-B — war-funding bill: resolve, then queue.
+    // Gated off (major, still active, no M10 treaty currently in flight —
+    // avoid piling a second negotiation-flavoured bill onto an active one).
+    if (next.scale === 'major' && !next.terminalOutcome && !next.treaty) {
+      const f = BALANCE.war.funding;
+      const idPrefix = `war-funding-${next.id}-`;
+
+      // Resolve: apply the warScore bonus exactly once per passed bill, via
+      // a one-shot flag — mirrors this file's existing `triumph-granted-
+      // <id>` convention. Treasury/crisis-war are already applied by the
+      // generic bill pipeline's passEffect; only the warScore bonus needs
+      // this special detection (not expressible in a flat effect string).
+      const passedFunding = (state.passedBills ?? []).find(b =>
+        b.id.startsWith(idPrefix) && !state.flags[`war-funding-applied-${b.id}`]
+      );
+      if (passedFunding) {
+        next.warScore = clampScore(next.warScore + f.warScoreBonusOnPass);
+        statePatch = {
+          ...statePatch,
+          flags: { ...(statePatch.flags ?? state.flags), [`war-funding-applied-${passedFunding.id}`]: true },
+        };
+        events.push(`War funding for ${capitalizeEnemyId(next.enemyId)} passes — the legions are provisioned.`);
+      }
+
+      // Queue: only when none currently pending and the recurrence cooldown
+      // (BALANCE.war.funding.recurTurns) has elapsed since the last offer.
+      const currentBills = statePatch.bills ?? state.bills;
+      const hasPending = currentBills.some(b => b.id.startsWith(idPrefix));
+      if (!hasPending && state.turnNumber - next.lastFundingOfferTurn >= f.recurTurns) {
+        const bill = buildWarFundingBill(next, state);
+        statePatch = { ...statePatch, bills: [...currentBills, bill] };
+        next = { ...next, lastFundingOfferTurn: state.turnNumber };
+        events.push(`War funding for ${capitalizeEnemyId(next.enemyId)} tabled in the Senate.`);
+      }
+    }
+
+    // 9. Phase 3, Chunk P3-B — sue-for-peace bill: resolve, then queue.
+    // Passing forces a negotiated end NOW — classified fresh via
+    // classifyTerminalOutcome (not hardcoded to 'exhaustion'), so a
+    // warScore that has since swung decisive since the bill was tabled
+    // reads as Victory/Humbled instead, never wrongly overriding a real
+    // win/loss (the plan's "moot if a decisive cutoff already crossed").
+    if (next.scale === 'major' && !next.terminalOutcome && !next.treaty) {
+      const idPrefix = `sue-for-peace-${next.id}-`;
+      const passed = (state.passedBills ?? []).some(b => b.id.startsWith(idPrefix));
+      const currentBills = statePatch.bills ?? state.bills;
+      const stillPending = currentBills.some(b => b.id.startsWith(idPrefix));
+
+      if (passed) {
+        const outcome = classifyTerminalOutcome(next.warScore, computeRipeness(state.year), false);
+        next = {
+          ...next,
+          active: false,
+          pendingSetPiece: null,
+          terminalOutcome: outcome,
+          endedYear: state.year,
+          peaceOffered: false,
+        };
+        statePatch = { ...statePatch, pendingEpilogue: outcome };
+        noticeEvents.push(buildTerminalOutcomeNotice(outcome, next.enemyId, playerId, state.turnNumber));
+        events.push(`Rome sues for peace with ${capitalizeEnemyId(next.enemyId)}.`);
+      } else if (!stillPending && next.peaceOffered) {
+        const bill = buildSueForPeaceBill(next, state);
+        statePatch = { ...statePatch, bills: [...currentBills, bill] };
+        events.push(`A motion to sue for peace with ${capitalizeEnemyId(next.enemyId)} is tabled.`);
+      }
     }
 
     const seasonDelta = next.warScore - beforeScore;
@@ -731,6 +904,24 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
 
     return next;
   });
+
+  // Phase 3, Chunk P3-B — flag mirrors of the primary active major war, for
+  // evalCondition's existing `flag` EventCondition type (periodic war events
+  // gate on these rather than a new EventCondition variant — see
+  // warEvents.ts). "Primary" = first active major war found; this codebase
+  // only ever creates one at a time (see models/war.ts's header comment).
+  {
+    const majorWar = wars.find(w => w.active && w.scale === 'major');
+    statePatch = {
+      ...statePatch,
+      flags: {
+        ...(statePatch.flags ?? state.flags),
+        'war-active-major': !!majorWar,
+        'war-peace-offered': !!majorWar?.peaceOffered,
+        'war-weariness-high': !!majorWar && majorWar.weariness >= BALANCE.war.ripeness.weariedFlagThreshold,
+      },
+    };
+  }
 
   return { wars, events, noticeEvents, lifetimeDignitasDelta, statePatch };
 }

@@ -3,8 +3,11 @@ import {
   computeTreatyBudget, computePackagePrice, calcFactionReactionModifier,
   composeAiOffer, composeAiTreaty, applyTreatyEffects, buildTreatyBill, losingSide,
   computeRipeness, terminalThresholds, phaseForYear, classifyTerminalOutcome,
+  peaceReachable, buildWarFundingBill, buildSueForPeaceBill,
 } from '../src/engine/warEngine';
+import { applyEffectString } from '../src/engine/resourceEngine';
 import { processSeason } from '../src/engine/turnSequencer';
+import { WAR_EVENT_DEFS } from '../src/data/warEvents';
 import { BALANCE } from '../src/data/balance';
 import { WAR_SITES } from '../src/data/warSites';
 import { ENEMY_GENERAL_LIST } from '../src/data/enemyGenerals';
@@ -58,6 +61,8 @@ function makeWar(overrides: Partial<WarState> = {}): WarState {
     pendingSetPiece: null, treaty: null,
     // P3-A
     phase: 'opening', ignitedYear: -264, endedYear: null, terminalOutcome: null,
+    // P3-B
+    peaceOffered: false, lastFundingOfferTurn: -100,
     ...overrides,
   };
 }
@@ -810,5 +815,218 @@ describe('processSeason — calendar direction', () => {
     const state = makeState({ year: -264, seasonIndex: 0, turnNumber: 1 }); // Spring -> Summer
     const { nextState } = processSeason(state as any);
     expect(nextState.year).toBe(-264);
+  });
+});
+
+// ─── Phase 3, Chunk P3-B ──────────────────────────────────────────────────────
+
+describe('applyEffectString — startWar: token', () => {
+  test('creates a new active WarState with the given opening warScore', () => {
+    const state = makeState({ wars: [] });
+    const patch = applyEffectString('startWar:carthage:major:8', state);
+    expect(patch.wars).toHaveLength(1);
+    const war = patch.wars![0];
+    expect(war.active).toBe(true);
+    expect(war.enemyId).toBe('carthage');
+    expect(war.scale).toBe('major');
+    expect(war.warScore).toBe(8);
+    expect(war.phase).toBe('opening');
+    expect(war.terminalOutcome).toBeNull();
+    expect(war.peaceOffered).toBe(false);
+  });
+
+  test('is idempotent — does not create a second war if one is already active for the same enemy/scale', () => {
+    const state = makeState({ wars: [makeWar({ enemyId: 'carthage', scale: 'major' })] });
+    const patch = applyEffectString('startWar:carthage:major:8', state);
+    expect(patch.wars).toBeUndefined();
+  });
+
+  test('defaults opening warScore to 0 when omitted', () => {
+    const state = makeState({ wars: [] });
+    const patch = applyEffectString('startWar:carthage:major', state);
+    expect(patch.wars![0].warScore).toBe(0);
+  });
+});
+
+describe('applyEffectString — warScoreDelta: token', () => {
+  test('bumps the matching active war\'s score, clamped to -100..100', () => {
+    const state = makeState({ wars: [makeWar({ warScore: 95 })] });
+    const patch = applyEffectString('warScoreDelta:carthage:10', state);
+    expect(patch.wars![0].warScore).toBe(100);
+  });
+
+  test('leaves an inactive or differently-enemied war untouched', () => {
+    const state = makeState({
+      wars: [makeWar({ id: 'w1', active: false, warScore: 0 }), makeWar({ id: 'w2', enemyId: 'a-revolt', warScore: 0 })],
+    });
+    const patch = applyEffectString('warScoreDelta:carthage:10', state);
+    expect(patch.wars!.every(w => w.warScore === 0)).toBe(true);
+  });
+});
+
+describe('peaceReachable', () => {
+  test('false below the ripeness-scaled bound, true at/above it', () => {
+    const t = BALANCE.war.ripeness.exhaustionWeariness;
+    expect(peaceReachable(t.hard - 1, 0)).toBe(false);
+    expect(peaceReachable(t.hard, 0)).toBe(true);
+    expect(peaceReachable(t.easy - 1, 1)).toBe(false);
+    expect(peaceReachable(t.easy, 1)).toBe(true);
+  });
+
+  test('the bound needed shrinks as ripeness climbs (easier to reach late)', () => {
+    const weariness = BALANCE.war.ripeness.exhaustionWeariness.easy + 1;
+    expect(peaceReachable(weariness, 0)).toBe(false);
+    expect(peaceReachable(weariness, 1)).toBe(true);
+  });
+});
+
+describe('buildWarFundingBill / buildSueForPeaceBill', () => {
+  test('reconstructable ids match the prefixes processWarSeason detects', () => {
+    const war = makeWar({ id: 'war-carthage-1' });
+    const state = makeState({ turnNumber: 20 });
+    expect(buildWarFundingBill(war, state).id).toBe('war-funding-war-carthage-1-20');
+    expect(buildSueForPeaceBill(war, state).id).toBe('sue-for-peace-war-carthage-1-20');
+  });
+
+  test('support bias runs opposite ways: funding favours Optimates lean, sue-for-peace favours Populares lean', () => {
+    const war = makeWar();
+    const optimatesLeaning = makeState({ optimatesRel: 50, popularesRel: 0 });
+    const funding = buildWarFundingBill(war, optimatesLeaning);
+    const peace = buildSueForPeaceBill(war, optimatesLeaning);
+    expect(funding.support).toBeGreaterThan(0);
+    expect(peace.support).toBeLessThan(0);
+  });
+});
+
+describe('processWarSeason — war-funding bill (P3-B)', () => {
+  test('queues a bill when none pending and the cooldown has elapsed', () => {
+    const state = makeState({
+      turnNumber: 10,
+      wars: [makeWar({ lastFundingOfferTurn: -100, lastSetPieceTurn: 10 })],
+    });
+    const result = processWarSeason(state, () => 0.99); // 0.99 avoids a competing set-piece offer this same season
+    expect(result.statePatch.bills?.some(b => b.id.startsWith('war-funding-war-carthage-1-'))).toBe(true);
+    expect(result.wars[0].lastFundingOfferTurn).toBe(10);
+  });
+
+  test('does not queue a second bill while one is already pending', () => {
+    const state = makeState({
+      turnNumber: 10,
+      wars: [makeWar({ lastFundingOfferTurn: -100, lastSetPieceTurn: 10 })],
+      bills: [{ id: 'war-funding-war-carthage-1-5', support: 0 } as any],
+    });
+    const result = processWarSeason(state, () => 0.99);
+    const fundingBills = (result.statePatch.bills ?? state.bills).filter(b => b.id.startsWith('war-funding-war-carthage-1-'));
+    expect(fundingBills).toHaveLength(1);
+  });
+
+  test('does not queue while an M10 treaty is in flight', () => {
+    const state = makeState({
+      turnNumber: 10,
+      wars: [makeWar({ lastFundingOfferTurn: -100, lastSetPieceTurn: 10, treaty: makeTreaty() })],
+    });
+    const result = processWarSeason(state, () => 0.99);
+    expect(result.statePatch.bills?.some(b => b.id.startsWith('war-funding-war-carthage-1-'))).toBeFalsy();
+  });
+
+  test('applies the warScore bonus exactly once when a matching bill has passed', () => {
+    const state = makeState({
+      turnNumber: 10,
+      wars: [makeWar({ warScore: 0, lastFundingOfferTurn: 10, lastSetPieceTurn: 10 })], // just tabled -> no re-queue this season
+      passedBills: [{ id: 'war-funding-war-carthage-1-6', name: 'War Funding: Carthage', passedOnTurn: 6 }] as any,
+    });
+    const result = processWarSeason(state, () => 0);
+    expect(result.wars[0].warScore).toBeGreaterThanOrEqual(BALANCE.war.funding.warScoreBonusOnPass);
+    expect(result.statePatch.flags?.['war-funding-applied-war-funding-war-carthage-1-6']).toBe(true);
+
+    // A second call with the SAME passedBills (simulating next season, flag now set) must not re-apply.
+    const state2 = { ...state, flags: { ...state.flags, ...result.statePatch.flags }, wars: result.wars };
+    const result2 = processWarSeason(state2, () => 0);
+    const controlDrift = result2.wars[0].warScore - result.wars[0].warScore;
+    expect(Math.abs(controlDrift)).toBeLessThanOrEqual(BALANCE.war.skirmishDriftMax);
+  });
+});
+
+describe('processWarSeason — sue-for-peace bill (P3-B)', () => {
+  test('queues a bill only when peaceOffered is true and none pending', () => {
+    // peaceOffered is recomputed from `weariness` each season (step 2c) —
+    // a high weariness clears BALANCE.war.ripeness.exhaustionWeariness at
+    // any ripeness, so this holds regardless of the fixture's year.
+    const offered = makeState({ turnNumber: 30, wars: [makeWar({ weariness: 50, lastSetPieceTurn: 30 })] });
+    const notOffered = makeState({ turnNumber: 30, wars: [makeWar({ weariness: 0, lastSetPieceTurn: 30 })] });
+    const r1 = processWarSeason(offered, () => 0.99);
+    const r2 = processWarSeason(notOffered, () => 0.99);
+    expect(r1.statePatch.bills?.some(b => b.id.startsWith('sue-for-peace-war-carthage-1-'))).toBe(true);
+    expect(r2.statePatch.bills?.some(b => b.id.startsWith('sue-for-peace-war-carthage-1-'))).toBeFalsy();
+  });
+
+  test('never queues for a local-scale war', () => {
+    const state = makeState({
+      turnNumber: 30,
+      wars: [makeWar({ scale: 'local', peaceOffered: true, lastSetPieceTurn: 30 })],
+    });
+    const result = processWarSeason(state, () => 0.99);
+    expect(result.statePatch.bills?.some(b => b.id.startsWith('sue-for-peace-'))).toBeFalsy();
+  });
+
+  test('passing ends the war and classifies exhaustion for a middling warScore', () => {
+    const state = makeState({
+      turnNumber: 30,
+      year: -264, // ripeness 0 -> wide victory/humbled bounds, a mid score reads exhaustion
+      wars: [makeWar({ warScore: 10, peaceOffered: true, lastSetPieceTurn: 30 })],
+      passedBills: [{ id: 'sue-for-peace-war-carthage-1-25', name: 'Sue for Peace: Carthage', passedOnTurn: 25 }] as any,
+    });
+    const result = processWarSeason(state, () => 0);
+    expect(result.wars[0].active).toBe(false);
+    expect(result.wars[0].terminalOutcome).toBe('exhaustion');
+    expect(result.statePatch.pendingEpilogue).toBe('exhaustion');
+  });
+
+  test('passing classifies fresh at resolution time — a since-decisive warScore reads Victory, not hardcoded Exhaustion', () => {
+    const th = terminalThresholds(0);
+    const state = makeState({
+      turnNumber: 30,
+      year: -264, // ripeness 0
+      wars: [makeWar({ warScore: th.victory, peaceOffered: true, lastSetPieceTurn: 30 })],
+      passedBills: [{ id: 'sue-for-peace-war-carthage-1-25', name: 'Sue for Peace: Carthage', passedOnTurn: 25 }] as any,
+    });
+    const result = processWarSeason(state, () => 0);
+    expect(result.wars[0].terminalOutcome).toBe('victory');
+  });
+});
+
+describe('processSeason — Mamertine ignition (P3-B)', () => {
+  test('force-injects evt-war-mamertines once tutorial queue is empty and no carthage war exists', () => {
+    const state = makeState({ tutorialQueue: [] as any, wars: [] });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-war-mamertines')).toBe(true);
+  });
+
+  test('never fires again once a carthage war exists', () => {
+    const state = makeState({ tutorialQueue: [] as any, wars: [makeWar()] });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-war-mamertines')).toBe(false);
+  });
+});
+
+describe('WAR_EVENT_DEFS — content sanity', () => {
+  test('all ids are unique', () => {
+    const ids = WAR_EVENT_DEFS.map(d => d.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  test('ignition and terminal notices are weight 0 (never enter the random pool)', () => {
+    const zeroWeightIds = ['evt-war-mamertines', 'evt-war-outcome-victory', 'evt-war-outcome-exhaustion', 'evt-war-outcome-humbled'];
+    for (const id of zeroWeightIds) {
+      expect(WAR_EVENT_DEFS.find(d => d.id === id)?.weight).toBe(0);
+    }
+  });
+
+  test('every periodic event has a non-zero weight and at least one choice', () => {
+    const periodic = WAR_EVENT_DEFS.filter(d => d.weight > 0);
+    expect(periodic.length).toBeGreaterThanOrEqual(4);
+    for (const def of periodic) {
+      expect(def.choices.length).toBeGreaterThan(0);
+    }
   });
 });

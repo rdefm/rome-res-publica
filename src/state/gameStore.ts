@@ -1763,11 +1763,12 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
     const { EVENT_DEFS }          = require('../data/events');
     const { TUTORIAL_EVENT_DEFS } = require('../data/tutorialEvents');
+    const { WAR_EVENT_DEFS }      = require('../data/warEvents');
     const { applyEffectString }   = require('../engine/resourceEngine');
     const { resolveEventChoice }  = require('../engine/eventEngine');
 
-    // P1-G: search tutorial pool as well as main pool
-    const allDefs = [...EVENT_DEFS, ...TUTORIAL_EVENT_DEFS];
+    // P1-G: search tutorial pool as well as main pool. P3-B added WAR_EVENT_DEFS.
+    const allDefs = [...EVENT_DEFS, ...TUTORIAL_EVENT_DEFS, ...WAR_EVENT_DEFS];
     const def = allDefs.find((d: any) => d.id === s.activeEvent!.defId);
     if (!def) {
       set({ activeEvent: null });
@@ -2052,6 +2053,9 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       ignitedYear: w.ignitedYear ?? savedState.year,
       endedYear: w.endedYear ?? null,
       terminalOutcome: w.terminalOutcome ?? null,
+      // P3-B — same approximation-only treatment as the P3-A fields above.
+      peaceOffered: w.peaceOffered ?? false,
+      lastFundingOfferTurn: w.lastFundingOfferTurn ?? (savedState.turnNumber - BALANCE.war.funding.recurTurns),
     })),
     // Always reset transient UI state — these must not be loaded from disk
     gameStarted:   true,
@@ -2642,6 +2646,9 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       ignitedYear: s.year,
       endedYear: null,
       terminalOutcome: null,
+      // P3-B
+      peaceOffered: false,
+      lastFundingOfferTurn: s.turnNumber - BALANCE.war.funding.recurTurns,
     };
     const label = turnLabel(s);
     set({

@@ -177,8 +177,10 @@ export function getEventDef(defId: string): EventDef | undefined {
   // Lazy-require to avoid circular dependency and keep HMR working in Expo.
   const { EVENT_DEFS } = require('../data/events');
   const { TUTORIAL_EVENT_DEFS } = require('../data/tutorialEvents');
+  const { WAR_EVENT_DEFS } = require('../data/warEvents');
   return (EVENT_DEFS as EventDef[]).find(d => d.id === defId)
-      ?? (TUTORIAL_EVENT_DEFS as EventDef[]).find(d => d.id === defId);
+      ?? (TUTORIAL_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
+      ?? (WAR_EVENT_DEFS as EventDef[]).find(d => d.id === defId);
 }
 
 // ─── P1-G: Tutorial season gate ──────────────────────────────────────────────
