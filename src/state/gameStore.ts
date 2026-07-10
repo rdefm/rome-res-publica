@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Character } from '../models/character';
+import type { Character, PendingSuccession, Regency } from '../models/character';
 import type { Bill, ActiveLaw } from '../models/bill';
 import type { Clan } from '../models/clan';
 import type { OfficeId, ElectionRival } from '../models/office';
@@ -132,6 +132,14 @@ export interface GameState {
   selectedCharacterId: string;
   /** P2-C: character IDs already trained this season (rate-limits trainCharacter to once/season). Reset in endSeason. */
   trainedThisSeason: string[];
+
+  // ── Phase 3, Chunk P3-C — Succession & Regency ──────────────────────────
+  /** Set when the paterfamilias dies (natural or battle) — see
+   *  inheritanceEngine.detectPaterfamiliasDeath. Drives the scripted
+   *  successionEvents.ts sequence; cleared by succeedPaterfamilias. */
+  pendingSuccession: PendingSuccession | null;
+  /** Set by succeedPaterfamilias when the confirmed heir is a minor. */
+  regency: Regency | null;
 
   // Senate (Curia)
   bills: Bill[];
@@ -691,6 +699,8 @@ export const INITIAL_STATE: GameState = {
   family: STARTING_FAMILY,
   selectedCharacterId: 'pc-1',
   trainedThisSeason: [],
+  pendingSuccession: null,
+  regency: null,
 
   bills: STARTING_BILLS,
   _expandedBill: null,
@@ -1764,11 +1774,13 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const { EVENT_DEFS }          = require('../data/events');
     const { TUTORIAL_EVENT_DEFS } = require('../data/tutorialEvents');
     const { WAR_EVENT_DEFS }      = require('../data/warEvents');
+    const { SUCCESSION_EVENT_DEFS } = require('../data/successionEvents');
     const { applyEffectString }   = require('../engine/resourceEngine');
     const { resolveEventChoice }  = require('../engine/eventEngine');
 
-    // P1-G: search tutorial pool as well as main pool. P3-B added WAR_EVENT_DEFS.
-    const allDefs = [...EVENT_DEFS, ...TUTORIAL_EVENT_DEFS, ...WAR_EVENT_DEFS];
+    // P1-G: search tutorial pool as well as main pool. P3-B added
+    // WAR_EVENT_DEFS, P3-C added SUCCESSION_EVENT_DEFS.
+    const allDefs = [...EVENT_DEFS, ...TUTORIAL_EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS];
     const def = allDefs.find((d: any) => d.id === s.activeEvent!.defId);
     if (!def) {
       set({ activeEvent: null });
@@ -1806,8 +1818,18 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
     const { _addClient, _removeClient, ...statePatch } = patch as any;
 
-    const nextEvent = s.pendingEvents[0] ?? null;
-    const remainingPending = s.pendingEvents.slice(1);
+    // Phase 3, P3-C — merge any events the resolved choice just queued
+    // (via the nextEvent: effect-string token, resourceEngine.ts) with the
+    // pre-existing queue, FIFO, rather than computing nextEvent/remaining
+    // from the stale pre-patch s.pendingEvents alone (which would silently
+    // drop a same-turn chained scene — the old two-line version here did
+    // exactly that whenever statePatch.pendingEvents was set, since
+    // `pendingEvents: remainingPending` below always won the object-spread
+    // race). When the queue was empty before this choice, the newly-queued
+    // event is promoted straight to activeEvent instead of waiting.
+    const mergedPending = [...s.pendingEvents, ...(statePatch.pendingEvents ?? [])];
+    const nextEvent = mergedPending[0] ?? null;
+    const remainingPending = mergedPending.slice(1);
 
     set({ ...statePatch, activeEvent: nextEvent, pendingEvents: remainingPending });
 

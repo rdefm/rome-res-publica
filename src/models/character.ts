@@ -65,3 +65,35 @@ export interface Character {
   // for the full "commander changed" interpretation.
   lastLoyaltyCommanderId?: string | null;
 }
+
+// ─── Phase 3, Chunk P3-C — Succession ────────────────────────────────────────
+
+/** Set on GameState when the paterfamilias dies (natural age-based death or
+ *  battle death — both routed through inheritanceEngine.detectPaterfamiliasDeath
+ *  into the same scripted sequence, successionEvents.ts). Consumed by
+ *  gameStore.succeedPaterfamilias, which clears it. */
+export interface PendingSuccession {
+  deceasedId: string;
+  deceasedName: string;
+  deceasedAge: number;
+  /** One template-light line for the death card — robust to a paterfamilias
+   *  with no notable offices/traits. See inheritanceEngine.ts. */
+  rememberedDetail: string;
+  /** Priority order (eldest son > eldest daughter > eldest spouse, then
+   *  every other eligible relative) — [0] is the default heir offered in
+   *  the confirmation card; the rest are the "name a different heir"
+   *  choices. Empty if no eligible heir exists (P3-D's extinction path,
+   *  not yet built — this chunk does not soft-lock on it, see
+   *  gameStore.succeedPaterfamilias's doc comment). */
+  eligibleHeirIds: string[];
+}
+
+/** Set on GameState while the confirmed heir is under
+ *  BALANCE.succession.regencyMinorAge. Cleared at the yearly rollover once
+ *  the heir comes of age. */
+export interface Regency {
+  heirId: string;
+  regentId: string | null;
+  /** GameState.year the heir turns regencyMinorAge — regency clears then. */
+  untilYear: number;
+}

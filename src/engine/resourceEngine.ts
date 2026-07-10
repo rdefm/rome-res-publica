@@ -15,6 +15,7 @@ import {
 } from './crisisEngine';
 import { getTierFromLevel } from '../models/crisis';
 import { BALANCE } from '../data/balance';
+import { applySuccession } from './inheritanceEngine';
 
 export interface ApplyEffectOptions {
   previewClientName?: string;
@@ -198,18 +199,25 @@ export function calcResourceIncome(state: GameState): {
   const unrestTier = getTierFromLevel(state.crisis.unrest.level);
   const plebsDelta = unrestTier >= 2 ? -3 : 0;
 
+  // Phase 3, Chunk P3-C — a regent governing in a minor heir's name is
+  // less effective than the true paterfamilias would be. Applied to the
+  // WHOLE total (not just baseIncome) — the plan's "×0.75 Fides" framing.
+  const regencyMult = state.regency ? BALANCE.succession.regencyIncomeMult : 1;
+
   // Final Fides income
-  const fidesIncome = Math.max(0,
-    Math.round(baseIncome * patronMultiplier)
-    + officeIncome
-    + clanFidesIncome
-    + clientFides
-    + assetFides
-    + provinceFidesBonus
-    + endowmentFides
-    + romeStatFides
-    + crisisFidesDelta   // negative at higher crisis tiers
-  );
+  const fidesIncome = Math.max(0, Math.round(
+    (
+      Math.round(baseIncome * patronMultiplier)
+      + officeIncome
+      + clanFidesIncome
+      + clientFides
+      + assetFides
+      + provinceFidesBonus
+      + endowmentFides
+      + romeStatFides
+      + crisisFidesDelta   // negative at higher crisis tiers
+    ) * regencyMult
+  ));
 
   // Denarii income — assets + province gold output + client gold + treasury mod + crisis penalty
   const provinceDenariiBonus = state.provinces.reduce(
@@ -406,6 +414,54 @@ export function applyEffectString(
             ? { ...w, warScore: Math.min(100, Math.max(-100, w.warScore + delta)) }
             : w
         );
+        continue;
+      }
+
+      // Phase 3, P3-C — nextEvent:defId. Queues a follow-up event instance
+      // onto pendingEvents. Exists because this codebase's built-in
+      // EventChoice.nextEventId branching (resolveEventChoice in
+      // eventEngine.ts) discards effectStr entirely whenever any
+      // nextEventId variant is set — there is no way to BOTH apply an
+      // effect (denarii/dignitas/etc.) AND advance to a new scene through
+      // the built-in mechanism (verified before writing this). This token
+      // sidesteps that: successionEvents.ts's funeral choices apply their
+      // effects normally and chain via this token instead. Consumed by
+      // gameStore.resolveEvent's merge (see that file — pendingEvents from
+      // a resolved choice's patch must be merged with, not clobbered by,
+      // the pre-existing queue; that fix shipped alongside this token).
+      if (key === 'nextEvent') {
+        const defId = parts[1];
+        const queued: EventInstance = {
+          defId,
+          firedAtTurn: state.turnNumber,
+          targetCharacterId: instance?.targetCharacterId ?? 'pc-1',
+        };
+        patch.pendingEvents = [...(patch.pendingEvents ?? state.pendingEvents), queued];
+        continue;
+      }
+
+      // Phase 3, P3-C — succeedPaterfamilias:default|alt. Applies
+      // inheritanceEngine.applySuccession using state.pendingSuccession's
+      // eligibleHeirIds (index 0 = default heir, index 1 = the "name a
+      // different heir" alternative). Gracefully falls back to the default
+      // heir if no alternative exists (this codebase's EventChoice has no
+      // per-choice conditional visibility, so "name a different heir" is
+      // always shown — see successionEvents.ts's header comment) — never
+      // soft-locks. A no-op (pendingSuccession stays set) only in the true
+      // extinction case (no eligible heir at all), which this chunk
+      // deliberately does not resolve — that is P3-D's cadet-branch scope;
+      // see this file's header comment / detectPaterfamiliasDeath's caller
+      // in turnSequencer.ts for the distinct no-heir notice shown instead.
+      if (key === 'succeedPaterfamilias') {
+        const which = parts[1];
+        const pending = state.pendingSuccession;
+        const heirId = which === 'alt'
+          ? (pending?.eligibleHeirIds[1] ?? pending?.eligibleHeirIds[0])
+          : pending?.eligibleHeirIds[0];
+        if (pending && heirId) {
+          const succPatch = applySuccession({ ...state, ...patch } as GameState, heirId, which === 'alt' && heirId === pending.eligibleHeirIds[1]);
+          Object.assign(patch, succPatch);
+        }
         continue;
       }
 

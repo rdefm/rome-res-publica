@@ -735,6 +735,46 @@ export const BALANCE = {
       supportBiasClamp: 10,
     },
   },
+
+  /** Phase 3, Chunk P3-C — Succession & Regency. FIRST-PASS/UNVERIFIED, same
+   *  treatment as every other constant group in this file. No pre-existing
+   *  natural-mortality system existed anywhere in this codebase before this
+   *  chunk (verified — only trial execution/exile and battle death removed
+   *  a family member, neither via an age-based roll); these numbers are
+   *  this chunk's own invention, not derived from an existing formula. */
+  succession: {
+    /** Annual death chance by age band, rolled once per character at the
+     *  yearly rollover (turnSequencer step 10's existing `crossedNewYear`
+     *  gate). Bands are lower-bound-inclusive; the last band whose lower
+     *  bound the character's age clears applies. Negligible under 50,
+     *  rising through the 60s, steep past 70 (explicit design direction —
+     *  NOT a period-accurate Roman actuarial table). */
+    mortalityByAge: [
+      { minAge: 0,  annualChance: 0.002 },
+      { minAge: 50, annualChance: 0.01 },
+      { minAge: 60, annualChance: 0.03 },
+      { minAge: 70, annualChance: 0.08 },
+      { minAge: 80, annualChance: 0.18 },
+      { minAge: 90, annualChance: 0.35 },
+    ],
+    /** Heir confirmed under this age triggers a regency. */
+    regencyMinorAge: 18,
+    /** Fides income multiplier while a regency is active (resourceEngine.ts). */
+    regencyIncomeMult: 0.75,
+    /** Referenced by src/data/successionEvents.ts's effect strings — those
+     *  are literal numbers (this codebase's content-file convention, same
+     *  as every bill template), kept in sync with these by hand. */
+    funeral: {
+      lavish: { denariiCost: 40, lifetimeDignitasGain: 15, factionRelDelta: 5 },
+      modest: { fidesLoss: -3 },
+    },
+    /** Naming an heir other than the eldest eligible costs family trust —
+     *  "family trust" doesn't surface as its own stat outside familyTrust
+     *  on Character itself (verified), so this is applied to the NEW
+     *  paterfamilias's familyTrust field directly (a fresh reign starting
+     *  under a cloud), not a separate GameState-level stat. */
+    nameOtherHeirFamilyTrustPenalty: -15,
+  },
 };
 
 // ─── Known un-extracted tunables ───────────────────────────────────────────

@@ -390,7 +390,7 @@ describe('applyBattleOutcome', () => {
     expect(next.family.find(c => c.id === 'pc-1')).toBeDefined();
   });
 
-  test('DONE-WHEN: a paterfamilias killed in battle produces a clean succession hand-off without crashing', () => {
+  test('DONE-WHEN: a paterfamilias killed in battle sets pendingSuccession without crashing (P3-C: no longer an immediate silent reassignment)', () => {
     const heir = makeCharacter({ id: 'son-1', role: 'son', isPlayer: false, age: 25 });
     const state = makeState({ family: [makeCharacter({ id: 'pc-1' }), heir] });
     const battleState = makeBattleState({ attacker: makeSideState({ commanderId: 'pc-1' }) });
@@ -400,9 +400,17 @@ describe('applyBattleOutcome', () => {
     expect(() => applyBattleOutcome(state, battleState, 'attacker', outcome, ctx)).not.toThrow();
     const { state: next } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
     expect(next.family.find(c => c.id === 'pc-1')).toBeUndefined();
-    const newHead = next.family.find(c => c.id === 'son-1')!;
-    expect(newHead.isPlayer).toBe(true);
-    expect(newHead.role).toBe('paterfamilias');
+    // Phase 3, Chunk P3-C: battle death now routes through the same shared
+    // succession sequence as natural death — no immediate isPlayer
+    // reassignment inside applyBattleOutcome itself (that's
+    // gameStore.succeedPaterfamilias's job, driven by the player's choice).
+    const stillHeir = next.family.find(c => c.id === 'son-1')!;
+    expect(stillHeir.isPlayer).toBe(false);
+    expect(stillHeir.role).toBe('son');
+    expect(next.pendingSuccession).not.toBeNull();
+    expect(next.pendingSuccession?.deceasedId).toBe('pc-1');
+    expect(next.pendingSuccession?.eligibleHeirIds).toEqual(['son-1']);
+    expect(next.pendingEvents.some(e => e.defId === 'evt-succession-death')).toBe(true);
   });
 
   test('legate death moves clan relationship down', () => {

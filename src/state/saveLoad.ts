@@ -80,6 +80,9 @@ const SaveSchema = z.object({
   wars: z.array(z.any()).default([]),
   // Phase 3, Chunk P3-A — .default(null) ensures pre-P3-A saves load cleanly.
   pendingEpilogue: z.enum(['victory', 'exhaustion', 'humbled']).nullable().default(null),
+  // Phase 3, Chunk P3-C — .default(null) ensures pre-P3-C saves load cleanly.
+  pendingSuccession: z.any().nullable().default(null),
+  regency: z.any().nullable().default(null),
 });
 
 export interface SaveProvider {

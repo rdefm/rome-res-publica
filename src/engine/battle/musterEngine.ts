@@ -83,6 +83,8 @@ import { BALANCE } from '../../data/balance';
 import { adjustReputation } from '../reputationEngine';
 import { injectNoticeEvent } from '../eventEngine';
 import { LEADER_PRAENOMINA } from '../../data/clientNames';
+import { detectPaterfamiliasDeath } from '../inheritanceEngine';
+import { buildDeathCardBody, buildNoHeirBody } from '../../data/successionEvents';
 
 const LANES: LaneId[] = ['left', 'centre', 'right'];
 
@@ -499,6 +501,7 @@ export function applyBattleOutcome(
   let denarii = state.denarii;
   let fides = state.fides;
   let pendingEvents = state.pendingEvents;
+  let pendingSuccession = state.pendingSuccession;
   let provinces = state.provinces;
   let wars = state.wars;
 
@@ -573,13 +576,42 @@ export function applyBattleOutcome(
       pendingEvents = [...pendingEvents, buildRansomDemandNotice(playerId, ctx.turnNumber, character.name, demandDenarii)];
       ledgerNotes.push(`${character.name} has been captured.`);
     } else if (co.result === 'killed') {
-      const deathResult = applyCharacterDeath(family, character.id);
-      family = deathResult.family;
-      pendingEvents = [...pendingEvents, buildBattleDeathNotice(playerId, ctx.turnNumber, character.name)];
-      ledgerNotes.push(
-        `${character.name} has fallen in battle.`
-        + (deathResult.successionOccurred ? ` ${deathResult.successorName} now leads the family.` : '')
-      );
+      // Phase 3, Chunk P3-C — routed through the same shared death-detection
+      // as natural/trial death (see turnSequencer.ts's step 10 comment for
+      // the unification rationale) instead of applyCharacterDeath's old
+      // silent/immediate reassignment. Non-paterfamilias deaths are
+      // unaffected — still the plain battle-death notice below.
+      if (character.isPlayer && !pendingSuccession) {
+        const result = detectPaterfamiliasDeath(family, character.id, state.heldOffices);
+        family = result.family;
+        if (result.pendingSuccession) {
+          const p = result.pendingSuccession;
+          const noHeir = p.eligibleHeirIds.length === 0;
+          pendingSuccession = p;
+          pendingEvents = [...pendingEvents, injectNoticeEvent(
+            noHeir ? 'evt-succession-no-heir' : 'evt-succession-death',
+            ctx.turnNumber, p.deceasedId,
+            { title: noHeir ? 'The Line Falters' : 'A Death in the House', bodyText: noHeir ? buildNoHeirBody(p) : buildDeathCardBody(p) },
+          )];
+          ledgerNotes.push(`${character.name} has fallen in battle.`);
+        }
+      } else {
+        // Non-paterfamilias death: unchanged, plain removal (applyCharacterDeath's
+        // `!isPlayer` branch). The `character.isPlayer && pendingSuccession
+        // already set` collision (two paterfamilias-eligible deaths in the
+        // same battle/turnSequencer pass) deliberately falls back to
+        // applyCharacterDeath's OLD silent-reassignment logic here rather
+        // than blocking entirely — skips the theatre for that one
+        // vanishingly rare case, but still leaves the family with an heir
+        // rather than soft-locking.
+        const deathResult = applyCharacterDeath(family, character.id);
+        family = deathResult.family;
+        pendingEvents = [...pendingEvents, buildBattleDeathNotice(playerId, ctx.turnNumber, character.name)];
+        ledgerNotes.push(
+          `${character.name} has fallen in battle.`
+          + (deathResult.successionOccurred ? ` ${deathResult.successorName} now leads the family.` : '')
+        );
+      }
     }
   }
 
@@ -654,7 +686,7 @@ export function applyBattleOutcome(
   ledgerNotes.unshift(battleHeadline(outcome, commanderName));
 
   return {
-    state: { ...state, family, flags, familyReputations, lifetimeDignitas, denarii, fides, pendingEvents, provinces, wars },
+    state: { ...state, family, flags, familyReputations, lifetimeDignitas, denarii, fides, pendingEvents, provinces, wars, pendingSuccession },
     ledgerNotes,
   };
 }

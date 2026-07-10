@@ -319,4 +319,45 @@ describe('generateAgenda', () => {
     expect(() => generateAgenda(state)).not.toThrow();
   });
 
+  // ─── Phase 3, Chunk P3-C — #22 regency in effect ──────────────────────────
+
+  function makeHeir(overrides: Record<string, unknown> = {}) {
+    return { id: 'heir-1', name: 'Gaius', age: 12, ...overrides } as any;
+  }
+
+  test('#22 fires within ~2 years of majority, references the regent by name', () => {
+    const state = makeState({
+      regency: { heirId: 'heir-1', regentId: 'regent-1', untilYear: -246 },
+      family: [makeHeir({ age: 16 }), { id: 'regent-1', name: 'Livia', age: 38 } as any],
+    } as any);
+    const items = generateAgenda(state);
+    const item = items.find(i => i.id === 'agenda-warning-regency');
+    expect(item).toBeDefined();
+    expect(item?.severity).toBe('warning');
+    expect(item?.title).toContain('Livia');
+  });
+
+  test('#22 does not fire when the heir is far from majority', () => {
+    const state = makeState({
+      regency: { heirId: 'heir-1', regentId: 'regent-1', untilYear: -240 },
+      family: [makeHeir({ age: 5 }), { id: 'regent-1', name: 'Livia', age: 38 } as any],
+    } as any);
+    expect(generateAgenda(state).some(i => i.id === 'agenda-warning-regency')).toBe(false);
+  });
+
+  test('#22 does not fire when there is no regency', () => {
+    const state = makeState({ regency: null } as any);
+    expect(generateAgenda(state).some(i => i.id === 'agenda-warning-regency')).toBe(false);
+  });
+
+  test('#22 does not crash when regentId points at no one (no adult kin edge case)', () => {
+    const state = makeState({
+      regency: { heirId: 'heir-1', regentId: null, untilYear: -246 },
+      family: [makeHeir({ age: 16 })],
+    } as any);
+    expect(() => generateAgenda(state)).not.toThrow();
+    const item = generateAgenda(state).find(i => i.id === 'agenda-warning-regency');
+    expect(item?.title).toContain('A regent');
+  });
+
 });

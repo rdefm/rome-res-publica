@@ -1030,3 +1030,54 @@ describe('WAR_EVENT_DEFS — content sanity', () => {
     }
   });
 });
+
+// ─── Phase 3, Chunk P3-C — natural death wiring (turnSequencer step 10) ─────
+// Unit coverage for the mortality formula/death-detection/succession-
+// application logic itself lives in inheritanceEngine.test.ts; this is the
+// end-to-end wiring check that step 10 actually calls it and reaches
+// pendingEvents. makeState/makeCharacter (this file) are the most complete
+// GameState fixture already exercised against processSeason (see the
+// calendar-direction tests above), reused here for the same reason.
+
+describe('processSeason — natural death wiring (P3-C)', () => {
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  test('a forced mortality roll at the yearly rollover sets pendingSuccession and queues the death card', () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0); // rollsDead: 0 < any positive chance -> always "dies"
+    const state = makeState({
+      seasonIndex: 3, // Winter -> next tick crosses into a new year
+      family: [
+        makeCharacter({ id: 'pc-1', age: 60 }),
+        makeCharacter({ id: 'son-1', role: 'son', age: 20, isPlayer: false }),
+      ],
+    });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.family.find((c: any) => c.id === 'pc-1')).toBeUndefined();
+    expect(nextState.pendingSuccession).not.toBeNull();
+    expect(nextState.pendingSuccession?.deceasedId).toBe('pc-1');
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-succession-death')).toBe(true);
+  });
+
+  test('no roll at all on a mid-year season advance (crossedNewYear false)', () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0);
+    const state = makeState({
+      seasonIndex: 0, // Spring -> Summer, no year crossing
+      pendingSuccession: null,
+      family: [makeCharacter({ id: 'pc-1', age: 60 })],
+    });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.family.find((c: any) => c.id === 'pc-1')).toBeDefined();
+    expect(nextState.pendingSuccession).toBeFalsy();
+  });
+
+  test('the no-heir notice fires instead of the normal death card when no eligible heir exists', () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0);
+    const state = makeState({
+      seasonIndex: 3,
+      family: [makeCharacter({ id: 'pc-1', age: 60 })], // no heirs at all
+    });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-succession-no-heir')).toBe(true);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-succession-death')).toBe(false);
+  });
+});

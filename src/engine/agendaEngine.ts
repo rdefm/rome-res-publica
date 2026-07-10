@@ -689,10 +689,36 @@ function genSueForPeaceOpportunity(state: GameState): AgendaItem[] {
   return items;
 }
 
+// ─── Generator 22 — Regency in effect (Phase 3, Chunk P3-C) ────────────────
+// Fires whenever a regency is active and the heir is within ~2 years of
+// majority (BALANCE.succession.regencyMinorAge) — a longer regency doesn't
+// need the reminder every season; the income penalty is already visible on
+// the resource bar throughout.
+
+function genRegencyInEffect(state: GameState): AgendaItem[] {
+  if (!state.regency) return [];
+  const heir = state.family.find(c => c.id === state.regency!.heirId);
+  if (!heir) return [];
+  const yearsToMajority = BALANCE.succession.regencyMinorAge - heir.age;
+  if (yearsToMajority > 2) return [];
+
+  const regent = state.family.find(c => c.id === state.regency!.regentId);
+  const untilLabel = Math.abs(state.regency.untilYear);
+  return [{
+    id: 'agenda-warning-regency',
+    category: 'family' as const,
+    severity: 'warning',
+    title: `${regent ? regent.name : 'A regent'} governs in ${heir.name}'s name`,
+    detail: `Income is reduced until ${heir.name} comes of age in ${untilLabel} BC.`,
+    target: { tab: 'Domus' as const },
+    sortWeight: 30,
+  }];
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Runs all 21 generators against the current state and returns a sorted list
+ * Runs all 22 generators against the current state and returns a sorted list
  * of agenda items. Sort order: severity (critical first) → sortWeight →
  * category (alpha tiebreak for stable ordering).
  *
@@ -722,6 +748,7 @@ export function generateAgenda(state: GameState): AgendaItem[] {
     ...genWarPeaceThreshold(state),
     ...genWarStatus(state),
     ...genSueForPeaceOpportunity(state),
+    ...genRegencyInEffect(state),
   ];
 
   return items.sort((a, b) => {

@@ -250,6 +250,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Cursus',
   },
   {
+    id: 'regency',
+    term: 'Regency',
+    definition: 'If a confirmed heir is under 18, a regent — the spouse, or the eldest adult relative — governs in their name until they come of age. Fides income is reduced while a regency is active.',
+    relatedTab: 'Domus',
+  },
+  {
     id: 'quaestor',
     term: 'Quaestor',
     definition: 'The first elected office on the Cursus Honorum, open at age 30. Provides +3 Fides per season while in office.',
@@ -289,6 +295,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: 'Security (Governor Policy)',
     definition: 'A governor policy axis controlling military presence. Higher settings generate Imperium and reduce revolt risk but increase Senate scrutiny of the forces maintained.',
     relatedTab: 'Provinciae',
+  },
+  {
+    id: 'succession',
+    term: 'Succession',
+    definition: 'When the paterfamilias dies — of age or in battle — the family does not simply lose a member. A funeral is chosen, and an heir confirmed: the eldest eligible child by default, or another at the cost of family trust. The new paterfamilias\'s own skills then drive Fides income.',
+    relatedTab: 'Domus',
   },
   {
     id: 'taxation',

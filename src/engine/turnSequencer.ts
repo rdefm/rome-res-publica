@@ -29,7 +29,10 @@ import {
   calcBirthProbability,
   resolveInheritedTraits,
   suggestChildName,
+  rollsDead,
+  detectPaterfamiliasDeath,
 } from './inheritanceEngine';
+import { buildDeathCardBody, buildNoHeirBody } from '../data/successionEvents';
 import {
   shouldTriggerTrial,
   buildTrial,
@@ -913,11 +916,69 @@ export function processSeason(state: GameState): {
     }
   }
 
-  // 10. Age family members
-  s = {
-    ...s,
-    family: s.family.map((c) => ({ ...c, age: c.age + (crossedNewYear ? 1 : 0) })),
-  };
+  // 10. Age family members + Phase 3, Chunk P3-C — yearly natural-mortality
+  // roll. No pre-existing natural-death system existed anywhere in this
+  // codebase before this chunk (verified) — this is the first one. Rolled
+  // only at the yearly rollover (same crossedNewYear gate aging already
+  // uses), one roll per character, in family-array order; the first hit
+  // wins (a same-season second death would collide with the single
+  // pendingSuccession slot — rare enough at realistic family sizes not to
+  // handle further this chunk). Battle death is a separate, immediate path
+  // (musterEngine.ts's applyBattleOutcome) funnelled through the SAME
+  // detectPaterfamiliasDeath -> successionEvents.ts sequence — see that
+  // file's header comment for why the two were unified rather than left as
+  // two divergent succession systems.
+  {
+    const aged = s.family.map((c) => ({ ...c, age: c.age + (crossedNewYear ? 1 : 0) }));
+    let family = aged;
+
+    if (crossedNewYear && !s.pendingSuccession) {
+      const deceased = aged.find(c => rollsDead(c));
+      if (deceased) {
+        const result = detectPaterfamiliasDeath(aged, deceased.id, s.heldOffices);
+        family = result.family;
+        if (result.pendingSuccession) {
+          const p = result.pendingSuccession;
+          const noHeir = p.eligibleHeirIds.length === 0;
+          s = {
+            ...s,
+            pendingSuccession: p,
+            pendingEvents: [...s.pendingEvents, injectNoticeEvent(
+              noHeir ? 'evt-succession-no-heir' : 'evt-succession-death',
+              s.turnNumber, p.deceasedId,
+              { title: noHeir ? 'The Line Falters' : 'A Death in the House', bodyText: noHeir ? buildNoHeirBody(p) : buildDeathCardBody(p) },
+            )],
+          };
+          events.push(`${p.deceasedName} has died.`);
+        } else {
+          events.push(`${deceased.name} has died.`);
+        }
+      }
+    }
+
+    s = { ...s, family };
+  }
+
+  // 10b. Phase 3, Chunk P3-C — regency-ends check. Same crossedNewYear gate
+  // as step 10 (per the plan's "reuse the existing yearly-rollover gate"
+  // instruction) — checked against the heir's just-incremented age, not a
+  // separate year comparison, to avoid any off-by-one between the two.
+  if (crossedNewYear && s.regency) {
+    const heir = s.family.find(c => c.id === s.regency!.heirId);
+    if (heir && heir.age >= BALANCE.succession.regencyMinorAge) {
+      const regent = s.family.find(c => c.id === s.regency!.regentId);
+      s = {
+        ...s,
+        regency: null,
+        pendingEvents: [...s.pendingEvents, injectNoticeEvent('evt-succession-regency-ends', s.turnNumber, heir.id, {
+          title: 'Come of Age',
+          bodyText: `${heir.name} comes of age and takes the household in his own name`
+            + (regent ? ` — ${regent.name} steps back from governing it.` : '.'),
+        })],
+      };
+      events.push(`${heir.name} comes of age; the regency ends.`);
+    }
+  }
 
   // 11. Auto-inject bills
   {
@@ -1164,7 +1225,35 @@ export function processSeason(state: GameState): {
       }
 
       if (cons.removeCharacter) {
-        s = { ...s, family: s.family.filter(c => c.id !== trial.accusedCharacterId) };
+        // Phase 3, Chunk P3-C — trial execution/exile had the same latent
+        // "silently strips isPlayer with no succession" gap M4's battle-
+        // death path documented (verified — this was a plain filter with
+        // no successor selection at all, worse than M4's minimal one).
+        // Routed through the same shared detection now; a still-pending
+        // succession from earlier this same season takes precedence (the
+        // single pendingSuccession slot can't hold two at once — rare
+        // enough not to handle further this chunk, same as step 10's).
+        if (accused?.isPlayer && !s.pendingSuccession) {
+          const result = detectPaterfamiliasDeath(s.family, trial.accusedCharacterId, s.heldOffices);
+          if (result.pendingSuccession) {
+            const p = result.pendingSuccession;
+            const noHeir = p.eligibleHeirIds.length === 0;
+            s = {
+              ...s,
+              family: result.family,
+              pendingSuccession: p,
+              pendingEvents: [...s.pendingEvents, injectNoticeEvent(
+                noHeir ? 'evt-succession-no-heir' : 'evt-succession-death',
+                s.turnNumber, p.deceasedId,
+                { title: noHeir ? 'The Line Falters' : 'A Death in the House', bodyText: noHeir ? buildNoHeirBody(p) : buildDeathCardBody(p) },
+              )],
+            };
+          } else {
+            s = { ...s, family: result.family };
+          }
+        } else {
+          s = { ...s, family: s.family.filter(c => c.id !== trial.accusedCharacterId) };
+        }
       }
 
       return { ...trial, resolved: true, outcome };
