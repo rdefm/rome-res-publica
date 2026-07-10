@@ -84,7 +84,7 @@ import { adjustReputation } from '../reputationEngine';
 import { injectNoticeEvent } from '../eventEngine';
 import { LEADER_PRAENOMINA } from '../../data/clientNames';
 import { detectPaterfamiliasDeath } from '../inheritanceEngine';
-import { buildDeathCardBody, buildNoHeirBody } from '../../data/successionEvents';
+import { resolveDeathNotice } from '../../data/cadetEvents';
 
 const LANES: LaneId[] = ['left', 'centre', 'right'];
 
@@ -502,6 +502,8 @@ export function applyBattleOutcome(
   let fides = state.fides;
   let pendingEvents = state.pendingEvents;
   let pendingSuccession = state.pendingSuccession;
+  let cadetBranch = state.cadetBranch;
+  let pendingEpilogue = state.pendingEpilogue;
   let provinces = state.provinces;
   let wars = state.wars;
 
@@ -586,13 +588,11 @@ export function applyBattleOutcome(
         family = result.family;
         if (result.pendingSuccession) {
           const p = result.pendingSuccession;
-          const noHeir = p.eligibleHeirIds.length === 0;
+          const resolution = resolveDeathNotice(p, cadetBranch, state.cadetBranchUsed, ctx.turnNumber);
           pendingSuccession = p;
-          pendingEvents = [...pendingEvents, injectNoticeEvent(
-            noHeir ? 'evt-succession-no-heir' : 'evt-succession-death',
-            ctx.turnNumber, p.deceasedId,
-            { title: noHeir ? 'The Line Falters' : 'A Death in the House', bodyText: noHeir ? buildNoHeirBody(p) : buildDeathCardBody(p) },
-          )];
+          pendingEvents = [...pendingEvents, resolution.notice];
+          if (resolution.cadetBranch) cadetBranch = resolution.cadetBranch;
+          if (resolution.pendingEpilogue) pendingEpilogue = resolution.pendingEpilogue;
           ledgerNotes.push(`${character.name} has fallen in battle.`);
         }
       } else {
@@ -686,7 +686,7 @@ export function applyBattleOutcome(
   ledgerNotes.unshift(battleHeadline(outcome, commanderName));
 
   return {
-    state: { ...state, family, flags, familyReputations, lifetimeDignitas, denarii, fides, pendingEvents, provinces, wars, pendingSuccession },
+    state: { ...state, family, flags, familyReputations, lifetimeDignitas, denarii, fides, pendingEvents, provinces, wars, pendingSuccession, cadetBranch, pendingEpilogue },
     ledgerNotes,
   };
 }

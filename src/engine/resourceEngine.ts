@@ -15,7 +15,7 @@ import {
 } from './crisisEngine';
 import { getTierFromLevel } from '../models/crisis';
 import { BALANCE } from '../data/balance';
-import { applySuccession } from './inheritanceEngine';
+import { applySuccession, promoteCadetToParterfamilias } from './inheritanceEngine';
 
 export interface ApplyEffectOptions {
   previewClientName?: string;
@@ -270,6 +270,30 @@ export function applyEffectString(
       continue;
     }
 
+    // ── Phase 3, P3-D — bare (no-colon, no-param) tokens ────────────────────
+    // continueAsCadet/cadetVisited take no parameter, so they never match
+    // the colon-gated block below (segment.includes(':') is false for
+    // them) — matched here as whole-segment literals instead. See
+    // cadetEvents.ts's evt-cadet-succession/evt-cadet-visit choices.
+    if (segment === 'continueAsCadet') {
+      const cadet = (patch as any).cadetBranch ?? state.cadetBranch;
+      if (cadet) {
+        Object.assign(patch, promoteCadetToParterfamilias(cadet));
+      }
+      continue;
+    }
+    if (segment === 'cadetVisited') {
+      const cadet = (patch as any).cadetBranch ?? state.cadetBranch;
+      if (cadet) {
+        const metCount = cadet.metCount + 1;
+        patch.cadetBranch = { ...cadet, metCount };
+        if (metCount >= BALANCE.cadet.maxVisits) {
+          patch.flags = { ...(patch.flags ?? state.flags), 'cadet-visits-exhausted': true };
+        }
+      }
+      continue;
+    }
+
     // ── Colon-delimited special tokens ────────────────────────────────────
     if (segment.includes(':')) {
       const parts = segment.split(':');
@@ -465,6 +489,28 @@ export function applyEffectString(
         continue;
       }
 
+      // Phase 3, P3-D — setPendingEpilogue:value. A tiny, generic token
+      // (rather than folding into continueAsCadet's sibling choice) since
+      // "let the Gens end" needs to write pendingEpilogue directly —
+      // there's no numeric key±N form for a string-enum top-level field.
+      if (key === 'setPendingEpilogue') {
+        patch.pendingEpilogue = parts[1] as GameState['pendingEpilogue'];
+        continue;
+      }
+
+      continue;
+    }
+
+    // ── Phase 3, P3-D — cadetStanding±N ─────────────────────────────────────
+    // key±N form (like the skill grants below), not a colon token — matches
+    // cadetEvents.ts's evt-cadet-visit content (`cadetStanding+5`).
+    const cadetStandingMatch = segment.match(/^cadetStanding([+-]\d+)$/);
+    if (cadetStandingMatch) {
+      const delta = parseInt(cadetStandingMatch[1], 10);
+      const cadet = (patch as any).cadetBranch ?? state.cadetBranch;
+      if (cadet) {
+        patch.cadetBranch = { ...cadet, standing: Math.max(0, Math.min(100, cadet.standing + delta)) };
+      }
       continue;
     }
 

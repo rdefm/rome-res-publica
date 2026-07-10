@@ -79,10 +79,18 @@ const SaveSchema = z.object({
   // schema value), so unlisted fields are never stripped.
   wars: z.array(z.any()).default([]),
   // Phase 3, Chunk P3-A — .default(null) ensures pre-P3-A saves load cleanly.
-  pendingEpilogue: z.enum(['victory', 'exhaustion', 'humbled']).nullable().default(null),
+  // Widened by P3-D to add 'gens_ends' — see gameStore.ts's field comment.
+  pendingEpilogue: z.enum(['victory', 'exhaustion', 'humbled', 'gens_ends']).nullable().default(null),
   // Phase 3, Chunk P3-C — .default(null) ensures pre-P3-C saves load cleanly.
   pendingSuccession: z.any().nullable().default(null),
   regency: z.any().nullable().default(null),
+  // Phase 3, Chunk P3-D — .default()s ensure pre-P3-D saves load cleanly;
+  // loadGame's normalisation (gameStore.ts) backfills a real cadetBranch
+  // for an in-progress legacy save (a missing one would silently disable
+  // the extinction safety net otherwise).
+  cadetBranch: z.any().nullable().default(null),
+  cadetBranchUsed: z.boolean().default(false),
+  legacyPenaltyMult: z.number().default(1),
 });
 
 export interface SaveProvider {

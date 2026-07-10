@@ -775,6 +775,28 @@ export const BALANCE = {
      *  under a cloud), not a separate GameState-level stat. */
     nameOtherHeirFamilyTrustPenalty: -15,
   },
+
+  /** Phase 3, Chunk P3-D — Cadet Branch. FIRST-PASS/UNVERIFIED, same
+   *  treatment as every other constant group in this file. */
+  cadet: {
+    /** Generated once at run start (gameStore.startGame). */
+    ageMin: 25,
+    ageMax: 40,
+    /** A reduced spread vs. the main line's typical starting stats. */
+    skillMin: 2,
+    skillMax: 5,
+    startingStanding: 40,
+    /** evt-cadet-visit's hard cap — "once or twice", per the plan. */
+    maxVisits: 3,
+    /** evt-cadet-visit's random.ts-style weight (see warEvents.ts's periodic
+     *  events for the comparable magnitude) — low, so it's rare relative to
+     *  the rest of the event pool. */
+    visitWeight: 4,
+    /** Legacy multiplier applied once continueAsCadet fires. Read by a
+     *  future epilogue chunk (P3-E) — unconsumed until then, same
+     *  "field exists now" treatment as pendingEpilogue (P3-A). */
+    legacyPenaltyMult: 0.5,
+  },
 };
 
 // ─── Known un-extracted tunables ───────────────────────────────────────────

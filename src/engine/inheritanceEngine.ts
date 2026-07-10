@@ -1,9 +1,10 @@
-import type { Character, PendingSuccession, Regency } from '../models/character';
+import type { Character, PendingSuccession, Regency, CadetBranch, PersonalityTrait } from '../models/character';
 import type { GameState } from '../state/gameStore';
 import { TRAIT_DEFINITIONS } from '../data/traits';
 import { BALANCE } from '../data/balance';
 import { OFFICES } from '../data/offices';
 import { getHighestOffice } from './electionEngine';
+import { LEADER_PRAENOMINA } from '../data/clientNames';
 
 // ─── Name pools ───────────────────────────────────────────────────────────────
 
@@ -138,7 +139,11 @@ export function mortalityChance(age: number): number {
 }
 
 /** Rolls this character's mortality for the current yearly rollover. */
-export function rollsDead(character: Character): boolean {
+/** Takes `{ age }` rather than a full Character — P3-D's cadet-branch aging
+ *  tick (turnSequencer.ts) reuses this against a CadetBranch, which isn't a
+ *  Character. Every existing Character caller already satisfies this
+ *  structurally, no call-site changes needed. */
+export function rollsDead(character: { age: number }): boolean {
   return Math.random() < mortalityChance(character.age);
 }
 
@@ -257,4 +262,111 @@ export function applySuccession(state: GameState, heirId: string, isAlternative:
   }
 
   return patch;
+}
+
+// ─── Phase 3, Chunk P3-D — Cadet Branch ─────────────────────────────────────
+
+const CADET_PERSONALITY_TRAITS: PersonalityTrait[] = ['aggressive', 'content', 'ambitious', 'cautious'];
+
+const CADET_CHARACTERIZATIONS: Record<PersonalityTrait, string> = {
+  aggressive: 'quick to speak his mind and quicker to take offence',
+  content: 'a quiet man who has never asked the Gens Brutia for anything',
+  ambitious: 'a man who watches the main line\'s fortunes with more interest than he lets on',
+  cautious: 'careful with money and careful with words, in that order',
+};
+
+/** Generated once at run start (gameStore.startGame, both start types) — see
+ *  models/character.ts's CadetBranch doc comment for why he isn't a
+ *  playable Character until/unless promoted. Reuses LEADER_PRAENOMINA
+ *  (reputationEngine.ts's existing successor-generator pool) per the plan's
+ *  explicit instruction, rather than inventing a second name pool. */
+export function generateCadet(): CadetBranch {
+  const c = BALANCE.cadet;
+  const praenomen = LEADER_PRAENOMINA[Math.floor(Math.random() * LEADER_PRAENOMINA.length)];
+  const age = c.ageMin + Math.floor(Math.random() * (c.ageMax - c.ageMin + 1));
+  const skill = () => c.skillMin + Math.floor(Math.random() * (c.skillMax - c.skillMin + 1));
+  const trait = CADET_PERSONALITY_TRAITS[Math.floor(Math.random() * CADET_PERSONALITY_TRAITS.length)];
+
+  return {
+    id: `cadet-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+    name: `${praenomen} Brutia`,
+    age,
+    skills: { rhetoric: skill(), martial: skill(), intrigus: skill() },
+    trait,
+    characterization: CADET_CHARACTERIZATIONS[trait],
+    metCount: 0,
+    standing: c.startingStanding,
+    alive: true,
+  };
+}
+
+/** D3's continuation — promotes `cadet` into a fresh playable `family`
+ *  (himself plus one generated spouse, so the new line isn't a dead end
+ *  waiting to happen — a documented simplification; no children are
+ *  spawned, they can arrive through the existing birth mechanics like any
+ *  other family). Reuses the same cursus-clearing shape `applySuccession`
+ *  above already established. Rome/war/crisis/clan state is untouched —
+ *  this only returns `family` + cursus fields + the cadet-consumption
+ *  flags; the caller (gameStore's continueAsCadet: token) is responsible
+ *  for NOT touching anything else. */
+export function promoteCadetToParterfamilias(cadet: CadetBranch): Partial<GameState> {
+  const spouseName = `${ROMAN_NAMES_FEMALE[Math.floor(Math.random() * ROMAN_NAMES_FEMALE.length)]} Brutia`;
+  const newPaterfamilias: Character = {
+    id: cadet.id,
+    name: cadet.name,
+    role: 'paterfamilias',
+    isPlayer: true,
+    age: cadet.age,
+    skills: { ...cadet.skills },
+    traits: [cadet.trait],
+    ambition: null,
+    relationship: 100,
+    familyTrust: 70, // starts under some suspicion — a distant cousin, not the line everyone expected
+    officeId: null,
+    corruptionScore: 0,
+    inheritedTraits: [],
+    ambitionIds: [],
+    reputationScores: {},
+    formalImperium: 0,
+    militaryImperium: 0,
+    raisedLegions: [],
+    veterans: [],
+  };
+  const spouse: Character = {
+    id: `${cadet.id}-spouse`,
+    name: spouseName,
+    role: 'spouse',
+    isPlayer: false,
+    age: Math.max(18, cadet.age - 5),
+    skills: { rhetoric: 3, martial: 0, intrigus: 3 },
+    traits: ['content'],
+    ambition: null,
+    relationship: 80,
+    familyTrust: 80,
+    officeId: null,
+    corruptionScore: 0,
+    inheritedTraits: [],
+    ambitionIds: [],
+    reputationScores: {},
+    formalImperium: 0,
+    militaryImperium: 0,
+    raisedLegions: [],
+    veterans: [],
+  };
+
+  return {
+    family: [newPaterfamilias, spouse],
+    pendingSuccession: null,
+    regency: null,
+    cadetBranchUsed: true,
+    legacyPenaltyMult: BALANCE.cadet.legacyPenaltyMult,
+    // Same cursus-clearing as applySuccession — a fresh line, fresh Cursus.
+    currentOffice: null,
+    officeSeasons: 0,
+    heldOffices: [],
+    campaigning: null,
+    campaigningCharacterId: null,
+    campaignVotes: {},
+    electionRivals: [],
+  };
 }

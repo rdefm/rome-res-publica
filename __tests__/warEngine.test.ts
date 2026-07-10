@@ -1070,14 +1070,31 @@ describe('processSeason — natural death wiring (P3-C)', () => {
     expect(nextState.pendingSuccession).toBeFalsy();
   });
 
-  test('the no-heir notice fires instead of the normal death card when no eligible heir exists', () => {
+  test('extinction with a cadet branch available (P3-D) offers the continuation notice, not the plain death card', () => {
     jest.spyOn(Math, 'random').mockReturnValue(0);
     const state = makeState({
       seasonIndex: 3,
       family: [makeCharacter({ id: 'pc-1', age: 60 })], // no heirs at all
+      cadetBranchUsed: false,
+    });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-cadet-succession')).toBe(true);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-succession-death')).toBe(false);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-succession-no-heir')).toBe(false);
+    // cadetBranch is written back (lazily regenerated, since this fixture's default cadetBranch is undefined/dead).
+    expect(nextState.cadetBranch).not.toBeNull();
+  });
+
+  test('a SECOND extinction (cadetBranchUsed already true) goes straight to the dark ending, no offer', () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0);
+    const state = makeState({
+      seasonIndex: 3,
+      family: [makeCharacter({ id: 'pc-1', age: 60 })],
+      cadetBranchUsed: true,
     });
     const { nextState } = processSeason(state as any);
     expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-succession-no-heir')).toBe(true);
-    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-succession-death')).toBe(false);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-cadet-succession')).toBe(false);
+    expect(nextState.pendingEpilogue).toBe('gens_ends');
   });
 });

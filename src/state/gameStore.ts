@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Character, PendingSuccession, Regency } from '../models/character';
+import type { Character, PendingSuccession, Regency, CadetBranch } from '../models/character';
 import type { Bill, ActiveLaw } from '../models/bill';
 import type { Clan } from '../models/clan';
 import type { OfficeId, ElectionRival } from '../models/office';
@@ -90,6 +90,7 @@ import { makeSeededRng } from '../utils/seededRng';
 // Military Overhaul M9 — war score & set-piece scheduling
 import type { WarState, WarTerminalOutcome } from '../models/war';
 import { scheduleSetPiece, applyTreatyEffects, buildTreatyBill, getDesperationTier, phaseForYear, type TreatySide } from '../engine/warEngine';
+import { generateCadet } from '../engine/inheritanceEngine';
 
 export interface LogEntry {
   id: string;
@@ -140,6 +141,20 @@ export interface GameState {
   pendingSuccession: PendingSuccession | null;
   /** Set by succeedPaterfamilias when the confirmed heir is a minor. */
   regency: Regency | null;
+
+  // ── Phase 3, Chunk P3-D — Cadet Branch ───────────────────────────────────
+  /** Generated once at run start (gameStore.startGame) — see
+   *  models/character.ts's CadetBranch doc comment. Never null after a run
+   *  has started; old saves are lazily backfilled on load. */
+  cadetBranch: CadetBranch | null;
+  /** True once continueAsCadet has fired — extinction offers no second
+   *  continuation (see inheritanceEngine's detectPaterfamiliasDeath caller
+   *  in turnSequencer.ts/musterEngine.ts). */
+  cadetBranchUsed: boolean;
+  /** 1 normally; BALANCE.cadet.legacyPenaltyMult (0.5) once a cadet
+   *  continuation has occurred. Read by a future epilogue chunk (P3-E) —
+   *  unconsumed until then. */
+  legacyPenaltyMult: number;
 
   // Senate (Curia)
   bills: Bill[];
@@ -225,12 +240,17 @@ export interface GameState {
   // comment for the full reconciliation.
   wars: WarState[];
 
-  // ── Phase 3, Chunk P3-A — war terminal-outcome → epilogue signal ────────
+  // ── Phase 3, Chunk P3-A/P3-D — epilogue signal ───────────────────────────
   /** Set by warEngine.processWarSeason (statePatch.pendingEpilogue) when a
-   *  'major'-scale war concludes. Unconsumed until a future epilogue chunk
-   *  — reading/clearing it is not this chunk's job (see warEngine.ts's
-   *  classifyTerminalOutcome doc comment). */
-  pendingEpilogue: WarTerminalOutcome;
+   *  'major'-scale war concludes (P3-A — 'victory'/'exhaustion'/'humbled'),
+   *  or by the extinction path (P3-D — 'gens_ends', a second extinction
+   *  with no cadet continuation left) when there is no living family
+   *  member eligible to be paterfamilias. Unconsumed until a future
+   *  epilogue chunk (P3-E) — reading/clearing it is not this chunk's job.
+   *  Widened from P3-A's original WarTerminalOutcome-only type; P3-E's own
+   *  EpilogueOutcome (adding 'republic_falls') should replace this inline
+   *  union when that chunk builds models/epilogue.ts. */
+  pendingEpilogue: WarTerminalOutcome | 'gens_ends';
 
   // ── Military Overhaul M5 — battle session state ─────────────────────────
   // Transient UI/session state — stripped before save (saveLoad.ts), same
@@ -701,6 +721,12 @@ export const INITIAL_STATE: GameState = {
   trainedThisSeason: [],
   pendingSuccession: null,
   regency: null,
+  // P3-D — real value assigned by startGame (generateCadet()); null here is
+  // only ever seen transiently between INITIAL_STATE construction and
+  // startGame's set() call.
+  cadetBranch: null,
+  cadetBranchUsed: false,
+  legacyPenaltyMult: 1,
 
   bills: STARTING_BILLS,
   _expandedBill: null,
@@ -932,6 +958,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       tutorialQueue,
       pendingEvents: pendingGameStart,
       lastActiveAt: Date.now(),
+      // P3-D — generated once per run, both start types.
+      cadetBranch: generateCadet(),
     });
   },
 
@@ -1775,12 +1803,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const { TUTORIAL_EVENT_DEFS } = require('../data/tutorialEvents');
     const { WAR_EVENT_DEFS }      = require('../data/warEvents');
     const { SUCCESSION_EVENT_DEFS } = require('../data/successionEvents');
+    const { CADET_EVENT_DEFS }    = require('../data/cadetEvents');
     const { applyEffectString }   = require('../engine/resourceEngine');
     const { resolveEventChoice }  = require('../engine/eventEngine');
 
     // P1-G: search tutorial pool as well as main pool. P3-B added
-    // WAR_EVENT_DEFS, P3-C added SUCCESSION_EVENT_DEFS.
-    const allDefs = [...EVENT_DEFS, ...TUTORIAL_EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS];
+    // WAR_EVENT_DEFS, P3-C added SUCCESSION_EVENT_DEFS, P3-D added
+    // CADET_EVENT_DEFS.
+    const allDefs = [...EVENT_DEFS, ...TUTORIAL_EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS, ...CADET_EVENT_DEFS];
     const def = allDefs.find((d: any) => d.id === s.activeEvent!.defId);
     if (!def) {
       set({ activeEvent: null });
@@ -2079,6 +2109,12 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       peaceOffered: w.peaceOffered ?? false,
       lastFundingOfferTurn: w.lastFundingOfferTurn ?? (savedState.turnNumber - BALANCE.war.funding.recurTurns),
     })),
+    // P3-D — a pre-P3-D save has no cadetBranch at all; generate one now so
+    // an in-progress legacy run gains the extinction safety net immediately
+    // rather than only the first time resolveDeathNotice lazily regenerates
+    // one (which works too, but leaves evt-cadet-visit tracking nothing
+    // until extinction actually happens).
+    cadetBranch: savedState.cadetBranch ?? generateCadet(),
     // Always reset transient UI state — these must not be loaded from disk
     gameStarted:   true,
     debugMode:     false,

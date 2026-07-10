@@ -34,6 +34,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Provinciae',
   },
   {
+    id: 'cadet-branch',
+    term: 'Cadet Branch',
+    definition: 'A distant relative of your gens, tracked quietly from the start of the run. If your direct line ever dies out entirely, the cadet branch offers a one-time continuation — the name endures, but the run\'s Legacy is halved. A second extinction is final.',
+    relatedTab: 'Domus',
+  },
+  {
     id: 'campaign',
     term: 'Campaign (Election)',
     definition: 'A declared intention to stand for a specific office, set in the Cursus tab during Spring or Summer. Only one family member can campaign at a time; elections resolve in Winter.',

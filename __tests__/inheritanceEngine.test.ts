@@ -1,11 +1,16 @@
-// Phase 3, Chunk P3-C — mortality & death-detection tests. This file only
-// covers the P3-C additions to inheritanceEngine.ts; the pre-existing
-// birth/trait functions in that file had no dedicated test file before this
-// chunk either (verified) and are out of this chunk's scope.
+// Phase 3, Chunks P3-C/P3-D — mortality, death-detection & cadet-branch
+// tests. This file only covers the P3-C/P3-D additions to
+// inheritanceEngine.ts; the pre-existing birth/trait functions in that file
+// had no dedicated test file before P3-C either (verified) and are out of
+// this file's scope.
 
-import { mortalityChance, rollsDead, getHeirOrder, detectPaterfamiliasDeath } from '../src/engine/inheritanceEngine';
+import {
+  mortalityChance, rollsDead, getHeirOrder, detectPaterfamiliasDeath,
+  generateCadet, promoteCadetToParterfamilias,
+} from '../src/engine/inheritanceEngine';
+import { resolveDeathNotice } from '../src/data/cadetEvents';
 import { BALANCE } from '../src/data/balance';
-import type { Character } from '../src/models/character';
+import type { Character, CadetBranch } from '../src/models/character';
 
 function makeCharacter(overrides: Partial<Character> = {}): Character {
   return {
@@ -125,5 +130,109 @@ describe('detectPaterfamiliasDeath', () => {
     const family = [makeCharacter({ id: 'pc-1', traits: [] }), makeCharacter({ id: 'son-1', role: 'son', age: 20, isPlayer: false })];
     const result = detectPaterfamiliasDeath(family, 'pc-1', []);
     expect(result.pendingSuccession!.rememberedDetail.length).toBeGreaterThan(0);
+  });
+});
+
+// ─── Phase 3, Chunk P3-D — Cadet Branch ──────────────────────────────────────
+
+function makeCadet(overrides: Partial<CadetBranch> = {}): CadetBranch {
+  return {
+    id: 'cadet-1', name: 'Quintus Brutia', age: 30,
+    skills: { rhetoric: 3, martial: 3, intrigus: 3 },
+    trait: 'cautious', characterization: 'careful with money and careful with words',
+    metCount: 0, standing: 40, alive: true,
+    ...overrides,
+  };
+}
+
+describe('generateCadet', () => {
+  test('produces a valid CadetBranch within BALANCE.cadet bounds', () => {
+    const cadet = generateCadet();
+    expect(cadet.age).toBeGreaterThanOrEqual(BALANCE.cadet.ageMin);
+    expect(cadet.age).toBeLessThanOrEqual(BALANCE.cadet.ageMax);
+    expect(cadet.skills.rhetoric).toBeGreaterThanOrEqual(BALANCE.cadet.skillMin);
+    expect(cadet.skills.rhetoric).toBeLessThanOrEqual(BALANCE.cadet.skillMax);
+    expect(cadet.name).toContain('Brutia');
+    expect(cadet.alive).toBe(true);
+    expect(cadet.metCount).toBe(0);
+    expect(cadet.characterization.length).toBeGreaterThan(0);
+  });
+
+  test('two generated cadets have distinct ids', () => {
+    const a = generateCadet();
+    const b = generateCadet();
+    expect(a.id).not.toBe(b.id);
+  });
+});
+
+describe('promoteCadetToParterfamilias', () => {
+  test('promotes the cadet into a fresh 2-person family, halves the legacy multiplier, clears cursus', () => {
+    const cadet = makeCadet();
+    const patch = promoteCadetToParterfamilias(cadet);
+    expect(patch.family).toHaveLength(2);
+    const newHead = patch.family!.find(c => c.id === cadet.id)!;
+    expect(newHead.isPlayer).toBe(true);
+    expect(newHead.role).toBe('paterfamilias');
+    expect(newHead.name).toBe(cadet.name);
+    const spouse = patch.family!.find(c => c.id !== cadet.id)!;
+    expect(spouse.role).toBe('spouse');
+    expect(patch.cadetBranchUsed).toBe(true);
+    expect(patch.legacyPenaltyMult).toBe(BALANCE.cadet.legacyPenaltyMult);
+    expect(patch.currentOffice).toBeNull();
+    expect(patch.heldOffices).toEqual([]);
+    expect(patch.pendingSuccession).toBeNull();
+    expect(patch.regency).toBeNull();
+  });
+});
+
+describe('resolveDeathNotice (cadetEvents.ts)', () => {
+  const p = {
+    deceasedId: 'pc-1', deceasedName: 'Marcus', deceasedAge: 60,
+    rememberedDetail: 'who lived a private life', eligibleHeirIds: [] as string[],
+  };
+
+  test('has-heir case still fires the plain P3-C death card', () => {
+    const result = resolveDeathNotice({ ...p, eligibleHeirIds: ['son-1'] }, null, false, 10);
+    expect(result.notice.defId).toBe('evt-succession-death');
+    expect(result.cadetBranch).toBeUndefined();
+    expect(result.pendingEpilogue).toBeUndefined();
+  });
+
+  test('no-heir + cadet available (alive) fires the continuation offer using the existing cadet unchanged', () => {
+    const cadet = makeCadet({ alive: true });
+    const result = resolveDeathNotice(p, cadet, false, 10);
+    expect(result.notice.defId).toBe('evt-cadet-succession');
+    expect(result.cadetBranch).toEqual(cadet);
+  });
+
+  test('no-heir + cadet dead lazily regenerates a fresh one', () => {
+    const deadCadet = makeCadet({ alive: false });
+    const result = resolveDeathNotice(p, deadCadet, false, 10);
+    expect(result.notice.defId).toBe('evt-cadet-succession');
+    expect(result.cadetBranch).not.toEqual(deadCadet);
+    expect(result.cadetBranch?.alive).toBe(true);
+  });
+
+  test('no-heir + cadetBranchUsed already true goes straight to the dark ending, no cadet touched', () => {
+    const result = resolveDeathNotice(p, makeCadet(), true, 10);
+    expect(result.notice.defId).toBe('evt-succession-no-heir');
+    expect(result.cadetBranch).toBeUndefined();
+    expect(result.pendingEpilogue).toBe('gens_ends');
+  });
+});
+
+describe('CADET_EVENT_DEFS — content sanity', () => {
+  test('evt-cadet-visit has non-zero weight (enters the random pool); evt-cadet-succession is weight 0 (force-injected only)', () => {
+    const { CADET_EVENT_DEFS } = require('../src/data/cadetEvents');
+    const visit = CADET_EVENT_DEFS.find((d: any) => d.id === 'evt-cadet-visit');
+    const succession = CADET_EVENT_DEFS.find((d: any) => d.id === 'evt-cadet-succession');
+    expect(visit.weight).toBeGreaterThan(0);
+    expect(succession.weight).toBe(0);
+  });
+
+  test('evt-cadet-visit is gated on the maxVisits-exhausted flag, not always eligible', () => {
+    const { CADET_EVENT_DEFS } = require('../src/data/cadetEvents');
+    const visit = CADET_EVENT_DEFS.find((d: any) => d.id === 'evt-cadet-visit');
+    expect(visit.conditions).toEqual([{ type: 'flag', key: 'cadet-visits-exhausted', equals: false }]);
   });
 });

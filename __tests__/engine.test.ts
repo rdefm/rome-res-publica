@@ -493,3 +493,59 @@ describe('applyEffectString — succeedPaterfamilias: token', () => {
     expect(patch.family!.find(c => c.id === 'heir-1')?.isPlayer).toBe(true);
   });
 });
+
+// ─── Phase 3, Chunk P3-D — cadet-branch effect-string tokens ────────────────
+
+describe('applyEffectString — continueAsCadet / setPendingEpilogue / cadetStanding / cadetVisited tokens', () => {
+  const cadet = {
+    id: 'cadet-1', name: 'Quintus Brutia', age: 30,
+    skills: { rhetoric: 3, martial: 3, intrigus: 3 },
+    trait: 'cautious' as const, characterization: 'careful with money',
+    metCount: 0, standing: 40, alive: true,
+  };
+
+  test('continueAsCadet promotes state.cadetBranch into a fresh family and sets cadetBranchUsed/legacyPenaltyMult', () => {
+    const state = makeState({ cadetBranch: cadet, family: [] }) as any;
+    const patch = applyEffectString('continueAsCadet', state);
+    expect(patch.family).toHaveLength(2);
+    expect(patch.family![0].isPlayer || patch.family![1].isPlayer).toBe(true);
+    expect(patch.cadetBranchUsed).toBe(true);
+    expect(patch.legacyPenaltyMult).toBe(BALANCE.cadet.legacyPenaltyMult);
+  });
+
+  test('continueAsCadet is a safe no-op when cadetBranch is null', () => {
+    const state = makeState({ cadetBranch: null, family: [] }) as any;
+    const patch = applyEffectString('continueAsCadet', state);
+    expect(patch.family).toBeUndefined();
+    expect(patch.cadetBranchUsed).toBeUndefined();
+  });
+
+  test('setPendingEpilogue:gens_ends sets the field directly', () => {
+    const state = makeState() as any;
+    const patch = applyEffectString('setPendingEpilogue:gens_ends', state);
+    expect(patch.pendingEpilogue).toBe('gens_ends');
+  });
+
+  test('cadetStanding+N/-N clamps to 0..100', () => {
+    const state = makeState({ cadetBranch: cadet }) as any;
+    const up = applyEffectString('cadetStanding+50', state);
+    expect(up.cadetBranch!.standing).toBe(90);
+    const down = applyEffectString('cadetStanding-90', state);
+    expect(down.cadetBranch!.standing).toBe(0);
+  });
+
+  test('cadetVisited increments metCount and sets the exhausted flag at BALANCE.cadet.maxVisits', () => {
+    const almostDone = { ...cadet, metCount: BALANCE.cadet.maxVisits - 1 };
+    const state = makeState({ cadetBranch: almostDone }) as any;
+    const patch = applyEffectString('cadetVisited', state);
+    expect(patch.cadetBranch!.metCount).toBe(BALANCE.cadet.maxVisits);
+    expect(patch.flags!['cadet-visits-exhausted']).toBe(true);
+  });
+
+  test('cadetVisited below the cap does not set the exhausted flag', () => {
+    const state = makeState({ cadetBranch: cadet }) as any; // metCount: 0
+    const patch = applyEffectString('cadetVisited', state);
+    expect(patch.cadetBranch!.metCount).toBe(1);
+    expect(patch.flags?.['cadet-visits-exhausted']).toBeUndefined();
+  });
+});

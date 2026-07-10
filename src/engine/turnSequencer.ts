@@ -32,7 +32,7 @@ import {
   rollsDead,
   detectPaterfamiliasDeath,
 } from './inheritanceEngine';
-import { buildDeathCardBody, buildNoHeirBody } from '../data/successionEvents';
+import { resolveDeathNotice } from '../data/cadetEvents';
 import {
   shouldTriggerTrial,
   buildTrial,
@@ -52,6 +52,7 @@ import { calcAntagonismLevel, tickNpcConsul } from './npcConsulEngine';
 import { TRIAL_ACTIONS } from '../data/trialActions';
 import { EVENT_DEFS } from '../data/events';
 import { WAR_EVENT_DEFS } from '../data/warEvents';
+import { CADET_EVENT_DEFS } from '../data/cadetEvents';
 import { OFFICES } from '../data/offices';
 import { AUTO_BILL_TEMPLATES, BILL_TEMPLATES, HISTORICAL_BILL_TEMPLATES } from '../data/billTemplates';
 import { getProvinceDefinition } from '../data/provinceDefinitions';
@@ -939,15 +940,13 @@ export function processSeason(state: GameState): {
         family = result.family;
         if (result.pendingSuccession) {
           const p = result.pendingSuccession;
-          const noHeir = p.eligibleHeirIds.length === 0;
+          const resolution = resolveDeathNotice(p, s.cadetBranch, s.cadetBranchUsed, s.turnNumber);
           s = {
             ...s,
             pendingSuccession: p,
-            pendingEvents: [...s.pendingEvents, injectNoticeEvent(
-              noHeir ? 'evt-succession-no-heir' : 'evt-succession-death',
-              s.turnNumber, p.deceasedId,
-              { title: noHeir ? 'The Line Falters' : 'A Death in the House', bodyText: noHeir ? buildNoHeirBody(p) : buildDeathCardBody(p) },
-            )],
+            pendingEvents: [...s.pendingEvents, resolution.notice],
+            ...(resolution.cadetBranch ? { cadetBranch: resolution.cadetBranch } : {}),
+            ...(resolution.pendingEpilogue ? { pendingEpilogue: resolution.pendingEpilogue } : {}),
           };
           events.push(`${p.deceasedName} has died.`);
         } else {
@@ -978,6 +977,16 @@ export function processSeason(state: GameState): {
       };
       events.push(`${heir.name} comes of age; the regency ends.`);
     }
+  }
+
+  // 10c. Phase 3, Chunk P3-D — cadet-branch aging. Same yearly gate; he can
+  // die of old age like anyone else, but per D4's documented lifecycle
+  // choice there is no continuous "regenerate his son" background process
+  // — a dead cadet is only lazily replaced at the moment extinction
+  // actually needs him (cadetEvents.resolveDeathNotice).
+  if (crossedNewYear && s.cadetBranch?.alive) {
+    const aged = { ...s.cadetBranch, age: s.cadetBranch.age + 1 };
+    s = { ...s, cadetBranch: rollsDead(aged) ? { ...aged, alive: false } : aged };
   }
 
   // 11. Auto-inject bills
@@ -1063,7 +1072,7 @@ export function processSeason(state: GameState): {
       chosenDef = getEventDef('evt-war-mamertines') as typeof chosenDef;
     } else {
       // Normal random event — tutorial queue exhausted or standard start
-      chosenDef = pickRandomEvent([...EVENT_DEFS, ...WAR_EVENT_DEFS], s);
+      chosenDef = pickRandomEvent([...EVENT_DEFS, ...WAR_EVENT_DEFS, ...CADET_EVENT_DEFS], s);
     }
 
     if (chosenDef) {
@@ -1237,16 +1246,14 @@ export function processSeason(state: GameState): {
           const result = detectPaterfamiliasDeath(s.family, trial.accusedCharacterId, s.heldOffices);
           if (result.pendingSuccession) {
             const p = result.pendingSuccession;
-            const noHeir = p.eligibleHeirIds.length === 0;
+            const resolution = resolveDeathNotice(p, s.cadetBranch, s.cadetBranchUsed, s.turnNumber);
             s = {
               ...s,
               family: result.family,
               pendingSuccession: p,
-              pendingEvents: [...s.pendingEvents, injectNoticeEvent(
-                noHeir ? 'evt-succession-no-heir' : 'evt-succession-death',
-                s.turnNumber, p.deceasedId,
-                { title: noHeir ? 'The Line Falters' : 'A Death in the House', bodyText: noHeir ? buildNoHeirBody(p) : buildDeathCardBody(p) },
-              )],
+              pendingEvents: [...s.pendingEvents, resolution.notice],
+              ...(resolution.cadetBranch ? { cadetBranch: resolution.cadetBranch } : {}),
+              ...(resolution.pendingEpilogue ? { pendingEpilogue: resolution.pendingEpilogue } : {}),
             };
           } else {
             s = { ...s, family: result.family };

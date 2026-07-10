@@ -82,9 +82,9 @@ export interface PendingSuccession {
   /** Priority order (eldest son > eldest daughter > eldest spouse, then
    *  every other eligible relative) — [0] is the default heir offered in
    *  the confirmation card; the rest are the "name a different heir"
-   *  choices. Empty if no eligible heir exists (P3-D's extinction path,
-   *  not yet built — this chunk does not soft-lock on it, see
-   *  gameStore.succeedPaterfamilias's doc comment). */
+   *  choices. Empty if no eligible heir exists — P3-D's extinction path:
+   *  the cadet-branch continuation offer (or, on a second extinction, the
+   *  dark ending) instead of the normal funeral/heir chain. */
   eligibleHeirIds: string[];
 }
 
@@ -96,4 +96,39 @@ export interface Regency {
   regentId: string | null;
   /** GameState.year the heir turns regencyMinorAge — regency clears then. */
   untilYear: number;
+}
+
+// ─── Phase 3, Chunk P3-D — Cadet Branch ──────────────────────────────────────
+// A collateral Brutia relative, generated once at run start and tracked
+// minimally — NOT a member of the playable `family` array (keeps Domus
+// uncluttered and him non-controllable) until/unless he is ever promoted via
+// gameStore's continueAsCadet: effect-string token (inheritanceEngine.
+// promoteCadetToParterfamilias). Folded into this file rather than a new
+// models/cadet.ts — a single small interface, consistent with keeping
+// family-domain types together (PendingSuccession/Regency above).
+
+export interface CadetBranch {
+  id: string;
+  /** Brutia gens + a praenomen from LEADER_PRAENOMINA (reputationEngine.ts's
+   *  existing successor-generator pool) — see inheritanceEngine.generateCadet. */
+  name: string;
+  age: number;
+  skills: CharacterSkills;
+  /** One personality trait for flavour — not mechanically applied (this is
+   *  an NPC, not a playable Character; no skill-modifier pass runs on him). */
+  trait: PersonalityTrait;
+  /** One authored-ish line assembled from trait/stats, used by
+   *  cadetEvents.ts's evt-cadet-visit content. */
+  characterization: string;
+  /** How many times evt-cadet-visit has fired this run — caps at
+   *  BALANCE.cadet.maxVisits. */
+  metCount: number;
+  /** 0–100, the player's rapport with the cadet line. */
+  standing: number;
+  /** False once he has died of old age — see the yearly-rollover aging
+   *  tick (turnSequencer.ts). A dead cadet does not disable the extinction
+   *  safety net: detectPaterfamiliasDeath's caller lazily regenerates a
+   *  fresh one at extinction time rather than maintaining a continuously
+   *  "topped up" living backup (D4's documented lifecycle choice). */
+  alive: boolean;
 }

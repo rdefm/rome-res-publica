@@ -179,10 +179,12 @@ export function getEventDef(defId: string): EventDef | undefined {
   const { TUTORIAL_EVENT_DEFS } = require('../data/tutorialEvents');
   const { WAR_EVENT_DEFS } = require('../data/warEvents');
   const { SUCCESSION_EVENT_DEFS } = require('../data/successionEvents');
+  const { CADET_EVENT_DEFS } = require('../data/cadetEvents');
   return (EVENT_DEFS as EventDef[]).find(d => d.id === defId)
       ?? (TUTORIAL_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
       ?? (WAR_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
-      ?? (SUCCESSION_EVENT_DEFS as EventDef[]).find(d => d.id === defId);
+      ?? (SUCCESSION_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
+      ?? (CADET_EVENT_DEFS as EventDef[]).find(d => d.id === defId);
 }
 
 // ─── P1-G: Tutorial season gate ──────────────────────────────────────────────
