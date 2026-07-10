@@ -448,6 +448,54 @@ export const BALANCE = {
     withdrawal: {
       defMult: 1.1,
     },
+
+    /** M7 — stratagems (see data/stratagems.ts for the 8-card catalog).
+     *  Hand size and draw-weight multipliers are FIRST-PASS/UNVERIFIED —
+     *  the plan specifies "drawn weighted by army composition and terrain"
+     *  descriptively but gives no numbers; revisit in M11's tuning pass
+     *  alongside the other battle constants. Effect magnitudes below ARE
+     *  the plan's stated numbers where given. */
+    stratagems: {
+      handSizeBase: 1,
+      handSizeMartialDivisor: 4,
+      /** Ambuscade: enemy lane morale hit, pre-battle, rough_hills/river_crossing only. */
+      ambuscadeMoraleDelta: -10,
+      ambuscadeTerrainIds: ['rough_hills', 'river_crossing'],
+      /** Caltrops: incoming cavalry-class shock onto the chosen own lane. */
+      caltropsCavalryShockMult: 0.3,
+      /** Fire Arrows: added to the ENEMY's elephant amok chance, this battle. */
+      fireArrowsAmokChanceDelta: 0.20,
+      /** Rally the Standards: broken own wing re-forms at this morale, once/battle. */
+      rallyMorale: 25,
+      /** Forced March: enemy reserve locked until this round (inclusive start). */
+      forcedMarchLockUntilRound: 3,
+      /** Testudo Discipline: prelude/missile chip onto the chosen own lane. */
+      testudoPreludeMult: 0,
+      /** Officer's Oath: chosen own lane's units count as this loyalty, this battle. */
+      officersOathLoyalty: 80,
+      /** Double Envelopment Doctrine: multiplies this side's wheel flank bonus. */
+      doubleEnvelopmentWheelBonusMult: 1.75,
+      /** FIRST-PASS/UNVERIFIED draw-weight multipliers (base weight 1 for
+       *  every card; a card at weight 0 never enters the draw pool). Applied
+       *  by battleEngine.drawStratagemHand against the drawing side's OWN
+       *  army composition + terrain only (no cross-side knowledge — matches
+       *  battleAi.chooseDeployment's (profile, army, terrain) signature). */
+      drawWeights: {
+        ambuscadeTerrainMatch: 3,
+        ambuscadeNoTerrainMatch: 0,
+        caltropsLowCavalryMult: 2,
+        fireArrowsNoElephantsMult: 2,
+        testudoInfantryScreenMult: 2,
+        officersOathLowLoyaltyMult: 2,
+        rallyBaseWeight: 1.5,
+        forcedMarchBaseWeight: 1,
+        doubleEnvelopmentHeavyCavalryMult: 2,
+        /** Composition thresholds used by the multipliers above. */
+        lowCavalryStrengthFraction: 0.2,
+        lowLoyaltyThreshold: 60,
+        heavyCavalryStrengthFraction: 0.2,
+      },
+    },
   },
 
   // ─── M1 — War score & strategic layer (src/engine/warEngine.ts, M9) ────────

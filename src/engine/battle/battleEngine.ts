@@ -51,7 +51,7 @@
 import type {
   BattleState, BattleSide, BattleUnit, Deployment, FormationId, LaneId,
   RoundLogEntry, SideOrders, SideState, TerrainMod, WingState, BattleOutcome,
-  CaptainOutcome, PendingBreakDecision, CasualtyDelta,
+  CaptainOutcome, PendingBreakDecision, CasualtyDelta, PreBattleStratagemPick,
 } from '../../models/battle';
 import { BALANCE } from '../../data/balance';
 import { makeSeededRng, rngPercent, type RngFn } from '../../utils/seededRng';
@@ -59,6 +59,7 @@ import {
   resolveLaneClash, isFeintGated, applyAmokDamage,
   type SideClashMods, type LaneClashContext,
 } from './clashEngine';
+import { STRATAGEMS, STRATAGEM_LIST, type StratagemId, type StratagemDef } from '../../data/stratagems';
 
 const LANES: LaneId[] = ['left', 'centre', 'right'];
 const CAVALRY_CLASSES = new Set(['cavalry_heavy', 'cavalry_light']);
@@ -89,6 +90,10 @@ export interface DeploySideInput {
   commanderId: string | null;
   roster: CaptainRoster;
   generalProfileId?: string;
+  /** M7: this side's drawn stratagem hand (see drawStratagemHand below).
+   *  Pre-battle picks in deployment.preBattleStratagems are validated
+   *  against this and consumed by initBattle. */
+  stratagemHand?: string[];
 }
 
 // ─── Small numeric helpers ───────────────────────────────────────────────────
@@ -116,6 +121,21 @@ function otherSide(side: BattleSide): BattleSide {
   return side === 'attacker' ? 'defender' : 'attacker';
 }
 
+function classStrengthFrac(army: BattleUnit[], predicate: (u: BattleUnit) => boolean): number {
+  const total = totalStrength(army);
+  if (total <= 0) return 0;
+  return army.filter(predicate).reduce((s, u) => s + u.strength, 0) / total;
+}
+
+/** Left/right are adjacent to centre only; centre is adjacent to both. */
+const LANE_ADJACENCY: Record<LaneId, LaneId[]> = { left: ['centre'], right: ['centre'], centre: ['left', 'right'] };
+
+function isCommanderAdjacent(side: SideState, laneId: LaneId): boolean {
+  if (side.commanderStation === laneId) return true;
+  if (side.commanderStation === 'reserve') return false;
+  return LANE_ADJACENCY[laneId].includes(side.commanderStation);
+}
+
 // ─── initBattle ──────────────────────────────────────────────────────────────
 
 export function initBattle(
@@ -133,10 +153,37 @@ export function initBattle(
   }
   if (reasons.length > 0) throw new InvalidDeploymentError(reasons);
 
-  const attacker = buildInitialSideState(attackerInput);
-  const defender = buildInitialSideState(defenderInput);
+  // ── M7: pre-battle stratagems ─────────────────────────────────────────
+  // Validate picks against each side's hand/terrain first (isPreBattlePlayable),
+  // then apply unit-mutating effects (Officer's Oath) BEFORE buildInitialSideState
+  // (the morale seed reads unit loyalty), then build both sides, then apply the
+  // rest (state-mutating) effects to the finished SideState/WingState objects.
+  const attackerPicks = (attackerInput.deployment.preBattleStratagems ?? [])
+    .filter(p => isPreBattlePlayable(p, attackerInput.stratagemHand ?? [], terrain));
+  const defenderPicks = (defenderInput.deployment.preBattleStratagems ?? [])
+    .filter(p => isPreBattlePlayable(p, defenderInput.stratagemHand ?? [], terrain));
+
+  const attackerDeployment = applyOfficersOathToDeployment(attackerInput.deployment, attackerPicks);
+  const defenderDeployment = applyOfficersOathToDeployment(defenderInput.deployment, defenderPicks);
+
+  let attacker = buildInitialSideState({ ...attackerInput, deployment: attackerDeployment });
+  let defender = buildInitialSideState({ ...defenderInput, deployment: defenderDeployment });
 
   const log: RoundLogEntry[] = [];
+  for (const pick of attackerPicks) ({ attacker, defender } = applyPreBattleStratagem('attacker', pick, attacker, defender, log));
+  for (const pick of defenderPicks) ({ attacker, defender } = applyPreBattleStratagem('defender', pick, attacker, defender, log));
+
+  attacker = {
+    ...attacker,
+    stratagemHand: (attackerInput.stratagemHand ?? []).filter(id => !attackerPicks.some(p => p.stratagemId === id)),
+    stratagemsPlayed: attackerPicks.map(p => p.stratagemId),
+  };
+  defender = {
+    ...defender,
+    stratagemHand: (defenderInput.stratagemHand ?? []).filter(id => !defenderPicks.some(p => p.stratagemId === id)),
+    stratagemsPlayed: defenderPicks.map(p => p.stratagemId),
+  };
+
   for (const [sideKey, side] of [['attacker', attacker], ['defender', defender]] as const) {
     for (const laneId of LANES) {
       if (side.wings[laneId].units.length === 0) {
@@ -157,6 +204,196 @@ export function initBattle(
     pendingBreakDecisions: [],
     amokChanceRiders: {},
     startingStrength: { attacker: totalArmyStrength(attacker), defender: totalArmyStrength(defender) },
+  };
+}
+
+// ─── M7: Stratagems ──────────────────────────────────────────────────────────
+// Hand drawing, legality, and effect application. Content (the 8-card catalog)
+// lives in data/stratagems.ts; every number lives in BALANCE.battle.stratagems;
+// this is the "small effect-key switch in the orchestrator" the plan calls for.
+
+/** Weighted (composition + terrain), without-replacement draw of this side's
+ *  stratagem hand at deployment. FIRST-PASS/UNVERIFIED weighting — see
+ *  BALANCE.battle.stratagems.drawWeights' header comment. */
+export function drawStratagemHand(martial: number, army: BattleUnit[], terrain: TerrainMod, rng: RngFn): string[] {
+  const cfg = BALANCE.battle.stratagems;
+  const handSize = clampRange(cfg.handSizeBase + Math.floor(martial / cfg.handSizeMartialDivisor), 0, STRATAGEM_LIST.length);
+  const weights = STRATAGEM_LIST.map(def => stratagemDrawWeight(def, army, terrain));
+  return weightedSampleWithoutReplacement(STRATAGEM_LIST, weights, handSize, rng);
+}
+
+function stratagemDrawWeight(def: StratagemDef, army: BattleUnit[], terrain: TerrainMod): number {
+  const w = BALANCE.battle.stratagems.drawWeights;
+  switch (def.id) {
+    case 'ambuscade':
+      return def.requiresTerrainIds?.includes(terrain.id) ? w.ambuscadeTerrainMatch : w.ambuscadeNoTerrainMatch;
+    case 'caltrops':
+      return classStrengthFrac(army, u => CAVALRY_CLASSES.has(u.unitClass)) < w.lowCavalryStrengthFraction
+        ? w.caltropsLowCavalryMult : 1;
+    case 'fire_arrows':
+      return army.every(u => u.unitClass !== 'elephant') ? w.fireArrowsNoElephantsMult : 1;
+    case 'testudo_discipline':
+      return army.some(u => u.unitClass === 'skirmisher' || u.unitClass === 'spear_foot') ? w.testudoInfantryScreenMult : 1;
+    case 'officers_oath':
+      return strengthWeightedAvg(army, u => u.loyalty) < w.lowLoyaltyThreshold ? w.officersOathLowLoyaltyMult : 1;
+    case 'rally_the_standards':
+      return w.rallyBaseWeight;
+    case 'forced_march':
+      return w.forcedMarchBaseWeight;
+    case 'double_envelopment_doctrine':
+      return classStrengthFrac(army, u => u.unitClass === 'cavalry_heavy') >= w.heavyCavalryStrengthFraction
+        ? w.doubleEnvelopmentHeavyCavalryMult : 1;
+    default:
+      return 1;
+  }
+}
+
+function weightedSampleWithoutReplacement(items: StratagemDef[], weights: number[], n: number, rng: RngFn): string[] {
+  const pool = items.map((item, i) => ({ item, weight: weights[i] })).filter(p => p.weight > 0);
+  const picked: string[] = [];
+  while (picked.length < n && pool.length > 0) {
+    const totalWeight = pool.reduce((s, p) => s + p.weight, 0);
+    if (totalWeight <= 0) break;
+    let roll = rng() * totalWeight;
+    let idx = 0;
+    for (; idx < pool.length - 1; idx++) {
+      roll -= pool[idx].weight;
+      if (roll <= 0) break;
+    }
+    picked.push(pool[idx].item.id);
+    pool.splice(idx, 1);
+  }
+  return picked;
+}
+
+/** Legal pre-battle picks from a hand, gated by timing + terrain — the single
+ *  source DeploymentBoard (M7 UI) and battleAi.chooseDeployment both read. */
+export function getPlayablePreBattleStratagems(hand: string[], terrain: TerrainMod): StratagemDef[] {
+  return hand
+    .map(id => STRATAGEMS[id as StratagemId])
+    .filter((def): def is StratagemDef => !!def && def.timing === 'pre_battle')
+    .filter(def => !def.requiresTerrainIds || def.requiresTerrainIds.includes(terrain.id));
+}
+
+function isPreBattlePlayable(pick: PreBattleStratagemPick, hand: string[], terrain: TerrainMod): boolean {
+  const def = STRATAGEMS[pick.stratagemId as StratagemId];
+  if (!def || def.timing !== 'pre_battle') return false;
+  if (!hand.includes(pick.stratagemId)) return false;
+  if (def.requiresTerrainIds && !def.requiresTerrainIds.includes(terrain.id)) return false;
+  if ((def.target === 'own_lane' || def.target === 'enemy_lane') && !pick.laneId) return false;
+  return true;
+}
+
+/** Officer's Oath is applied to the raw Deployment (unit loyalty) BEFORE
+ *  buildInitialSideState, since the morale seed reads loyalty once at
+ *  deployment time — every other pre-battle card is applied after, to the
+ *  built SideState/WingState (see applyPreBattleStratagem). */
+function applyOfficersOathToDeployment(deployment: Deployment, picks: PreBattleStratagemPick[]): Deployment {
+  const oathPicks = picks.filter(p => p.stratagemId === 'officers_oath' && p.laneId);
+  if (oathPicks.length === 0) return deployment;
+  let lanes = deployment.lanes;
+  for (const pick of oathPicks) {
+    const laneId = pick.laneId!;
+    const assignment = lanes[laneId];
+    lanes = {
+      ...lanes,
+      [laneId]: { ...assignment, units: assignment.units.map(u => ({ ...u, loyalty: BALANCE.battle.stratagems.officersOathLoyalty })) },
+    };
+  }
+  return { ...deployment, lanes };
+}
+
+function applyPreBattleStratagem(
+  playedBy: BattleSide,
+  pick: PreBattleStratagemPick,
+  attacker: SideState,
+  defender: SideState,
+  log: RoundLogEntry[],
+): { attacker: SideState; defender: SideState } {
+  const cfg = BALANCE.battle.stratagems;
+  let own = playedBy === 'attacker' ? attacker : defender;
+  let enemy = playedBy === 'attacker' ? defender : attacker;
+
+  switch (pick.stratagemId as StratagemId) {
+    case 'officers_oath':
+      break; // unit-level effect already applied pre-buildInitialSideState
+    case 'ambuscade':
+      if (pick.laneId) {
+        const wing = enemy.wings[pick.laneId];
+        const newMorale = clampRange(wing.moralePool + cfg.ambuscadeMoraleDelta, 0, BALANCE.battle.morale.clampMax);
+        enemy = { ...enemy, wings: { ...enemy.wings, [pick.laneId]: { ...wing, moralePool: newMorale } } };
+      }
+      break;
+    case 'caltrops':
+      if (pick.laneId) {
+        const wing = own.wings[pick.laneId];
+        own = { ...own, wings: { ...own.wings, [pick.laneId]: { ...wing, stratagemMods: { ...wing.stratagemMods, incomingCavalryShockMult: cfg.caltropsCavalryShockMult } } } };
+      }
+      break;
+    case 'testudo_discipline':
+      if (pick.laneId) {
+        const wing = own.wings[pick.laneId];
+        own = { ...own, wings: { ...own.wings, [pick.laneId]: { ...wing, stratagemMods: { ...wing.stratagemMods, preludeMult: cfg.testudoPreludeMult } } } };
+      }
+      break;
+    case 'fire_arrows':
+      enemy = { ...enemy, incomingElephantAmokRiderPct: (enemy.incomingElephantAmokRiderPct ?? 0) + cfg.fireArrowsAmokChanceDelta };
+      break;
+    case 'forced_march':
+      enemy = { ...enemy, reserveLockedUntilRound: cfg.forcedMarchLockUntilRound };
+      break;
+    case 'double_envelopment_doctrine':
+      own = { ...own, wheelBonusMult: cfg.doubleEnvelopmentWheelBonusMult };
+      break;
+  }
+
+  log.push({ type: 'stratagem_played', round: 0, side: playedBy, stratagemId: pick.stratagemId, laneId: pick.laneId });
+  return playedBy === 'attacker' ? { attacker: own, defender: enemy } : { attacker: enemy, defender: own };
+}
+
+/** Reactive-timing legality (v1: Rally the Standards only) — the single
+ *  source OrdersPanel (M7 UI) and battleAi.chooseOrders both read. */
+export interface PlayableReactiveStratagem {
+  stratagemId: string;
+  validLanes: LaneId[];
+}
+
+export function getPlayableStratagems(state: BattleState, sideKey: BattleSide): PlayableReactiveStratagem[] {
+  if (state.phase !== 'orders') return [];
+  const side = state[sideKey];
+  const hand = side.stratagemHand ?? [];
+  const played = new Set(side.stratagemsPlayed ?? []);
+  const result: PlayableReactiveStratagem[] = [];
+  for (const id of hand) {
+    const def = STRATAGEMS[id as StratagemId];
+    if (!def || def.timing !== 'reactive') continue;
+    if (def.id === 'rally_the_standards') {
+      if (played.has(def.id)) continue;
+      const validLanes = LANES.filter(laneId => {
+        const wing = side.wings[laneId];
+        return wing.broken && wing.units.length > 0 && isCommanderAdjacent(side, laneId);
+      });
+      if (validLanes.length > 0) result.push({ stratagemId: def.id, validLanes });
+    }
+  }
+  return result;
+}
+
+function tryApplyRally(sideKey: BattleSide, orders: SideOrders, side: SideState, log: RoundLogEntry[], round: number): SideState {
+  if (orders.stratagemId !== 'rally_the_standards' || !orders.stratagemLaneId) return side;
+  const laneId = orders.stratagemLaneId;
+  const hand = side.stratagemHand ?? [];
+  const played = side.stratagemsPlayed ?? [];
+  if (!hand.includes('rally_the_standards') || played.includes('rally_the_standards')) return side;
+  const wing = side.wings[laneId];
+  if (!wing.broken || wing.units.length === 0 || !isCommanderAdjacent(side, laneId)) return side;
+
+  log.push({ type: 'stratagem_played', round, side: sideKey, stratagemId: 'rally_the_standards', laneId });
+  return {
+    ...side,
+    wings: { ...side.wings, [laneId]: { ...wing, broken: false, moralePool: BALANCE.battle.stratagems.rallyMorale } },
+    stratagemHand: hand.filter(id => id !== 'rally_the_standards'),
+    stratagemsPlayed: [...played, 'rally_the_standards'],
   };
 }
 
@@ -256,14 +493,14 @@ export function getValidOrders(state: BattleState, sideKey: BattleSide): ValidOr
   }
   return {
     lanes,
-    reserveAvailable: side.reserve.length > 0,
+    reserveAvailable: side.reserve.length > 0 && state.round >= (side.reserveLockedUntilRound ?? 0),
     withdrawAvailable: isWithdrawAvailable(side),
   };
 }
 
 // ─── Applying orders (formation changes, reserve commits) ──────────────────
 
-function applySideOrders(side: SideState, orders: SideOrders): SideState {
+function applySideOrders(side: SideState, orders: SideOrders, round: number): SideState {
   let wings = { ...side.wings };
   for (const laneId of LANES) {
     const laneOrder = orders.laneOrders[laneId];
@@ -272,7 +509,8 @@ function applySideOrders(side: SideState, orders: SideOrders): SideState {
     }
   }
   let reserve = side.reserve;
-  if (orders.commitReserves) {
+  const reserveLocked = round < (side.reserveLockedUntilRound ?? 0);
+  if (orders.commitReserves && !reserveLocked) {
     const { laneId, unitIds } = orders.commitReserves;
     const moving = reserve.filter(u => unitIds.includes(u.id));
     if (moving.length > 0) {
@@ -323,8 +561,8 @@ export function submitOrders(state: BattleState, ordersAttacker: SideOrders, ord
     throw new Error(`submitOrders called while phase is '${state.phase}', expected 'orders'`);
   }
 
-  let attacker = applySideOrders(state.attacker, ordersAttacker);
-  let defender = applySideOrders(state.defender, ordersDefender);
+  let attacker = applySideOrders(state.attacker, ordersAttacker, state.round);
+  let defender = applySideOrders(state.defender, ordersDefender, state.round);
 
   const attackerWithdrawing = ordersAttacker.withdraw === true && isWithdrawAvailable(attacker);
   const defenderWithdrawing = ordersDefender.withdraw === true && isWithdrawAvailable(defender);
@@ -334,6 +572,12 @@ export function submitOrders(state: BattleState, ordersAttacker: SideOrders, ord
   const log: RoundLogEntry[] = [];
   const amokChanceRiders = { ...state.amokChanceRiders };
   const round = state.round;
+
+  // M7: Rally the Standards (the only reactive-timing stratagem) resolves
+  // before this round's lane clashes, so a re-formed wing can fight the
+  // same round.
+  attacker = tryApplyRally('attacker', ordersAttacker, attacker, log, round);
+  defender = tryApplyRally('defender', ordersDefender, defender, log, round);
 
   for (const laneId of LANES) {
     const wingA = attacker.wings[laneId];
@@ -357,6 +601,10 @@ export function submitOrders(state: BattleState, ordersAttacker: SideOrders, ord
       overextendedB: wingB.overextended,
       withdrawDefMultA: attackerWithdrawing ? BALANCE.battle.withdrawal.defMult : undefined,
       withdrawDefMultB: defenderWithdrawing ? BALANCE.battle.withdrawal.defMult : undefined,
+      incomingCavalryShockMultA: wingA.stratagemMods?.incomingCavalryShockMult,
+      incomingCavalryShockMultB: wingB.stratagemMods?.incomingCavalryShockMult,
+      preludeMultA: wingA.stratagemMods?.preludeMult,
+      preludeMultB: wingB.stratagemMods?.preludeMult,
     };
 
     const result = resolveLaneClash(wingA.units, wingB.units, ctx);
@@ -417,7 +665,8 @@ export function submitOrders(state: BattleState, ordersAttacker: SideOrders, ord
           const lowStrength = unit.strength < e.amokLowStrengthThreshold ? e.amokLowStrengthChanceBonus : 0;
           const rider = amokChanceRiders[unit.id] ?? 0;
           const terrainRider = state.terrain.mods.elephantAmok ?? 0;
-          const chance = clampRange(e.amokBaseChancePerEngagedRound * wing.engagedRounds + lowStrength + rider + terrainRider, 0, 1);
+          const fireArrowsRider = side.incomingElephantAmokRiderPct ?? 0; // M7
+          const chance = clampRange(e.amokBaseChancePerEngagedRound * wing.engagedRounds + lowStrength + rider + terrainRider + fireArrowsRider, 0, 1);
           if (rngPercent(rng) > chance * 100) continue;
 
           const opposingWing = updatedOther.wings[laneId];
@@ -580,6 +829,12 @@ export function submitBreakDecision(
     // The opponent's wing AT the target lane (the one now facing the flank
     // charge) — this is the broken side's OWN army, same side as `opponentSide`.
     const targetWing = opponentSide.wings[targetLane];
+    // M7 — Double Envelopment Doctrine: scales the victor's own flank-charge
+    // morale hit. (The ongoing per-round flanked-def-mult reduction stays
+    // fixed — see clashEngine's buildEffectiveSide — this is the concrete,
+    // immediate "flank bonus" battleEngine can scale without further
+    // clashEngine surgery; a fuller implementation is M11 tuning-pass scope.)
+    const wheelBonusMult = victorSide.wheelBonusMult ?? 1;
     const updatedOpponent = {
       ...opponentSide,
       wings: {
@@ -587,7 +842,7 @@ export function submitBreakDecision(
         [targetLane]: {
           ...targetWing,
           flanked: true,
-          moralePool: clampRange(targetWing.moralePool + BALANCE.battle.break.wheelTargetMoraleDelta, 0, BALANCE.battle.morale.clampMax),
+          moralePool: clampRange(targetWing.moralePool + BALANCE.battle.break.wheelTargetMoraleDelta * wheelBonusMult, 0, BALANCE.battle.morale.clampMax),
         },
       },
     };
@@ -801,9 +1056,12 @@ export function formatBattleLog(log: RoundLogEntry[]): string {
       case 'reserve_commit':
         lines.push(`R${entry.round} [${entry.laneId}] ${entry.side} commits reserves`);
         break;
-      case 'stratagem_played':
-        lines.push(`R${entry.round} ${entry.side} plays a stratagem (${entry.stratagemId})`);
+      case 'stratagem_played': {
+        const label = STRATAGEMS[entry.stratagemId as StratagemId]?.label ?? entry.stratagemId;
+        const laneSuffix = entry.laneId ? ` [${entry.laneId}]` : '';
+        lines.push(`R${entry.round} ${entry.side} plays ${label}${laneSuffix}`);
         break;
+      }
       case 'withdrawal':
         lines.push(`R${entry.round} ${entry.side} withdraws in good order`);
         break;

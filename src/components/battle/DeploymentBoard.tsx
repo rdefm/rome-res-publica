@@ -19,7 +19,8 @@ import {
   buildEffectiveSide, isFeintGated, NO_CAPTAIN_MODS,
 } from '../../engine/battle/clashEngine';
 import type { CaptainCandidate } from '../../engine/battle/musterEngine';
-import type { DeploySideInput } from '../../engine/battle/battleEngine';
+import { getPlayablePreBattleStratagems, type DeploySideInput } from '../../engine/battle/battleEngine';
+import { STRATAGEMS, type StratagemDef } from '../../data/stratagems';
 
 const LANES: LaneId[] = ['left', 'centre', 'right'];
 const LANE_LABEL: Record<LaneId, string> = { left: 'Left Wing', centre: 'Centre', right: 'Right Wing' };
@@ -159,6 +160,30 @@ export default function DeploymentBoard({
     setDeployment(d => ({ ...d, commanderStation: station }));
   }
 
+  function togglePreBattleStratagem(def: StratagemDef) {
+    setDeployment(d => {
+      const existing = d.preBattleStratagems ?? [];
+      if (existing.some(p => p.stratagemId === def.id)) {
+        return { ...d, preBattleStratagems: existing.filter(p => p.stratagemId !== def.id) };
+      }
+      const needsLane = def.target === 'own_lane' || def.target === 'enemy_lane';
+      return { ...d, preBattleStratagems: [...existing, { stratagemId: def.id, laneId: needsLane ? 'centre' : undefined }] };
+    });
+  }
+
+  function setPreBattleStratagemLane(stratagemId: string, laneId: LaneId) {
+    setDeployment(d => ({
+      ...d,
+      preBattleStratagems: (d.preBattleStratagems ?? []).map(p => (p.stratagemId === stratagemId ? { ...p, laneId } : p)),
+    }));
+  }
+
+  const playableStratagems = useMemo(
+    () => getPlayablePreBattleStratagems(attackerInput.stratagemHand ?? [], terrain),
+    [attackerInput.stratagemHand, terrain],
+  );
+  const pickedStratagems = deployment.preBattleStratagems ?? [];
+
   const usedCaptainIds = new Set(LANES.map(l => deployment.lanes[l].captainId).filter((id): id is string => !!id));
 
   return (
@@ -282,6 +307,49 @@ export default function DeploymentBoard({
             </TouchableOpacity>
           ))}
         </View>
+
+        {playableStratagems.length > 0 && (
+          <>
+            <Text style={styles.fieldLabel}>Stratagems</Text>
+            <Text style={styles.hint}>Cards your commander's hand permits before the battle.</Text>
+            <View style={styles.pillRow}>
+              {playableStratagems.map(def => {
+                const picked = pickedStratagems.some(p => p.stratagemId === def.id);
+                return (
+                  <TouchableOpacity
+                    key={def.id}
+                    style={[styles.pill, picked && styles.pillActive]}
+                    onPress={() => togglePreBattleStratagem(def)}
+                  >
+                    <Text style={[styles.pillText, picked && styles.pillTextActive]}>{def.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {pickedStratagems.map(pick => {
+              const def = STRATAGEMS[pick.stratagemId as keyof typeof STRATAGEMS];
+              if (!def || (def.target !== 'own_lane' && def.target !== 'enemy_lane')) return null;
+              return (
+                <View key={pick.stratagemId}>
+                  <Text style={styles.hint}>{def.description}</Text>
+                  <View style={styles.pillRow}>
+                    {LANES.map(l => (
+                      <TouchableOpacity
+                        key={l}
+                        style={[styles.pill, pick.laneId === l && styles.pillActive]}
+                        onPress={() => setPreBattleStratagemLane(pick.stratagemId, l)}
+                      >
+                        <Text style={[styles.pillText, pick.laneId === l && styles.pillTextActive]}>
+                          {def.target === 'enemy_lane' ? 'Enemy ' : ''}{LANE_LABEL[l]}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              );
+            })}
+          </>
+        )}
       </ScrollView>
 
       <View style={styles.footer}>

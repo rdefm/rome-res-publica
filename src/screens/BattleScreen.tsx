@@ -8,7 +8,7 @@
  * BattlefieldView; the "Dispatches" toggle reveals M5's original LaneCard
  * grid + text log (the accessibility fallback and debug view).
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
@@ -19,7 +19,15 @@ import LaneCard from '../components/battle/LaneCard';
 import BattlefieldView from '../components/battle/BattlefieldView';
 import { formatBattleLog } from '../engine/battle/battleEngine';
 import { getEligibleFamilyCaptains } from '../engine/battle/musterEngine';
-import type { LaneId } from '../models/battle';
+import { chooseOrders, chooseBreakDecision, deriveAiRng } from '../engine/battle/battleAi';
+import { ENEMY_GENERALS } from '../data/enemyGenerals';
+import type { LaneId, BattleState } from '../models/battle';
+
+/** M7: the enemy general profile driving the defender side this battle —
+ *  falls back to Hanno if the sandbox somehow didn't stamp a generalProfileId. */
+function resolveDefenderProfile(battleState: BattleState) {
+  return ENEMY_GENERALS[battleState.defender.generalProfileId ?? ''] ?? ENEMY_GENERALS.hanno_cautious;
+}
 
 const LANES: LaneId[] = ['left', 'centre', 'right'];
 const LANE_LABEL: Record<LaneId, string> = { left: 'Left Wing', centre: 'Centre', right: 'Right Wing' };
@@ -67,7 +75,11 @@ export default function BattleScreen() {
           <BattleLive
             battleState={activeBattle}
             characterName={characterName}
-            onSubmitOrders={orders => submitBattleOrders(orders, { laneOrders: {} })}
+            onSubmitOrders={orders => {
+              const profile = resolveDefenderProfile(activeBattle);
+              const aiOrders = chooseOrders(profile, activeBattle, 'defender', deriveAiRng(activeBattle.seed, activeBattle.round));
+              submitBattleOrders(orders, aiOrders);
+            }}
             onBreakDecision={(laneId, decision, targetLane) => submitBattleBreakDecision(laneId, decision, targetLane)}
           />
         )}
@@ -96,6 +108,20 @@ function BattleLive({
 }) {
   const dispatches = useMemo(() => formatBattleLog(battleState.log), [battleState.log]);
   const [showDispatches, setShowDispatches] = useState(false);
+
+  // M7: the enemy general resolves its OWN break decisions instantly (no
+  // player interaction) — only decisions where the PLAYER's side (attacker)
+  // is the victor wait on the interstitial's buttons below.
+  const enemyPendingDecision = battleState.phase === 'break_decision'
+    ? battleState.pendingBreakDecisions.find(d => d.brokenSide === 'attacker')
+    : undefined;
+  useEffect(() => {
+    if (!enemyPendingDecision) return;
+    const profile = resolveDefenderProfile(battleState);
+    const salt = battleState.round * 100 + LANES.indexOf(enemyPendingDecision.laneId);
+    const { decision, targetLane } = chooseBreakDecision(profile, battleState, 'defender', enemyPendingDecision.laneId, deriveAiRng(battleState.seed, salt));
+    onBreakDecision(enemyPendingDecision.laneId, decision, targetLane);
+  }, [enemyPendingDecision, battleState, onBreakDecision]);
 
   return (
     <View style={styles.liveRoot}>
@@ -193,14 +219,6 @@ function BreakDecisionInterstitial({
             ))}
           </View>
         </>
-      )}
-      {!isOurs && (
-        // Enemy break decisions still need to be resolved to advance the
-        // battle — the light AI here just always pursues (M7 gives the
-        // enemy general real behavior).
-        <TouchableOpacity style={styles.decisionBtn} onPress={() => onDecide(laneId, 'pursue')}>
-          <Text style={styles.decisionText}>Continue</Text>
-        </TouchableOpacity>
       )}
     </View>
   );

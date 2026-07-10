@@ -53,6 +53,10 @@ export interface Deployment {
   lanes: Record<LaneId, LaneAssignment>;
   reserve: BattleUnit[];
   commanderStation: LaneId | 'reserve';
+  /** M7: pre-battle-timing stratagems chosen for this side before "Give
+   *  Battle" — resolved once by battleEngine.initBattle. Empty/absent if
+   *  none played. */
+  preBattleStratagems?: PreBattleStratagemPick[];
 }
 
 // ─── Orders (first pass — plan explicitly allows refinement in M3) ─────────
@@ -69,12 +73,25 @@ export interface ReserveCommit {
   unitIds: string[];
 }
 
-/** One side's full set of orders for the coming round. */
+/** One side's full set of orders for the coming round. M7: `stratagemId`
+ *  is only meaningful for reactive-timing cards (v1: 'rally_the_standards'
+ *  only — see data/stratagems.ts); pre-battle cards go through
+ *  `Deployment.preBattleStratagems` instead. `stratagemLaneId` is the
+ *  target lane for lane-targeted reactive plays. */
 export interface SideOrders {
   laneOrders: Partial<Record<LaneId, LaneOrders>>;
   commitReserves?: ReserveCommit;
   stratagemId?: string;
+  stratagemLaneId?: LaneId;
   withdraw?: boolean;
+}
+
+/** M7: a stratagem picked at deployment time (pre-battle timing cards) —
+ *  see data/stratagems.ts for which cards use this vs. SideOrders.
+ *  `laneId` is present only for lane-targeted cards. */
+export interface PreBattleStratagemPick {
+  stratagemId: string;
+  laneId?: LaneId;
 }
 
 // ─── Runtime state ──────────────────────────────────────────────────────────
@@ -90,6 +107,16 @@ export interface WingState {
   engagedRounds: number;
   flanked: boolean;
   overextended: boolean;
+  /** M7: battle-long lane modifiers set by pre-battle stratagems (own side
+   *  playing Caltrops/Testudo Discipline into this lane). Undefined fields
+   *  mean "no effect" (multiplier 1) — clashEngine defaults with `?? 1`. */
+  stratagemMods?: {
+    /** Caltrops: incoming cavalry-class shock onto this lane, this battle. */
+    incomingCavalryShockMult?: number;
+    /** Testudo Discipline: prelude/skirmisher-panic-chip damage onto this
+     *  lane's elephants and the amok-chance rider it grants, this battle. */
+    preludeMult?: number;
+  };
 }
 
 export interface SideState {
@@ -106,6 +133,26 @@ export interface SideState {
    *  (eventually M4's muster bridge) resolves this once at deployment time.
    *  An opaque id→number lookup, nothing more. */
   captainMartialById: Record<string, number>;
+  /** M7: this side's remaining (unplayed) stratagem hand, by id — see
+   *  data/stratagems.ts. Drawn once at deployment (battleEngine.
+   *  drawStratagemHand); pre-battle picks are removed at initBattle,
+   *  reactive picks (Rally the Standards) removed during the battle. */
+  stratagemHand?: string[];
+  /** M7: stratagem ids this side has already played this battle — used for
+   *  the "once per battle" gate (Rally the Standards) and UI/log display. */
+  stratagemsPlayed?: string[];
+  /** M7: set by the ENEMY playing Forced March against this side — this
+   *  side's reserve is unusable while state.round is below this value.
+   *  0/undefined = not locked. */
+  reserveLockedUntilRound?: number;
+  /** M7: set by the ENEMY playing Fire Arrows against this side — added
+   *  (fractional) to every one of this side's elephants' amok chance for
+   *  the rest of the battle. */
+  incomingElephantAmokRiderPct?: number;
+  /** M7: set by this side's OWN Double Envelopment Doctrine — multiplies
+   *  the flank-charge bonus (wheelTargetMoraleDelta / wheelFlankedDefMult)
+   *  when this side wheels. Undefined = 1 (no bonus). */
+  wheelBonusMult?: number;
 }
 
 export interface TerrainMod {
@@ -243,6 +290,8 @@ export type RoundLogEntry =
       type: 'stratagem_played';
       side: BattleSide;
       stratagemId: string;
+      /** M7: present for lane-targeted cards (own or enemy lane). */
+      laneId?: LaneId;
     })
   | (RoundLogEntryBase & {
       type: 'withdrawal';

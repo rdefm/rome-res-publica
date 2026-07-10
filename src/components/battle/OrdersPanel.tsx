@@ -7,7 +7,8 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import type { BattleState, BattleSide, LaneId, FormationId, SideOrders } from '../../models/battle';
-import { getValidOrders } from '../../engine/battle/battleEngine';
+import { getValidOrders, getPlayableStratagems } from '../../engine/battle/battleEngine';
+import { STRATAGEMS } from '../../data/stratagems';
 
 const LANES: LaneId[] = ['left', 'centre', 'right'];
 const LANE_LABEL: Record<LaneId, string> = { left: 'Left', centre: 'Centre', right: 'Right' };
@@ -26,6 +27,9 @@ export default function OrdersPanel({ battleState, side, onSubmit }: OrdersPanel
   const [reserveLane, setReserveLane] = useState<LaneId | null>(null);
   const [reserveUnitIds, setReserveUnitIds] = useState<string[]>([]);
   const [withdraw, setWithdraw] = useState(false);
+  const [rallyLane, setRallyLane] = useState<LaneId | null>(null);
+
+  const rally = getPlayableStratagems(battleState, side).find(r => r.stratagemId === 'rally_the_standards');
 
   function toggleReserveUnit(laneId: LaneId, unitId: string) {
     if (reserveLane && reserveLane !== laneId) {
@@ -43,12 +47,14 @@ export default function OrdersPanel({ battleState, side, onSubmit }: OrdersPanel
       laneOrders: Object.fromEntries(LANES.map(l => [l, pendingFormations[l] ? { formation: pendingFormations[l] } : {}])),
       ...(reserveLane && reserveUnitIds.length > 0 ? { commitReserves: { laneId: reserveLane, unitIds: reserveUnitIds } } : {}),
       ...(withdraw ? { withdraw: true } : {}),
+      ...(rallyLane ? { stratagemId: 'rally_the_standards', stratagemLaneId: rallyLane } : {}),
     };
     onSubmit(orders);
     setPendingFormations({});
     setReserveLane(null);
     setReserveUnitIds([]);
     setWithdraw(false);
+    setRallyLane(null);
   }
 
   return (
@@ -107,6 +113,23 @@ export default function OrdersPanel({ battleState, side, onSubmit }: OrdersPanel
               ))}
             </View>
           )}
+        </View>
+      )}
+
+      {rally && rally.validLanes.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>{STRATAGEMS.rally_the_standards.label}</Text>
+          <View style={styles.pillRow}>
+            {rally.validLanes.map(l => (
+              <TouchableOpacity
+                key={l}
+                style={[styles.pill, rallyLane === l && styles.pillActive]}
+                onPress={() => setRallyLane(r => (r === l ? null : l))}
+              >
+                <Text style={[styles.pillText, rallyLane === l && styles.pillTextActive]}>Reform {LANE_LABEL[l]}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       )}
 

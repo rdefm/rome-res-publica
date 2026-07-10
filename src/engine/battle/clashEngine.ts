@@ -324,12 +324,16 @@ export function elephantTerrorApplies(formation: FormationId, ownUnits: BattleUn
     && !ownUnits.every(u => u.elephantSteady);
 }
 
+/** `incomingCavalryShockMult` — M7 Caltrops: reduces incoming shock from
+ *  cavalry-class chargers specifically (non-cavalry shock, e.g. elephants,
+ *  is unaffected). Undefined/1 = no effect. */
 function calcIncomingShockOnSide(
   chargingBundle: EffectiveSideBundle,
   chargingUnits: BattleUnit[],
   defenders: BattleUnit[],
   defendingFormation: FormationId,
   engagedRoundsOfCharger: number,
+  incomingCavalryShockMult = 1,
 ): number {
   if (chargingBundle.totalShock <= 0) return 0;
   const firstClash = engagedRoundsOfCharger === 0;
@@ -342,7 +346,8 @@ function calcIncomingShockOnSide(
     const stat = chargingBundle.units.find(u => u.unitId === cu.id);
     if (!stat || stat.shock <= 0) continue;
     const matchupMult = laneIncomingShockMatchupMult(defenders, cu.unitClass, firstClash);
-    total += stat.shock * matchupMult * formationMult * screenMult;
+    const caltropsMult = isCavalry(cu.unitClass) ? incomingCavalryShockMult : 1;
+    total += stat.shock * matchupMult * formationMult * screenMult * caltropsMult;
   }
   return total;
 }
@@ -356,17 +361,19 @@ export interface PreludeResult {
   amokChanceRiders: Map<string, number>;
 }
 
-function resolvePreludeForSide(elephantSideUnits: BattleUnit[], skirmisherSideUnits: BattleUnit[]): PreludeResult {
+/** `preludeMult` — M7 Testudo Discipline: 0 nullifies this side's prelude
+ *  damage/amok-rider entirely; undefined/1 = no effect. */
+function resolvePreludeForSide(elephantSideUnits: BattleUnit[], skirmisherSideUnits: BattleUnit[], preludeMult = 1): PreludeResult {
   const casualties = new Map<string, number>();
   const amokChanceRiders = new Map<string, number>();
   const hasSkirmishers = skirmisherSideUnits.some(u => u.unitClass === 'skirmisher');
-  if (!hasSkirmishers) return { casualties, amokChanceRiders };
+  if (!hasSkirmishers || preludeMult <= 0) return { casualties, amokChanceRiders };
 
   const e = BALANCE.battle.elephant;
   for (const u of elephantSideUnits) {
     if (u.unitClass !== 'elephant') continue;
-    casualties.set(u.id, Math.min(u.strength, e.skirmisherPreludeStrengthDamage));
-    amokChanceRiders.set(u.id, e.skirmisherPreludeAmokChanceDelta);
+    casualties.set(u.id, Math.min(u.strength, e.skirmisherPreludeStrengthDamage * preludeMult));
+    amokChanceRiders.set(u.id, e.skirmisherPreludeAmokChanceDelta * preludeMult);
   }
   return { casualties, amokChanceRiders };
 }
@@ -398,6 +405,15 @@ export interface LaneClashContext {
    *  retreat — def ×1.1). Undefined/1 for every normal round. */
   withdrawDefMultA?: number;
   withdrawDefMultB?: number;
+  /** M7 — Caltrops: this side's own battle-long incoming-cavalry-shock
+   *  multiplier for this lane (from WingState.stratagemMods). Undefined/1
+   *  = no effect. */
+  incomingCavalryShockMultA?: number;
+  incomingCavalryShockMultB?: number;
+  /** M7 — Testudo Discipline: this side's own battle-long prelude-damage
+   *  multiplier for this lane. Undefined/1 = no effect; 0 nullifies it. */
+  preludeMultA?: number;
+  preludeMultB?: number;
 }
 
 export interface LaneClashResult {
@@ -431,6 +447,8 @@ export function resolveLaneClash(
     engagedRoundsA, engagedRoundsB, formationA, formationB,
     flankedA, flankedB, overextendedA, overextendedB,
     withdrawDefMultA, withdrawDefMultB,
+    incomingCavalryShockMultA, incomingCavalryShockMultB,
+    preludeMultA, preludeMultB,
   } = ctx;
 
   // ── 1. Prelude ──────────────────────────────────────────────────────────
@@ -439,8 +457,8 @@ export function resolveLaneClash(
   const amokChanceRiders = new Map<string, number>();
 
   if (engagedRoundsA === 0 && engagedRoundsB === 0) {
-    const preludeOnA = resolvePreludeForSide(laneAUnits, laneBUnits);
-    const preludeOnB = resolvePreludeForSide(laneBUnits, laneAUnits);
+    const preludeOnA = resolvePreludeForSide(laneAUnits, laneBUnits, preludeMultA ?? 1);
+    const preludeOnB = resolvePreludeForSide(laneBUnits, laneAUnits, preludeMultB ?? 1);
     mergeLosses(casualtiesA, preludeOnA.casualties);
     mergeLosses(casualtiesB, preludeOnB.casualties);
     for (const [id, r] of preludeOnA.amokChanceRiders) amokChanceRiders.set(id, r);
@@ -504,8 +522,8 @@ export function resolveLaneClash(
   }
 
   // ── 3. Shock ─────────────────────────────────────────────────────────────
-  const shockOnA = calcIncomingShockOnSide(effectiveB, laneBAfterFeint, laneAAfterFeint, formationA, engagedRoundsB);
-  const shockOnB = calcIncomingShockOnSide(effectiveA, laneAAfterFeint, laneBAfterFeint, formationB, engagedRoundsA);
+  const shockOnA = calcIncomingShockOnSide(effectiveB, laneBAfterFeint, laneAAfterFeint, formationA, engagedRoundsB, incomingCavalryShockMultA ?? 1);
+  const shockOnB = calcIncomingShockOnSide(effectiveA, laneAAfterFeint, laneBAfterFeint, formationB, engagedRoundsA, incomingCavalryShockMultB ?? 1);
 
   const shockCasualtyPointsA = clampPct(shockOnA * BALANCE.battle.shock.casualtyPctPerShockPoint, 0, BALANCE.battle.shock.maxCasualtyPctFromShock) / 100 * totalStrength(laneAAfterFeint);
   const shockCasualtyPointsB = clampPct(shockOnB * BALANCE.battle.shock.casualtyPctPerShockPoint, 0, BALANCE.battle.shock.maxCasualtyPctFromShock) / 100 * totalStrength(laneBAfterFeint);

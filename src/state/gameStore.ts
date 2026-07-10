@@ -71,10 +71,16 @@ import type {
   Deployment, SideOrders, LaneId, LaneAssignment, TerrainMod, BattleUnit, UnitClass, Veterancy,
 } from '../models/battle';
 import {
-  initBattle, submitOrders, submitBreakDecision,
+  initBattle, submitOrders, submitBreakDecision, drawStratagemHand,
   type DeploySideInput,
 } from '../engine/battle/battleEngine';
 import { musterArmy, getEligibleFamilyCaptains } from '../engine/battle/musterEngine';
+// Military Overhaul M7 — enemy general AI (sandbox deployment only; per-round
+// orders/break decisions are computed in BattleScreen.tsx, which already
+// owns the live battleState and the store's thin submit* wrappers).
+import { chooseDeployment } from '../engine/battle/battleAi';
+import { ENEMY_GENERAL_LIST } from '../data/enemyGenerals';
+import { makeSeededRng } from '../utils/seededRng';
 
 export interface LogEntry {
   id: string;
@@ -2311,17 +2317,32 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const attackerRoster: Record<string, number> = { [player.id]: player.skills.martial };
     for (const c of captains) attackerRoster[c.characterId] = c.martial;
 
+    const terrain = BALANCE.battle.terrains.open_plain;
+    const seed = Math.floor(Math.random() * 1e9);
+    // M7 — hand-drawing/AI-deployment use their own RNG instances (offset
+    // from the battle seed) so they don't overlap the battle's own internal
+    // round-by-round RNG stream (battleEngine.makeContinuedRng reconstructs
+    // makeSeededRng(seed) fresh and fast-forwards rngCallsConsumed draws).
+    const attackerHand = drawStratagemHand(player.skills.martial, attackerUnits, terrain, makeSeededRng(seed ^ 0x51ed270b));
+    const defenderArmy = buildSandboxDefenderArmy();
+    const generalProfile = ENEMY_GENERAL_LIST[Math.floor(Math.random() * ENEMY_GENERAL_LIST.length)];
+    const defenderHand = drawStratagemHand(generalProfile.martial, defenderArmy, terrain, makeSeededRng(seed ^ 0x2545f491));
+    const aiDeployment = chooseDeployment(generalProfile, defenderArmy, terrain, defenderHand, makeSeededRng(seed ^ 0x9e3779b9));
+
     const attackerInput: DeploySideInput = {
       label: attackerCharacter.name,
       deployment: buildDefaultDeployment(attackerUnits),
       commanderId: player.id,
       roster: { martialById: attackerRoster },
+      stratagemHand: attackerHand,
     };
     const defenderInput: DeploySideInput = {
-      label: 'Carthage',
-      deployment: buildDefaultDeployment(buildSandboxDefenderArmy()),
-      commanderId: null,
-      roster: { martialById: {} },
+      label: `Carthage (${generalProfile.name} ${generalProfile.epithet})`,
+      deployment: aiDeployment.deployment,
+      commanderId: aiDeployment.commanderId,
+      roster: aiDeployment.roster,
+      generalProfileId: generalProfile.id,
+      stratagemHand: defenderHand,
     };
 
     const bridgeCtx: BattleBridgeContext = {
@@ -2333,8 +2354,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set({
       activeBattleSetup: {
         attackerInput, defenderInput,
-        terrain: BALANCE.battle.terrains.open_plain,
-        seed: Math.floor(Math.random() * 1e9),
+        terrain,
+        seed,
         bridgeCtx,
       },
     });
