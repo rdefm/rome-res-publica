@@ -376,6 +376,26 @@ export function applyEffectString(
         continue;
       }
 
+      // Phase 4, P4-G — grantGroundwork:leaderId:amount. Sets
+      // ClanLeader.intelGroundwork to at least `amount` (never lowers an
+      // existing higher value — a head start, not a reset) — used by
+      // evt-tut-04's rewired investigate choice to grant a strong start
+      // toward the counter-Secret on Ap. Claudius Pulcher. Generic by
+      // leaderId, not Claudius-specific, so any future event can reuse it.
+      if (key === 'grantGroundwork') {
+        const leaderId = parts[1];
+        const amount = parseFloat(parts[2] ?? '0');
+        patch.clans = (patch.clans ?? state.clans).map((clan: any) => ({
+          ...clan,
+          leaders: clan.leaders.map((leader: any) =>
+            leader.id === leaderId
+              ? { ...leader, intelGroundwork: Math.max(leader.intelGroundwork ?? 0, amount) }
+              : leader
+          ),
+        })) as any;
+        continue;
+      }
+
       // Phase 3, P3-B — startWar:enemyId:scale:openingWarScoreDelta
       // Scripted ignition events (evt-war-mamertines) trigger war state
       // through this token rather than a direct store-action call — keeps

@@ -52,6 +52,7 @@ import {
   attemptDiscredit,
   resolveSecretDemand,
   mapSecretTypeToTrialCharge,
+  resolveClaudiusDefiance,
 } from '../engine/secretEngine';
 import {
   canFileProsecution,
@@ -80,6 +81,7 @@ import {
 import { TRIAL_CHARGE_DEFS } from '../data/trialCharges';
 import { CLIENT_NAMES } from '../data/clientNames';
 import { SECRET_CLASS_BY_TYPE } from '../data/secretDefinitions';
+import { CLAUDIUS_ARC_SECRET_ID, buildClaudiusStartingSecret } from '../data/claudiusArc';
 import {
   resolveAmbassadorAction as engineResolveAmbassadorAction,
   type AmbassadorActionId,
@@ -253,6 +255,12 @@ export interface GameState {
   // ── Phase 4, Chunk P4-B — pending NPC demand ───────────────────────────────
   // See models/secret.ts's PendingSecretDemand doc comment.
   pendingSecretDemand: PendingSecretDemand | null;
+  // ── Phase 4, Chunk P4-G — the Claudius arc's "Play for time" counter ──────
+  // Non-null exactly while a deferred demand is counting down (set by
+  // evt-claud-01's 'wait' choice); turnSequencer.ts step 9b decrements it
+  // each season and auto-resolves to defiance at 0, or cancels it outright
+  // if deterrence kicks in first. null the rest of the time.
+  claudiusPatience: number | null;
 
   // Cursus Honorum
   currentOffice: OfficeId | null;
@@ -876,8 +884,15 @@ export const INITIAL_STATE: GameState = {
   clans: STARTING_CLANS,
   expandedClanId: null,
   selectedLeaderId: null,
-  secrets: [],
+  // Phase 4, Chunk P4-G — the Claudius arc's starting Secret (design point 1,
+  // "exists from game start"). acquiredSeason: 1 matches turnNumber's own
+  // starting value above, so scanNpcSecretDecisions' `acquiredSeason <
+  // turnNumber` pacing guard excludes it from the generic scan on turn 1
+  // (turnSequencer.ts step 9b also excludes it by id explicitly — belt and
+  // braces, since that guard alone wouldn't survive turn 2 onward).
+  secrets: [buildClaudiusStartingSecret('pc-1', 1)],
   pendingSecretDemand: null,
+  claudiusPatience: null,
 
   currentOffice: null,
   officeSeasons: 0,
@@ -2479,13 +2494,15 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const { SUCCESSION_EVENT_DEFS } = require('../data/successionEvents');
     const { CADET_EVENT_DEFS }    = require('../data/cadetEvents');
     const { SECRET_EVENT_DEFS }   = require('../data/secretEvents');
+    const { CLAUDIUS_ARC_EVENT_DEFS } = require('../data/claudiusArc');
     const { applyEffectString }   = require('../engine/resourceEngine');
     const { resolveEventChoice }  = require('../engine/eventEngine');
 
     // P1-G: search tutorial pool as well as main pool. P3-B added
     // WAR_EVENT_DEFS, P3-C added SUCCESSION_EVENT_DEFS, P3-D added
-    // CADET_EVENT_DEFS, P4-B added SECRET_EVENT_DEFS.
-    const allDefs = [...EVENT_DEFS, ...TUTORIAL_EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS, ...CADET_EVENT_DEFS, ...SECRET_EVENT_DEFS];
+    // CADET_EVENT_DEFS, P4-B added SECRET_EVENT_DEFS, P4-G added
+    // CLAUDIUS_ARC_EVENT_DEFS.
+    const allDefs = [...EVENT_DEFS, ...TUTORIAL_EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS, ...CADET_EVENT_DEFS, ...SECRET_EVENT_DEFS, ...CLAUDIUS_ARC_EVENT_DEFS];
     const def = allDefs.find((d: any) => d.id === s.activeEvent!.defId);
     if (!def) {
       set({ activeEvent: null });
@@ -2605,6 +2622,40 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
           log: [...curr.log, mkLog(label, logMsg, 'neutral')],
         });
       }
+    }
+
+    // ── Phase 4, Chunk P4-G — the Claudius arc ──────────────────────────────
+    // evt-claud-01's 'defy' choice branches via nextEventId (handled
+    // entirely by the generic branching logic above, before this function
+    // ever reaches this point — see resolveEventChoice's early return) —
+    // pendingSecretDemand deliberately stays set across that transition so
+    // evt-claud-02's own resolution (below) can still read it.
+    if (defId === 'evt-claud-01') {
+      const curr = get();
+      const label = turnLabel(curr);
+      if (choiceId === 'comply' && curr.pendingSecretDemand) {
+        const { patch, logMsg } = resolveSecretDemand(curr, curr.pendingSecretDemand, 'comply');
+        set({
+          ...patch,
+          pendingSecretDemand: null,
+          log: [...curr.log, mkLog(label, logMsg, 'neutral')],
+        });
+      } else if (choiceId === 'wait') {
+        set({
+          pendingSecretDemand: null,
+          claudiusPatience: BALANCE.secrets.claudius.patienceSeasons,
+          log: [...curr.log, mkLog(label, 'You buy a season\'s silence — no more.', 'neutral')],
+        });
+      }
+    }
+
+    if (defId === 'evt-claud-02' && choiceId === 'so-be-it') {
+      const curr = get();
+      const { patch, logMsg } = resolveClaudiusDefiance(curr);
+      set({
+        ...patch,
+        log: [...curr.log, mkLog(turnLabel(curr), logMsg, 'bad')],
+      });
     }
 
     if (_addClient) {
@@ -2813,6 +2864,21 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     cadetBranch: savedState.cadetBranch ?? generateCadet(),
     // Phase 4, Chunk P4-F — see backfillLegacyObjectives's doc comment.
     legacyObjectives: backfillLegacyObjectives(savedState.legacyObjectives),
+    // Phase 4, Chunk P4-G — a save written before the Claudius arc existed
+    // has no secret-claudius-arc entry at all; inject it now so an
+    // in-progress pre-P4-G run still gets the arc (design invariant 9).
+    // Guarded on the id alone — there is no earlier mechanism that could
+    // have "resolved" a Secret that didn't yet exist, so id-presence is a
+    // complete check, not just a first-pass approximation.
+    secrets: (savedState.secrets ?? []).some(sec => sec.id === CLAUDIUS_ARC_SECRET_ID)
+      ? savedState.secrets
+      : [
+          ...(savedState.secrets ?? []),
+          buildClaudiusStartingSecret(
+            savedState.family.find(c => c.isPlayer)?.id ?? 'pc-1',
+            savedState.turnNumber
+          ),
+        ],
     // Phase 4, Chunk P4-C — a pre-P4-C save has the old `trialQueue: Trial[]`
     // shape (and no `trials` key at all — `...savedState` above only
     // overrides trials if the key is actually present in the parsed JSON).

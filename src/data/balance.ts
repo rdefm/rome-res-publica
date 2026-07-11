@@ -891,6 +891,30 @@ export const BALANCE = {
       /** Burn only considered at standing (leader.relationship) at/below this. */
       npcBurnStandingMax: 5,
     },
+
+    // ── Phase 4, Chunk P4-G — the Claudius arc ──────────────────────────────
+    // Ap. Claudius Pulcher's starting Secret is excluded from the generic
+    // npcAi scan (turnSequencer.ts step 9b) so it never auto-fires the
+    // generic demand/burn events — his own relationship (-30, startingClans.ts)
+    // is already below npcBurnStandingMax, which would otherwise burn the
+    // arc's own Secret in year 1. FIRST-PASS/SOFT-TUNED, more than usually
+    // approximate: Claudius's own stats (intrigus 9, clan influence 75) drive
+    // an unusually steep computeOpponentPrepGrowth rate, so trialSeed is
+    // deliberately low to compensate — needs a playtesting pass, not just a
+    // fixture-math check, before calling these numbers final.
+    claudius: {
+      /** resolveClaudiusDefiance's initialNpcStrength — deliberately far
+       *  below the general NPC-initiated seed (leader.intrigus×2 +
+       *  accused.corruption/2, typically 18-25) precisely because this
+       *  trial still accrues the standard per-season opponent growth for
+       *  BALANCE.trials.npcInitiatedDelay seasons before trial day, and
+       *  Claudius's growth rate is unusually steep. */
+      trialSeed: 10,
+      /** "Play for time": exactly one season of silence, then automatic
+       *  defiance if the player hasn't otherwise resolved the Secret
+       *  (complied, paid off, discredited, or reached deterrence). */
+      patienceSeasons: 1,
+    },
   },
 
   /** Phase 4, Chunk P4-C — the unified trial pipeline. FIRST-PASS/UNVERIFIED,

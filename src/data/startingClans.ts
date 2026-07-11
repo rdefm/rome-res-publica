@@ -245,7 +245,13 @@ export const STARTING_CLANS: Clan[] = [
         sphere: 'Legal Colleges',
         relationship: -30,
         favour: 0,
-        blackmail: true,
+        // Phase 4, Chunk P4-G — was `true`; the vestigial cosmetic flag
+        // (a dot on LeaderCard, a button-label swap on LeaderDetailPanel —
+        // see resourceEngine.ts's `blackmail` token and offices.ts's own
+        // "dropped per plan review" note) is superseded here by a real,
+        // held-from-game-start criminal Secret (claudiusArc.ts,
+        // buildClaudiusStartingSecret, wired in gameStore's INITIAL_STATE).
+        blackmail: false,
         bias: 'optimates',
         votes: 16,
         bio: "Rome's most feared advocate. Holds evidence of a past Brutus transgression.",

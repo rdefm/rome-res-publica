@@ -14,6 +14,7 @@ import type { ClanLeader, LeaderBias } from '../models/clan';
 import type { BillType } from '../models/bill';
 import type { ChargeId } from '../models/trial';
 import { SECRET_TYPE_DEFS, SECRET_TYPES, SECRET_CLASS_BY_TYPE } from '../data/secretDefinitions';
+import { CLAUDIUS_ARC_SECRET_ID, CLAUDIUS_LEADER_ID } from '../data/claudiusArc';
 import { BALANCE } from '../data/balance';
 import { buildTrialState } from './trialEngine';
 
@@ -638,5 +639,68 @@ export function resolveSecretDemand(
   return {
     patch: { secrets: secretsExposed, trials: [...(state.trials ?? []), newTrial] },
     logMsg: `You defy them. ${secret.flavorText} ${leaderFound.name} brings formal charges of ${charge} against ${accused?.name ?? 'your family'}.`,
+  };
+}
+
+// ─── The Claudius arc — defiance (Phase 4, Chunk P4-G) ───────────────────────
+
+export interface ResolveClaudiusDefianceResult {
+  patch: Partial<GameState>;
+  logMsg: string;
+}
+
+/**
+ * evt-claud-02's mechanical payload — the same shape as resolveSecretDemand's
+ * criminal-defy branch above (expose the Secret, file a peculatus trial
+ * through the unified TrialState pipeline), but deliberately NOT that
+ * function: this trial's initialNpcStrength is the soft-tuned
+ * BALANCE.secrets.claudius.trialSeed, not the general NPC-initiated formula
+ * (leader.intrigus × 2 + accused.corruption / 2) — "the tutorialized trial
+ * the whole phase points at" needs its own, gentler seed. Clears
+ * pendingSecretDemand/claudiusPatience itself (unlike resolveSecretDemand,
+ * whose caller owns that) since this is invoked from a distinct defId-keyed
+ * special case (gameStore.resolveEvent), not the shared demand-choice path.
+ */
+export function resolveClaudiusDefiance(state: GameState): ResolveClaudiusDefianceResult {
+  const secret = (state.secrets ?? []).find(s => s.id === CLAUDIUS_ARC_SECRET_ID && s.status === 'held');
+  const leader = state.clans.flatMap(c => c.leaders).find(l => l.id === CLAUDIUS_LEADER_ID);
+  if (!secret || !leader || secret.subject.kind !== 'family') {
+    return { patch: { pendingSecretDemand: null, claudiusPatience: null }, logMsg: 'The matter has already resolved itself.' };
+  }
+
+  const subjectCharacterId = secret.subject.characterId;
+  const accused = state.family.find(c => c.id === subjectCharacterId);
+  const secretsExposed = state.secrets.map(s => s.id === secret.id ? { ...s, status: 'exposed' as const, discovered: true } : s);
+  const alreadyOnTrial = (state.trials ?? []).some(t => t.status !== 'resolved');
+
+  if (alreadyOnTrial) {
+    return {
+      patch: { secrets: secretsExposed, pendingSecretDemand: null, claudiusPatience: null },
+      logMsg: `${leader.name}'s charge is entered into the record, but another matter already occupies the courts — it waits its turn.`,
+    };
+  }
+
+  const newTrial = buildTrialState({
+    id: `trial-claudius-${state.turnNumber}`,
+    seat: 'defense',
+    charge: 'peculatus',
+    chargeSource: 'secret',
+    prosecutor: { kind: 'leader', leaderId: leader.id },
+    defendant: { kind: 'family', characterId: subjectCharacterId },
+    filedSeason: state.turnNumber,
+    startsSeason: state.turnNumber + BALANCE.trials.npcInitiatedDelay,
+    initialNpcStrength: BALANCE.secrets.claudius.trialSeed,
+    consumedSecretIds: [secret.id],
+    speakerId: state.family.find(c => c.isPlayer)?.id ?? subjectCharacterId,
+  });
+
+  return {
+    patch: {
+      secrets: secretsExposed,
+      trials: [...(state.trials ?? []), newTrial],
+      pendingSecretDemand: null,
+      claudiusPatience: null,
+    },
+    logMsg: `${leader.name} brings formal charges of peculatus against ${accused?.name ?? 'your family'}.`,
   };
 }

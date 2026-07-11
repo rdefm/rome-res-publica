@@ -15,7 +15,9 @@ import {
   npcSecretDecision,
   scanNpcSecretDecisions,
   resolveSecretDemand,
+  resolveClaudiusDefiance,
 } from '../src/engine/secretEngine';
+import { CLAUDIUS_ARC_SECRET_ID, CLAUDIUS_LEADER_ID, CLAUDIUS_CLAN_ID } from '../src/data/claudiusArc';
 import { BALANCE } from '../src/data/balance';
 import type { Character } from '../src/models/character';
 import type { Clan, ClanLeader } from '../src/models/clan';
@@ -590,6 +592,94 @@ describe('resolveSecretDemand', () => {
     const demand = { secretId: 'nope', leaderId: 'nope', clanId: 'testii', kind: 'extort' as const };
     const { patch } = resolveSecretDemand(state, demand, 'comply');
     expect(patch).toEqual({});
+  });
+});
+
+// ─── resolveClaudiusDefiance (Phase 4, Chunk P4-G) ──────────────────────────
+
+describe('resolveClaudiusDefiance', () => {
+  function claudiusSecret(overrides: Partial<Secret> = {}): Secret {
+    return {
+      id: CLAUDIUS_ARC_SECRET_ID, type: 'embezzlement',
+      subject: { kind: 'family', characterId: 'pc-1' },
+      holder: CLAUDIUS_LEADER_ID, potency: 2, status: 'held',
+      acquiredSeason: 1, discovered: true,
+      flavorText: "a certain irregularity in your father's accounts",
+      ...overrides,
+    };
+  }
+  function claudiusLeader(overrides: Partial<ClanLeader> = {}): ClanLeader {
+    return makeLeader({ id: CLAUDIUS_LEADER_ID, name: 'Ap. Claudius Pulcher', votes: 16, ...overrides });
+  }
+
+  test('files a peculatus trial seeded from BALANCE.secrets.claudius.trialSeed, and exposes the Secret', () => {
+    const state = makeState({
+      clans: [makeClan({ id: CLAUDIUS_CLAN_ID, leaders: [claudiusLeader()] })],
+      secrets: [claudiusSecret()],
+      family: [makeCharacter({ id: 'pc-1' })],
+      trials: [],
+      turnNumber: 12,
+      pendingSecretDemand: { secretId: CLAUDIUS_ARC_SECRET_ID, leaderId: CLAUDIUS_LEADER_ID, clanId: CLAUDIUS_CLAN_ID, kind: 'leverage_bill' as const },
+      claudiusPatience: 0,
+    });
+
+    const { patch, logMsg } = resolveClaudiusDefiance(state);
+
+    expect(patch.trials).toBeDefined();
+    const trial = (patch.trials as any[])[0];
+    expect(trial.charge).toBe('peculatus');
+    expect(trial.seat).toBe('defense');
+    expect(trial.chargeSource).toBe('secret');
+    expect(trial.defendant).toEqual({ kind: 'family', characterId: 'pc-1' });
+    expect(trial.prosecutor).toEqual({ kind: 'leader', leaderId: CLAUDIUS_LEADER_ID });
+    expect(trial.npcStrength).toBe(BALANCE.secrets.claudius.trialSeed);
+    expect(trial.startsSeason).toBe(12 + BALANCE.trials.npcInitiatedDelay);
+    expect(trial.consumedSecretIds).toEqual([CLAUDIUS_ARC_SECRET_ID]);
+
+    const updatedSecret = (patch.secrets as Secret[]).find(s => s.id === CLAUDIUS_ARC_SECRET_ID)!;
+    expect(updatedSecret.status).toBe('exposed');
+
+    expect(patch.pendingSecretDemand).toBeNull();
+    expect(patch.claudiusPatience).toBeNull();
+    expect(logMsg).toContain('peculatus');
+  });
+
+  test('does not queue a second trial while one is already pending, but still exposes and clears state', () => {
+    const existingTrial: TrialState = {
+      id: 't1', seat: 'defense', charge: 'ambitus', chargeSource: 'accusation',
+      prosecutor: { kind: 'leader', leaderId: 'leader-1' }, defendant: { kind: 'family', characterId: 'pc-1' },
+      filedSeason: 8, startsSeason: 10,
+      playerPrep: { logos: 0, pathos: 0, ethos: 0, actionsUsed: [], witnesses: [], bribedClanIds: [], praetorBribed: false },
+      approach: 'procedure', speakerId: 'pc-1', npcStrength: 10, juryLean: 0,
+      consumedSecretIds: [], status: 'preparing', session: null,
+    };
+    const state = makeState({
+      clans: [makeClan({ id: CLAUDIUS_CLAN_ID, leaders: [claudiusLeader()] })],
+      secrets: [claudiusSecret()],
+      family: [makeCharacter({ id: 'pc-1' })],
+      trials: [existingTrial],
+    });
+
+    const { patch } = resolveClaudiusDefiance(state);
+    expect(patch.trials).toBeUndefined();
+    const updatedSecret = (patch.secrets as Secret[]).find(s => s.id === CLAUDIUS_ARC_SECRET_ID)!;
+    expect(updatedSecret.status).toBe('exposed');
+    expect(patch.pendingSecretDemand).toBeNull();
+    expect(patch.claudiusPatience).toBeNull();
+  });
+
+  test('a safe no-op once the arc Secret is already resolved (not held)', () => {
+    const state = makeState({
+      clans: [makeClan({ id: CLAUDIUS_CLAN_ID, leaders: [claudiusLeader()] })],
+      secrets: [claudiusSecret({ status: 'neutralized' })],
+      family: [makeCharacter({ id: 'pc-1' })],
+      trials: [],
+    });
+    const { patch } = resolveClaudiusDefiance(state);
+    expect(patch.trials).toBeUndefined();
+    expect(patch.secrets).toBeUndefined();
+    expect(patch.pendingSecretDemand).toBeNull();
+    expect(patch.claudiusPatience).toBeNull();
   });
 });
 

@@ -61,7 +61,10 @@ import {
   computeExtortionDrain,
   computeBurnVoteLoss,
   scanNpcSecretDecisions,
+  isDeterred,
+  resolveClaudiusDefiance,
 } from './secretEngine';
+import { CLAUDIUS_ARC_SECRET_ID, CLAUDIUS_LEADER_ID, CLAUDIUS_CLAN_ID } from '../data/claudiusArc';
 import { EVENT_DEFS } from '../data/events';
 import { WAR_EVENT_DEFS } from '../data/warEvents';
 import { CADET_EVENT_DEFS } from '../data/cadetEvents';
@@ -1019,7 +1022,15 @@ export function processSeason(state: GameState): {
     // event this season (pendingSecretDemand is a single slot, mirroring
     // the pre-existing pendingCanvass* pattern — guarded so an unanswered
     // demand already in the queue is never silently overwritten). ─────────
-    const decisions = scanNpcSecretDecisions(s);
+    // Phase 4, Chunk P4-G — the Claudius arc's starting Secret is excluded
+    // from the generic scan: it's a scripted, three-choice arc (comply /
+    // play for time / defy — see evt-claud-01 below), not the generic
+    // two-choice demand this pool would otherwise pick for it. Left in, his
+    // own seeded relationship (-30, startingClans.ts) is already at/below
+    // npcBurnStandingMax, which would auto-burn the arc's own Secret in the
+    // very first eligible season — well before the scripted demand ever
+    // gets a chance to fire.
+    const decisions = scanNpcSecretDecisions(s).filter(d => d.secretId !== CLAUDIUS_ARC_SECRET_ID);
 
     for (const decision of decisions) {
       if (decision.action !== 'burn') continue;
@@ -1080,6 +1091,86 @@ export function processSeason(state: GameState): {
             },
           };
           events.push(`${leader.name} makes their move — a demand awaits your answer.`);
+        }
+      }
+    }
+
+    // ── Phase 4, Chunk P4-G — the Claudius arc ──────────────────────────────
+    // Patience countdown first — may cancel (deterrence) or auto-resolve to
+    // defiance before the demand-injection check below runs this same
+    // season, so order matters here.
+    if (s.claudiusPatience !== null) {
+      if (isDeterred(CLAUDIUS_LEADER_ID, s.secrets)) {
+        // The standoff itself is a complete resolution of the arc (design
+        // point 1) — cancel the countdown rather than let a frozen Secret
+        // eventually "auto-defy" into a trial that can't actually be filed.
+        s = { ...s, claudiusPatience: null };
+      } else {
+        const remaining = s.claudiusPatience - 1;
+        if (remaining <= 0) {
+          const { patch, logMsg } = resolveClaudiusDefiance(s);
+          s = { ...s, ...patch };
+          events.push(`His patience runs out. ${logMsg}`);
+        } else {
+          s = { ...s, claudiusPatience: remaining };
+        }
+      }
+    }
+
+    // The demand (evt-claud-01) — condition-gated: the arc Secret still
+    // held and unfrozen, no demand already pending, no active countdown, no
+    // succession/epilogue mid-flight, year 2+ (open-ended rather than a
+    // hard year-3 cutoff — a guided run's tutorial can finish anywhere
+    // around year 2-3 depending on pacing; capping the window risks the arc
+    // never firing at all for a slower run), cooldown respected between
+    // firings, and a live bill to name.
+    if (
+      !s.pendingSecretDemand &&
+      s.claudiusPatience === null &&
+      !s.pendingSuccession &&
+      !s.pendingEpilogue
+    ) {
+      const claudiusSecret = s.secrets.find(sec => sec.id === CLAUDIUS_ARC_SECRET_ID && sec.status === 'held');
+      const yearsSinceStart = s.year - s.gensFoundedYear;
+      const tutorialDone = (s.tutorialQueue ?? []).length === 0;
+      const cooldownElapsed = claudiusSecret
+        ? (s.turnNumber - (claudiusSecret.lastActedSeason ?? -Infinity)) >= BALANCE.secrets.npcAi.npcUseCooldownSeasons
+        : false;
+
+      if (
+        claudiusSecret &&
+        cooldownElapsed &&
+        tutorialDone &&
+        yearsSinceStart >= 1 &&
+        !isDeterred(CLAUDIUS_LEADER_ID, s.secrets)
+      ) {
+        const leader = s.clans.flatMap(c => c.leaders).find(l => l.id === CLAUDIUS_LEADER_ID);
+        // Bias-matched bill preferred (same signal npcSecretDecision uses
+        // generically), falling back to whatever's live — the demand's
+        // flavor names a bill, but no SPECIFIC named bill is reliably live
+        // this early (verified: only a "keep >=2 queued" refill exists,
+        // drawing from AUTO_BILL_TEMPLATES in a fixed order, not a
+        // guaranteed-present named bill).
+        const targetBill = s.bills.find(b => b.type === 'optimates') ?? s.bills[0];
+        if (leader && targetBill) {
+          const bodyText =
+            `${leader.name} finds you after the session, unhurried. He has never needed to raise his voice. ` +
+            `"A small matter, between houses that understand each other. Your voice, on the floor, when ` +
+            `‘${targetBill.name}’ is called. Nothing you would not have considered anyway." ` +
+            `He does not name what he holds. He does not need to.`;
+          s = {
+            ...s,
+            pendingEvents: [...s.pendingEvents, injectNoticeEvent('evt-claud-01', s.turnNumber, s.family.find(c => c.isPlayer)?.id ?? 'pc-1', { bodyText })],
+            pendingSecretDemand: {
+              secretId: claudiusSecret.id,
+              leaderId: leader.id,
+              clanId: CLAUDIUS_CLAN_ID,
+              kind: 'leverage_bill',
+              billId: targetBill.id,
+              direction: 'for',
+            },
+          };
+          events.push(`${leader.name} makes his move — a demand awaits your answer.`);
         }
       }
     }
