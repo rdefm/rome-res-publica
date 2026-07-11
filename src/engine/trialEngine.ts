@@ -10,8 +10,8 @@
  */
 
 import type {
-  TrialState, TrialOutcome, TrialParty, TrialTarget, PrepRecord,
-  ChargeId, ChargeSource, LegacyTrial, TrialAction,
+  TrialState, TrialOutcome, TrialParty, TrialTarget, PrepRecord, Witness,
+  ChargeId, ChargeSource, LegacyTrial, TrialApproach,
 } from '../models/trial';
 import type { GameState } from '../state/gameStore';
 import type { Clan, ClanLeader } from '../models/clan';
@@ -45,7 +45,7 @@ export function buildTrialState(params: {
     defendant: params.defendant,
     filedSeason: params.filedSeason,
     startsSeason: params.startsSeason,
-    playerPrep: { totalStrength: 0, actionsUsed: [] },
+    playerPrep: { logos: 0, pathos: 0, ethos: 0, actionsUsed: [], witnesses: [], bribedClanIds: [], praetorBribed: false },
     approach: 'procedure',
     speakerId: params.speakerId,
     npcStrength: params.initialNpcStrength,
@@ -136,6 +136,24 @@ export function computeJuryLean(clans: Clan[], familyReputations: Record<string,
   return Math.max(-BALANCE.trials.juryLeanCap, Math.min(BALANCE.trials.juryLeanCap, raw));
 }
 
+// ─── Sectioned prep total (Phase 4, Chunk P4-D) ──────────────────────────────
+
+/**
+ * Weighted total of a PrepRecord's three sections under a given Approach —
+ * always derived, never stored, so switching Approach (free until
+ * startsSeason, design invariant 8) re-previews the strength bar live
+ * without touching any verb's accumulated points. Capped at 100 like the
+ * old flat totalStrength was.
+ */
+export function computeTotalPrepStrength(prep: PrepRecord, approach: TrialApproach): number {
+  const mult = BALANCE.trials.approach[approach] as Partial<Record<'logos' | 'pathos' | 'ethos', number>>;
+  const total =
+    prep.logos * (mult.logos ?? 1) +
+    prep.pathos * (mult.pathos ?? 1) +
+    prep.ethos * (mult.ethos ?? 1);
+  return Math.min(100, total);
+}
+
 // ─── Verdict (deterministic — design invariant 2) ────────────────────────────
 
 export interface VerdictResult {
@@ -146,11 +164,14 @@ export interface VerdictResult {
 }
 
 /**
- * finalPlayer = playerPrepScore × prepShare + performance; finalNpc =
- * npcStrength × prepShare + npcPerformance; differential = (finalPlayer −
- * finalNpc) + juryLean, from the player's seat. performance/npcPerformance
- * default 0 — P4-E's beat engine doesn't exist yet, so resolution is
- * prep-only this chunk (matches the plan's explicit interim behavior).
+ * finalPlayer = weightedPrepScore × prepShare + performance (+ Ferocity's
+ * low-Rhetoric bonus, flat); finalNpc = npcStrength × prepShare +
+ * npcPerformance; differential = (finalPlayer − finalNpc) + juryLean ×
+ * jury-weight (Sympathy doubles it), from the player's seat.
+ * performance/npcPerformance default 0 — P4-E's beat engine doesn't exist
+ * yet, so resolution is prep-only this chunk (matches the plan's explicit
+ * interim behavior). opponentRhetoric defaults to a neutral mid-value (5)
+ * for call sites that don't have an opponent leader to read from.
  * The threshold bands are always phrased in terms of the DEFENDANT's fate;
  * when the player prosecutes, the differential's sign is flipped before
  * lookup ("the same bands read from the other side") since a strong
@@ -160,12 +181,17 @@ export interface VerdictResult {
 export function computeVerdict(
   trial: TrialState,
   severityTier: 'standard' | 'severe',
+  opponentRhetoric: number = 5,
   playerPerformance: number = 0,
   npcPerformance: number = 0
 ): VerdictResult {
-  const finalPlayer = trial.playerPrep.totalStrength * BALANCE.trials.prepShare + playerPerformance;
+  let finalPlayer = computeTotalPrepStrength(trial.playerPrep, trial.approach) * BALANCE.trials.prepShare + playerPerformance;
+  if (trial.approach === 'ferocity' && opponentRhetoric < BALANCE.trials.approach.ferocity.lowRhetoricThreshold) {
+    finalPlayer += BALANCE.trials.approach.ferocity.lowRhetoricBonus;
+  }
   const finalNpc = trial.npcStrength * BALANCE.trials.prepShare + npcPerformance;
-  const differential = (finalPlayer - finalNpc) + trial.juryLean;
+  const juryWeight = trial.approach === 'sympathy' ? BALANCE.trials.approach.sympathy.juryLeanWeightMultiplier : 1;
+  const differential = (finalPlayer - finalNpc) + trial.juryLean * juryWeight;
   const defendantDifferential = trial.seat === 'defense' ? differential : -differential;
 
   const bands = BALANCE.trials.verdictThresholds[severityTier];
@@ -350,9 +376,17 @@ function pickTaxationNotch(relationship: number, rng: () => number): TaxationNot
 /**
  * Converts an in-flight (or resolved-but-kept-for-history) legacy trial —
  * mirrors the wars/P3-A per-element migration pattern in gameStore.loadGame.
- * Purchased strength is never lost (design invariant 9): playerPrep.totalStrength
- * is seeded directly from legacy.defenseStrength (which already includes
- * buildTrial's base-20 seed plus every action bonus purchased).
+ * Purchased strength is never lost (design invariant 9): the RAW section
+ * value (playerPrep.logos) is seeded directly from legacy.defenseStrength
+ * (which already includes buildTrial's base-20 seed plus every action bonus
+ * purchased) — Logos, not any section, since the legacy shim's bonuses were
+ * a flat, undifferentiated mix (implementer's call, noted here). The
+ * DERIVED total a converted trial plays with afterwards passes through
+ * computeTotalPrepStrength like any other — under the default 'procedure'
+ * Approach that's a ×1.1 Logos multiplier, so the number preserved here is
+ * the raw purchased amount, not what the strength bar displays once
+ * Approach multipliers apply (same rule for every trial, not a migration
+ * quirk).
  */
 export function convertLegacyTrial(
   legacy: LegacyTrial,
@@ -385,7 +419,10 @@ export function convertLegacyTrial(
     defendant: { kind: 'family', characterId: legacy.accusedCharacterId },
     filedSeason: currentTurnNumber - (approxOriginalWindow - legacy.turnsRemaining),
     startsSeason: currentTurnNumber + legacy.turnsRemaining,
-    playerPrep: { totalStrength: legacy.defenseStrength, actionsUsed: legacy.actionsUsed },
+    playerPrep: {
+      logos: legacy.defenseStrength, pathos: 0, ethos: 0,
+      actionsUsed: legacy.actionsUsed, witnesses: [], bribedClanIds: [], praetorBribed: false,
+    },
     approach: 'procedure',
     speakerId: paterfamiliasId,
     npcStrength: legacy.prosecutionStrength,
@@ -396,15 +433,112 @@ export function convertLegacyTrial(
   };
 }
 
-// ─── Legacy TRIAL_ACTIONS shim ────────────────────────────────────────────────
+// ─── The Basilica's prep verbs (Phase 4, Chunk P4-D) ─────────────────────────
+// Pure math + PrepRecord deltas — caller (gameStore) checks affordability,
+// per-verb use caps, and slot/one-time limits before calling, same
+// convention as fileProsecution's gate check living in the store rather
+// than here.
 
-/** Superseded by P4-D's trialPrep.ts — kept functional this chunk per the
- *  plan ("keep a legacy-mapping shim"). Reuses action.defenseBonus directly
- *  as the prep-strength delta (1:1, same numbers as before); capped at 100
- *  to match the old defenseStrength ceiling. */
-export function applyLegacyTrialAction(prep: PrepRecord, action: TrialAction): PrepRecord {
+export function gatherEvidenceCost(usesSoFar: number): number {
+  return BALANCE.trials.prep.gatherEvidenceCostBaseFides + usesSoFar * BALANCE.trials.prep.gatherEvidenceCostPerUseFides;
+}
+
+export function gatherEvidenceBonus(agentIntrigus: number): number {
+  return BALANCE.trials.prep.gatherEvidenceBonusBase + agentIntrigus;
+}
+
+export function applyGatherEvidence(prep: PrepRecord, agentIntrigus: number): PrepRecord {
   return {
-    totalStrength: Math.min(100, prep.totalStrength + action.defenseBonus),
-    actionsUsed: [...prep.actionsUsed, action.id],
+    ...prep,
+    logos: prep.logos + gatherEvidenceBonus(agentIntrigus),
+    actionsUsed: [...prep.actionsUsed, 'gather_evidence'],
+  };
+}
+
+export function presentSecretEvidenceBonus(potency: 1 | 2 | 3): number {
+  return potency * BALANCE.trials.prep.presentSecretEvidenceBonusPerPotency;
+}
+
+export function applyPresentSecretEvidence(prep: PrepRecord, potency: 1 | 2 | 3): PrepRecord {
+  return {
+    ...prep,
+    logos: prep.logos + presentSecretEvidenceBonus(potency),
+    actionsUsed: [...prep.actionsUsed, 'present_secret_evidence'],
+  };
+}
+
+export function applySecureWitness(prep: PrepRecord, witnessName: string): PrepRecord {
+  const witness: Witness = { id: `witness-${Date.now()}-${prep.witnesses.length}`, name: witnessName };
+  return {
+    ...prep,
+    pathos: prep.pathos + BALANCE.trials.prep.secureWitnessBonus,
+    witnesses: [...prep.witnesses, witness],
+    actionsUsed: [...prep.actionsUsed, 'secure_witness'],
+  };
+}
+
+export function prepareOrationBonus(speakerRhetoric: number): number {
+  return BALANCE.trials.prep.prepareOrationBonusBase + speakerRhetoric;
+}
+
+/** Value locks in at purchase — re-running after a speaker change does not
+ *  retroactively re-rate past uses (design note in the plan's own words:
+ *  "uses are speaker-agnostic, value locks at purchase"). */
+export function applyPrepareOration(prep: PrepRecord, speakerRhetoric: number): PrepRecord {
+  return {
+    ...prep,
+    pathos: prep.pathos + prepareOrationBonus(speakerRhetoric),
+    actionsUsed: [...prep.actionsUsed, 'prepare_oration'],
+  };
+}
+
+export function invokeAncestorsBonus(lifetimeDignitas: number): number {
+  return Math.min(
+    BALANCE.trials.prep.invokeAncestorsCap,
+    Math.floor(lifetimeDignitas / BALANCE.trials.prep.invokeAncestorsDignitasDivisor)
+  );
+}
+
+export function applyInvokeAncestors(prep: PrepRecord, lifetimeDignitas: number): PrepRecord {
+  return {
+    ...prep,
+    ethos: prep.ethos + invokeAncestorsBonus(lifetimeDignitas),
+    actionsUsed: [...prep.actionsUsed, 'invoke_ancestors'],
+  };
+}
+
+/** Per clan bloc — dedupe (a clan can only be bribed once per trial) is the
+ *  caller's job via prep.bribedClanIds.includes(clanId). Discovery
+ *  (juryBribeDiscoveryChance) rolls at trial-day session start (P4-E) —
+ *  inert here, just recorded. */
+export function applyBribeJurors(prep: PrepRecord, clanId: string): PrepRecord {
+  return {
+    ...prep,
+    ethos: prep.ethos + BALANCE.trials.prep.bribeJurorsBonusPerBloc,
+    bribedClanIds: [...prep.bribedClanIds, clanId],
+    actionsUsed: [...prep.actionsUsed, 'bribe_jurors'],
+  };
+}
+
+/** One-time. Same inert-discovery note as applyBribeJurors. */
+export function applyBribePraetor(prep: PrepRecord): PrepRecord {
+  return {
+    ...prep,
+    ethos: prep.ethos + BALANCE.trials.prep.bribePraetorBonus,
+    praetorBribed: true,
+    actionsUsed: [...prep.actionsUsed, 'bribe_praetor'],
+  };
+}
+
+/** Reworded from the legacy shim's "+strength for you" to "opponent
+ *  −strength" per the plan's own table — reduces npcStrength directly
+ *  (caller applies the delta to TrialState.npcStrength, floored at 0; there
+ *  is no opponent-witness model to remove one from). Only records the
+ *  one-time use here; the actual npcStrength write happens in gameStore
+ *  since it targets a different field than playerPrep. */
+export function applyIntimidateWitness(prep: PrepRecord): PrepRecord {
+  return {
+    ...prep,
+    actionsUsed: [...prep.actionsUsed, 'intimidate_witness'],
   };
 }

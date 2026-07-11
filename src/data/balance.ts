@@ -988,6 +988,98 @@ export const BALANCE = {
       // Otherwise (>= neutralStandingMax): benevolent/light/standard mix —
       // a friendly leader has less reason to fleece a province.
     },
+
+    // ── The Basilica's prep catalog (Phase 4, Chunk P4-D) ─────────────────
+    // Seed values, first-pass — data/trialPrep.ts holds only labels/section/
+    // asset-gate; every number lives here. Section subtotals accumulate raw
+    // (pre-Approach) points; trialEngine.computeTotalPrepStrength applies
+    // the multipliers below at read time.
+    prep: {
+      // Gather Evidence (Logos) — repeatable, cap 5 uses. Cost rises per use
+      // already made this trial; effect scales with the sending agent's
+      // Intrigus (same picker convention as P4-A's Gather Intelligence).
+      gatherEvidenceCostBaseFides: 8,
+      gatherEvidenceCostPerUseFides: 4,
+      gatherEvidenceBonusBase: 6,
+      gatherEvidenceMaxUses: 5,
+
+      // Present a Secret as Evidence (Logos) — consumes a criminal Secret on
+      // the opponent matching this trial's charge (secretDefinitions'
+      // chargeType mapping, via secretEngine.mapSecretTypeToTrialCharge).
+      presentSecretEvidenceBonusPerPotency: 12,
+
+      // Secure a Witness (Pathos) — 2 slots; a named Witness object, later
+      // attackable at trial (P4-E).
+      secureWitnessCostDenarii: 20,
+      secureWitnessBonus: 8,
+      secureWitnessMaxSlots: 2,
+
+      // Prepare an Oration (Pathos) — repeatable, cap 3 uses. Value locks at
+      // purchase (speaker-agnostic; re-running after a speaker change does
+      // NOT retroactively use the new speaker's Rhetoric for past uses).
+      prepareOrationCostFides: 8,
+      prepareOrationBonusBase: 4,
+      prepareOrationMaxUses: 3,
+
+      // Invoke the Ancestors (Ethos) — free, one-time. floor(lifetimeDignitas
+      // / divisor), capped.
+      invokeAncestorsDignitasDivisor: 25,
+      invokeAncestorsCap: 12,
+
+      // Bribe the Jurors (Ethos) — per clan bloc; each bribe carries a
+      // discovery roll (P4-E's trial-day session start) that voids the bonus
+      // and becomes a hostile beat if it hits. Inert this chunk — the record
+      // is only stored (TrialState.playerPrep.bribedClanIds).
+      bribeJurorsCostPerBlocDenarii: 30,
+      bribeJurorsBonusPerBloc: 6,
+      juryBribeDiscoveryChance: 0.15,
+
+      // Bribe the Praetor (Ethos) — one-time, largest single Ethos lever.
+      // Same "inert until P4-E" discovery-roll note as above.
+      bribePraetorCostDenarii: 80,
+      bribePraetorBonus: 15,
+      praetorBribeDiscoveryChance: 0.25,
+
+      // Intimidate a Key Witness (Pathos, legacy-ported gate) — asset-gated
+      // (Gladiator School tier 3, same `intimidate_witness` unlock id as
+      // before). Reworded per the plan from "boosts your prep" to "opponent
+      // -strength" — reduces npcStrength directly rather than adding to
+      // playerPrep, since there's no opponent-witness model to remove one
+      // from. Cost carried over from the old TRIAL_ACTIONS entry; the
+      // opponent-strength-reduction magnitude is a fresh seed (not the old
+      // defenseBonus, since it now targets a different number).
+      intimidateWitnessCostDenarii: 60,
+      intimidateWitnessNpcStrengthReduction: 20,
+    },
+
+    // ── Approach multipliers (Phase 4, Chunk P4-D — design invariant 8) ────
+    // Free, adjustable until startsSeason. Applied by
+    // trialEngine.computeTotalPrepStrength (Logos/Pathos/Ethos multipliers)
+    // and computeVerdict (Ferocity's low-Rhetoric bonus, Sympathy's jury-
+    // lean weight). Procedure's surprise-beat effect and Ferocity's
+    // "draws aggressive beats" are P4-E beat-engine territory — the
+    // multiplier below is defined now so beat drawing has one number to read
+    // later, but nothing consumes it until then (same pattern as P4-C's
+    // unused performanceCap).
+    approach: {
+      ferocity: {
+        logos: 1.2,
+        ethos: 0.9,
+        /** Opponent leader's skills.rhetoric (0-10) below this grants the bonus. */
+        lowRhetoricThreshold: 4,
+        lowRhetoricBonus: 5,
+      },
+      procedure: {
+        logos: 1.1,
+        /** Inert until P4-E's beat draw exists. */
+        surpriseBeatChanceMultiplier: 0.5,
+      },
+      sympathy: {
+        pathos: 1.25,
+        logos: 0.9,
+        juryLeanWeightMultiplier: 2,
+      },
+    },
   },
 };
 

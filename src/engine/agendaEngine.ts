@@ -8,7 +8,7 @@ import type { AgendaItem, AgendaSeverity } from '../models/agenda';
 import type { CrisisTrackId } from '../models/crisis';
 import { SEVERITY_ORDER } from '../models/agenda';
 import { OFFICES, TRIBUNE_OFFICE } from '../data/offices';
-import { CORRUPTION_TRIAL_THRESHOLD } from './trialEngine';
+import { CORRUPTION_TRIAL_THRESHOLD, computeTotalPrepStrength } from './trialEngine';
 import { getClanStanding } from './reputationEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import { getMunificenceAct } from '../data/munificence';
@@ -81,8 +81,11 @@ function genTrials(state: GameState): AgendaItem[] {
 
       const seasonsRemaining = Math.max(0, trial.startsSeason - state.turnNumber);
       const resolvesThisSeason = seasonsRemaining <= 1;
-      const losingAndClose =
-        trial.playerPrep.totalStrength < trial.npcStrength && seasonsRemaining <= 2;
+      const playerStrength = computeTotalPrepStrength(trial.playerPrep, trial.approach);
+      // Below-estimate-at-T-1 End Season warning (P4-D) folds into this same
+      // severity check rather than new plumbing, per the plan's own
+      // instruction — "extend agenda #24/#1 severity."
+      const losingAndClose = playerStrength < trial.npcStrength && seasonsRemaining <= 2;
       const severity: AgendaSeverity =
         resolvesThisSeason || losingAndClose ? 'critical' : 'warning';
 
@@ -91,8 +94,9 @@ function genTrials(state: GameState): AgendaItem[] {
         category: 'trial' as const,
         severity,
         title: trial.seat === 'defense' ? `Trial of ${defendantName}` : `Prosecuting ${defendantName}`,
-        detail: `Resolves in ${plural(seasonsRemaining, 'season')}. Your strength ${Math.round(trial.playerPrep.totalStrength)} vs their ${Math.round(trial.npcStrength)}.`,
-        target: { tab: 'Curia' as const, trialId: trial.id },
+        detail: `Resolves in ${plural(seasonsRemaining, 'season')}. Your strength ${Math.round(playerStrength)} vs their ${Math.round(trial.npcStrength)}.`,
+        // Phase 4, Chunk P4-D — the Basilica lives in Cursus now, not Curia.
+        target: { tab: 'Cursus' as const, trialId: trial.id },
         sortWeight: resolvesThisSeason ? 0 : 10,
       };
     });
@@ -830,7 +834,7 @@ function genFiledProsecutionPending(state: GameState): AgendaItem[] {
         severity: 'opportunity' as const,
         title: `Your case against ${defendantName} is building`,
         detail: `${plural(seasonsRemaining, 'season')} left to strengthen it before trial.`,
-        target: { tab: 'Curia' as const, trialId: trial.id },
+        target: { tab: 'Cursus' as const, trialId: trial.id },
         sortWeight: 20,
       };
     });

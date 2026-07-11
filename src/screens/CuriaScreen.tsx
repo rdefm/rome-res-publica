@@ -5,14 +5,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
 import { calcRomeStatModifiers } from '../engine/resourceEngine';
-import { getUnlockedAssetActions } from '../engine/assetEngine';
+import { computeTotalPrepStrength } from '../engine/trialEngine';
 import { calcRomeStatVoteModifier, ALL_BILL_TEMPLATES } from '../data/billTemplates';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import StatBar from '../components/shared/StatBar';
 import CrisisTrackModal from '../components/shared/CrisisTrackModal';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
 import ScrollModal, { PARCHMENT } from '../components/shared/ScrollModal';
-import { TRIAL_ACTIONS } from '../data/trialActions';
 import { TRIAL_CHARGE_DEFS } from '../data/trialCharges';
 import type { Bill, ActiveLaw } from '../models/bill';
 import type { CrisisTrackId, CrisisTrack } from '../models/crisis';
@@ -255,8 +254,7 @@ const OUTCOME_COLORS: Record<string, string> = {
 };
 
 function TrialBanner() {
-  const { trials, turnNumber, family, clans, ownedAssets, denarii, fides, takeTrialAction } = useGameStore();
-  const [expanded, setExpanded] = useState(false);
+  const { trials, turnNumber, family, clans, requestNavigation } = useGameStore();
   const activeTrial = trials.find(t => t.status !== 'resolved');
 
   if (!activeTrial) {
@@ -285,12 +283,11 @@ function TrialBanner() {
 
   const seasonsRemaining = Math.max(0, activeTrial.startsSeason - turnNumber);
   const chargeLabel = TRIAL_CHARGE_DEFS[activeTrial.charge]?.displayName ?? activeTrial.charge;
-  const unlockedAssetActions = getUnlockedAssetActions(ownedAssets);
-  const resources: Record<string, number> = { denarii, fides };
+  const playerStrength = computeTotalPrepStrength(activeTrial.playerPrep, activeTrial.approach);
 
   return (
     <View style={tb.container}>
-      <TouchableOpacity style={tb.header} onPress={() => setExpanded(e => !e)} activeOpacity={0.75}>
+      <View style={tb.header}>
         <View style={tb.headerLeft}>
           <InfoTap termId="trial">
             <Text style={tb.heading}>⚖️ {activeTrial.seat === 'defense' ? 'ACTIVE TRIAL' : 'PROSECUTION FILED'}</Text>
@@ -298,13 +295,12 @@ function TrialBanner() {
           <Text style={tb.sub}>{chargeLabel} · {activeTrial.seat === 'defense' ? defendantName : `vs. ${defendantName}`}</Text>
           <Text style={tb.sub}>{opponentLine} · {seasonsRemaining} season{seasonsRemaining !== 1 ? 's' : ''} remaining</Text>
         </View>
-        <Text style={tb.chevron}>{expanded ? '▲' : '▼'}</Text>
-      </TouchableOpacity>
+      </View>
       <View style={tb.barsRow}>
         <View style={tb.barWrap}>
           <Text style={tb.barLabel}>Your Strength</Text>
-          <View style={tb.barTrack}><View style={[tb.barFill, { width: `${Math.min(100, activeTrial.playerPrep.totalStrength)}%`, backgroundColor: COLORS.laurel }]} /></View>
-          <Text style={[tb.barVal, { color: COLORS.laurel }]}>{Math.round(activeTrial.playerPrep.totalStrength)}</Text>
+          <View style={tb.barTrack}><View style={[tb.barFill, { width: `${Math.min(100, playerStrength)}%`, backgroundColor: COLORS.laurel }]} /></View>
+          <Text style={[tb.barVal, { color: COLORS.laurel }]}>{Math.round(playerStrength)}</Text>
         </View>
         <View style={tb.barWrap}>
           <Text style={tb.barLabel}>Their Strength</Text>
@@ -312,27 +308,16 @@ function TrialBanner() {
           <Text style={[tb.barVal, { color: COLORS.crimson }]}>{Math.round(activeTrial.npcStrength)}</Text>
         </View>
       </View>
-      {expanded && (
-        <View style={tb.actions}>
-          <Text style={tb.actionsLabel}>PREPARATION</Text>
-          {TRIAL_ACTIONS.map(action => {
-            const alreadyUsed = activeTrial.playerPrep.actionsUsed.includes(action.id);
-            const needsAsset = action.requiresAssetAction && !unlockedAssetActions.includes(action.requiresAssetAction);
-            const canAfford = resources[action.cost.resource] >= action.cost.amount;
-            const disabled = alreadyUsed || !!needsAsset || !canAfford;
-            const resourceLabel = action.cost.resource === 'denarii' ? 'Denarii' : 'Fides';
-            return (
-              <TouchableOpacity key={action.id} style={[tb.actionBtn, disabled && tb.actionBtnDisabled]} disabled={disabled} onPress={() => takeTrialAction(activeTrial.id, action.id)} activeOpacity={0.75}>
-                <View style={tb.actionRow}>
-                  <Text style={tb.actionLabel}>{action.label}</Text>
-                  <Text style={tb.actionCost}>−{action.cost.amount} {resourceLabel}</Text>
-                </View>
-                <Text style={tb.actionDesc}>{alreadyUsed ? 'Already used this trial.' : needsAsset ? `Requires: ${action.requiresAssetAction?.replace('_', ' ')}` : `Strength +${action.defenseBonus}`}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
+      {/* Phase 4, Chunk P4-D — preparation itself now lives in the Basilica
+          (Cursus). This banner stays the passive status card, per the plan's
+          "opened from any active trial's card." */}
+      <TouchableOpacity
+        style={tb.basilicaBtn}
+        activeOpacity={0.75}
+        onPress={() => requestNavigation({ tab: 'Cursus', trialId: activeTrial.id })}
+      >
+        <Text style={tb.basilicaBtnText}>OPEN THE BASILICA →</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -343,21 +328,14 @@ const tb = StyleSheet.create({
   headerLeft: { flex: 1 },
   heading: { color: COLORS.crimson, fontFamily: FONTS.display, fontSize: 14, fontWeight: '700', letterSpacing: 1, marginBottom: 3 },
   sub: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, marginTop: 1 },
-  chevron: { color: COLORS.dust, fontSize: 14 },
   barsRow: { flexDirection: 'row', gap: SPACING.md, paddingHorizontal: SPACING.md, paddingBottom: SPACING.sm },
   barWrap: { flex: 1 },
   barLabel: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 3 },
   barTrack: { height: 6, backgroundColor: COLORS.bg, borderRadius: 3, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   barFill: { height: '100%', borderRadius: 3 },
   barVal: { fontFamily: FONTS.ui, fontSize: 10, fontWeight: '700', marginTop: 2, textAlign: 'right' },
-  actions: { borderTopWidth: 1, borderTopColor: COLORS.border, padding: SPACING.md },
-  actionsLabel: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', marginBottom: SPACING.sm },
-  actionBtn: { backgroundColor: COLORS.panelElevated, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm, padding: SPACING.sm, marginBottom: SPACING.sm, minHeight: 44 },
-  actionBtnDisabled: { opacity: 0.4 },
-  actionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  actionLabel: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 13, fontWeight: '600', flex: 1 },
-  actionCost: { color: COLORS.denariiColor, fontFamily: FONTS.ui, fontSize: 12, fontWeight: '700' },
-  actionDesc: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11, marginTop: 2 },
+  basilicaBtn: { borderTopWidth: 1, borderTopColor: COLORS.border, padding: SPACING.md, alignItems: 'center' },
+  basilicaBtnText: { color: COLORS.gold, fontFamily: FONTS.ui, fontSize: 12, fontWeight: '700', letterSpacing: 1 },
 });
 
 // ─── Bill card ────────────────────────────────────────────────────────────────

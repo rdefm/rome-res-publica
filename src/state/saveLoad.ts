@@ -132,6 +132,7 @@ export class LocalSaveProvider implements SaveProvider {
       activeBattle:      _ab,
       activeBattleSetup: _abs,
       activeBattleBridgeCtx: _abbc,
+      selectedTrialId: _sti,
       ...persistedState
     } = state as any;
     const json = JSON.stringify(persistedState);

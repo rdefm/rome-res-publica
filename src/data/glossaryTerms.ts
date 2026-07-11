@@ -34,6 +34,24 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Provinciae',
   },
   {
+    id: 'approach',
+    term: 'Approach',
+    definition: "A trial's free, adjustable stance — Ferocity, Procedure, or Sympathy — re-weighting how Logos/Pathos/Ethos preparation counts and which beats the trial-day session draws. Changeable any time until the trial begins, then locked.",
+    relatedTab: 'Cursus',
+  },
+  {
+    id: 'basilica',
+    term: 'The Basilica',
+    definition: "The screen where you prepare either side of a trial — Logos, Pathos, and Ethos sections, an Approach selector, and a speaker picker — opened from an active trial's card or an agenda item.",
+    relatedTab: 'Cursus',
+  },
+  {
+    id: 'calumnia',
+    term: 'Calumnia',
+    definition: 'The penalty for a clearly-lost prosecution you filed: Dignitas and standing with the target\'s clan both suffer, and the target may file a counter-suit against your speaker within two seasons.',
+    relatedTab: 'Cursus',
+  },
+  {
     id: 'cadet-branch',
     term: 'Cadet Branch',
     definition: 'A distant relative of your gens, tracked quietly from the start of the run. If your direct line ever dies out entirely, the cadet branch offers a one-time continuation — the name endures, but the run\'s Legacy is halved. A second extinction is final.',
@@ -148,6 +166,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Curia',
   },
   {
+    id: 'ethos',
+    term: 'Ethos',
+    definition: "The Basilica's third preparation section — character and standing: invoking your ancestors' record, and (its corrupt shadow) bribing jurors or the presiding Praetor.",
+    relatedTab: 'Cursus',
+  },
+  {
     id: 'fides',
     term: 'Fides',
     definition: 'Your family\'s credibility in Roman society, spent on almost every meaningful action — Senate votes, speeches, and diplomatic ties. Income each season depends on your paterfamilias\'s Rhetoric skill, offices held, Patron Tier, clients, and assets.',
@@ -196,6 +220,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Provinciae',
   },
   {
+    id: 'logos',
+    term: 'Logos',
+    definition: "The Basilica's evidence section — gathering evidence over time, or presenting a matching criminal Secret directly as damning proof.",
+    relatedTab: 'Cursus',
+  },
+  {
     id: 'martial',
     term: 'Martial',
     definition: 'A character skill (0–10) determining officer performance in campaigns, governor Imperium yield, and the outcome of Martial-checked events and office actions.',
@@ -224,6 +254,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: 'Patron Tier',
     definition: 'Your family\'s social standing in six tiers, from Client Family (Tier 0) to Prince of the Republic (Tier 5), gated by Lifetime Dignitas alone — spending Fides can never cost you a tier. Higher tiers multiply Fides income, expand client slots, and unlock diplomatic patron actions.',
     relatedTab: 'Forum',
+  },
+  {
+    id: 'pathos',
+    term: 'Pathos',
+    definition: "The Basilica's persuasion section — securing named witnesses and rehearsing the speaker's oration. Witnesses are attackable at trial.",
+    relatedTab: 'Cursus',
   },
   {
     id: 'peace-negotiation',
@@ -271,6 +307,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     id: 'quaestor',
     term: 'Quaestor',
     definition: 'The first elected office on the Cursus Honorum, open at age 30. Provides +3 Fides per season while in office.',
+    relatedTab: 'Cursus',
+  },
+  {
+    id: 'quaestio',
+    term: 'Quaestio',
+    definition: "Rome's standing criminal court — in game terms, any trial: a corruption charge, a hostile clan's accusation, or a prosecution you file yourself, all resolved through the same Basilica pipeline.",
     relatedTab: 'Cursus',
   },
   {
@@ -323,8 +365,8 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   {
     id: 'trial',
     term: 'Trial',
-    definition: 'A legal proceeding brought by a hostile clan against a family member, lasting several seasons. You take defense actions each season; outcomes range from Acquitted to Executed.',
-    relatedTab: 'Curia',
+    definition: 'A legal proceeding — brought by a hostile clan, triggered by corruption, or filed by you against a leader — prepared in the Basilica (Cursus) over several seasons. Outcomes range from Acquitted/Dismissed to Fined, Exiled, or Executed.',
+    relatedTab: 'Cursus',
   },
   {
     id: 'tribune',

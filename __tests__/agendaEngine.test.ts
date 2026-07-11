@@ -70,7 +70,11 @@ function makeTrial(overrides: Record<string, unknown> = {}) {
     defendant: { kind: 'family', characterId: 'pc-brutus' },
     filedSeason: 0,
     startsSeason: 1,
-    playerPrep: { totalStrength: 30, actionsUsed: [] },
+    // Phase 4, Chunk P4-D — sectioned PrepRecord. Put the test's intended
+    // total in `pathos` specifically: the default approach ('procedure')
+    // only multiplies Logos, so Pathos passes through computeTotalPrepStrength
+    // unmultiplied, preserving this suite's pre-P4-D numbers exactly.
+    playerPrep: { logos: 0, pathos: 30, ethos: 0, actionsUsed: [], witnesses: [], bribedClanIds: [], praetorBribed: false },
     approach: 'procedure',
     speakerId: 'pc-brutus',
     npcStrength: 70,
@@ -105,7 +109,7 @@ describe('generateAgenda', () => {
   // 2 — Trial resolving this season with losing defense is critical
   test('trial resolving this season with losing defense is critical', () => {
     const trial = makeTrial({
-      playerPrep: { totalStrength: 20, actionsUsed: [] },
+      playerPrep: { logos: 0, pathos: 20, ethos: 0, actionsUsed: [], witnesses: [], bribedClanIds: [], praetorBribed: false },
       npcStrength: 80,
       startsSeason: 1,
     });
@@ -120,7 +124,7 @@ describe('generateAgenda', () => {
   // Also verify: a trial with 3 seasons remaining and winning prep is only a warning
   test('trial with comfortable defense and 3 seasons remaining is only a warning', () => {
     const trial = makeTrial({
-      playerPrep: { totalStrength: 80, actionsUsed: [] },
+      playerPrep: { logos: 0, pathos: 80, ethos: 0, actionsUsed: [], witnesses: [], bribedClanIds: [], praetorBribed: false },
       npcStrength: 30,
       startsSeason: 4,
     });
@@ -160,7 +164,7 @@ describe('generateAgenda', () => {
   // 5 — Sort order is severity-first
   test('items are sorted severity-first', () => {
     // Set up both a critical item (trial resolving now) and a warning (senate 1 season)
-    const trial = makeTrial({ startsSeason: 1, playerPrep: { totalStrength: 20, actionsUsed: [] }, npcStrength: 80 });
+    const trial = makeTrial({ startsSeason: 1, playerPrep: { logos: 0, pathos: 20, ethos: 0, actionsUsed: [], witnesses: [], bribedClanIds: [], praetorBribed: false }, npcStrength: 80 });
     const state = makeState({
       trials: [trial],
       family: [makePlayer()],

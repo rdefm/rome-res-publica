@@ -138,6 +138,7 @@ function GameRoot() {
   const uiNavRequest  = useGameStore(s => s.uiNavRequest);
   const clearNavRequest = useGameStore(s => s.clearNavRequest);
   const selectCharacter = useGameStore(s => s.selectCharacter);
+  const selectTrialForBasilica = useGameStore(s => s.selectTrialForBasilica);
 
   useEffect(() => {
     if (!uiNavRequest) return;
@@ -146,12 +147,16 @@ function GameRoot() {
     // Navigate to the target tab
     navRef.navigate(uiNavRequest.tab as never);
 
-    // Apply payload — selectedCharacterId is the only confirmed store field (v1).
-    // provinceId / billId / trialId: tab landing only per plan §P1-C v1 scope.
+    // Apply payload — selectedCharacterId and trialId (Phase 4, P4-D) are the
+    // only confirmed store fields so far. provinceId / billId: tab landing
+    // only per plan §P1-C v1 scope.
     // TODO (P1-C+): add selectedLeaderId, expandedClanId, provinceId deep-links
     //               once the relevant screen store fields are confirmed.
     if (uiNavRequest.selectedCharacterId) {
       selectCharacter(uiNavRequest.selectedCharacterId);
+    }
+    if (uiNavRequest.trialId) {
+      selectTrialForBasilica(uiNavRequest.trialId);
     }
 
     clearNavRequest();

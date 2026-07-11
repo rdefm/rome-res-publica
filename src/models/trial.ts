@@ -27,16 +27,39 @@ export type TrialTarget =
   | { kind: 'family'; characterId: string }
   | { kind: 'leader'; leaderId: string };
 
+/** The Basilica's three preparation sections (P4-D). */
+export type PrepSection = 'logos' | 'pathos' | 'ethos';
+
+/** A named witness secured via the Basilica's Pathos section (P4-D).
+ *  Attackable at trial (P4-E) — `attacked` lets a beat response spend
+ *  "protect the witness" prep against a specific one; undefined/false
+ *  until the beat engine exists to ever set it. */
+export interface Witness {
+  id: string;
+  name: string;
+  attacked?: boolean;
+}
+
 /**
- * Per-verb usage + accumulated strength. This chunk it's a "temporary flat
- * list" (the plan's own words) mapping the legacy TRIAL_ACTIONS onto a single
- * totalStrength number — P4-D's Basilica replaces actionsUsed's flat shape
- * with real Logos/Pathos/Ethos section tracking without needing to touch
- * totalStrength's meaning (it stays "the player's accumulated prep score").
+ * Per-section accumulated strength, replacing P4-C's "temporary flat list"
+ * (the plan's own words) now that the Basilica (P4-D) gives real Logos/
+ * Pathos/Ethos tracking. `logos`/`pathos`/`ethos` are the raw (pre-Approach-
+ * multiplier) sums each section's verbs have contributed; the weighted total
+ * a trial actually plays with is always derived via
+ * trialEngine.computeTotalPrepStrength(prep, trial.approach) — never stored,
+ * so switching Approach re-previews live without re-triggering any verb.
+ * `bribedClanIds`/`praetorBribed` record Ethos bribes purchased here; the
+ * `juryBribeDiscovery`/`praetorBribeDiscovery` roll against them happens at
+ * trial-day session start (P4-E) — inert bookkeeping until then.
  */
 export interface PrepRecord {
-  totalStrength: number;
+  logos: number;
+  pathos: number;
+  ethos: number;
   actionsUsed: string[];
+  witnesses: Witness[];
+  bribedClanIds: string[];
+  praetorBribed: boolean;
 }
 
 export interface TrialState {
@@ -92,14 +115,9 @@ export interface LegacyTrial {
 }
 
 // ─── Trial actions — legacy defense-action catalog ───────────────────────────
-// Superseded by P4-D's trialPrep.ts, but kept functional this chunk per the
-// plan ("keep a legacy-mapping shim") — trialEngine.mapLegacyTrialActionToPrep
-// converts a TRIAL_ACTIONS pick into a PrepRecord delta.
-
-export interface TrialAction {
-  id: string;
-  label: string;
-  cost: { resource: 'denarii' | 'fides'; amount: number };
-  defenseBonus: number;
-  requiresAssetAction?: string; // asset action ID required to unlock
-}
+// Retired, Phase 4, Chunk P4-D. TRIAL_ACTIONS/TrialAction/
+// applyLegacyTrialAction/takeTrialAction are gone — data/trialPrep.ts's
+// Logos/Pathos/Ethos catalog is now the only way to prepare a trial (both
+// seats). LegacyTrial above still needs `actionsUsed: string[]`-shaped
+// history for convertLegacyTrial's benefit, but that's plain string[], not
+// this type.

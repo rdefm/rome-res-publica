@@ -55,9 +55,20 @@ import {
 import {
   canFileProsecution,
   buildTrialState,
-  applyLegacyTrialAction,
   convertLegacyTrial,
+  computeTotalPrepStrength,
+  gatherEvidenceCost,
+  applyGatherEvidence,
+  applyPresentSecretEvidence,
+  applySecureWitness,
+  applyPrepareOration,
+  applyInvokeAncestors,
+  applyBribeJurors,
+  applyBribePraetor,
+  applyIntimidateWitness,
 } from '../engine/trialEngine';
+import { CLIENT_NAMES } from '../data/clientNames';
+import { SECRET_CLASS_BY_TYPE } from '../data/secretDefinitions';
 import {
   resolveAmbassadorAction as engineResolveAmbassadorAction,
   type AmbassadorActionId,
@@ -260,6 +271,12 @@ export interface GameState {
 
   // Trials (Feature 6, reworked Phase 4, Chunk P4-C — "one pipeline, two seats")
   trials: TrialState[];
+  /** Phase 4, Chunk P4-D — transient UI field, same pattern as
+   *  selectedCharacterId/uiNavRequest: set by an agenda deep-link
+   *  (target.trialId) or CuriaScreen's "Open the Basilica" button via
+   *  requestNavigation; CursusScreen watches it to open the sheet, then
+   *  clears it. Excluded from persistence (see saveLoad.ts's transient list). */
+  selectedTrialId: string | null;
 
   // Faction Reputation (Feature 2)
   familyReputations: Record<string, number>;
@@ -543,12 +560,21 @@ export interface GameActions {
   // Reputation
   adjustClanReputation: (clanId: string, delta: number, clanName: string) => void;
 
-  // Trials
-  takeTrialAction: (trialId: string, actionId: string) => void;
-  // Phase 4, Chunk P4-C
+  // Trials — Phase 4, Chunk P4-C
   fileProsecution: (targetLeaderId: string, startDelay: number, speakerId?: string) => void;
   setTrialApproach: (trialId: string, approach: TrialApproach) => void;
   setTrialSpeaker: (trialId: string, characterId: string) => void;
+  // Trials — the Basilica's prep catalog (Phase 4, Chunk P4-D). Supersedes
+  // takeTrialAction/TRIAL_ACTIONS (retired) — every verb, both seats.
+  gatherTrialEvidence: (trialId: string, agentId: string) => void;
+  presentSecretAsEvidence: (trialId: string, secretId: string) => void;
+  secureTrialWitness: (trialId: string) => void;
+  prepareTrialOration: (trialId: string) => void;
+  invokeTrialAncestors: (trialId: string) => void;
+  bribeTrialJurors: (trialId: string, clanId: string) => void;
+  bribeTrialPraetor: (trialId: string) => void;
+  intimidateTrialWitness: (trialId: string) => void;
+  selectTrialForBasilica: (trialId: string | null) => void;
 
   // Birth
   confirmBirthNaming: (name: string) => void;
@@ -811,6 +837,7 @@ export const INITIAL_STATE: GameState = {
 
   family: STARTING_FAMILY,
   selectedCharacterId: 'pc-1',
+  selectedTrialId: null,
   trainedThisSeason: [],
   pendingSuccession: null,
   regency: null,
@@ -976,6 +1003,25 @@ function findClanAndLeader(clans: Clan[], leaderId: string) {
     if (leader) return { clan, leader };
   }
   return null;
+}
+
+/**
+ * Phase 4, Chunk P4-D — backfills a pre-Basilica PrepRecord (the old flat
+ * {totalStrength, actionsUsed}) into the sectioned shape at load time. A
+ * save already on the new shape passes through unchanged (the `logos`
+ * check below is false for it, since it already has the field).
+ */
+function normalizePlayerPrep(prep: any): TrialState['playerPrep'] {
+  if (prep && typeof prep.logos === 'number') return prep;
+  return {
+    logos: prep?.totalStrength ?? 0,
+    pathos: 0,
+    ethos: 0,
+    actionsUsed: prep?.actionsUsed ?? [],
+    witnesses: [],
+    bribedClanIds: [],
+    praetorBribed: false,
+  };
 }
 
 // ── Chunk 1B helper ───────────────────────────────────────────────────────────
@@ -2005,46 +2051,6 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   },
 
   // ─── Trials (Phase 4, Chunk P4-C — "one pipeline, two seats") ──────────────
-  // takeTrialAction is the legacy TRIAL_ACTIONS shim — generic prep now (both
-  // seats), superseded by P4-D's Basilica/Logos/Pathos/Ethos. The button list
-  // and its costs/bonuses are unchanged; only where the bonus lands changed
-  // (playerPrep.totalStrength instead of a defense-only defenseStrength).
-
-  takeTrialAction: (trialId, actionId) => {
-    const s = get();
-    const { TRIAL_ACTIONS } = require('../data/trialActions');
-    const { getUnlockedAssetActions } = require('../engine/assetEngine');
-
-    const trial = s.trials.find(t => t.id === trialId);
-    if (!trial || trial.status === 'resolved') return;
-    if (trial.playerPrep.actionsUsed.includes(actionId)) return;
-
-    const action = TRIAL_ACTIONS.find((a: any) => a.id === actionId);
-    if (!action) return;
-
-    if (action.requiresAssetAction) {
-      const unlocked = getUnlockedAssetActions(s.ownedAssets);
-      if (!unlocked.includes(action.requiresAssetAction)) return;
-    }
-
-    const resource = action.cost.resource as keyof typeof s;
-    const currentAmount = s[resource] as number;
-    if (currentAmount < action.cost.amount) return;
-
-    const label = turnLabel(s);
-    set({
-      [resource]: currentAmount - action.cost.amount,
-      trials: s.trials.map(t =>
-        t.id === trialId ? { ...t, playerPrep: applyLegacyTrialAction(t.playerPrep, action) } : t
-      ),
-      log: [...s.log, mkLog(label, `Trial preparation: ${action.label}. Strength +${action.defenseBonus}.`, 'good')],
-      ...bumpActions(s),
-      ...bumpSpend(s, {
-        fides:   resource === 'fides'   ? action.cost.amount : undefined,
-        denarii: resource === 'denarii' ? action.cost.amount : undefined,
-      }),
-    });
-  },
 
   fileProsecution: (targetLeaderId, startDelay, speakerId) => {
     const s = get();
@@ -2129,6 +2135,197 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     if (!s.family.some(c => c.id === characterId)) return;
     set({ trials: s.trials.map(t => t.id === trialId ? { ...t, speakerId: characterId } : t) });
   },
+
+  // ─── The Basilica's prep catalog (Phase 4, Chunk P4-D) ─────────────────────
+  // Every verb is a thin wrapper: guard (preparing + not yet in session),
+  // affordability/cap check, spend, delegate the PrepRecord delta to the
+  // matching pure trialEngine function. Normal wallet checks only — no
+  // separate trial action budget (design note under P4-D's prep catalog).
+
+  gatherTrialEvidence: (trialId, agentId) => {
+    const s = get();
+    const trial = s.trials.find(t => t.id === trialId);
+    if (!trial || trial.status !== 'preparing' || s.turnNumber >= trial.startsSeason) return;
+    const usesSoFar = trial.playerPrep.actionsUsed.filter(a => a === 'gather_evidence').length;
+    if (usesSoFar >= BALANCE.trials.prep.gatherEvidenceMaxUses) return;
+    const agent = s.family.find(c => c.id === agentId);
+    if (!agent) return;
+    const cost = gatherEvidenceCost(usesSoFar);
+    if (s.fides < cost) return;
+
+    const label = turnLabel(s);
+    set({
+      fides: s.fides - cost,
+      trials: s.trials.map(t =>
+        t.id === trialId ? { ...t, playerPrep: applyGatherEvidence(t.playerPrep, agent.skills.intrigus) } : t
+      ),
+      log: [...s.log, mkLog(label, `${agent.name} gathers evidence for the trial.`, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: cost }),
+    });
+  },
+
+  presentSecretAsEvidence: (trialId, secretId) => {
+    const s = get();
+    const trial = s.trials.find(t => t.id === trialId);
+    if (!trial || trial.status !== 'preparing' || s.turnNumber >= trial.startsSeason) return;
+    const opponentLeaderId = trial.seat === 'defense'
+      ? (trial.prosecutor.kind === 'leader' ? trial.prosecutor.leaderId : null)
+      : (trial.defendant.kind === 'leader' ? trial.defendant.leaderId : null);
+    if (!opponentLeaderId) return;
+
+    const secret = s.secrets.find(sec => sec.id === secretId);
+    if (!secret) return;
+    if (secret.holder !== 'player' || secret.status !== 'held') return;
+    if (secret.subject.kind !== 'leader' || secret.subject.leaderId !== opponentLeaderId) return;
+    if (SECRET_CLASS_BY_TYPE[secret.type] !== 'criminal') return;
+    if (mapSecretTypeToTrialCharge(secret.type) !== trial.charge) return;
+
+    const label = turnLabel(s);
+    set({
+      trials: s.trials.map(t =>
+        t.id === trialId
+          ? { ...t, playerPrep: applyPresentSecretEvidence(t.playerPrep, secret.potency), consumedSecretIds: [...t.consumedSecretIds, secret.id] }
+          : t
+      ),
+      secrets: s.secrets.map(sec => sec.id === secretId ? { ...sec, status: 'spent' as const } : sec),
+      log: [...s.log, mkLog(label, `You present damning evidence before the court.`, 'good')],
+      ...bumpActions(s),
+    });
+  },
+
+  secureTrialWitness: (trialId) => {
+    const s = get();
+    const trial = s.trials.find(t => t.id === trialId);
+    if (!trial || trial.status !== 'preparing' || s.turnNumber >= trial.startsSeason) return;
+    if (trial.playerPrep.witnesses.length >= BALANCE.trials.prep.secureWitnessMaxSlots) return;
+    if (s.denarii < BALANCE.trials.prep.secureWitnessCostDenarii) return;
+
+    const pool = CLIENT_NAMES.publicSupport;
+    const used = trial.playerPrep.witnesses.map(w => w.name);
+    const available = pool.filter(n => !used.includes(n));
+    const witnessName = available.length > 0
+      ? available[Math.floor(Math.random() * available.length)]
+      : `${pool[Math.floor(Math.random() * pool.length)]} (the Younger)`;
+
+    const label = turnLabel(s);
+    set({
+      denarii: s.denarii - BALANCE.trials.prep.secureWitnessCostDenarii,
+      trials: s.trials.map(t =>
+        t.id === trialId ? { ...t, playerPrep: applySecureWitness(t.playerPrep, witnessName) } : t
+      ),
+      log: [...s.log, mkLog(label, `${witnessName} agrees to testify.`, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: BALANCE.trials.prep.secureWitnessCostDenarii }),
+    });
+  },
+
+  prepareTrialOration: (trialId) => {
+    const s = get();
+    const trial = s.trials.find(t => t.id === trialId);
+    if (!trial || trial.status !== 'preparing' || s.turnNumber >= trial.startsSeason) return;
+    const usesSoFar = trial.playerPrep.actionsUsed.filter(a => a === 'prepare_oration').length;
+    if (usesSoFar >= BALANCE.trials.prep.prepareOrationMaxUses) return;
+    if (s.fides < BALANCE.trials.prep.prepareOrationCostFides) return;
+    const speaker = s.family.find(c => c.id === trial.speakerId);
+    if (!speaker) return;
+
+    const label = turnLabel(s);
+    set({
+      fides: s.fides - BALANCE.trials.prep.prepareOrationCostFides,
+      trials: s.trials.map(t =>
+        t.id === trialId ? { ...t, playerPrep: applyPrepareOration(t.playerPrep, speaker.skills.rhetoric) } : t
+      ),
+      log: [...s.log, mkLog(label, `${speaker.name} rehearses the oration.`, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: BALANCE.trials.prep.prepareOrationCostFides }),
+    });
+  },
+
+  invokeTrialAncestors: (trialId) => {
+    const s = get();
+    const trial = s.trials.find(t => t.id === trialId);
+    if (!trial || trial.status !== 'preparing' || s.turnNumber >= trial.startsSeason) return;
+    if (trial.playerPrep.actionsUsed.includes('invoke_ancestors')) return;
+
+    const label = turnLabel(s);
+    set({
+      trials: s.trials.map(t =>
+        t.id === trialId ? { ...t, playerPrep: applyInvokeAncestors(t.playerPrep, s.lifetimeDignitas) } : t
+      ),
+      log: [...s.log, mkLog(label, `You open with the record of your ancestors.`, 'good')],
+      ...bumpActions(s),
+    });
+  },
+
+  bribeTrialJurors: (trialId, clanId) => {
+    const s = get();
+    const trial = s.trials.find(t => t.id === trialId);
+    if (!trial || trial.status !== 'preparing' || s.turnNumber >= trial.startsSeason) return;
+    if (trial.playerPrep.bribedClanIds.includes(clanId)) return;
+    if (s.denarii < BALANCE.trials.prep.bribeJurorsCostPerBlocDenarii) return;
+    const clan = s.clans.find(c => c.id === clanId);
+    if (!clan) return;
+
+    const label = turnLabel(s);
+    set({
+      denarii: s.denarii - BALANCE.trials.prep.bribeJurorsCostPerBlocDenarii,
+      trials: s.trials.map(t =>
+        t.id === trialId ? { ...t, playerPrep: applyBribeJurors(t.playerPrep, clanId) } : t
+      ),
+      log: [...s.log, mkLog(label, `You quietly buy the ${clan.name} bloc.`, 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: BALANCE.trials.prep.bribeJurorsCostPerBlocDenarii }),
+    });
+  },
+
+  bribeTrialPraetor: (trialId) => {
+    const s = get();
+    const trial = s.trials.find(t => t.id === trialId);
+    if (!trial || trial.status !== 'preparing' || s.turnNumber >= trial.startsSeason) return;
+    if (trial.playerPrep.praetorBribed) return;
+    if (s.denarii < BALANCE.trials.prep.bribePraetorCostDenarii) return;
+
+    const label = turnLabel(s);
+    set({
+      denarii: s.denarii - BALANCE.trials.prep.bribePraetorCostDenarii,
+      trials: s.trials.map(t =>
+        t.id === trialId ? { ...t, playerPrep: applyBribePraetor(t.playerPrep) } : t
+      ),
+      log: [...s.log, mkLog(label, `Coin changes hands with the presiding Praetor.`, 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: BALANCE.trials.prep.bribePraetorCostDenarii }),
+    });
+  },
+
+  intimidateTrialWitness: (trialId) => {
+    const s = get();
+    const { getUnlockedAssetActions } = require('../engine/assetEngine');
+    const trial = s.trials.find(t => t.id === trialId);
+    if (!trial || trial.status !== 'preparing' || s.turnNumber >= trial.startsSeason) return;
+    if (trial.playerPrep.actionsUsed.includes('intimidate_witness')) return;
+    if (!getUnlockedAssetActions(s.ownedAssets).includes('intimidate_witness')) return;
+    if (s.denarii < BALANCE.trials.prep.intimidateWitnessCostDenarii) return;
+
+    const label = turnLabel(s);
+    set({
+      denarii: s.denarii - BALANCE.trials.prep.intimidateWitnessCostDenarii,
+      trials: s.trials.map(t =>
+        t.id === trialId
+          ? {
+              ...t,
+              playerPrep: applyIntimidateWitness(t.playerPrep),
+              npcStrength: Math.max(0, t.npcStrength - BALANCE.trials.prep.intimidateWitnessNpcStrengthReduction),
+            }
+          : t
+      ),
+      log: [...s.log, mkLog(label, `A key witness for the other side suddenly recalls urgent business elsewhere.`, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: BALANCE.trials.prep.intimidateWitnessCostDenarii }),
+    });
+  },
+
+  selectTrialForBasilica: (trialId) => set({ selectedTrialId: trialId }),
 
   // ─── Birth ──────────────────────────────────────────────────────────────────
 
@@ -2521,20 +2718,28 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     // overrides trials if the key is actually present in the parsed JSON).
     // Same per-element migration pattern as the `wars` block above.
     // Purchased defenseStrength is never lost (design invariant 9) —
-    // convertLegacyTrial seeds playerPrep.totalStrength from it directly.
-    trials: savedState.trials ?? (((savedState as any).trialQueue ?? []) as any[]).map(legacy =>
+    // convertLegacyTrial seeds playerPrep.logos from it directly.
+    // Phase 4, Chunk P4-D — a pre-P4-D save's `trials` may already exist
+    // (post-P4-C) but with the old flat `playerPrep: {totalStrength,
+    // actionsUsed}` shape. normalizePlayerPrep backfills the sectioned shape,
+    // seeding the raw preserved number into `logos` (same choice as
+    // convertLegacyTrial/turnSequencer's NPC-trigger baseline, for the same
+    // reason — an undifferentiated flat bonus has no section it more
+    // naturally belongs to).
+    trials: (savedState.trials ?? (((savedState as any).trialQueue ?? []) as any[]).map(legacy =>
       convertLegacyTrial(
         legacy,
         savedState.turnNumber,
         savedState.clans,
         savedState.family.find(c => c.isPlayer)?.id ?? 'pc-1'
       )
-    ),
+    )).map((t: any) => ({ ...t, playerPrep: normalizePlayerPrep(t.playerPrep) })),
     // Always reset transient UI state — these must not be loaded from disk
     gameStarted:   true,
     debugMode:     false,
     agendaVisible: false,
     uiNavRequest:  null,
+    selectedTrialId: null,
     activeEvent:   null,
   }),
 

@@ -62,7 +62,6 @@ import {
   computeBurnVoteLoss,
   scanNpcSecretDecisions,
 } from './secretEngine';
-import { TRIAL_ACTIONS } from '../data/trialActions';
 import { EVENT_DEFS } from '../data/events';
 import { WAR_EVENT_DEFS } from '../data/warEvents';
 import { CADET_EVENT_DEFS } from '../data/cadetEvents';
@@ -1396,7 +1395,8 @@ export function processSeason(state: GameState): {
 
       // ── Resolve ────────────────────────────────────────────────────────
       const chargeDef = TRIAL_CHARGE_DEFS[grownTrial.charge];
-      const { outcome, differential } = computeVerdict(grownTrial, chargeDef.severityTier);
+      const opponentRhetoric = opponentFound?.leader.skills.rhetoric ?? 5;
+      const { outcome, differential } = computeVerdict(grownTrial, chargeDef.severityTier, opponentRhetoric);
       const cons = OUTCOME_CONSEQUENCES[outcome];
       const defendant = grownTrial.defendant;
 
@@ -1574,7 +1574,13 @@ export function processSeason(state: GameState): {
           initialNpcStrength,
           speakerId: player?.id ?? trigger.accusedId,
         }),
-        playerPrep: { totalStrength: baselinePrep, actionsUsed: [] },
+        // Seeded into Logos (implementer's call, same as convertLegacyTrial —
+        // the asset-driven baseline defense bonus is an undifferentiated
+        // flat number, no section it more naturally belongs to).
+        playerPrep: {
+          logos: baselinePrep, pathos: 0, ethos: 0,
+          actionsUsed: [], witnesses: [], bribedClanIds: [], praetorBribed: false,
+        },
       };
 
       s = { ...s, trials: [...s.trials, newTrial] };

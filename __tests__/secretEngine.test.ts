@@ -568,7 +568,8 @@ describe('resolveSecretDemand', () => {
     const existingTrial: TrialState = {
       id: 't1', seat: 'defense', charge: 'peculatus', chargeSource: 'accusation',
       prosecutor: { kind: 'leader', leaderId: 'leader-1' }, defendant: { kind: 'family', characterId: 'pc-1' },
-      filedSeason: 8, startsSeason: 10, playerPrep: { totalStrength: 20, actionsUsed: [] },
+      filedSeason: 8, startsSeason: 10,
+      playerPrep: { logos: 20, pathos: 0, ethos: 0, actionsUsed: [], witnesses: [], bribedClanIds: [], praetorBribed: false },
       approach: 'procedure', speakerId: 'pc-1', npcStrength: 20, juryLean: 0,
       consumedSecretIds: [], status: 'preparing',
     };

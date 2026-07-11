@@ -8,8 +8,21 @@ import {
   computeVerdict,
   checkCalumnia,
   convertLegacyTrial,
-  applyLegacyTrialAction,
   tickLeaderCorruption,
+  computeTotalPrepStrength,
+  gatherEvidenceCost,
+  gatherEvidenceBonus,
+  applyGatherEvidence,
+  presentSecretEvidenceBonus,
+  applyPresentSecretEvidence,
+  applySecureWitness,
+  prepareOrationBonus,
+  applyPrepareOration,
+  invokeAncestorsBonus,
+  applyInvokeAncestors,
+  applyBribeJurors,
+  applyBribePraetor,
+  applyIntimidateWitness,
 } from '../src/engine/trialEngine';
 import { BALANCE } from '../src/data/balance';
 import { TAXATION_CORRUPTION_PER_TURN } from '../src/models/province';
@@ -88,6 +101,14 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
   return base as unknown as GameState;
 }
 
+function makePrep(overrides: Partial<TrialState['playerPrep']> = {}): TrialState['playerPrep'] {
+  return {
+    logos: 0, pathos: 0, ethos: 0, actionsUsed: [],
+    witnesses: [], bribedClanIds: [], praetorBribed: false,
+    ...overrides,
+  };
+}
+
 function makeTrial(overrides: Partial<TrialState> = {}): TrialState {
   return {
     id: 'trial-1',
@@ -98,7 +119,12 @@ function makeTrial(overrides: Partial<TrialState> = {}): TrialState {
     defendant: { kind: 'family', characterId: 'pc-1' },
     filedSeason: 10,
     startsSeason: 13,
-    playerPrep: { totalStrength: 20, actionsUsed: [] },
+    // Approach defaults to 'procedure' (×1.1 Logos, ×1 Pathos/Ethos) — test
+    // fixtures below put verdict-math values in `pathos` specifically so
+    // they pass through computeTotalPrepStrength unmultiplied, preserving
+    // this suite's pre-P4-D numbers. Approach-multiplier behavior itself is
+    // covered by its own describe block.
+    playerPrep: makePrep({ pathos: 20 }),
     approach: 'procedure',
     speakerId: 'pc-1',
     npcStrength: 20,
@@ -320,26 +346,69 @@ describe('computeVerdict', () => {
   ];
 
   test.each(cases)('$seat prep=$playerPrep vs npc=$npc -> $expected', ({ playerPrep, npc, seat, expected }) => {
-    const trial = makeTrial({ seat, playerPrep: { totalStrength: playerPrep, actionsUsed: [] }, npcStrength: npc, juryLean: 0 });
+    const trial = makeTrial({ seat, playerPrep: makePrep({ pathos: playerPrep }), npcStrength: npc, juryLean: 0 });
     expect(computeVerdict(trial, 'standard').outcome).toBe(expected);
   });
 
   test('severe tier shifts every band harsher than standard', () => {
-    const trial = makeTrial({ seat: 'defense', playerPrep: { totalStrength: 20, actionsUsed: [] }, npcStrength: 20, juryLean: 15 });
+    const trial = makeTrial({ seat: 'defense', playerPrep: makePrep({ pathos: 20 }), npcStrength: 20, juryLean: 15 });
     expect(computeVerdict(trial, 'standard').outcome).toBe('dismissed'); // 15 > 10
     expect(computeVerdict(trial, 'severe').outcome).toBe('fined');       // 15 not > 20, but > 0
   });
 
   test('juryLean shifts the differential', () => {
-    const trial = makeTrial({ seat: 'defense', playerPrep: { totalStrength: 20, actionsUsed: [] }, npcStrength: 20, juryLean: -15 });
+    const trial = makeTrial({ seat: 'defense', playerPrep: makePrep({ pathos: 20 }), npcStrength: 20, juryLean: -15 });
     expect(computeVerdict(trial, 'standard').outcome).toBe('exiled'); // 0 - 15 = -15: not > -10, but > -30
   });
 
   test('differential reported is the player\'s own (unflipped) value, not the defendant-flipped one', () => {
-    const trial = makeTrial({ seat: 'prosecution', playerPrep: { totalStrength: 100, actionsUsed: [] }, npcStrength: 0, juryLean: 0 });
+    const trial = makeTrial({ seat: 'prosecution', playerPrep: makePrep({ pathos: 100 }), npcStrength: 0, juryLean: 0 });
     const { differential, outcome } = computeVerdict(trial, 'standard');
     expect(differential).toBeCloseTo(70); // player did well...
     expect(outcome).toBe('executed');     // ...which is bad news for the defendant.
+  });
+
+  test('Ferocity grants a flat bonus against a low-Rhetoric opponent', () => {
+    const base = makeTrial({ seat: 'defense', approach: 'ferocity', playerPrep: makePrep({ pathos: 20 }), npcStrength: 20, juryLean: 0 });
+    const lowRhetoric = BALANCE.trials.approach.ferocity.lowRhetoricThreshold - 1;
+    const highRhetoric = BALANCE.trials.approach.ferocity.lowRhetoricThreshold + 5;
+    const { differential: withBonus } = computeVerdict(base, 'standard', lowRhetoric);
+    const { differential: withoutBonus } = computeVerdict(base, 'standard', highRhetoric);
+    expect(withBonus - withoutBonus).toBeCloseTo(BALANCE.trials.approach.ferocity.lowRhetoricBonus);
+  });
+
+  test('Sympathy doubles juryLean\'s weight', () => {
+    // Ethos specifically — neither 'procedure' nor 'sympathy' defines an
+    // Ethos multiplier (both default to ×1), so switching approach here
+    // isolates the juryLean-weight effect from Sympathy's own Pathos/Logos
+    // multipliers (which would otherwise also shift finalPlayer).
+    const procedureTrial = makeTrial({ seat: 'defense', approach: 'procedure', playerPrep: makePrep({ ethos: 20 }), npcStrength: 20, juryLean: 10 });
+    const sympathyTrial = { ...procedureTrial, approach: 'sympathy' as const };
+    const { differential: procDiff } = computeVerdict(procedureTrial, 'standard');
+    const { differential: sympDiff } = computeVerdict(sympathyTrial, 'standard');
+    expect(sympDiff - procDiff).toBeCloseTo(10); // one extra ×juryLean(10)
+  });
+});
+
+describe('computeTotalPrepStrength', () => {
+  test('procedure multiplies Logos only', () => {
+    const prep = makePrep({ logos: 10, pathos: 10, ethos: 10 });
+    expect(computeTotalPrepStrength(prep, 'procedure')).toBeCloseTo(10 * 1.1 + 10 + 10);
+  });
+
+  test('ferocity multiplies Logos up and Ethos down', () => {
+    const prep = makePrep({ logos: 10, pathos: 10, ethos: 10 });
+    expect(computeTotalPrepStrength(prep, 'ferocity')).toBeCloseTo(10 * 1.2 + 10 + 10 * 0.9);
+  });
+
+  test('sympathy multiplies Pathos up and Logos down', () => {
+    const prep = makePrep({ logos: 10, pathos: 10, ethos: 10 });
+    expect(computeTotalPrepStrength(prep, 'sympathy')).toBeCloseTo(10 * 0.9 + 10 * 1.25 + 10);
+  });
+
+  test('caps at 100', () => {
+    const prep = makePrep({ logos: 100, pathos: 100, ethos: 100 });
+    expect(computeTotalPrepStrength(prep, 'sympathy')).toBe(100);
   });
 });
 
@@ -379,9 +448,11 @@ describe('convertLegacyTrial (save migration)', () => {
     };
   }
 
-  test('preserves purchased strength exactly (design invariant 9)', () => {
+  test('preserves purchased strength exactly (design invariant 9) — seeded into Logos', () => {
     const result = convertLegacyTrial(makeLegacy({ defenseStrength: 77 }), 20, [makeClan()], 'pc-1');
-    expect(result.playerPrep.totalStrength).toBe(77);
+    expect(result.playerPrep.logos).toBe(77);
+    expect(result.playerPrep.pathos).toBe(0);
+    expect(result.playerPrep.ethos).toBe(0);
     expect(result.playerPrep.actionsUsed).toEqual(['hire_advocate']);
   });
 
@@ -408,19 +479,71 @@ describe('convertLegacyTrial (save migration)', () => {
   });
 });
 
-describe('applyLegacyTrialAction (TRIAL_ACTIONS shim)', () => {
-  test('adds the action bonus and records the action id', () => {
-    const prep = { totalStrength: 20, actionsUsed: [] as string[] };
-    const action = { id: 'hire_advocate', label: 'Hire a Plebeian Advocate', cost: { resource: 'denarii' as const, amount: 40 }, defenseBonus: 15 };
-    const result = applyLegacyTrialAction(prep, action);
-    expect(result.totalStrength).toBe(35);
-    expect(result.actionsUsed).toEqual(['hire_advocate']);
+describe('the Basilica prep verbs (Phase 4, Chunk P4-D)', () => {
+  test('gatherEvidenceCost rises per use; applyGatherEvidence adds Intrigus-scaled Logos and records the use', () => {
+    expect(gatherEvidenceCost(0)).toBe(BALANCE.trials.prep.gatherEvidenceCostBaseFides);
+    expect(gatherEvidenceCost(2)).toBe(
+      BALANCE.trials.prep.gatherEvidenceCostBaseFides + 2 * BALANCE.trials.prep.gatherEvidenceCostPerUseFides
+    );
+    expect(gatherEvidenceBonus(5)).toBe(BALANCE.trials.prep.gatherEvidenceBonusBase + 5);
+
+    const result = applyGatherEvidence(makePrep(), 5);
+    expect(result.logos).toBe(gatherEvidenceBonus(5));
+    expect(result.actionsUsed).toEqual(['gather_evidence']);
   });
 
-  test('caps at 100', () => {
-    const prep = { totalStrength: 95, actionsUsed: [] as string[] };
-    const action = { id: 'bribe_jury', label: 'Bribe the Jury', cost: { resource: 'denarii' as const, amount: 80 }, defenseBonus: 35 };
-    expect(applyLegacyTrialAction(prep, action).totalStrength).toBe(100);
+  test('presentSecretEvidenceBonus scales with potency; applyPresentSecretEvidence adds to Logos', () => {
+    expect(presentSecretEvidenceBonus(2)).toBe(2 * BALANCE.trials.prep.presentSecretEvidenceBonusPerPotency);
+    const result = applyPresentSecretEvidence(makePrep({ logos: 10 }), 3);
+    expect(result.logos).toBe(10 + presentSecretEvidenceBonus(3));
+    expect(result.actionsUsed).toEqual(['present_secret_evidence']);
+  });
+
+  test('applySecureWitness adds a named Witness and Pathos', () => {
+    const result = applySecureWitness(makePrep(), 'Corvus');
+    expect(result.pathos).toBe(BALANCE.trials.prep.secureWitnessBonus);
+    expect(result.witnesses).toHaveLength(1);
+    expect(result.witnesses[0].name).toBe('Corvus');
+    expect(result.actionsUsed).toEqual(['secure_witness']);
+  });
+
+  test('prepareOrationBonus scales with the speaker\'s Rhetoric; value locks at purchase', () => {
+    expect(prepareOrationBonus(6)).toBe(BALANCE.trials.prep.prepareOrationBonusBase + 6);
+    const result = applyPrepareOration(makePrep({ pathos: 5 }), 6);
+    expect(result.pathos).toBe(5 + prepareOrationBonus(6));
+    expect(result.actionsUsed).toEqual(['prepare_oration']);
+  });
+
+  test('invokeAncestorsBonus scales with lifetimeDignitas, capped', () => {
+    expect(invokeAncestorsBonus(0)).toBe(0);
+    expect(invokeAncestorsBonus(BALANCE.trials.prep.invokeAncestorsDignitasDivisor * 2)).toBe(2);
+    expect(invokeAncestorsBonus(100000)).toBe(BALANCE.trials.prep.invokeAncestorsCap);
+
+    const result = applyInvokeAncestors(makePrep(), BALANCE.trials.prep.invokeAncestorsDignitasDivisor * 3);
+    expect(result.ethos).toBe(3);
+    expect(result.actionsUsed).toEqual(['invoke_ancestors']);
+  });
+
+  test('applyBribeJurors adds Ethos and records the bribed clan', () => {
+    const result = applyBribeJurors(makePrep(), 'cornelii');
+    expect(result.ethos).toBe(BALANCE.trials.prep.bribeJurorsBonusPerBloc);
+    expect(result.bribedClanIds).toEqual(['cornelii']);
+    expect(result.actionsUsed).toEqual(['bribe_jurors']);
+  });
+
+  test('applyBribePraetor adds Ethos and flags praetorBribed', () => {
+    const result = applyBribePraetor(makePrep());
+    expect(result.ethos).toBe(BALANCE.trials.prep.bribePraetorBonus);
+    expect(result.praetorBribed).toBe(true);
+    expect(result.actionsUsed).toEqual(['bribe_praetor']);
+  });
+
+  test('applyIntimidateWitness only records the one-time use (npcStrength delta is the caller\'s job)', () => {
+    const result = applyIntimidateWitness(makePrep());
+    expect(result.actionsUsed).toEqual(['intimidate_witness']);
+    expect(result.logos).toBe(0);
+    expect(result.pathos).toBe(0);
+    expect(result.ethos).toBe(0);
   });
 });
 
@@ -456,7 +579,7 @@ describe('buildTrialState', () => {
       filedSeason: 10, startsSeason: 13, initialNpcStrength: 25, speakerId: 'pc-1',
     });
     expect(trial.status).toBe('preparing');
-    expect(trial.playerPrep).toEqual({ totalStrength: 0, actionsUsed: [] });
+    expect(trial.playerPrep).toEqual(makePrep());
     expect(trial.npcStrength).toBe(25);
     expect(trial.juryLean).toBe(0);
     expect(trial.approach).toBe('procedure');
