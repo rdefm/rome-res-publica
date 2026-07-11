@@ -8,6 +8,7 @@ import { useGameStore } from '../state/gameStore';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import ClanCard from '../components/forum/ClanCard';
 import PatronLadderPanel from '../components/forum/PatronLadderPanel';
+import DossierPanel from '../components/forum/DossierPanel';
 import { COLORS, FONTS, SPACING, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT, RADIUS } from '../utils/theme';
 import { OFFICES } from '../data/offices';
 import {
@@ -342,6 +343,9 @@ export default function ForumScreen() {
 
       <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}>
         <PatronLadderPanel />
+
+        {/* Phase 4, Chunk P4-B — self-hides when there's nothing to show */}
+        <DossierPanel />
 
         {/* Canvassing section — only visible during a campaign */}
         {campaigning && <CanvassingPanel />}

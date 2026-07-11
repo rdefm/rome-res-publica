@@ -10,7 +10,7 @@ import type { ActiveAmbition } from '../models/ambition';
 import type { LegacyObjective } from '../models/legacyObjective';
 import type { PatronTier } from '../models/patronLadder';
 import type { Trial } from '../models/trial';
-import type { Secret } from '../models/secret';
+import type { Secret, PendingSecretDemand } from '../models/secret';
 import type { ProvinceState, GovernorPolicy, CampaignState, OfficerVolunteerState } from '../models/province';
 import type { TroopUnit } from '../models/troop';
 import type { SenateResponseState } from '../engine/senateResponseEngine';
@@ -42,7 +42,15 @@ import { buildInitialProvinceStates } from '../data/provinceDefinitions';
 import { processSeason } from '../engine/turnSequencer';
 import { incrementLegacy, initLegacyObjectives } from '../engine/legacyEngine';
 import { adjustReputation, computeReputationDelta } from '../engine/reputationEngine';
-import { attemptGather } from '../engine/secretEngine';
+import {
+  attemptGather,
+  isDeterred,
+  computeLeverageBillSupportDelta,
+  computeBurnVoteLoss,
+  payOffCost,
+  attemptDiscredit,
+  resolveSecretDemand,
+} from '../engine/secretEngine';
 import {
   resolveAmbassadorAction as engineResolveAmbassadorAction,
   type AmbassadorActionId,
@@ -213,6 +221,9 @@ export interface GameState {
   // Single array (plan's recommendation) filtered by `holder` for the two
   // views — deterrence checks (P4-B) are a two-way scan either way.
   secrets: Secret[];
+  // ── Phase 4, Chunk P4-B — pending NPC demand ───────────────────────────────
+  // See models/secret.ts's PendingSecretDemand doc comment.
+  pendingSecretDemand: PendingSecretDemand | null;
 
   // Cursus Honorum
   currentOffice: OfficeId | null;
@@ -491,6 +502,15 @@ export interface GameActions {
   arrangeMarriageForum: (leaderId: string) => void;
   gatherIntelligence: (leaderId: string, agentId: string) => void;
   canvassForVotes: (leaderId: string) => void;
+
+  // Phase 4, Chunk P4-B — Secret verbs
+  leverageSecretForBill: (secretId: string, billId: string, direction: 'for' | 'against') => void;
+  leverageSecretForElection: (secretId: string) => void;
+  extortSecret: (secretId: string) => void;
+  stopExtortion: (secretId: string) => void;
+  burnSecret: (secretId: string) => void;
+  payOffSecret: (secretId: string) => void;
+  discreditSecret: (secretId: string, agentId: string) => void;
 
   // Cursus
   declareCampaign: (officeId: OfficeId) => void;
@@ -805,6 +825,7 @@ export const INITIAL_STATE: GameState = {
   expandedClanId: null,
   selectedLeaderId: null,
   secrets: [],
+  pendingSecretDemand: null,
 
   currentOffice: null,
   officeSeasons: 0,
@@ -1627,6 +1648,152 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     });
   },
 
+  // ─── Phase 4, Chunk P4-B — Secret verbs ────────────────────────────────────
+  // Player-held Secrets on a leader (subject.kind==='leader', holder==='player').
+  // Deterrence (isDeterred) blocks every verb here — "and vice versa" in the
+  // plan's mutual-standoff invariant means the player's own held Secret is
+  // just as frozen as the leader's, while a Cold War holds.
+
+  leverageSecretForBill: (secretId, billId, direction) => {
+    const s = get();
+    const secret = s.secrets.find(sec => sec.id === secretId);
+    if (!secret || secret.holder !== 'player' || secret.subject.kind !== 'leader' || secret.status !== 'held') return;
+    if (isDeterred(secret.subject.leaderId, s.secrets)) return;
+    const found = findClanAndLeader(s.clans, secret.subject.leaderId);
+    const bill = s.bills.find(b => b.id === billId);
+    if (!found || !bill) return;
+
+    const delta = computeLeverageBillSupportDelta(found.leader.votes, direction);
+    const label = turnLabel(s);
+    set({
+      bills: s.bills.map(b => b.id === billId ? { ...b, support: Math.min(100, Math.max(-100, b.support + delta)) } : b),
+      secrets: s.secrets.map(sec => sec.id === secretId ? { ...sec, status: 'spent' as const } : sec),
+      log: [...s.log, mkLog(label, `You leverage what you hold on ${found.leader.name} — their bloc's weight swings behind ${bill.name}.`, 'good')],
+      ...bumpActions(s),
+    });
+  },
+
+  leverageSecretForElection: (secretId) => {
+    const s = get();
+    const secret = s.secrets.find(sec => sec.id === secretId);
+    if (!secret || secret.holder !== 'player' || secret.subject.kind !== 'leader' || secret.status !== 'held') return;
+    if (!s.campaigning) return;
+    if (isDeterred(secret.subject.leaderId, s.secrets)) return;
+    const found = findClanAndLeader(s.clans, secret.subject.leaderId);
+    if (!found) return;
+
+    const label = turnLabel(s);
+    set({
+      campaignVotes: { ...s.campaignVotes, [secret.subject.leaderId]: 'for' as const },
+      secrets: s.secrets.map(sec => sec.id === secretId ? { ...sec, status: 'spent' as const } : sec),
+      log: [...s.log, mkLog(label, `${found.leader.name} pledges support to your campaign — the price of your silence.`, 'good')],
+      ...bumpActions(s),
+    });
+  },
+
+  extortSecret: (secretId) => {
+    const s = get();
+    const secret = s.secrets.find(sec => sec.id === secretId);
+    if (!secret || secret.holder !== 'player' || secret.subject.kind !== 'leader' || secret.status !== 'held') return;
+    if (isDeterred(secret.subject.leaderId, s.secrets)) return;
+    const found = findClanAndLeader(s.clans, secret.subject.leaderId);
+    if (!found) return;
+
+    const label = turnLabel(s);
+    set({
+      secrets: s.secrets.map(sec => sec.id === secretId ? { ...sec, status: 'extorting' as const } : sec),
+      log: [...s.log, mkLog(label, `You begin quietly bleeding ${found.leader.name} for coin.`, 'neutral')],
+      ...bumpActions(s),
+    });
+  },
+
+  // "Stoppable any season" — but reverting to 'held' would be free money
+  // already banked (the plan's own note); stopping spends the Secret.
+  stopExtortion: (secretId) => {
+    const s = get();
+    const secret = s.secrets.find(sec => sec.id === secretId);
+    if (!secret || secret.holder !== 'player' || secret.status !== 'extorting') return;
+
+    const label = turnLabel(s);
+    set({
+      secrets: s.secrets.map(sec => sec.id === secretId ? { ...sec, status: 'spent' as const } : sec),
+      log: [...s.log, mkLog(label, 'You cut the leash — the extortion ends.', 'neutral')],
+      ...bumpActions(s),
+    });
+  },
+
+  burnSecret: (secretId) => {
+    const s = get();
+    const secret = s.secrets.find(sec => sec.id === secretId);
+    if (!secret || secret.holder !== 'player' || secret.subject.kind !== 'leader' || secret.status !== 'held') return;
+    if (isDeterred(secret.subject.leaderId, s.secrets)) return;
+    const found = findClanAndLeader(s.clans, secret.subject.leaderId);
+    if (!found) return;
+    const { clan, leader } = found;
+
+    const voteLoss = computeBurnVoteLoss(leader.votes);
+    const currentRep = s.familyReputations[clan.id] ?? 0;
+    const label = turnLabel(s);
+    set({
+      clans: s.clans.map(c => c.id === clan.id ? {
+        ...c,
+        leaders: c.leaders.map(l => l.id === leader.id ? { ...l, votes: Math.max(0, l.votes - voteLoss) } : l),
+      } : c),
+      familyReputations: { ...s.familyReputations, [clan.id]: Math.min(currentRep, BALANCE.secrets.burnClanRepFloor) },
+      secrets: s.secrets.map(sec => sec.id === secretId ? { ...sec, status: 'spent' as const } : sec),
+      log: [...s.log, mkLog(label, `Scandal breaks: ${secret.flavorText} ${leader.name} loses ${voteLoss} votes as the story spreads — ${clan.name} turns hostile.`, 'good')],
+      ...bumpActions(s),
+    });
+  },
+
+  // ─── Counterplay — on a Secret held against the family ─────────────────────
+  // Undiscovered Secrets aren't shown/actionable in the Dossier at all, but
+  // guard here too (defense-in-depth against a stale secretId).
+
+  payOffSecret: (secretId) => {
+    const s = get();
+    const secret = s.secrets.find(sec => sec.id === secretId);
+    if (!secret || secret.holder === 'player' || secret.subject.kind !== 'family' || secret.status !== 'held' || !secret.discovered) return;
+    const cost = payOffCost(secret.potency);
+    if (s.denarii < cost) return;
+
+    const label = turnLabel(s);
+    set({
+      denarii: s.denarii - cost,
+      secrets: s.secrets.map(sec => sec.id === secretId ? { ...sec, status: 'neutralized' as const } : sec),
+      log: [...s.log, mkLog(label, 'Denarii change hands quietly. The matter is buried — for good.', 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: cost }),
+    });
+  },
+
+  discreditSecret: (secretId, agentId) => {
+    const s = get();
+    const secret = s.secrets.find(sec => sec.id === secretId);
+    if (!secret || secret.holder === 'player' || secret.subject.kind !== 'family' || secret.status !== 'held' || !secret.discovered) return;
+    if (s.fides < BALANCE.secrets.discreditCostFides) return;
+    const agent = s.family.find(c => c.id === agentId);
+    if (!agent) return;
+
+    const result = attemptDiscredit(secret, agent.skills.intrigus, Math.random());
+    const label = turnLabel(s);
+    set({
+      fides: s.fides - BALANCE.secrets.discreditCostFides,
+      secrets: s.secrets.map(sec => sec.id === secretId
+        ? (result.success ? { ...sec, status: 'neutralized' as const } : { ...sec, potency: result.newPotency })
+        : sec),
+      log: [...s.log, mkLog(
+        label,
+        result.success
+          ? `${agent.name} quietly discredits the story. It dissolves into rumor.`
+          : `${agent.name}'s cover-up unravels — if anything, the story grows sharper.`,
+        result.success ? 'good' : 'bad'
+      )],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: BALANCE.secrets.discreditCostFides }),
+    });
+  },
+
   // ─── Cursus ──────────────────────────────────────────────────────────────────
 
   declareCampaign: (officeId) => {
@@ -1923,13 +2090,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const { WAR_EVENT_DEFS }      = require('../data/warEvents');
     const { SUCCESSION_EVENT_DEFS } = require('../data/successionEvents');
     const { CADET_EVENT_DEFS }    = require('../data/cadetEvents');
+    const { SECRET_EVENT_DEFS }   = require('../data/secretEvents');
     const { applyEffectString }   = require('../engine/resourceEngine');
     const { resolveEventChoice }  = require('../engine/eventEngine');
 
     // P1-G: search tutorial pool as well as main pool. P3-B added
     // WAR_EVENT_DEFS, P3-C added SUCCESSION_EVENT_DEFS, P3-D added
-    // CADET_EVENT_DEFS.
-    const allDefs = [...EVENT_DEFS, ...TUTORIAL_EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS, ...CADET_EVENT_DEFS];
+    // CADET_EVENT_DEFS, P4-B added SECRET_EVENT_DEFS.
+    const allDefs = [...EVENT_DEFS, ...TUTORIAL_EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS, ...CADET_EVENT_DEFS, ...SECRET_EVENT_DEFS];
     const def = allDefs.find((d: any) => d.id === s.activeEvent!.defId);
     if (!def) {
       set({ activeEvent: null });
@@ -2029,6 +2197,27 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       }
     }
     // ── End tutorial special-case handlers ─────────────────────────────────
+
+    // ── Phase 4, Chunk P4-B — NPC secret demand: comply/defy ────────────────
+    // Not a tutorial special case (separate feature area, doesn't count
+    // against the P1-G budget above). Demand events carry no per-instance
+    // dynamic data of their own — pendingSecretDemand supplies it (see
+    // models/secret.ts's PendingSecretDemand doc comment).
+    if (
+      (defId === 'evt-secret-demand-leverage' || defId === 'evt-secret-demand-extortion') &&
+      (choiceId === 'comply' || choiceId === 'defy')
+    ) {
+      const curr = get();
+      if (curr.pendingSecretDemand) {
+        const { patch, logMsg } = resolveSecretDemand(curr, curr.pendingSecretDemand, choiceId);
+        const label = turnLabel(curr);
+        set({
+          ...patch,
+          pendingSecretDemand: null,
+          log: [...curr.log, mkLog(label, logMsg, 'neutral')],
+        });
+      }
+    }
 
     if (_addClient) {
       set((s2) => ({ clients: [...s2.clients, _addClient] }));

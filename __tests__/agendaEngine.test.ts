@@ -371,4 +371,109 @@ describe('generateAgenda', () => {
     expect(item?.title).toContain('A regent');
   });
 
+  // ── Phase 4, Chunk P4-B — generators #23–25 ─────────────────────────────
+
+  function makeLeader(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'leader-1', name: 'L. Testius', title: 'Senator', emoji: '👤', age: 55,
+      sphere: 'Senate', relationship: 10, favour: 0, blackmail: false, bias: 'optimates',
+      votes: 10, bio: '', skills: { rhetoric: 5, martial: 5, intrigus: 5 },
+      heldOffices: [], currentOffice: null, turnsLeftInOffice: null,
+      ...overrides,
+    } as any;
+  }
+
+  function makeClan(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'testii', name: 'Gens Testia', gensName: 'Testius', sigil: '🏛️',
+      influence: 50, desc: '', leaders: [makeLeader()],
+      ...overrides,
+    } as any;
+  }
+
+  test('#23 fires while a secret demand is pending', () => {
+    const state = makeState({
+      clans: [makeClan({ leaders: [makeLeader({ id: 'leader-1', name: 'Claudius' })] })],
+      pendingSecretDemand: { secretId: 's1', leaderId: 'leader-1', clanId: 'testii', kind: 'extort' },
+    } as any);
+    const item = generateAgenda(state).find(i => i.id === 'agenda-secret-demand-pending');
+    expect(item).toBeDefined();
+    expect(item?.severity).toBe('critical');
+    expect(item?.title).toContain('Claudius');
+  });
+
+  test('#23 does not fire with no pending demand', () => {
+    const state = makeState({ pendingSecretDemand: null } as any);
+    expect(generateAgenda(state).some(i => i.id === 'agenda-secret-demand-pending')).toBe(false);
+  });
+
+  test('#24 fires as a warning for a discovered secret held against the family', () => {
+    const state = makeState({
+      clans: [makeClan({ leaders: [makeLeader({ id: 'leader-1', name: 'Claudius' })] })],
+      family: [makePlayer({ id: 'pc-brutus' })],
+      secrets: [{
+        id: 's1', type: 'embezzlement', subject: { kind: 'family', characterId: 'pc-brutus' },
+        holder: 'leader-1', potency: 2, status: 'held', acquiredSeason: 1, flavorText: '', discovered: true,
+      }],
+    } as any);
+    const item = generateAgenda(state).find(i => i.id.startsWith('agenda-secret-against-'));
+    expect(item).toBeDefined();
+    expect(item?.severity).toBe('warning');
+  });
+
+  test('#24 does not fire for an undiscovered secret', () => {
+    const state = makeState({
+      clans: [makeClan({ leaders: [makeLeader({ id: 'leader-1' })] })],
+      secrets: [{
+        id: 's1', type: 'affair', subject: { kind: 'family', characterId: 'pc-brutus' },
+        holder: 'leader-1', potency: 1, status: 'held', acquiredSeason: 1, flavorText: '', discovered: false,
+      }],
+    } as any);
+    expect(generateAgenda(state).some(i => i.id.startsWith('agenda-secret-against-'))).toBe(false);
+  });
+
+  test('#24 downgrades to info when a deterrence standoff freezes it', () => {
+    const state = makeState({
+      clans: [makeClan({ leaders: [makeLeader({ id: 'leader-1' })] })],
+      family: [makePlayer({ id: 'pc-brutus' })],
+      secrets: [
+        {
+          id: 's1', type: 'embezzlement', subject: { kind: 'family', characterId: 'pc-brutus' },
+          holder: 'leader-1', potency: 2, status: 'held', acquiredSeason: 1, flavorText: '', discovered: true,
+        },
+        {
+          id: 's2', type: 'affair', subject: { kind: 'leader', leaderId: 'leader-1' },
+          holder: 'player', potency: 1, status: 'held', acquiredSeason: 1, flavorText: '',
+        },
+      ],
+    } as any);
+    const item = generateAgenda(state).find(i => i.id.startsWith('agenda-secret-against-'));
+    expect(item?.severity).toBe('info');
+    expect(item?.title).toContain('Stalemate');
+  });
+
+  test('#25 fires with the net income/drain summary', () => {
+    const state = makeState({
+      secrets: [
+        {
+          id: 's1', type: 'affair', subject: { kind: 'leader', leaderId: 'leader-1' },
+          holder: 'player', potency: 2, status: 'extorting', acquiredSeason: 1, flavorText: '',
+        },
+        {
+          id: 's2', type: 'embezzlement', subject: { kind: 'family', characterId: 'pc-brutus' },
+          holder: 'leader-2', potency: 1, status: 'extorting', acquiredSeason: 1, flavorText: '',
+        },
+      ],
+    } as any);
+    const item = generateAgenda(state).find(i => i.id === 'agenda-extortion-active');
+    expect(item).toBeDefined();
+    expect(item?.detail).toContain('+');
+    expect(item?.detail).toContain('−');
+  });
+
+  test('#25 does not fire with no extortion active', () => {
+    const state = makeState({ secrets: [] } as any);
+    expect(generateAgenda(state).some(i => i.id === 'agenda-extortion-active')).toBe(false);
+  });
+
 });

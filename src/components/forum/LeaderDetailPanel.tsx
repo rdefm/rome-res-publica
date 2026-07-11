@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import type { ClanLeader } from '../../models/clan';
 import { useGameStore } from '../../state/gameStore';
 import { getUnlockedReputationActions, computeReputationDelta } from '../../engine/reputationEngine';
-import { gatherChance } from '../../engine/secretEngine';
+import { gatherChance, isDeterred } from '../../engine/secretEngine';
 import { BALANCE } from '../../data/balance';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
@@ -157,7 +157,7 @@ const fab = StyleSheet.create({
 
 function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: string }) {
   const {
-    fides, denarii, campaigning, campaignVotes, familyReputations, clans,
+    fides, denarii, campaigning, campaignVotes, familyReputations, clans, secrets,
     buyInfluence, inviteToDinner, forgeAlliance, arrangeMarriageForum,
     gatherIntelligence, canvassForVotes,
   } = useGameStore();
@@ -166,6 +166,22 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
   const canvassed = !!campaignVotes[leader.id];
   const repScore = familyReputations[clanId] ?? 0;
   const unlockedActions = getUnlockedReputationActions(repScore);
+
+  // Phase 4, Chunk P4-B — Dossier summary line. Undiscovered Secrets held
+  // against the family never surface here.
+  const youHoldCount = secrets.filter(
+    s => s.holder === 'player' && s.subject.kind === 'leader' && s.subject.leaderId === leader.id && s.status === 'held'
+  ).length;
+  const theyHoldCount = secrets.filter(
+    s => s.holder === leader.id && s.subject.kind === 'family' && s.discovered && (s.status === 'held' || s.status === 'extorting')
+  ).length;
+  const deterred = isDeterred(leader.id, secrets);
+  const secretsLine =
+    deterred ? 'Standoff — you each hold something on the other.'
+    : youHoldCount > 0 && theyHoldCount > 0 ? `You hold ${youHoldCount}, he holds ${theyHoldCount} — see the Dossier.`
+    : youHoldCount > 0 ? `You hold ${youHoldCount} on him — see the Dossier.`
+    : theyHoldCount > 0 ? `He holds ${theyHoldCount} on your family — see the Dossier.`
+    : null;
 
   const allianceMarriageLocked = !unlockedActions.includes('propose_alliance_marriage');
   const allianceMarriageLockReason = `Requires "Cordial" standing (Rep ≥ 35). Current: ${repScore > 0 ? '+' : ''}${repScore}.`;
@@ -192,6 +208,8 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
         <Text style={ld.stat}>Relationship: <Text style={ld.statVal}>{leader.relationship}</Text></Text>
         <Text style={ld.stat}>Votes: <Text style={ld.statVal}>{leader.votes}</Text></Text>
       </View>
+
+      {secretsLine && <Text style={ld.secretsLine}>{secretsLine}</Text>}
 
       <View style={ld.actions}>
         <ForumActionBtn
@@ -268,6 +286,7 @@ const ld = StyleSheet.create({
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: SPACING.sm },
   stat: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11 },
   statVal: { color: COLORS.marble, fontWeight: '600' },
+  secretsLine: { color: COLORS.goldDim, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11, marginBottom: SPACING.sm },
   actions: {},
 });
 

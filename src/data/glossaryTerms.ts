@@ -374,4 +374,46 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     definition: 'How history remembers a war that ended in a negotiated peace rather than a decisive Roman victory or defeat — the two sides simply stopped, worn down rather than beaten.',
     relatedTab: 'Curia',
   },
+  {
+    id: 'secret',
+    term: 'Secret',
+    definition: 'A specific piece of compromising material — an affair, embezzlement, electoral fraud — held either by you on a clan leader or by a leader on your family. Gathered by sending a family member to dig, or generated against you by a hostile leader when your own corruption invites it.',
+    relatedTab: 'Forum',
+  },
+  {
+    id: 'leverage',
+    term: 'Leverage',
+    definition: 'Spending a Secret you hold to force a leader\'s bloc behind a bill or lock their support in your campaign, free of cost — the Secret itself is the price, and it is consumed (or, held against you by a leader, retained for a limited number of demands).',
+    relatedTab: 'Forum',
+  },
+  {
+    id: 'extortion',
+    term: 'Extortion',
+    definition: 'Spending a Secret for recurring Denarii instead of a one-time use. Runs every season until you stop it or it is discovered — discovery ends the income and turns the target against you. A leader can extort your family the same way, in reverse.',
+    relatedTab: 'Forum',
+  },
+  {
+    id: 'burn',
+    term: 'Burn (Scandal)',
+    definition: 'Spending a Secret to expose it publicly. The target leader permanently loses half their votes and their clan turns hostile — the loudest, most irreversible use of a Secret.',
+    relatedTab: 'Forum',
+  },
+  {
+    id: 'deterrence',
+    term: 'Deterrence',
+    definition: 'While you hold a Secret on a leader and that leader holds one on your family, both are frozen — neither side can leverage, extort, or burn until the standoff breaks. Automatic, and shown in the Dossier as a stalemate.',
+    relatedTab: 'Forum',
+  },
+  {
+    id: 'dossier',
+    term: 'Dossier',
+    definition: 'The Forum panel listing every Secret you hold and every discovered Secret held against your family, with the spend and counterplay actions for each.',
+    relatedTab: 'Forum',
+  },
+  {
+    id: 'groundwork',
+    term: 'Groundwork',
+    definition: 'Progress toward a Secret that persists across failed attempts, raising the odds of the next one — yours against a leader when Gather Intelligence comes up empty, or a hostile leader\'s against your family when their attempt fails.',
+    relatedTab: 'Forum',
+  },
 ];

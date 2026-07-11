@@ -842,6 +842,55 @@ export const BALANCE = {
     maxHeldAgainstFamily: 3,
     /** Potency 1 / 2 / 3 generation weights (sums to 1). */
     potencyWeights: [0.55, 0.35, 0.10] as [number, number, number],
+
+    // ── Phase 4, Chunk P4-B — spend/counterplay/NPC behavior ────────────────
+    /** Leverage (player, on a held Secret): consumes it, forces the target
+     *  bill's support by leader.votes × this, signed for/against. Election
+     *  Leverage is free/instant (reuses campaignVotes, no separate constant
+     *  needed — same mechanism canvassForVotes/canvassLeader already use). */
+    leverageBillSupportPerVote: 1.2,
+    /** Extort (player, on a held Secret): status -> 'extorting',
+     *  +extortIncomePerPotency × potency Denarii/season. Each season,
+     *  extortExposureChance roll: on hit, Secret -> 'spent', leader
+     *  relationship += extortExposureRelationship (a nosedive, so negative),
+     *  and the leader's retaliation groundwork toward a counter-Secret on
+     *  the player's family rises by extortRetaliationGroundwork. */
+    extortIncomePerPotency: 10,
+    extortExposureChance: 0.15,
+    extortExposureRelationship: -30,
+    extortRetaliationGroundwork: 0.15,
+    /** Burn (player, on a held Secret): consumes it. Leader permanently
+     *  loses burnVoteLossFraction of votes (plan's system-overview text:
+     *  "the leader permanently loses half their votes"); their clan's
+     *  familyReputations score is clamped down to burnClanRepFloor (just
+     *  past the -10 hostile threshold — reputationThresholds.ts). */
+    burnVoteLossFraction: 0.5,
+    burnClanRepFloor: -15,
+    /** Pay Off (player, on a Secret held against the family): permanent,
+     *  expensive by design. */
+    payOffCostPerPotency: 40,
+    /** Discredit (player, on a Secret held against the family): agent
+     *  picker, same shape as Gather Intelligence's. Success -> neutralized.
+     *  Failure -> potency +1 (max 3), the cover-up made it worse. */
+    discreditCostFides: 10,
+    discreditBase: 0.30,
+    discreditPerIntrigus: 0.05,
+
+    /** NPC decision cadence/weights — a leader holding a usable (unfrozen)
+     *  family Secret acts once cooldown has elapsed since lastActedSeason,
+     *  choosing Leverage/Extort/Burn by disposition and situation (see
+     *  secretEngine.npcSecretDecision). FIRST-PASS/UNVERIFIED, same
+     *  treatment as every other constant group in this file. */
+    npcAi: {
+      npcUseCooldownSeasons: 4,
+      /** Leverage retains the Secret for this many uses before it's spent. */
+      leverageReuseLimit: 2,
+      /** Defying a social-class demand: scandal event hits. */
+      socialExposureDignitas: -10,
+      socialExposureRelationship: -20,
+      /** Burn only considered at standing (leader.relationship) at/below this. */
+      npcBurnStandingMax: 5,
+    },
   },
 };
 

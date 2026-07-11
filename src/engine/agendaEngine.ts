@@ -13,6 +13,7 @@ import { getClanStanding } from './reputationEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import { getMunificenceAct } from '../data/munificence';
 import { isSlotUsedThisYear, getMunificenceCost } from './munificenceEngine';
+import { isDeterred } from './secretEngine';
 import { BALANCE } from '../data/balance';
 
 // ─── Crisis tier copy ─────────────────────────────────────────────────────────
@@ -717,10 +718,96 @@ function genRegencyInEffect(state: GameState): AgendaItem[] {
   }];
 }
 
+// ─── Generator 23 — Secret demand pending (Phase 4, Chunk P4-B) ────────────
+// Fires while a leader's leverage/extortion demand event awaits an answer
+// (pendingSecretDemand is cleared exactly when resolveEvent's special-case
+// handler resolves comply/defy — see gameStore.ts/secretEngine.resolveSecretDemand).
+
+function genSecretDemandPending(state: GameState): AgendaItem[] {
+  if (!state.pendingSecretDemand) return [];
+  const leader = state.clans.flatMap(c => c.leaders).find(l => l.id === state.pendingSecretDemand!.leaderId);
+  return [{
+    id: 'agenda-secret-demand-pending',
+    category: 'family' as const,
+    severity: 'critical',
+    title: `${leader?.name ?? 'A clan leader'} awaits your answer`,
+    detail: 'A demand invoking what they hold on your family is pending — comply or defy it.',
+    target: { tab: 'Forum' as const, selectedLeaderId: leader?.id },
+    sortWeight: 0,
+  }];
+}
+
+// ─── Generator 24 — Secret held against family (Phase 4, Chunk P4-B) ──────
+// One item per DISCOVERED Secret a leader holds against the family (P4-A's
+// npcGatherTick generates them latent/undiscovered — nothing to warn about
+// until discovery, per the plan's design). Downgrades to 'info' ("stalemate")
+// while a deterrence standoff freezes it — see secretEngine.isDeterred.
+
+function genSecretHeldAgainstFamily(state: GameState): AgendaItem[] {
+  const items: AgendaItem[] = [];
+  for (const secret of state.secrets ?? []) {
+    const subject = secret.subject;
+    if (secret.holder === 'player' || subject.kind !== 'family') continue;
+    if (!secret.discovered || (secret.status !== 'held' && secret.status !== 'extorting')) continue;
+
+    const leader = state.clans.flatMap(c => c.leaders).find(l => l.id === secret.holder);
+    const character = state.family.find(c => c.id === subject.characterId);
+    const frozen = isDeterred(secret.holder, state.secrets);
+
+    items.push({
+      id: `agenda-secret-against-${secret.id}`,
+      category: 'family' as const,
+      severity: frozen ? 'info' : 'warning',
+      title: frozen
+        ? `Stalemate with ${leader?.name ?? 'a clan leader'}`
+        : `${leader?.name ?? 'A clan leader'} holds leverage on ${character?.name ?? 'your family'}`,
+      detail: frozen
+        ? 'Stayed by your hand on his own affairs — neither of you can move first.'
+        : 'Pay it off or discredit it in the Dossier before he decides to use it.',
+      target: { tab: 'Forum' as const, selectedLeaderId: leader?.id },
+      sortWeight: frozen ? 30 : 10,
+    });
+  }
+  return items;
+}
+
+// ─── Generator 25 — Extortion active (Phase 4, Chunk P4-B) ────────────────
+// Info-severity summary of the net per-season Denarii number, both
+// directions — one item total, not one per Secret (the Dossier is where
+// individual extortions are managed).
+
+function genExtortionActive(state: GameState): AgendaItem[] {
+  let income = 0;
+  let drain = 0;
+  for (const secret of state.secrets ?? []) {
+    if (secret.status !== 'extorting') continue;
+    if (secret.holder === 'player' && secret.subject.kind === 'leader') {
+      income += BALANCE.secrets.extortIncomePerPotency * secret.potency;
+    } else if (secret.subject.kind === 'family' && secret.holder !== 'player') {
+      drain += BALANCE.secrets.extortIncomePerPotency * secret.potency;
+    }
+  }
+  if (income === 0 && drain === 0) return [];
+
+  const parts: string[] = [];
+  if (income > 0) parts.push(`+${income} Denarii/season from what you hold`);
+  if (drain > 0) parts.push(`−${drain} Denarii/season to what they hold`);
+
+  return [{
+    id: 'agenda-extortion-active',
+    category: 'economy' as const,
+    severity: 'info',
+    title: 'Extortion in progress',
+    detail: parts.join('; ') + '.',
+    target: { tab: 'Forum' as const },
+    sortWeight: 40,
+  }];
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Runs all 22 generators against the current state and returns a sorted list
+ * Runs all 25 generators against the current state and returns a sorted list
  * of agenda items. Sort order: severity (critical first) → sortWeight →
  * category (alpha tiebreak for stable ordering).
  *
@@ -751,6 +838,9 @@ export function generateAgenda(state: GameState): AgendaItem[] {
     ...genWarStatus(state),
     ...genSueForPeaceOpportunity(state),
     ...genRegencyInEffect(state),
+    ...genSecretDemandPending(state),
+    ...genSecretHeldAgainstFamily(state),
+    ...genExtortionActive(state),
   ];
 
   return items.sort((a, b) => {

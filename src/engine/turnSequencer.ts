@@ -49,7 +49,13 @@ import { applyTroopAttrition, calcMilitaryImperium } from './troopEngine';
 import { processWarSeason } from './warEngine';
 import { tickSenateResponse } from './senateResponseEngine';
 import { calcAntagonismLevel, tickNpcConsul } from './npcConsulEngine';
-import { npcGatherTick } from './secretEngine';
+import {
+  npcGatherTick,
+  extortSeasonTick,
+  computeExtortionDrain,
+  computeBurnVoteLoss,
+  scanNpcSecretDecisions,
+} from './secretEngine';
 import { TRIAL_ACTIONS } from '../data/trialActions';
 import { EVENT_DEFS } from '../data/events';
 import { WAR_EVENT_DEFS } from '../data/warEvents';
@@ -942,15 +948,135 @@ export function processSeason(state: GameState): {
     }
   }
 
-  // 9b. Phase 4, Chunk P4-A — Secrets season tick. Groundwork persistence
-  // needs no code here (it's written directly at gather-attempt time in
-  // gameStore.gatherIntelligence and doesn't decay — v1) — this step is only
-  // the NPC-side reverse gather roll. Zero ledger lines by design: generated
-  // Secrets sit latent until P4-B adds discovery/agenda surfacing.
+  // 9b. Phase 4, Chunks P4-A + P4-B — Secrets season tick. Grown in place per
+  // the plan's cross-chunk note ("one step, grown in place"), not a new step.
+  // Player-side groundwork needs no code here (written directly at
+  // gather-attempt time in gameStore.gatherIntelligence, no decay — v1).
   {
-    const newSecrets = npcGatherTick(s);
-    if (newSecrets.length > 0) {
-      s = { ...s, secrets: [...s.secrets, ...newSecrets] };
+    // ── P4-A: NPC-side reverse gather ─────────────────────────────────────
+    const gatherResult = npcGatherTick(s);
+    s = { ...s, clans: gatherResult.clans, secrets: [...(s.secrets ?? []), ...gatherResult.secrets] };
+
+    // ── P4-B: extortion ticks, both directions ────────────────────────────
+    // Player extorting a leader: income + exposure roll (extortSeasonTick).
+    // A leader extorting the player family (already complied): flat drain,
+    // no roll — see secretEngine.computeExtortionDrain's header comment.
+    let extortIncome = 0;
+    let extortDrain = 0;
+    const extortLogs: string[] = [];
+    let secretsAfterExtort = s.secrets;
+    let clansAfterExtort = s.clans;
+
+    for (const secret of s.secrets) {
+      if (secret.status !== 'extorting') continue;
+
+      if (secret.holder === 'player' && secret.subject.kind === 'leader') {
+        const result = extortSeasonTick(secret, Math.random());
+        extortIncome += result.income;
+        secretsAfterExtort = secretsAfterExtort.map(sec =>
+          sec.id === secret.id ? { ...sec, status: result.newStatus } : sec
+        );
+        if (result.exposed) {
+          const leaderId = secret.subject.leaderId;
+          clansAfterExtort = clansAfterExtort.map(c => ({
+            ...c,
+            leaders: c.leaders.map(l => l.id === leaderId
+              ? {
+                  ...l,
+                  relationship: Math.max(-100, l.relationship + result.relationshipDelta),
+                  familyGroundwork: Math.min(
+                    BALANCE.secrets.groundworkCap,
+                    (l.familyGroundwork ?? 0) + result.retaliationGroundworkDelta
+                  ),
+                }
+              : l),
+          }));
+          const leaderName = clansAfterExtort.flatMap(c => c.leaders).find(l => l.id === leaderId)?.name ?? 'your target';
+          extortLogs.push(`Your extortion of ${leaderName} is discovered — the well runs dry, and they take note.`);
+        }
+      } else if (secret.subject.kind === 'family' && secret.holder !== 'player') {
+        extortDrain += computeExtortionDrain(secret);
+      }
+    }
+
+    s = {
+      ...s,
+      clans: clansAfterExtort,
+      secrets: secretsAfterExtort,
+      denarii: Math.max(0, s.denarii + extortIncome - extortDrain),
+    };
+    if (extortIncome > 0) events.push(`Extortion income: +${extortIncome} Denarii.`);
+    if (extortDrain > 0) events.push(`Extortion drain: −${extortDrain} Denarii, quietly paid.`);
+    events.push(...extortLogs);
+
+    // ── P4-B: NPC decisions — burns apply immediately (unilateral, no
+    // player choice); at most one leverage/extort demand queues as an
+    // event this season (pendingSecretDemand is a single slot, mirroring
+    // the pre-existing pendingCanvass* pattern — guarded so an unanswered
+    // demand already in the queue is never silently overwritten). ─────────
+    const decisions = scanNpcSecretDecisions(s);
+
+    for (const decision of decisions) {
+      if (decision.action !== 'burn') continue;
+      const clan = s.clans.find(c => c.id === decision.clanId);
+      const leader = clan?.leaders.find(l => l.id === decision.leaderId);
+      const secret = s.secrets.find(sec => sec.id === decision.secretId);
+      if (!clan || !leader || !secret) continue;
+
+      const voteLoss = computeBurnVoteLoss(leader.votes);
+      const currentRep = s.familyReputations[clan.id] ?? 0;
+      s = {
+        ...s,
+        clans: s.clans.map(c => c.id === clan.id ? {
+          ...c,
+          leaders: c.leaders.map(l => l.id === leader.id ? { ...l, votes: Math.max(0, l.votes - voteLoss) } : l),
+        } : c),
+        familyReputations: { ...s.familyReputations, [clan.id]: Math.min(currentRep, BALANCE.secrets.burnClanRepFloor) },
+        secrets: s.secrets.map(sec => sec.id === secret.id ? { ...sec, status: 'spent' as const, discovered: true } : sec),
+      };
+      events.push(`Scandal: ${leader.name} burns what they held rather than lose it quietly — ${secret.flavorText} ${clan.name} turns hostile.`);
+    }
+
+    if (!s.pendingSecretDemand) {
+      const demandDecision = decisions.find(d => d.action !== 'burn');
+      if (demandDecision) {
+        const secret = s.secrets.find(sec => sec.id === demandDecision.secretId);
+        const leader = s.clans.flatMap(c => c.leaders).find(l => l.id === demandDecision.leaderId);
+        const demandSubject = secret?.subject;
+        if (secret && leader && demandSubject && demandSubject.kind === 'family') {
+          const targetChar = s.family.find(c => c.id === demandSubject.characterId);
+          const defId = demandDecision.action === 'extort' ? 'evt-secret-demand-extortion' : 'evt-secret-demand-leverage';
+          const kind: 'leverage_bill' | 'leverage_election' | 'extort' =
+            demandDecision.action === 'leverage_bill' ? 'leverage_bill'
+            : demandDecision.action === 'leverage_election' ? 'leverage_election'
+            : 'extort';
+
+          const targetBill = demandDecision.billId ? s.bills.find(b => b.id === demandDecision.billId) : undefined;
+          const bodyText =
+            kind === 'leverage_bill'
+              ? `${leader.name} corners you after the session: he knows what you know he knows. His price is your voice on "${targetBill?.name ?? 'the bill before the Senate'}" — nothing more, nothing less.`
+              : kind === 'leverage_election'
+              ? `${leader.name} sends word through an intermediary: his support in your campaign has a price, and you already know what he holds.`
+              : `${leader.name}'s man arrives with an open hand and a closed mouth. He will keep quiet — for a fee, paid quietly, every season, for as long as you allow it.`;
+
+          s = {
+            ...s,
+            // Discovery — the demand firing IS how the player learns this
+            // Secret exists (plan's discovery paragraph, first branch).
+            secrets: s.secrets.map(sec => sec.id === secret.id ? { ...sec, discovered: true } : sec),
+            pendingEvents: [...s.pendingEvents, injectNoticeEvent(defId, s.turnNumber, targetChar?.id ?? 'pc-1', { bodyText })],
+            pendingSecretDemand: {
+              secretId: secret.id,
+              leaderId: leader.id,
+              clanId: demandDecision.clanId,
+              kind,
+              billId: demandDecision.billId,
+              direction: demandDecision.direction,
+            },
+          };
+          events.push(`${leader.name} makes their move — a demand awaits your answer.`);
+        }
+      }
     }
   }
 

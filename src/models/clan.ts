@@ -45,6 +45,19 @@ export interface ClanLeader {
    *  no decay v1), feeding back into gatherChance. Reset to 0 on a success.
    *  Optional/absent (read as 0) so pre-P4-A saves load unchanged. */
   intelGroundwork?: number;
+
+  // ── Phase 4, Chunk P4-B — Secrets, reverse direction ───────────────────────
+  /** This leader's own progress toward generating a Secret against the
+   *  player's family — the mirror of intelGroundwork (which tracks the
+   *  PLAYER's progress against THIS leader). Same 0–groundworkCap shape and
+   *  no-decay persistence, feeding npcGatherTick's chance. Rises on a failed
+   *  npcGatherTick roll same as any groundwork; also jumps by
+   *  BALANCE.secrets.extortRetaliationGroundwork when the player's own
+   *  Extort verb against this leader is exposed — "immediately gains
+   *  groundwork toward a counter-Secret." Not in the plan's literal P4-A/B
+   *  model field lists, but required to make that consequence mechanically
+   *  real (npcGatherTick had no per-leader memory on this side before). */
+  familyGroundwork?: number;
 }
 
 export interface Clan {
