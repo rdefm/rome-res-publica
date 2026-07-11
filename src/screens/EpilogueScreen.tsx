@@ -16,6 +16,7 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../utils/theme';
 import { officeName } from '../engine/epilogueEngine';
 import type { EpilogueOutcome } from '../models/epilogue';
 import HallOfAncestorsScreen from './HallOfAncestorsScreen';
+import InfoTap from '../components/shared/InfoTap';
 
 const OUTCOME_BANNER: Record<EpilogueOutcome, { title: string; color: string; tone: string }> = {
   victory:        { title: 'Victory',              color: COLORS.gold,         tone: 'Rome triumphant — and the Gens Brutia with it.' },
@@ -29,6 +30,7 @@ export default function EpilogueScreen() {
   const runFinished = useGameStore(s => s.runFinished);
   const record = useGameStore(s => s.currentEpilogueRecord);
   const returnToStartMenu = useGameStore(s => s.returnToStartMenu);
+  const enterEndlessMode = useGameStore(s => s.enterEndlessMode);
   const [showHall, setShowHall] = useState(false);
 
   const isOpen = runFinished && !!record;
@@ -98,8 +100,10 @@ export default function EpilogueScreen() {
 
           <View style={styles.actionsBlock}>
             {record!.outcome === 'victory' && (
-              <TouchableOpacity style={[styles.actionBtn, styles.actionBtnDisabled]} disabled>
-                <Text style={styles.actionTextDisabled}>Continue in Endless Mode (coming soon)</Text>
+              <TouchableOpacity style={styles.actionBtn} onPress={enterEndlessMode}>
+                <InfoTap termId="endless-mode">
+                  <Text style={styles.actionText}>Continue in Endless Mode</Text>
+                </InfoTap>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.actionBtn} onPress={() => setShowHall(true)}>
@@ -208,8 +212,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionBtnMuted: { borderColor: COLORS.border },
-  actionBtnDisabled: { borderColor: COLORS.border, opacity: 0.5 },
   actionText: { fontFamily: FONTS.ui, fontSize: 13, color: COLORS.gold, letterSpacing: 1 },
   actionTextMuted: { fontFamily: FONTS.ui, fontSize: 13, color: COLORS.dust, letterSpacing: 1 },
-  actionTextDisabled: { fontFamily: FONTS.ui, fontSize: 13, color: COLORS.dust, letterSpacing: 1 },
 });

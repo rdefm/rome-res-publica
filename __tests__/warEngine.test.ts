@@ -17,6 +17,7 @@ import type { Character } from '../src/models/character';
 import type { TroopUnit } from '../src/models/troop';
 import type { WarState, TreatyState } from '../src/models/war';
 import type { Clan } from '../src/models/clan';
+import { useGameStore } from '../src/state/gameStore';
 import type { GameState } from '../src/state/gameStore';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -1140,5 +1141,57 @@ describe('processSeason — Crisis-100 terminal (P3-E)', () => {
     });
     const { nextState } = processSeason(state as any);
     expect(nextState.pendingEpilogue).toBe('victory');
+  });
+
+  test('is suppressed while endlessMode is true, even with every track maxed', () => {
+    const state = makeState({
+      endlessMode: true,
+      crisis: {
+        war:          { id: 'war',          level: 100, tier: 4, namedCrisis: 'Existential Threat' },
+        unrest:       { id: 'unrest',       level: 100, tier: 4, namedCrisis: 'Open Revolt' },
+        constitution: { id: 'constitution', level: 100, tier: 4, namedCrisis: 'Republic in Peril' },
+        economy:      { id: 'economy',      level: 100, tier: 4, namedCrisis: 'Economic Collapse' },
+      },
+    } as any);
+    const { nextState } = processSeason(state as any);
+    expect(nextState.pendingEpilogue).toBeFalsy();
+  });
+});
+
+// ─── Phase 3, Chunk P3-F — Endless mode ─────────────────────────────────────
+
+describe('processWarSeason — Endless mode (P3-F)', () => {
+  test('no-ops a major-scale war while endlessMode is true (future-proofing guard)', () => {
+    const state = makeState({
+      endlessMode: true,
+      wars: [makeWar({ warScore: 0, active: true })],
+    } as any);
+    const result = processWarSeason(state);
+    expect(result.wars[0]).toEqual(state.wars[0]);
+  });
+
+  test('still processes a local-scale (revolt) war while endlessMode is true', () => {
+    const rng = makeSeededRng(1);
+    const state = makeState({
+      endlessMode: true,
+      wars: [makeWar({ id: 'w-local', scale: 'local', warScore: 0, active: true })],
+    } as any);
+    const result = processWarSeason(state, rng);
+    expect(result.wars[0].weariness).toBe(1);
+  });
+});
+
+describe('enterEndlessMode (P3-F)', () => {
+  test('sets endlessMode, un-finishes the run, and clears pendingEpilogue', () => {
+    useGameStore.setState({
+      runFinished: true,
+      pendingEpilogue: 'victory' as any,
+      currentEpilogueRecord: { outcome: 'victory' } as any,
+    });
+    useGameStore.getState().enterEndlessMode();
+    const s = useGameStore.getState();
+    expect(s.endlessMode).toBe(true);
+    expect(s.runFinished).toBe(false);
+    expect(s.pendingEpilogue).toBeNull();
   });
 });

@@ -641,6 +641,16 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
 
   const wars = (state.wars ?? []).map(war => {
     if (!war.active) return war;
+    // Phase 3, Chunk P3-F — Endless mode retires the major war (already
+    // inactive/terminalOutcome-set by the time Endless is reachable, so this
+    // is a future-proofing no-op today, not a load-bearing branch). Local
+    // revolt wars (scale: 'local') are untouched — they're ongoing province
+    // content, not "the war", and keep running per the design decision that
+    // Endless is the crisis system running on, not a frozen sandbox. This is
+    // also the natural insertion point for a future authored post-241 war
+    // (e.g. the Second Punic War) to plug in — it would need its own guard
+    // here rather than reusing this one.
+    if (war.scale === 'major' && state.endlessMode) return war;
     let next: WarState = { ...war };
     const beforeScore = next.warScore;
 

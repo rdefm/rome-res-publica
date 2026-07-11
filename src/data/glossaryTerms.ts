@@ -130,6 +130,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Provinciae',
   },
   {
+    id: 'endless-mode',
+    term: 'Endless Mode',
+    definition: "Unlocked by a Victory epilogue. Resumes the same save past 241 BC: the war with Carthage is retired for good, and the four crisis tracks keep running with no further terminal endings from the war or the Republic. Your family's story can still end in Endless Mode — the line dying out still offers its one-time cadet-branch continuation.",
+    relatedTab: 'Domus',
+  },
+  {
     id: 'election',
     term: 'Elections',
     definition: 'Resolved in Winter at the end of the season. Vote totals reflect actions taken during the preceding seasons — canvassing, speeches, client sway, and faction relationships.',

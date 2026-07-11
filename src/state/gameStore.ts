@@ -182,6 +182,17 @@ export interface GameState {
    *  NOT stripped before save; EpilogueScreen reads it directly rather than
    *  re-deriving or re-fetching from the Hall's cross-run storage. */
   currentEpilogueRecord: AncestorRecord | null;
+  /** Phase 3, Chunk P3-F — set true only via enterEndlessMode (a Victory
+   *  epilogue's "Continue in Endless Mode" button). Read by turnSequencer.ts
+   *  (skips the Crisis-100 hard terminal), warEngine.ts's processWarSeason
+   *  (no-ops any 'major'-scale war — moot today since the only major war is
+   *  already inactive/terminalOutcome-set by the time Endless is reachable,
+   *  but guards a future authored war from scoring silently), and
+   *  agendaEngine.ts's #20/#21 (same reasoning). Never read by succession,
+   *  the cadet branch, or Hall of Ancestors — those keep functioning
+   *  normally, per the plan's "a family can still die out in Endless"
+   *  design call. */
+  endlessMode: boolean;
 
   // Senate (Curia)
   bills: Bill[];
@@ -431,6 +442,17 @@ export interface GameActions {
    *  reopening it (Continue) re-shows the same epilogue, which is
    *  correct — nothing to acknowledge/dismiss beyond navigating away. */
   returnToStartMenu: () => void;
+
+  // ── Phase 3, Chunk P3-F ───────────────────────────────────────────────────
+  /** From EpilogueScreen — only ever offered on a 'victory' record. Resumes
+   *  the same save past 241 BC: un-finishes the run (so the board reopens
+   *  instead of the epilogue) and clears pendingEpilogue (leaving it set
+   *  would make the very next endSeason immediately re-detect the same
+   *  epilogue and re-finish the run before the player took a single turn).
+   *  currentEpilogueRecord is left as-is — harmless, since EpilogueScreen
+   *  gates on runFinished, and it'll be overwritten if a later ending
+   *  (e.g. a second, cadet-branch extinction) ever fires in Endless. */
+  enterEndlessMode: () => void;
 
   // Resources
   spendResource: (resource: 'fides' | 'denarii', amount: number) => void;
@@ -765,6 +787,7 @@ export const INITIAL_STATE: GameState = {
   gensFoundedYear: -264,
   runFinished: false,
   currentEpilogueRecord: null,
+  endlessMode: false,
 
   bills: STARTING_BILLS,
   _expandedBill: null,
@@ -1141,6 +1164,12 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   dismissSeasonOverlay: () => set({ seasonOverlayVisible: false, seasonOverlayEvents: [] }),
 
   returnToStartMenu: () => set({ gameStarted: false }),
+
+  enterEndlessMode: () => set({
+    endlessMode: true,
+    runFinished: false,
+    pendingEpilogue: null,
+  }),
 
   // ─── Resources ───────────────────────────────────────────────────────────────
 

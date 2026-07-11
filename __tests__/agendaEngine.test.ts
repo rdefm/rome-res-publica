@@ -319,6 +319,17 @@ describe('generateAgenda', () => {
     expect(() => generateAgenda(state)).not.toThrow();
   });
 
+  // ─── Phase 3, Chunk P3-F — endlessMode silences #20/#21 ───────────────────
+
+  test('#20/#21 do not fire once endlessMode is true, even for an active major war', () => {
+    const state = makeState({
+      wars: [makeWar({ warScore: 5, peaceOffered: true })],
+      endlessMode: true,
+    } as any);
+    expect(generateAgenda(state).some(i => i.id.startsWith('agenda-war-status-'))).toBe(false);
+    expect(getCriticalItems(state).some(i => i.id === 'agenda-critical-sue-for-peace-war-carthage-1')).toBe(false);
+  });
+
   // ─── Phase 3, Chunk P3-C — #22 regency in effect ──────────────────────────
 
   function makeHeir(overrides: Record<string, unknown> = {}) {

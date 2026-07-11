@@ -102,6 +102,8 @@ const SaveSchema = z.object({
   gensFoundedYear: z.number().default(-264),
   runFinished: z.boolean().default(false),
   currentEpilogueRecord: z.any().nullable().default(null),
+  // Phase 3, Chunk P3-F — .default(false) ensures pre-P3-F saves load cleanly.
+  endlessMode: z.boolean().default(false),
 });
 
 export interface SaveProvider {

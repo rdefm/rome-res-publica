@@ -357,7 +357,11 @@ export function processSeason(state: GameState): {
   // once and only once: gated on pendingEpilogue not already being set, so
   // it can never override a war outcome or gens_ends that landed the same
   // season, and never re-fires once set.
-  if (!s.pendingEpilogue && newCrisisLevel >= BALANCE.epilogue.crisisTerminalThreshold) {
+  // Phase 3, Chunk P3-F — suppressed in Endless mode (per the plan's default:
+  // crises persist and punish past 241 BC, but never hard-end the sandbox).
+  // Extinction (gens_ends, set elsewhere in this file) is NOT guarded here —
+  // a family can still die out in Endless, same as any other run.
+  if (!s.endlessMode && !s.pendingEpilogue && newCrisisLevel >= BALANCE.epilogue.crisisTerminalThreshold) {
     s = { ...s, pendingEpilogue: 'republic_falls' };
   }
 

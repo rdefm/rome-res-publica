@@ -648,6 +648,7 @@ const WAR_PHASE_COPY: Record<string, string> = {
 
 function genWarStatus(state: GameState): AgendaItem[] {
   const items: AgendaItem[] = [];
+  if (state.endlessMode) return items; // Phase 3, Chunk P3-F — the war is retired.
   for (const war of (state.wars ?? [])) {
     if (!war.active || war.scale !== 'major') continue;
     const warTier = state.crisis.war.tier;
@@ -674,6 +675,7 @@ function genWarStatus(state: GameState): AgendaItem[] {
 
 function genSueForPeaceOpportunity(state: GameState): AgendaItem[] {
   const items: AgendaItem[] = [];
+  if (state.endlessMode) return items; // Phase 3, Chunk P3-F — the war is retired.
   for (const war of (state.wars ?? [])) {
     if (!war.active || war.scale !== 'major' || !war.peaceOffered) continue;
     items.push({
