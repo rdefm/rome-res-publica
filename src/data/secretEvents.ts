@@ -7,8 +7,8 @@
 //
 // Both events share the same comply/defy choice shape — the actual
 // consequence (forced vote, extortion drain, scandal, or a queued trial via
-// the existing trialQueue pipeline) is fully dynamic (which leader, which
-// Secret, which bill) and computed by secretEngine.resolveSecretDemand,
+// the unified TrialState pipeline — Phase 4, P4-C) is fully dynamic (which
+// leader, which Secret, which bill) and computed by secretEngine.resolveSecretDemand,
 // applied by gameStore.resolveEvent's special-case handler. successEffect/
 // failureEffect are deliberately empty here — everything routes through
 // that handler, not the generic effect-string pipeline (the plan's

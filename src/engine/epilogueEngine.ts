@@ -29,7 +29,10 @@ function buildNotableBeats(state: GameState): string[] {
   if (triumphs === 1) beats.push('a Triumph celebrated');
   else if (triumphs > 1) beats.push(`${triumphs} Triumphs celebrated`);
 
-  const resolvedTrials = state.trialQueue.filter(t => t.resolved && t.outcome);
+  // Phase 4, Chunk P4-C — only 'defense'-seat trials read as "survived/lost"
+  // (the player facing trial); prosecution-seat trials (P4-C, new) get their
+  // own "famous trial" epilogue framing in P4-F, not counted here.
+  const resolvedTrials = (state.trials ?? []).filter(t => t.status === 'resolved' && t.outcome && t.seat === 'defense');
   const survived = resolvedTrials.filter(t => t.outcome === 'acquitted' || t.outcome === 'fined' || t.outcome === 'dismissed').length;
   const lost = resolvedTrials.filter(t => t.outcome === 'exiled' || t.outcome === 'executed').length;
   if (survived === 1) beats.push('a trial survived');

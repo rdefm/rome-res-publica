@@ -39,7 +39,7 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
     cadetBranchUsed: false,
     family: [makeCharacter()],
     flags: {},
-    trialQueue: [],
+    trials: [],
     crisis: {
       war: makeCrisisTrack('war', 20),
       unrest: makeCrisisTrack('unrest', 10),
@@ -77,9 +77,23 @@ describe('buildAncestorRecord', () => {
   test('notableBeats reflects triumphs, trial outcomes, cadet continuation, and crisis posture', () => {
     const state = makeState({
       flags: { 'triumph-granted-pc-1': true, 'triumph-granted-son-1': true },
-      trialQueue: [
-        { id: 't1', accusedCharacterId: 'pc-1', accusingClanId: 'x', charge: 'c', defenseStrength: 1, prosecutionStrength: 1, turnsRemaining: 0, resolved: true, outcome: 'acquitted', actionsUsed: [] },
-        { id: 't2', accusedCharacterId: 'pc-1', accusingClanId: 'x', charge: 'c', defenseStrength: 1, prosecutionStrength: 1, turnsRemaining: 0, resolved: true, outcome: 'executed', actionsUsed: [] },
+      // Phase 4, Chunk P4-C — TrialState shape; only seat: 'defense' trials
+      // count toward "survived/lost" (see epilogueEngine.ts's P4-C comment).
+      trials: [
+        {
+          id: 't1', seat: 'defense', charge: 'peculatus', chargeSource: 'accusation',
+          prosecutor: { kind: 'leader', leaderId: 'l1' }, defendant: { kind: 'family', characterId: 'pc-1' },
+          filedSeason: 0, startsSeason: 1, playerPrep: { totalStrength: 1, actionsUsed: [] },
+          approach: 'procedure', speakerId: 'pc-1', npcStrength: 1, juryLean: 0,
+          consumedSecretIds: [], status: 'resolved', outcome: 'acquitted',
+        },
+        {
+          id: 't2', seat: 'defense', charge: 'peculatus', chargeSource: 'accusation',
+          prosecutor: { kind: 'leader', leaderId: 'l1' }, defendant: { kind: 'family', characterId: 'pc-1' },
+          filedSeason: 0, startsSeason: 1, playerPrep: { totalStrength: 1, actionsUsed: [] },
+          approach: 'procedure', speakerId: 'pc-1', npcStrength: 1, juryLean: 0,
+          consumedSecretIds: [], status: 'resolved', outcome: 'executed',
+        },
       ] as any,
       cadetBranchUsed: true,
     });
@@ -117,7 +131,7 @@ describe('assembleHistorianParagraph', () => {
       heldOffices: [],
       paterfamiliasGenerations: 1,
       flags: {},
-      trialQueue: [],
+      trials: [],
     });
     const record = buildAncestorRecord(state, 'gens_ends');
     expect(record.historianParagraph.length).toBeGreaterThan(20);

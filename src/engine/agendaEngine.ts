@@ -71,13 +71,18 @@ function provinceDisplayName(id: string): string {
 // ─── Generator 1 — Trial pending ─────────────────────────────────────────────
 
 function genTrials(state: GameState): AgendaItem[] {
-  return state.trialQueue
-    .filter(t => !t.resolved)
+  return (state.trials ?? [])
+    .filter(t => t.status !== 'resolved')
     .map(trial => {
-      const accused = state.family.find(c => c.id === trial.accusedCharacterId);
-      const resolvesThisSeason = trial.turnsRemaining <= 1;
+      const defendant = trial.defendant;
+      const defendantName = defendant.kind === 'family'
+        ? state.family.find(c => c.id === defendant.characterId)?.name ?? 'your family'
+        : state.clans.flatMap(c => c.leaders).find(l => l.id === defendant.leaderId)?.name ?? 'the accused';
+
+      const seasonsRemaining = Math.max(0, trial.startsSeason - state.turnNumber);
+      const resolvesThisSeason = seasonsRemaining <= 1;
       const losingAndClose =
-        trial.defenseStrength < trial.prosecutionStrength && trial.turnsRemaining <= 2;
+        trial.playerPrep.totalStrength < trial.npcStrength && seasonsRemaining <= 2;
       const severity: AgendaSeverity =
         resolvesThisSeason || losingAndClose ? 'critical' : 'warning';
 
@@ -85,8 +90,8 @@ function genTrials(state: GameState): AgendaItem[] {
         id: `agenda-trial-${trial.id}`,
         category: 'trial' as const,
         severity,
-        title: `Trial of ${accused?.name ?? 'your family'}`,
-        detail: `Resolves in ${plural(trial.turnsRemaining, 'season')}. Defense ${trial.defenseStrength} vs prosecution ${trial.prosecutionStrength}.`,
+        title: trial.seat === 'defense' ? `Trial of ${defendantName}` : `Prosecuting ${defendantName}`,
+        detail: `Resolves in ${plural(seasonsRemaining, 'season')}. Your strength ${Math.round(trial.playerPrep.totalStrength)} vs their ${Math.round(trial.npcStrength)}.`,
         target: { tab: 'Curia' as const, trialId: trial.id },
         sortWeight: resolvesThisSeason ? 0 : 10,
       };
@@ -804,10 +809,37 @@ function genExtortionActive(state: GameState): AgendaItem[] {
   }];
 }
 
+// ─── Generator 26 — Filed prosecution pending (Phase 4, Chunk P4-C) ────────
+// Distinct from #1 (which already lists every active trial, both seats,
+// urgency-framed): a standing "keep preparing" reminder specifically for
+// player-filed prosecutions, opportunity-toned rather than urgency-toned.
+
+function genFiledProsecutionPending(state: GameState): AgendaItem[] {
+  return (state.trials ?? [])
+    .filter(t => t.status === 'preparing' && t.seat === 'prosecution')
+    .map(trial => {
+      const defendant = trial.defendant;
+      const defendantName = defendant.kind === 'leader'
+        ? state.clans.flatMap(c => c.leaders).find(l => l.id === defendant.leaderId)?.name ?? 'the accused'
+        : 'the accused';
+      const seasonsRemaining = Math.max(0, trial.startsSeason - state.turnNumber);
+
+      return {
+        id: `agenda-prosecution-pending-${trial.id}`,
+        category: 'trial' as const,
+        severity: 'opportunity' as const,
+        title: `Your case against ${defendantName} is building`,
+        detail: `${plural(seasonsRemaining, 'season')} left to strengthen it before trial.`,
+        target: { tab: 'Curia' as const, trialId: trial.id },
+        sortWeight: 20,
+      };
+    });
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Runs all 25 generators against the current state and returns a sorted list
+ * Runs all 26 generators against the current state and returns a sorted list
  * of agenda items. Sort order: severity (critical first) → sortWeight →
  * category (alpha tiebreak for stable ordering).
  *
@@ -841,6 +873,7 @@ export function generateAgenda(state: GameState): AgendaItem[] {
     ...genSecretDemandPending(state),
     ...genSecretHeldAgainstFamily(state),
     ...genExtortionActive(state),
+    ...genFiledProsecutionPending(state),
   ];
 
   return items.sort((a, b) => {

@@ -4,6 +4,7 @@ import type { ClanLeader } from '../../models/clan';
 import { useGameStore } from '../../state/gameStore';
 import { getUnlockedReputationActions, computeReputationDelta } from '../../engine/reputationEngine';
 import { gatherChance, isDeterred } from '../../engine/secretEngine';
+import { FileProsecutionPickerModal } from './DossierPanel';
 import { BALANCE } from '../../data/balance';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
@@ -157,11 +158,12 @@ const fab = StyleSheet.create({
 
 function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: string }) {
   const {
-    fides, denarii, campaigning, campaignVotes, familyReputations, clans, secrets,
+    fides, denarii, campaigning, campaignVotes, familyReputations, clans, secrets, trials,
     buyInfluence, inviteToDinner, forgeAlliance, arrangeMarriageForum,
     gatherIntelligence, canvassForVotes,
   } = useGameStore();
   const [intelPickerOpen, setIntelPickerOpen] = useState(false);
+  const [prosecutionPickerOpen, setProsecutionPickerOpen] = useState(false);
 
   const canvassed = !!campaignVotes[leader.id];
   const repScore = familyReputations[clanId] ?? 0;
@@ -182,6 +184,14 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
     : youHoldCount > 0 ? `You hold ${youHoldCount} on him — see the Dossier.`
     : theyHoldCount > 0 ? `He holds ${theyHoldCount} on your family — see the Dossier.`
     : null;
+
+  // Phase 4, Chunk P4-C — corruption-gated filing path (distinct from the
+  // Dossier's criminal-Secret path — see DossierPanel.HeldByYouRow). Shown
+  // whenever the corruption threshold qualifies, regardless of whether the
+  // player also holds a Secret on this leader (fileProsecution prefers the
+  // stronger Secret-evidence path automatically when both are available).
+  const corruptionFilingEligible = (leader.corruptionScore ?? 0) >= BALANCE.trials.corruptionChargeThreshold;
+  const trialAlreadyActive = trials.some(t => t.status !== 'resolved');
 
   const allianceMarriageLocked = !unlockedActions.includes('propose_alliance_marriage');
   const allianceMarriageLockReason = `Requires "Cordial" standing (Rep ≥ 35). Current: ${repScore > 0 ? '+' : ''}${repScore}.`;
@@ -258,6 +268,15 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
             onPress={() => canvassForVotes(leader.id)}
           />
         )}
+        {corruptionFilingEligible && (
+          <ForumActionBtn
+            label={trialAlreadyActive ? 'The courts are occupied' : 'File Prosecution'}
+            cost={`${BALANCE.trials.fileCostFides} Fides`}
+            desc={`Corruption ${leader.corruptionScore ?? 0} — grounds enough to bring formal charges.`}
+            disabled={fides < BALANCE.trials.fileCostFides || trialAlreadyActive}
+            onPress={() => setProsecutionPickerOpen(true)}
+          />
+        )}
       </View>
 
       <IntelPickerModal
@@ -265,6 +284,11 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
         leader={leader}
         onClose={() => setIntelPickerOpen(false)}
         onPick={(agentId) => gatherIntelligence(leader.id, agentId)}
+      />
+      <FileProsecutionPickerModal
+        visible={prosecutionPickerOpen}
+        leaderId={leader.id}
+        onClose={() => setProsecutionPickerOpen(false)}
       />
     </View>
   );

@@ -4,6 +4,7 @@
 
 import type { GameState } from '../state/gameStore';
 import { calcEffectiveForce } from './troopEngine';
+import { buildTrialState } from './trialEngine';
 
 // ─── Senate Response State ────────────────────────────────────────────────────
 
@@ -161,19 +162,38 @@ export function tickSenateResponse(
   }
 
   // ── censure → hostis ──────────────────────────────────────────────────────
+  // Phase 4, Chunk P4-C — was pushing an ad-hoc object (type/severity/
+  // characterId/turnQueued/autoResolve — none of which match Trial's real
+  // fields) into trialQueue under an `as any` cast. Harmless pre-P4-C only
+  // because nothing ever read that malformed shape correctly (resolveTrial's
+  // math degraded to NaN and always fell through to 'executed', but
+  // accusedCharacterId being undefined meant OUTCOME_CONSEQUENCES's
+  // removeCharacter branch matched no one — a silent no-op, not a crash).
+  // Renaming trialQueue -> trials turned this into a real type error; fixed
+  // in place to build a genuine TrialState, preserving the original intent
+  // (defying censure escalates to a treason trial) — the Senate collectively
+  // prosecutes, so the most-influential clan's senior leader stands in as
+  // nominal prosecutor. Near-guaranteed-loss npcStrength matches the old
+  // (never-functioning) object's forcedOutcome: 'worst' intent — Hostis
+  // declaration means the Senate has already all but condemned you.
   if (turnNumber === hostisTurn && response.phase === 'censure') {
-    const treasonTrial = {
-      id:          `trial-treason-${turnNumber}`,
-      type:        'treason',
-      severity:    'capital',
-      characterId,
-      turnQueued:  turnNumber,
-      autoResolve: false,
-    } as any;
+    const mostInfluentialClan = [...state.clans].sort((a, b) => b.influence - a.influence)[0];
+    const treasonTrial = buildTrialState({
+      id: `trial-treason-${turnNumber}`,
+      seat: 'defense',
+      charge: 'maiestas',
+      chargeSource: 'accusation',
+      prosecutor: { kind: 'leader', leaderId: mostInfluentialClan?.leaders[0]?.id ?? '' },
+      defendant: { kind: 'family', characterId },
+      filedSeason: turnNumber,
+      startsSeason: turnNumber + 1,
+      initialNpcStrength: 200,
+      speakerId: characterId,
+    });
 
     return {
       senateResponse: { ...response, phase: 'hostis' },
-      trialQueue:     [...state.trialQueue, treasonTrial],
+      trials: [...(state.trials ?? []), treasonTrial],
     };
   }
 
@@ -203,19 +223,25 @@ export function tickSenateResponse(
         lifetimeDignitas: Math.max(0, state.lifetimeDignitas - 5),
       };
     } else {
-      const captureTrial = {
-        id:            `trial-capture-${turnNumber}`,
-        type:          'treason',
-        severity:      'capital',
-        characterId,
-        turnQueued:    turnNumber,
-        forcedOutcome: 'worst',
-        autoResolve:   false,
-      } as any;
+      // Same P4-C fix as the treason-trial branch above — captured after
+      // losing to the consular army is even more clearly a guaranteed loss.
+      const mostInfluentialClan = [...state.clans].sort((a, b) => b.influence - a.influence)[0];
+      const captureTrial = buildTrialState({
+        id: `trial-capture-${turnNumber}`,
+        seat: 'defense',
+        charge: 'maiestas',
+        chargeSource: 'accusation',
+        prosecutor: { kind: 'leader', leaderId: mostInfluentialClan?.leaders[0]?.id ?? '' },
+        defendant: { kind: 'family', characterId },
+        filedSeason: turnNumber,
+        startsSeason: turnNumber + 1,
+        initialNpcStrength: 300,
+        speakerId: characterId,
+      });
 
       return {
         senateResponse: { ...response, phase: 'consular_army' },
-        trialQueue:     [...state.trialQueue, captureTrial],
+        trials: [...(state.trials ?? []), captureTrial],
       };
     }
   }
@@ -260,14 +286,16 @@ export function capitulate(
       : c
   );
 
-  const updatedTrialQueue = response.phase === 'hostis'
-    ? state.trialQueue.filter((t: any) => !(t.type === 'treason' && t.characterId === characterId))
-    : state.trialQueue;
+  const updatedTrials = response.phase === 'hostis'
+    ? (state.trials ?? []).filter(t =>
+        !(t.charge === 'maiestas' && t.defendant.kind === 'family' && t.defendant.characterId === characterId)
+      )
+    : (state.trials ?? []);
 
   return {
     senateResponse:   null,
     lifetimeDignitas: Math.max(0, state.lifetimeDignitas - 15),
     family:           updatedFamily,
-    trialQueue:       updatedTrialQueue,
+    trials:           updatedTrials,
   };
 }

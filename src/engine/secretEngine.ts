@@ -12,11 +12,10 @@ import type { GameState } from '../state/gameStore';
 import type { Secret, SecretType, SecretSubject, SecretHolder, PendingSecretDemand } from '../models/secret';
 import type { ClanLeader, LeaderBias } from '../models/clan';
 import type { BillType } from '../models/bill';
-import type { TrialCharge } from '../models/trial';
+import type { ChargeId } from '../models/trial';
 import { SECRET_TYPE_DEFS, SECRET_TYPES, SECRET_CLASS_BY_TYPE } from '../data/secretDefinitions';
 import { BALANCE } from '../data/balance';
-import { buildTrial } from './trialEngine';
-import { computeTotalAssetBonuses } from './assetEngine';
+import { buildTrialState } from './trialEngine';
 
 // ─── Gather chance ────────────────────────────────────────────────────────────
 
@@ -386,29 +385,21 @@ export function attemptDiscredit(
   };
 }
 
-// ─── Criminal exposure → the existing trial pipeline ────────────────────────
+// ─── Criminal exposure → the unified trial pipeline (Phase 4, P4-C) ─────────
 
 /**
- * Maps a criminal SecretType to the OLD system's TrialCharge. P4-C
- * introduces real repetundae/peculatus/ambitus charges on a new TrialState
- * pipeline; until then, criminal-Secret exposure routes through the
- * *existing* buildTrial/trialQueue (per the plan's explicit "via the
- * existing trial trigger this chunk; P4-C swaps the internals"). Only
- * electoral_fraud has a direct 1:1 match in the old TrialCharge vocabulary
- * ('corruption' | 'treason' | 'electoral_fraud' | 'murder' |
- * 'military_incompetence'); embezzlement and provincial_plunder both map to
- * the closest existing charge, 'corruption'. Social types (affair/impiety)
- * never call this — their exposure routes to the scandal-event branch
- * instead (BALANCE.secrets.npcAi.socialExposureDignitas/Relationship).
+ * Maps a criminal SecretType to its real ChargeId — a clean 1:1 (each
+ * criminal SecretType has exactly one matching charge in data/trialCharges.ts).
+ * Social types (affair/impiety) never call this — their exposure routes to
+ * the scandal-event branch instead
+ * (BALANCE.secrets.npcAi.socialExposureDignitas/Relationship).
  */
-export function mapSecretTypeToTrialCharge(type: SecretType): TrialCharge {
+export function mapSecretTypeToTrialCharge(type: SecretType): ChargeId {
   switch (type) {
-    case 'electoral_fraud':
-      return 'electoral_fraud';
-    case 'embezzlement':
-    case 'provincial_plunder':
-    default:
-      return 'corruption';
+    case 'electoral_fraud':      return 'ambitus';
+    case 'embezzlement':         return 'peculatus';
+    case 'provincial_plunder':   return 'repetundae';
+    default:                     return 'peculatus';
   }
 }
 
@@ -611,13 +602,12 @@ export function resolveSecretDemand(
     };
   }
 
-  // Criminal — exposure queues a trial through the EXISTING pipeline
-  // (buildTrial/trialQueue), per the plan's explicit "via the existing trial
-  // trigger this chunk." Only one active trial at a time (matches
+  // Criminal — exposure queues a trial through the unified TrialState
+  // pipeline (Phase 4, P4-C). Only one active trial at a time (matches
   // shouldTriggerTrial's own invariant) — if one is already pending, the
   // Secret is still exposed but no duplicate trial is queued.
   const secretsExposed = state.secrets.map(s => s.id === secret.id ? { ...s, status: 'exposed' as const, discovered: true } : s);
-  const alreadyOnTrial = state.trialQueue.some(t => !t.resolved);
+  const alreadyOnTrial = (state.trials ?? []).some(t => t.status !== 'resolved');
   const criminalSubject = secret.subject;
   if (alreadyOnTrial || criminalSubject.kind !== 'family') {
     return {
@@ -626,18 +616,27 @@ export function resolveSecretDemand(
     };
   }
 
-  const assetBonuses = computeTotalAssetBonuses(state.ownedAssets);
   const accused = state.family.find(c => c.id === criminalSubject.characterId);
-  const newTrial = buildTrial(
-    criminalSubject.characterId,
-    demand.clanId,
-    mapSecretTypeToTrialCharge(secret.type),
-    leaderFound.skills.intrigus,
-    accused?.corruptionScore ?? 0,
-    assetBonuses.trialDefenseBonus ?? 0
-  );
+  // Same seeding formula as turnSequencer's other NPC-initiated triggers
+  // (leader intrigus + accused corruption), not the player-filing formula
+  // (secretEvidenceBase × potency) — this trial is NPC-initiated, not filed.
+  const initialNpcStrength = Math.min(100, leaderFound.skills.intrigus * 2 + (accused?.corruptionScore ?? 0) / 2);
+  const charge = mapSecretTypeToTrialCharge(secret.type);
+  const newTrial = buildTrialState({
+    id: `trial-${Date.now()}`,
+    seat: 'defense',
+    charge,
+    chargeSource: 'secret',
+    prosecutor: { kind: 'leader', leaderId: leaderFound.id },
+    defendant: { kind: 'family', characterId: criminalSubject.characterId },
+    filedSeason: state.turnNumber,
+    startsSeason: state.turnNumber + BALANCE.trials.npcInitiatedDelay,
+    initialNpcStrength,
+    consumedSecretIds: [secret.id],
+    speakerId: state.family.find(c => c.isPlayer)?.id ?? criminalSubject.characterId,
+  });
   return {
-    patch: { secrets: secretsExposed, trialQueue: [...state.trialQueue, newTrial] },
-    logMsg: `You defy them. ${secret.flavorText} ${leaderFound.name} brings formal charges of ${newTrial.charge.replace('_', ' ')} against ${accused?.name ?? 'your family'}.`,
+    patch: { secrets: secretsExposed, trials: [...(state.trials ?? []), newTrial] },
+    logMsg: `You defy them. ${secret.flavorText} ${leaderFound.name} brings formal charges of ${charge} against ${accused?.name ?? 'your family'}.`,
   };
 }

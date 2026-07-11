@@ -21,6 +21,7 @@ import type { Character } from '../src/models/character';
 import type { Clan, ClanLeader } from '../src/models/clan';
 import type { GameState } from '../src/state/gameStore';
 import type { Secret } from '../src/models/secret';
+import type { TrialState } from '../src/models/trial';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -378,10 +379,12 @@ describe('counterplay math', () => {
 });
 
 describe('mapSecretTypeToTrialCharge', () => {
-  test('electoral_fraud has a direct match; others fall back to corruption', () => {
-    expect(mapSecretTypeToTrialCharge('electoral_fraud')).toBe('electoral_fraud');
-    expect(mapSecretTypeToTrialCharge('embezzlement')).toBe('corruption');
-    expect(mapSecretTypeToTrialCharge('provincial_plunder')).toBe('corruption');
+  // Phase 4, Chunk P4-C — a clean 1:1 now (real ChargeIds exist); was a
+  // fallback-to-'corruption' shim in P4-B before trialCharges.ts existed.
+  test('each criminal SecretType maps to its own real ChargeId', () => {
+    expect(mapSecretTypeToTrialCharge('electoral_fraud')).toBe('ambitus');
+    expect(mapSecretTypeToTrialCharge('embezzlement')).toBe('peculatus');
+    expect(mapSecretTypeToTrialCharge('provincial_plunder')).toBe('repetundae');
   });
 });
 
@@ -527,12 +530,12 @@ describe('resolveSecretDemand', () => {
     const secret = makeSecret({ id: 's1', type: 'affair', holder: 'leader-1', subject: { kind: 'family', characterId: 'pc-1' } });
     const state = makeState({
       clans: [makeClan({ leaders: [leader] })], secrets: [secret],
-      trialQueue: [], lifetimeDignitas: 20,
+      trials: [], lifetimeDignitas: 20,
     });
     const demand = { secretId: 's1', leaderId: 'leader-1', clanId: 'testii', kind: 'extort' as const };
 
     const { patch } = resolveSecretDemand(state, demand, 'defy');
-    expect(patch.trialQueue).toBeUndefined();
+    expect(patch.trials).toBeUndefined();
     expect(patch.lifetimeDignitas).toBe(20 + BALANCE.secrets.npcAi.socialExposureDignitas);
     const updatedLeader = (patch.clans as Clan[])[0].leaders[0];
     expect(updatedLeader.relationship).toBe(20 + BALANCE.secrets.npcAi.socialExposureRelationship);
@@ -541,34 +544,42 @@ describe('resolveSecretDemand', () => {
     expect(updatedSecret.discovered).toBe(true);
   });
 
-  test('defy — criminal secret queues a trial through the existing pipeline', () => {
+  test('defy — criminal secret queues a trial through the unified pipeline', () => {
     const leader = makeLeader({ id: 'leader-1' });
     const secret = makeSecret({ id: 's1', type: 'embezzlement', holder: 'leader-1', subject: { kind: 'family', characterId: 'pc-1' } });
     const state = makeState({
       clans: [makeClan({ leaders: [leader] })], secrets: [secret],
-      trialQueue: [], family: [makeCharacter({ id: 'pc-1' })], ownedAssets: [],
+      trials: [], family: [makeCharacter({ id: 'pc-1' })], ownedAssets: [],
     });
     const demand = { secretId: 's1', leaderId: 'leader-1', clanId: 'testii', kind: 'extort' as const };
 
     const { patch } = resolveSecretDemand(state, demand, 'defy');
-    expect(patch.trialQueue).toBeDefined();
-    const trial = (patch.trialQueue as any[])[0];
-    expect(trial.accusedCharacterId).toBe('pc-1');
-    expect(trial.charge).toBe('corruption');
+    expect(patch.trials).toBeDefined();
+    const trial = (patch.trials as any[])[0];
+    expect(trial.defendant).toEqual({ kind: 'family', characterId: 'pc-1' });
+    expect(trial.charge).toBe('peculatus'); // embezzlement -> peculatus, a real 1:1 mapping now
+    expect(trial.seat).toBe('defense');
+    expect(trial.chargeSource).toBe('secret');
   });
 
   test('defy — criminal secret does not queue a second trial while one is already pending', () => {
     const leader = makeLeader({ id: 'leader-1' });
     const secret = makeSecret({ id: 's1', type: 'embezzlement', holder: 'leader-1', subject: { kind: 'family', characterId: 'pc-1' } });
-    const existingTrial = { id: 't1', accusedCharacterId: 'pc-1', accusingClanId: 'testii', charge: 'corruption' as const, defenseStrength: 20, prosecutionStrength: 20, turnsRemaining: 2, resolved: false, actionsUsed: [] };
+    const existingTrial: TrialState = {
+      id: 't1', seat: 'defense', charge: 'peculatus', chargeSource: 'accusation',
+      prosecutor: { kind: 'leader', leaderId: 'leader-1' }, defendant: { kind: 'family', characterId: 'pc-1' },
+      filedSeason: 8, startsSeason: 10, playerPrep: { totalStrength: 20, actionsUsed: [] },
+      approach: 'procedure', speakerId: 'pc-1', npcStrength: 20, juryLean: 0,
+      consumedSecretIds: [], status: 'preparing',
+    };
     const state = makeState({
       clans: [makeClan({ leaders: [leader] })], secrets: [secret],
-      trialQueue: [existingTrial], family: [makeCharacter({ id: 'pc-1' })], ownedAssets: [],
+      trials: [existingTrial], family: [makeCharacter({ id: 'pc-1' })], ownedAssets: [],
     });
     const demand = { secretId: 's1', leaderId: 'leader-1', clanId: 'testii', kind: 'extort' as const };
 
     const { patch } = resolveSecretDemand(state, demand, 'defy');
-    expect(patch.trialQueue).toBeUndefined();
+    expect(patch.trials).toBeUndefined();
     const updatedSecret = (patch.secrets as Secret[]).find(s => s.id === 's1')!;
     expect(updatedSecret.status).toBe('exposed');
   });

@@ -13,6 +13,7 @@ import CrisisTrackModal from '../components/shared/CrisisTrackModal';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
 import ScrollModal, { PARCHMENT } from '../components/shared/ScrollModal';
 import { TRIAL_ACTIONS } from '../data/trialActions';
+import { TRIAL_CHARGE_DEFS } from '../data/trialCharges';
 import type { Bill, ActiveLaw } from '../models/bill';
 import type { CrisisTrackId, CrisisTrack } from '../models/crisis';
 import { getTierFromLevel } from '../models/crisis';
@@ -242,10 +243,11 @@ const rsm = StyleSheet.create({
 });
 
 // ─── Trial banner ─────────────────────────────────────────────────────────────
-
-const CHARGE_LABELS: Record<string, string> = {
-  corruption: 'Corruption', treason: 'Treason', electoral_fraud: 'Electoral Fraud', murder: 'Murder',
-};
+// Phase 4, Chunk P4-C — adapted onto TrialState, not rewritten: same JSX
+// shape/layout as before, minimal diff, per the plan's "the old trial panel
+// keeps working by mapping its legacy defense actions onto the new prep
+// model." A small derived-view (defendantName/opponentLine/etc.) stands in
+// for the old flat Trial fields this component used to read directly.
 
 const OUTCOME_COLORS: Record<string, string> = {
   acquitted: COLORS.laurel, dismissed: COLORS.senatBlue,
@@ -253,12 +255,12 @@ const OUTCOME_COLORS: Record<string, string> = {
 };
 
 function TrialBanner() {
-  const { trialQueue, family, clans, ownedAssets, denarii, fides, takeTrialAction } = useGameStore();
+  const { trials, turnNumber, family, clans, ownedAssets, denarii, fides, takeTrialAction } = useGameStore();
   const [expanded, setExpanded] = useState(false);
-  const activeTrial = trialQueue.find(t => !t.resolved);
+  const activeTrial = trials.find(t => t.status !== 'resolved');
 
   if (!activeTrial) {
-    const resolved = trialQueue.filter(t => t.resolved && t.outcome);
+    const resolved = trials.filter(t => t.status === 'resolved' && t.outcome);
     if (resolved.length === 0) return null;
     const last = resolved[resolved.length - 1];
     const color = OUTCOME_COLORS[last.outcome!] ?? COLORS.dust;
@@ -269,8 +271,20 @@ function TrialBanner() {
     );
   }
 
-  const accused = family.find(c => c.id === activeTrial.accusedCharacterId);
-  const clan = clans.find(c => c.id === activeTrial.accusingClanId);
+  const findLeader = (leaderId: string) => clans.flatMap(c => c.leaders).find(l => l.id === leaderId);
+
+  const defendant = activeTrial.defendant;
+  const prosecutor = activeTrial.prosecutor;
+  const defendantName = defendant.kind === 'family'
+    ? family.find(c => c.id === defendant.characterId)?.name ?? 'Unknown'
+    : findLeader(defendant.leaderId)?.name ?? 'Unknown';
+
+  const opponentLine = activeTrial.seat === 'defense'
+    ? `Brought by ${(prosecutor.kind === 'leader' ? findLeader(prosecutor.leaderId)?.name : null) ?? 'Unknown'}`
+    : `You accuse ${defendantName}`;
+
+  const seasonsRemaining = Math.max(0, activeTrial.startsSeason - turnNumber);
+  const chargeLabel = TRIAL_CHARGE_DEFS[activeTrial.charge]?.displayName ?? activeTrial.charge;
   const unlockedAssetActions = getUnlockedAssetActions(ownedAssets);
   const resources: Record<string, number> = { denarii, fides };
 
@@ -279,30 +293,30 @@ function TrialBanner() {
       <TouchableOpacity style={tb.header} onPress={() => setExpanded(e => !e)} activeOpacity={0.75}>
         <View style={tb.headerLeft}>
           <InfoTap termId="trial">
-            <Text style={tb.heading}>⚖️ ACTIVE TRIAL</Text>
+            <Text style={tb.heading}>⚖️ {activeTrial.seat === 'defense' ? 'ACTIVE TRIAL' : 'PROSECUTION FILED'}</Text>
           </InfoTap>
-          <Text style={tb.sub}>{CHARGE_LABELS[activeTrial.charge] ?? activeTrial.charge} · {accused?.name ?? 'Unknown'}</Text>
-          <Text style={tb.sub}>Brought by {clan?.name ?? 'Unknown'} · {activeTrial.turnsRemaining} season{activeTrial.turnsRemaining !== 1 ? 's' : ''} remaining</Text>
+          <Text style={tb.sub}>{chargeLabel} · {activeTrial.seat === 'defense' ? defendantName : `vs. ${defendantName}`}</Text>
+          <Text style={tb.sub}>{opponentLine} · {seasonsRemaining} season{seasonsRemaining !== 1 ? 's' : ''} remaining</Text>
         </View>
         <Text style={tb.chevron}>{expanded ? '▲' : '▼'}</Text>
       </TouchableOpacity>
       <View style={tb.barsRow}>
         <View style={tb.barWrap}>
-          <Text style={tb.barLabel}>Defense</Text>
-          <View style={tb.barTrack}><View style={[tb.barFill, { width: `${activeTrial.defenseStrength}%`, backgroundColor: COLORS.laurel }]} /></View>
-          <Text style={[tb.barVal, { color: COLORS.laurel }]}>{activeTrial.defenseStrength}</Text>
+          <Text style={tb.barLabel}>Your Strength</Text>
+          <View style={tb.barTrack}><View style={[tb.barFill, { width: `${Math.min(100, activeTrial.playerPrep.totalStrength)}%`, backgroundColor: COLORS.laurel }]} /></View>
+          <Text style={[tb.barVal, { color: COLORS.laurel }]}>{Math.round(activeTrial.playerPrep.totalStrength)}</Text>
         </View>
         <View style={tb.barWrap}>
-          <Text style={tb.barLabel}>Prosecution</Text>
-          <View style={tb.barTrack}><View style={[tb.barFill, { width: `${activeTrial.prosecutionStrength}%`, backgroundColor: COLORS.crimson }]} /></View>
-          <Text style={[tb.barVal, { color: COLORS.crimson }]}>{activeTrial.prosecutionStrength}</Text>
+          <Text style={tb.barLabel}>Their Strength</Text>
+          <View style={tb.barTrack}><View style={[tb.barFill, { width: `${Math.min(100, activeTrial.npcStrength)}%`, backgroundColor: COLORS.crimson }]} /></View>
+          <Text style={[tb.barVal, { color: COLORS.crimson }]}>{Math.round(activeTrial.npcStrength)}</Text>
         </View>
       </View>
       {expanded && (
         <View style={tb.actions}>
-          <Text style={tb.actionsLabel}>DEFENSE ACTIONS</Text>
+          <Text style={tb.actionsLabel}>PREPARATION</Text>
           {TRIAL_ACTIONS.map(action => {
-            const alreadyUsed = activeTrial.actionsUsed.includes(action.id);
+            const alreadyUsed = activeTrial.playerPrep.actionsUsed.includes(action.id);
             const needsAsset = action.requiresAssetAction && !unlockedAssetActions.includes(action.requiresAssetAction);
             const canAfford = resources[action.cost.resource] >= action.cost.amount;
             const disabled = alreadyUsed || !!needsAsset || !canAfford;
@@ -313,7 +327,7 @@ function TrialBanner() {
                   <Text style={tb.actionLabel}>{action.label}</Text>
                   <Text style={tb.actionCost}>−{action.cost.amount} {resourceLabel}</Text>
                 </View>
-                <Text style={tb.actionDesc}>{alreadyUsed ? 'Already used this trial.' : needsAsset ? `Requires: ${action.requiresAssetAction?.replace('_', ' ')}` : `Defense +${action.defenseBonus}`}</Text>
+                <Text style={tb.actionDesc}>{alreadyUsed ? 'Already used this trial.' : needsAsset ? `Requires: ${action.requiresAssetAction?.replace('_', ' ')}` : `Strength +${action.defenseBonus}`}</Text>
               </TouchableOpacity>
             );
           })}

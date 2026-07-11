@@ -58,6 +58,18 @@ export interface ClanLeader {
    *  model field lists, but required to make that consequence mechanically
    *  real (npcGatherTick had no per-leader memory on this side before). */
   familyGroundwork?: number;
+
+  // ── Phase 4, Chunk P4-C — Trials ────────────────────────────────────────────
+  /** 0–100, mirrors Character.corruptionScore. Feeds the player's
+   *  corruption-gated prosecution-filing path (BALANCE.trials.corruptionChargeThreshold).
+   *  Real and seasonal, not a static seed: trialEngine.tickLeaderCorruption
+   *  accrues it for leaders who've held praetor/consul and roll "actively
+   *  governing" a province this season, via the taxation-notch abstraction
+   *  described in that function's header comment — no NPC-governorship
+   *  infrastructure exists in this codebase, so this is a leader-side proxy,
+   *  not a simulation of who economically controls which province.
+   *  Optional/absent (read as 0) so pre-P4-C saves load unchanged. */
+  corruptionScore?: number;
 }
 
 export interface Clan {

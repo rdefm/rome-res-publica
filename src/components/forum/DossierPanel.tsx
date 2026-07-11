@@ -3,7 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import type { Secret } from '../../models/secret';
 import { isDeterred, payOffCost, discreditChance } from '../../engine/secretEngine';
-import { SECRET_TYPE_DEFS } from '../../data/secretDefinitions';
+import { SECRET_TYPE_DEFS, SECRET_CLASS_BY_TYPE } from '../../data/secretDefinitions';
+import { BALANCE } from '../../data/balance';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import InfoTap from '../shared/InfoTap';
 
@@ -126,6 +127,48 @@ function DiscreditPickerModal({
   );
 }
 
+// ─── File Prosecution delay picker (Phase 4, Chunk P4-C) ────────────────────
+
+export function FileProsecutionPickerModal({
+  visible,
+  leaderId,
+  onClose,
+}: {
+  visible: boolean;
+  leaderId: string | null;
+  onClose: () => void;
+}) {
+  const fileProsecution = useGameStore(s => s.fileProsecution);
+  if (!leaderId) return null;
+  const [minDelay, maxDelay] = BALANCE.trials.startDelayBand;
+  const delays = Array.from({ length: maxDelay - minDelay + 1 }, (_, i) => minDelay + i);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={pk.overlay} activeOpacity={1} onPress={onClose}>
+        <View style={pk.modal}>
+          <Text style={pk.title}>WHEN DOES THE TRIAL BEGIN?</Text>
+          <Text style={pk.subtitle}>
+            Sooner catches them unprepared; later gives you more time to build your own case — but them too.
+          </Text>
+          {delays.map(delay => (
+            <TouchableOpacity
+              key={delay}
+              style={pk.row}
+              onPress={() => { fileProsecution(leaderId, delay); onClose(); }}
+            >
+              <Text style={pk.rowLabel}>{delay} season{delay !== 1 ? 's' : ''} from now</Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity style={pk.cancelBtn} onPress={onClose}>
+            <Text style={pk.cancelBtnText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
 const pk = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: SPACING.lg },
   modal: { backgroundColor: COLORS.panelElevated, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, padding: SPACING.md },
@@ -149,16 +192,20 @@ const pk = StyleSheet.create({
 function HeldByYouRow({ secret }: { secret: Secret }) {
   const clans = useGameStore(s => s.clans);
   const secrets = useGameStore(s => s.secrets);
+  const trials = useGameStore(s => s.trials);
   const extortSecret = useGameStore(s => s.extortSecret);
   const stopExtortion = useGameStore(s => s.stopExtortion);
   const burnSecret = useGameStore(s => s.burnSecret);
   const [leveragePickerOpen, setLeveragePickerOpen] = useState(false);
+  const [prosecutionPickerOpen, setProsecutionPickerOpen] = useState(false);
 
   const subject = secret.subject;
   if (subject.kind !== 'leader') return null;
   const leader = clans.flatMap(c => c.leaders).find(l => l.id === subject.leaderId);
   const frozen = isDeterred(subject.leaderId, secrets);
   const def = SECRET_TYPE_DEFS[secret.type];
+  const isCriminal = SECRET_CLASS_BY_TYPE[secret.type] === 'criminal';
+  const trialAlreadyActive = trials.some(t => t.status !== 'resolved');
 
   return (
     <View style={row.card}>
@@ -189,10 +236,26 @@ function HeldByYouRow({ secret }: { secret: Secret }) {
           <TouchableOpacity style={[row.actionBtn, row.burnBtn]} onPress={() => burnSecret(secret.id)}>
             <Text style={[row.actionBtnText, row.burnBtnText]}>Burn</Text>
           </TouchableOpacity>
+          {isCriminal && (
+            <TouchableOpacity
+              style={[row.actionBtn, row.prosecuteBtn, trialAlreadyActive && row.actionBtnDisabled]}
+              disabled={trialAlreadyActive}
+              onPress={() => setProsecutionPickerOpen(true)}
+            >
+              <Text style={[row.actionBtnText, row.prosecuteBtnText]}>
+                {trialAlreadyActive ? 'The courts are occupied' : 'File Prosecution'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
       <LeveragePickerModal visible={leveragePickerOpen} secret={secret} onClose={() => setLeveragePickerOpen(false)} />
+      <FileProsecutionPickerModal
+        visible={prosecutionPickerOpen}
+        leaderId={subject.leaderId}
+        onClose={() => setProsecutionPickerOpen(false)}
+      />
     </View>
   );
 }
@@ -263,6 +326,8 @@ const row = StyleSheet.create({
   actionBtnText: { color: COLORS.gold, fontFamily: FONTS.ui, fontSize: 11, fontWeight: '600' },
   burnBtn: { borderColor: COLORS.crimson },
   burnBtnText: { color: COLORS.crimson },
+  prosecuteBtn: { borderColor: COLORS.senatBlue },
+  prosecuteBtnText: { color: COLORS.senatBlue },
 });
 
 // ─── DossierPanel ─────────────────────────────────────────────────────────────

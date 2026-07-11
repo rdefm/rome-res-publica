@@ -892,6 +892,103 @@ export const BALANCE = {
       npcBurnStandingMax: 5,
     },
   },
+
+  /** Phase 4, Chunk P4-C — the unified trial pipeline. FIRST-PASS/UNVERIFIED,
+   *  same treatment as every other constant group in this file. */
+  trials: {
+    // ── Filing ────────────────────────────────────────────────────────────
+    fileCostFides: 15,
+    /** Initial npcStrength granted by the evidence base — a consumed
+     *  criminal Secret scales by potency; the corruption path is flat and
+     *  smaller (weaker case, cheaper to build). */
+    secretEvidenceBase: 15,
+    corruptionEvidenceBase: 10,
+    corruptionChargeThreshold: 60,
+    /** Player picks startsSeason = filed + 2..4. NPC-initiated trials
+     *  (corruption/treason/military_incompetence/criminal-exposure triggers)
+     *  always use the fixed delay below, not a player choice. */
+    startDelayBand: [2, 4] as [number, number],
+    npcInitiatedDelay: 3,
+
+    // ── Opponent prep growth (per season, while 'preparing') ────────────────
+    // npcPrepBase + npcPrepPerIntrigue × intrigue + npcPrepClanFactor × clan.influence.
+    // No wealthy-trait multiplier — ClanLeader has no traits system (only
+    // `bias`), and the plan's own phrasing ("if traits expose one")
+    // anticipated this outcome; skipped rather than inventing a proxy.
+    npcPrepBase: 3,
+    npcPrepPerIntrigue: 0.5,
+    npcPrepClanFactor: 0.15,
+    /** The opponent-strength estimate band shown to the player: ±this
+     *  fraction, narrowed to the exact number once the player holds a
+     *  Secret on the opponent leader (the cleanest existing intel signal —
+     *  "Local-Support-style intel" doesn't apply to clan leaders, only
+     *  provinces). */
+    estimateBandPct: 0.20,
+
+    // ── Jury lean (recomputed every season) ──────────────────────────────
+    // Σ over clans of familyReputations[clanId] × juryLeanPerStanding ×
+    // clanVoteWeight(clan) — familyReputations is already -100..100 and
+    // zero-centered, so no extra "-50" offset is needed (the plan's formula
+    // assumed a 0-100 "standing" scale; this codebase's equivalent is
+    // already centered on 0).
+    juryLeanPerStanding: 0.05,
+    juryLeanCap: 10,
+
+    // ── Verdict thresholds ────────────────────────────────────────────────
+    // Differential bands (>threshold) mapping to outcomes, always phrased
+    // from the DEFENDANT's perspective — trialEngine.computeVerdict flips
+    // the differential's sign when the player is the prosecutor before
+    // applying these same bands ("the same bands read from the other
+    // side"). Two severity tiers (data/trialCharges.ts's severityTier)
+    // rather than 5 separate per-charge tables, since the plan gives no
+    // distinct numbers per charge — 'severe' (maiestas, military_incompetence)
+    // shifts every band up by 10, harsher across the board. Below the
+    // lowest listed band (exiled) is executed.
+    verdictThresholds: {
+      standard: { acquitted: 30, dismissed: 10, fined: -10, exiled: -30 },
+      severe:   { acquitted: 40, dismissed: 20, fined: 0,   exiled: -20 },
+    },
+
+    // ── Calumnia (losing a player-filed prosecution) ─────────────────────
+    // Player's OWN differential (not the defendant-flipped one) below this
+    // triggers calumnia — a clear loss, not merely "didn't win."
+    calumniaThreshold: -20,
+    calumniaDignitas: -15,
+    calumniaClanRelations: -25,
+    counterSuitChance: 0.35,
+
+    // ── Verdict math shares (design invariant 1 — "70/30, and it's a
+    // constant") ──────────────────────────────────────────────────────────
+    /** finalX = prepScore × prepShare + performance. Performance (P4-E) is
+     *  always 0 this chunk, so verdicts resolve prep-only — the share still
+     *  lives here so nothing downstream needs a second number when P4-E lands. */
+    prepShare: 0.70,
+    /** The ±30% share of a 100-point prep scale P4-E's beats can swing.
+     *  Unused this chunk (performance is hardcoded 0) — defined now so the
+     *  constant has one home, per invariant 1's "nothing may bypass the clamp." */
+    performanceCap: 30,
+
+    // ── Leader corruption / "governorship" accrual (tickLeaderCorruption) ──
+    // No NPC-governorship simulation exists in this codebase (provinces
+    // only track playerGovernor) — this is a leader-side abstraction, not a
+    // simulation of who economically controls which province. Eligibility:
+    // has held praetor or consul (historically provincial-command-granting
+    // offices, already tracked via heldOffices). Each season, an eligible
+    // leader has `activeChance` odds of "actively governing" this season;
+    // if so, a taxation notch is picked (weighted by standing — hostile
+    // leaders lean extortionate) and BALANCE-external
+    // province.TAXATION_CORRUPTION_PER_TURN[notch] is applied directly, so
+    // this reuses real, already-tuned numbers rather than inventing new ones.
+    governorship: {
+      activeChance: 0.15,
+      /** relationship < this → weighted toward heavy/extortionate. */
+      hostileStandingMax: 0,
+      /** relationship < this (and >= hostileStandingMax) → standard/heavy mix. */
+      neutralStandingMax: 40,
+      // Otherwise (>= neutralStandingMax): benevolent/light/standard mix —
+      // a friendly leader has less reason to fleece a province.
+    },
+  },
 };
 
 // ─── Known un-extracted tunables ───────────────────────────────────────────

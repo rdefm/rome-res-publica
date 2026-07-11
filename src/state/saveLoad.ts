@@ -40,6 +40,9 @@ const SaveSchema = z.object({
     currentValue: z.number(),
     milestonesReached: z.array(z.number()),
   })).default([]),
+  // Legacy shape (pre-P4-C saves) — kept optional so old saves still
+  // validate; gameStore.loadGame migrates any entries here into `trials`
+  // (mirrors the wars/P3-A per-element migration pattern).
   trialQueue: z.array(z.object({
     id: z.string(),
     accusedCharacterId: z.string(),
@@ -51,7 +54,10 @@ const SaveSchema = z.object({
     resolved: z.boolean(),
     outcome: z.string().optional(),
     actionsUsed: z.array(z.string()),
-  })).default([]),
+  })).default([]).optional(),
+  // Phase 4, Chunk P4-C — the unified TrialState pipeline. .default([])
+  // ensures pre-P4-C saves (which have trialQueue instead) load cleanly.
+  trials: z.array(z.any()).default([]),
   // P2-A instrumentation — .default()s ensure pre-Phase-2 saves load cleanly.
   seasonStartedAt: z.number().default(() => Date.now()),
   actionsThisSeason: z.number().default(0),

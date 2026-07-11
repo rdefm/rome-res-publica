@@ -9,7 +9,7 @@ import type { OwnedAsset } from '../models/asset';
 import type { ActiveAmbition } from '../models/ambition';
 import type { LegacyObjective } from '../models/legacyObjective';
 import type { PatronTier } from '../models/patronLadder';
-import type { Trial } from '../models/trial';
+import type { TrialState, TrialApproach, ChargeId, ChargeSource } from '../models/trial';
 import type { Secret, PendingSecretDemand } from '../models/secret';
 import type { ProvinceState, GovernorPolicy, CampaignState, OfficerVolunteerState } from '../models/province';
 import type { TroopUnit } from '../models/troop';
@@ -50,7 +50,14 @@ import {
   payOffCost,
   attemptDiscredit,
   resolveSecretDemand,
+  mapSecretTypeToTrialCharge,
 } from '../engine/secretEngine';
+import {
+  canFileProsecution,
+  buildTrialState,
+  applyLegacyTrialAction,
+  convertLegacyTrial,
+} from '../engine/trialEngine';
 import {
   resolveAmbassadorAction as engineResolveAmbassadorAction,
   type AmbassadorActionId,
@@ -251,8 +258,8 @@ export interface GameState {
   patronTier: PatronTier;
   lifetimeDignitas: number;
 
-  // Trials (Feature 6)
-  trialQueue: Trial[];
+  // Trials (Feature 6, reworked Phase 4, Chunk P4-C — "one pipeline, two seats")
+  trials: TrialState[];
 
   // Faction Reputation (Feature 2)
   familyReputations: Record<string, number>;
@@ -538,6 +545,10 @@ export interface GameActions {
 
   // Trials
   takeTrialAction: (trialId: string, actionId: string) => void;
+  // Phase 4, Chunk P4-C
+  fileProsecution: (targetLeaderId: string, startDelay: number, speakerId?: string) => void;
+  setTrialApproach: (trialId: string, approach: TrialApproach) => void;
+  setTrialSpeaker: (trialId: string, characterId: string) => void;
 
   // Birth
   confirmBirthNaming: (name: string) => void;
@@ -844,7 +855,7 @@ export const INITIAL_STATE: GameState = {
   legacyObjectives: initLegacyObjectives(),
   patronTier: 0,
   lifetimeDignitas: 0,
-  trialQueue: [],
+  trials: [],
 
   activeLaws: [],
   passedBills: [],
@@ -1993,16 +2004,20 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     });
   },
 
-  // ─── Trials ─────────────────────────────────────────────────────────────────
+  // ─── Trials (Phase 4, Chunk P4-C — "one pipeline, two seats") ──────────────
+  // takeTrialAction is the legacy TRIAL_ACTIONS shim — generic prep now (both
+  // seats), superseded by P4-D's Basilica/Logos/Pathos/Ethos. The button list
+  // and its costs/bonuses are unchanged; only where the bonus lands changed
+  // (playerPrep.totalStrength instead of a defense-only defenseStrength).
 
   takeTrialAction: (trialId, actionId) => {
     const s = get();
     const { TRIAL_ACTIONS } = require('../data/trialActions');
     const { getUnlockedAssetActions } = require('../engine/assetEngine');
 
-    const trial = s.trialQueue.find(t => t.id === trialId);
-    if (!trial || trial.resolved) return;
-    if (trial.actionsUsed.includes(actionId)) return;
+    const trial = s.trials.find(t => t.id === trialId);
+    if (!trial || trial.status === 'resolved') return;
+    if (trial.playerPrep.actionsUsed.includes(actionId)) return;
 
     const action = TRIAL_ACTIONS.find((a: any) => a.id === actionId);
     if (!action) return;
@@ -2019,22 +2034,100 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const label = turnLabel(s);
     set({
       [resource]: currentAmount - action.cost.amount,
-      trialQueue: s.trialQueue.map(t =>
-        t.id === trialId
-          ? {
-              ...t,
-              defenseStrength: Math.min(100, t.defenseStrength + action.defenseBonus),
-              actionsUsed: [...t.actionsUsed, actionId],
-            }
-          : t
+      trials: s.trials.map(t =>
+        t.id === trialId ? { ...t, playerPrep: applyLegacyTrialAction(t.playerPrep, action) } : t
       ),
-      log: [...s.log, mkLog(label, `Trial defense: ${action.label}. Defense +${action.defenseBonus}.`, 'good')],
+      log: [...s.log, mkLog(label, `Trial preparation: ${action.label}. Strength +${action.defenseBonus}.`, 'good')],
       ...bumpActions(s),
       ...bumpSpend(s, {
         fides:   resource === 'fides'   ? action.cost.amount : undefined,
         denarii: resource === 'denarii' ? action.cost.amount : undefined,
       }),
     });
+  },
+
+  fileProsecution: (targetLeaderId, startDelay, speakerId) => {
+    const s = get();
+    if (s.fides < BALANCE.trials.fileCostFides) return;
+    if (s.trials.some(t => t.status !== 'resolved')) return; // one active trial system-wide
+    const found = findClanAndLeader(s.clans, targetLeaderId);
+    if (!found) return;
+    const { leader } = found;
+
+    const gate = canFileProsecution(leader, s.secrets);
+    if (!gate.eligible) return;
+
+    const clampedDelay = Math.max(
+      BALANCE.trials.startDelayBand[0],
+      Math.min(BALANCE.trials.startDelayBand[1], Math.round(startDelay))
+    );
+    const player = s.family.find(c => c.isPlayer);
+    const finalSpeakerId = speakerId ?? player?.id ?? '';
+
+    let charge: ChargeId;
+    let chargeSource: ChargeSource;
+    let initialNpcStrength: number;
+    let consumedSecretIds: string[] = [];
+    let secretsPatch = s.secrets;
+
+    if (gate.via === 'secret' && gate.evidenceSecret) {
+      charge = mapSecretTypeToTrialCharge(gate.evidenceSecret.type);
+      chargeSource = 'secret';
+      initialNpcStrength = BALANCE.trials.secretEvidenceBase * gate.evidenceSecret.potency;
+      consumedSecretIds = [gate.evidenceSecret.id];
+      secretsPatch = s.secrets.map(sec =>
+        sec.id === gate.evidenceSecret!.id ? { ...sec, status: 'spent' as const } : sec
+      );
+    } else {
+      // Corruption path — no Secret to infer a specific charge from;
+      // 'peculatus' (financial malfeasance) is the most generic
+      // corruption-adjacent charge, matching shouldTriggerTrial's own
+      // corruption-branch mapping.
+      charge = 'peculatus';
+      chargeSource = 'corruption';
+      initialNpcStrength = BALANCE.trials.corruptionEvidenceBase;
+    }
+
+    const newTrial = buildTrialState({
+      id: `trial-${Date.now()}`,
+      seat: 'prosecution',
+      charge,
+      chargeSource,
+      prosecutor: { kind: 'player', speakerId: finalSpeakerId },
+      defendant: { kind: 'leader', leaderId: targetLeaderId },
+      filedSeason: s.turnNumber,
+      startsSeason: s.turnNumber + clampedDelay,
+      initialNpcStrength,
+      consumedSecretIds,
+      speakerId: finalSpeakerId,
+    });
+
+    const label = turnLabel(s);
+    set({
+      fides: s.fides - BALANCE.trials.fileCostFides,
+      trials: [...s.trials, newTrial],
+      secrets: secretsPatch,
+      log: [...s.log, mkLog(label, `You file charges against ${leader.name}. Trial begins in ${clampedDelay} seasons.`, 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: BALANCE.trials.fileCostFides }),
+    });
+  },
+
+  /** Free, adjustable until startsSeason (design invariant 8) — locks once
+   *  the trial enters session. */
+  setTrialApproach: (trialId, approach) => {
+    const s = get();
+    const trial = s.trials.find(t => t.id === trialId);
+    if (!trial || trial.status !== 'preparing' || s.turnNumber >= trial.startsSeason) return;
+    set({ trials: s.trials.map(t => t.id === trialId ? { ...t, approach } : t) });
+  },
+
+  setTrialSpeaker: (trialId, characterId) => {
+    const s = get();
+    const trial = s.trials.find(t => t.id === trialId);
+    if (!trial || trial.status !== 'preparing' || s.turnNumber >= trial.startsSeason) return;
+    if (!s.family.some(c => c.id === characterId)) return;
+    set({ trials: s.trials.map(t => t.id === trialId ? { ...t, speakerId: characterId } : t) });
   },
 
   // ─── Birth ──────────────────────────────────────────────────────────────────
@@ -2423,6 +2516,20 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     // one (which works too, but leaves evt-cadet-visit tracking nothing
     // until extinction actually happens).
     cadetBranch: savedState.cadetBranch ?? generateCadet(),
+    // Phase 4, Chunk P4-C — a pre-P4-C save has the old `trialQueue: Trial[]`
+    // shape (and no `trials` key at all — `...savedState` above only
+    // overrides trials if the key is actually present in the parsed JSON).
+    // Same per-element migration pattern as the `wars` block above.
+    // Purchased defenseStrength is never lost (design invariant 9) —
+    // convertLegacyTrial seeds playerPrep.totalStrength from it directly.
+    trials: savedState.trials ?? (((savedState as any).trialQueue ?? []) as any[]).map(legacy =>
+      convertLegacyTrial(
+        legacy,
+        savedState.turnNumber,
+        savedState.clans,
+        savedState.family.find(c => c.isPlayer)?.id ?? 'pc-1'
+      )
+    ),
     // Always reset transient UI state — these must not be loaded from disk
     gameStarted:   true,
     debugMode:     false,

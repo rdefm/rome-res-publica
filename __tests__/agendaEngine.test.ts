@@ -19,7 +19,7 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
     currentOffice: null,
     officeSeasons: 0,
     // Trials
-    trialQueue: [],
+    trials: [],
     // Election
     campaigning: null,
     campaigningCharacterId: null,
@@ -57,17 +57,26 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
 
 // ─── Factories for complex objects ────────────────────────────────────────────
 
+// Phase 4, Chunk P4-C — TrialState shape. startsSeason is relative to
+// makeState's default turnNumber: 1, so passing startsSeason: 1 + N
+// reproduces the old turnsRemaining: N semantics exactly.
 function makeTrial(overrides: Record<string, unknown> = {}) {
   return {
     id: 'trial-001',
-    accusedCharacterId: 'pc-brutus',
-    accusingClanId: 'fabii',
-    charge: 'corruption',
-    defenseStrength: 30,
-    prosecutionStrength: 70,
-    turnsRemaining: 1,
-    resolved: false,
-    actionsUsed: [],
+    seat: 'defense',
+    charge: 'peculatus',
+    chargeSource: 'accusation',
+    prosecutor: { kind: 'leader', leaderId: 'leader-fabii' },
+    defendant: { kind: 'family', characterId: 'pc-brutus' },
+    filedSeason: 0,
+    startsSeason: 1,
+    playerPrep: { totalStrength: 30, actionsUsed: [] },
+    approach: 'procedure',
+    speakerId: 'pc-brutus',
+    npcStrength: 70,
+    juryLean: 0,
+    consumedSecretIds: [],
+    status: 'preparing',
     ...overrides,
   } as any;
 }
@@ -96,27 +105,27 @@ describe('generateAgenda', () => {
   // 2 — Trial resolving this season with losing defense is critical
   test('trial resolving this season with losing defense is critical', () => {
     const trial = makeTrial({
-      defenseStrength: 20,
-      prosecutionStrength: 80,
-      turnsRemaining: 1,
+      playerPrep: { totalStrength: 20, actionsUsed: [] },
+      npcStrength: 80,
+      startsSeason: 1,
     });
     const state = makeState({
-      trialQueue: [trial],
+      trials: [trial],
       family: [makePlayer()],
     });
     const criticals = getCriticalItems(state);
     expect(criticals.some(i => i.id === `agenda-trial-${trial.id}`)).toBe(true);
   });
 
-  // Also verify: a trial with 3 turns remaining and winning defense is only a warning
+  // Also verify: a trial with 3 seasons remaining and winning prep is only a warning
   test('trial with comfortable defense and 3 seasons remaining is only a warning', () => {
     const trial = makeTrial({
-      defenseStrength: 80,
-      prosecutionStrength: 30,
-      turnsRemaining: 3,
+      playerPrep: { totalStrength: 80, actionsUsed: [] },
+      npcStrength: 30,
+      startsSeason: 4,
     });
     const state = makeState({
-      trialQueue: [trial],
+      trials: [trial],
       family: [makePlayer()],
     });
     const criticals = getCriticalItems(state);
@@ -151,9 +160,9 @@ describe('generateAgenda', () => {
   // 5 — Sort order is severity-first
   test('items are sorted severity-first', () => {
     // Set up both a critical item (trial resolving now) and a warning (senate 1 season)
-    const trial = makeTrial({ turnsRemaining: 1, defenseStrength: 20, prosecutionStrength: 80 });
+    const trial = makeTrial({ startsSeason: 1, playerPrep: { totalStrength: 20, actionsUsed: [] }, npcStrength: 80 });
     const state = makeState({
-      trialQueue: [trial],
+      trials: [trial],
       family: [makePlayer()],
       flags: { seasonsSinceLastBillPassed: 1 },
     });
