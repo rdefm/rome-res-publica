@@ -66,7 +66,9 @@ export const BALANCE = {
     forgeAllianceRelationshipGain: 12,
     arrangeMarriageFidesCost: 20,
     arrangeMarriageRelationshipGain: 20,
-    gatherIntelligenceFidesCost: 8,
+    // gatherIntelligenceFidesCost removed, Phase 4 P4-A — superseded by
+    // BALANCE.secrets.gatherCostFides (same seed value, 8); gatherIntelligence
+    // is now rewired onto secretEngine.attemptGather.
     canvassForVotesFidesCost: 12,
   },
 
@@ -807,6 +809,39 @@ export const BALANCE = {
      *  100 so a future tuning pass can soften it without touching engine
      *  code. */
     crisisTerminalThreshold: 100,
+  },
+
+  /** Phase 4, Chunk P4-A — Secrets (gather/generation only; spend/counterplay
+   *  numbers land in P4-B, trial numbers in BALANCE.trials from P4-C on).
+   *  FIRST-PASS/UNVERIFIED, same treatment as every other constant group in
+   *  this file. Supersedes diplomacy.gatherIntelligenceFidesCost, which this
+   *  chunk removes (gatherIntelligence is rewired onto secretEngine). */
+  secrets: {
+    gatherCostFides: 8,
+    /** gatherChance(agent, groundwork) = gatherBaseChance + agent.intrigus ×
+     *  gatherPerIntrigus + groundwork, clamped to gatherChanceCap. */
+    gatherBaseChance: 0.25,
+    gatherPerIntrigus: 0.06,
+    gatherChanceCap: 0.90,
+    /** Failed gather attempts raise groundwork (persists, no decay v1),
+     *  which feeds back into gatherChance above — persistence pays
+     *  deterministically even on a bad-roll streak. */
+    groundworkPerFailure: 0.10,
+    groundworkCap: 0.30,
+    /** Quaestor's Audit a Rival — moved here from the hardcoded 0.6 in
+     *  offices.ts's audit-rival action. */
+    auditRivalChance: 0.60,
+    /** npcGatherTick — each leader with standing < hostileStandingMax rolls
+     *  once per season: npcGatherBase + npcGatherPerCorruption × (highest
+     *  corruption among your family) capped at npcGatherCap. Corruption is
+     *  the fuel — a clean family is nearly un-blackmailable. */
+    npcGatherBase: 0.03,
+    npcGatherPerCorruption: 0.0015,
+    npcGatherCap: 0.15,
+    hostileStandingMax: 30,
+    maxHeldAgainstFamily: 3,
+    /** Potency 1 / 2 / 3 generation weights (sums to 1). */
+    potencyWeights: [0.55, 0.35, 0.10] as [number, number, number],
   },
 };
 

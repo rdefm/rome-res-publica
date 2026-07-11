@@ -20,7 +20,7 @@ function makeCharacter(overrides: Partial<Character> = {}): Character {
     id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 42,
     skills: { rhetoric: 6, martial: 3, intrigus: 4 },
     traits: [], ambition: null, relationship: 100, familyTrust: 100,
-    officeId: null, corruptionScore: 0, inheritedTraits: [], ambitionIds: [], reputationScores: {},
+    officeId: null, heldOffices: [], corruptionScore: 0, inheritedTraits: [], ambitionIds: [], reputationScores: {},
     formalImperium: 0, militaryImperium: 0, raisedLegions: [], veterans: [],
     ...overrides,
   };

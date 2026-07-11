@@ -38,6 +38,13 @@ export interface ClanLeader {
    * In practice this is permanent for proscription; nota-censoria uses a timed flag instead.
    */
   proscribed?: boolean;
+
+  // ── Phase 4, Chunk P4-A — Secrets ─────────────────────────────────────────
+  /** 0–0.3 (BALANCE.secrets.groundworkCap). Rises by groundworkPerFailure on
+   *  each failed Gather Intelligence attempt against this leader (persists,
+   *  no decay v1), feeding back into gatherChance. Reset to 0 on a success.
+   *  Optional/absent (read as 0) so pre-P4-A saves load unchanged. */
+  intelGroundwork?: number;
 }
 
 export interface Clan {

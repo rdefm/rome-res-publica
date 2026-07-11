@@ -1,9 +1,102 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import type { ClanLeader } from '../../models/clan';
 import { useGameStore } from '../../state/gameStore';
 import { getUnlockedReputationActions, computeReputationDelta } from '../../engine/reputationEngine';
+import { gatherChance } from '../../engine/secretEngine';
+import { BALANCE } from '../../data/balance';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
+
+// ─── Gather Intelligence family-member picker (Phase 4, P4-A) ────────────────
+// Inline modal list, per the plan's "a simple inline list is fine this
+// chunk" — the richer Cursus/Basilica candidate-picker treatment lands with
+// the Basilica screen in P4-D.
+
+function IntelPickerModal({
+  visible,
+  leader,
+  onClose,
+  onPick,
+}: {
+  visible: boolean;
+  leader: ClanLeader;
+  onClose: () => void;
+  onPick: (agentId: string) => void;
+}) {
+  const family = useGameStore(s => s.family);
+  const eligible = family.filter(c => c.age >= 18);
+  const groundwork = leader.intelGroundwork ?? 0;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={ip.overlay} activeOpacity={1} onPress={onClose}>
+        <View style={ip.modal}>
+          <Text style={ip.title}>WHO GATHERS INTELLIGENCE?</Text>
+          {eligible.length === 0 && (
+            <Text style={ip.empty}>No adult family member available to send.</Text>
+          )}
+          {eligible.map(c => {
+            const chance = gatherChance(c.skills.intrigus, groundwork);
+            return (
+              <TouchableOpacity
+                key={c.id}
+                style={ip.row}
+                onPress={() => { onPick(c.id); onClose(); }}
+              >
+                <View style={ip.rowInner}>
+                  <Text style={ip.rowName}>{c.isPlayer ? '⭐ ' : ''}{c.name}</Text>
+                  <Text style={ip.rowSub}>Intrigus {c.skills.intrigus}</Text>
+                </View>
+                <Text style={ip.rowChance}>{Math.round(chance * 100)}%</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
+const ip = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    padding: SPACING.lg,
+  },
+  modal: {
+    backgroundColor: COLORS.panelElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+  },
+  title: {
+    color: COLORS.goldDim,
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    letterSpacing: 2,
+    marginBottom: SPACING.sm,
+  },
+  empty: {
+    color: COLORS.dust,
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 12,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  rowInner: { flex: 1 },
+  rowName: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 14 },
+  rowSub: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, marginTop: 2 },
+  rowChance: { color: COLORS.gold, fontFamily: FONTS.ui, fontSize: 13, fontWeight: '700' },
+});
 
 // ─── ForumActionBtn ───────────────────────────────────────────────────────────
 
@@ -68,6 +161,7 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
     buyInfluence, inviteToDinner, forgeAlliance, arrangeMarriageForum,
     gatherIntelligence, canvassForVotes,
   } = useGameStore();
+  const [intelPickerOpen, setIntelPickerOpen] = useState(false);
 
   const canvassed = !!campaignVotes[leader.id];
   const repScore = familyReputations[clanId] ?? 0;
@@ -132,12 +226,10 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
         />
         <ForumActionBtn
           label={leader.blackmail ? 'Counter Blackmail' : 'Gather Intelligence'}
-          cost="8 Fides"
-          desc={leader.blackmail
-            ? 'Neutralise leverage they hold.'
-            : '50% chance to acquire leverage. Reputation -20 if successful.'}
-          disabled={fides < 8}
-          onPress={() => gatherIntelligence(leader.id)}
+          cost={`${BALANCE.secrets.gatherCostFides} Fides`}
+          desc="Send a family member to dig for compromising material. Chance depends on who you send."
+          disabled={fides < BALANCE.secrets.gatherCostFides}
+          onPress={() => setIntelPickerOpen(true)}
         />
         {campaigning && (
           <ForumActionBtn
@@ -149,6 +241,13 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
           />
         )}
       </View>
+
+      <IntelPickerModal
+        visible={intelPickerOpen}
+        leader={leader}
+        onClose={() => setIntelPickerOpen(false)}
+        onPick={(agentId) => gatherIntelligence(leader.id, agentId)}
+      />
     </View>
   );
 }

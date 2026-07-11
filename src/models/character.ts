@@ -1,4 +1,5 @@
 import { TroopUnit } from './troop';
+import type { OfficeId } from './office';
 
 export type PersonalityTrait = 'aggressive' | 'content' | 'ambitious' | 'cautious';
 export type AmbitionType = 'gain_dignitas' | 'protect_family' | 'personal_power';
@@ -39,6 +40,16 @@ export interface Character {
 
   // Added for multi-feature systems (spec Section 0.2)
   officeId: string | null;                      // current office held (null if none)
+  /** Phase 4, Chunk P4-A — historical record of offices this character has won,
+   *  appended at the same moment GameState.heldOffices is (election victory in
+   *  turnSequencer.ts / Tribune grant in gameStore.ts), not at term end. Feeds
+   *  CursusScreen's isHeld/prereqMet for non-player family members (previously
+   *  read the always-effectively-null character.officeId — see that screen's
+   *  OfficeRung) and secretEngine's provincial_plunder eligibility gate.
+   *  Does NOT fix the deeper single-office-slot model: only one family member's
+   *  office is ever "current" at a time (GameState.currentOffice); isCurrent for
+   *  non-player characters is unchanged by this field. */
+  heldOffices: OfficeId[];
   corruptionScore: number;                      // 0–100, triggers prosecution risk
   inheritedTraits: string[];                    // trait IDs from parents (Feature 5)
   ambitionIds: string[];                        // active ambition IDs (Feature 3)

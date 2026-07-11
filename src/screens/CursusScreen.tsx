@@ -179,14 +179,20 @@ function OfficeRung({
   const office = OFFICES.find((o) => o.id === officeId)!;
   const isPlayer = character.isPlayer;
 
+  // Phase 4, Chunk P4-A — non-player "held" now reads the character's own
+  // historical record (character.heldOffices) instead of character.officeId,
+  // which real elections never actually set for a family member (only the
+  // household-wide currentOffice slot and the Tribune special-case do — see
+  // turnSequencer.ts's election-win branch). isCurrent is left as-is: the
+  // single-office-slot model isn't being redesigned here.
   const isCurrent = isPlayer ? currentOffice === officeId : character.officeId === officeId;
-  const isHeld    = isPlayer ? heldOffices.includes(officeId) : character.officeId === officeId;
+  const isHeld    = isPlayer ? heldOffices.includes(officeId) : (character.heldOffices ?? []).includes(officeId);
   const isCampaigning = campaigning === officeId && campaigningCharacterId === character.id;
 
   const prereqMet = !office.prerequisite ||
     (isPlayer
       ? (heldOffices.includes(office.prerequisite) || currentOffice === office.prerequisite)
-      : character.officeId === office.prerequisite);
+      : (character.heldOffices ?? []).includes(office.prerequisite));
   const ageOk           = character.age >= office.minAge;
   const noCampaignActive = !campaigning;
   const isEligible = !isCurrent && !isCampaigning && !isHeld && prereqMet && ageOk && noCampaignActive;

@@ -10,6 +10,7 @@ import type { ActiveAmbition } from '../models/ambition';
 import type { LegacyObjective } from '../models/legacyObjective';
 import type { PatronTier } from '../models/patronLadder';
 import type { Trial } from '../models/trial';
+import type { Secret } from '../models/secret';
 import type { ProvinceState, GovernorPolicy, CampaignState, OfficerVolunteerState } from '../models/province';
 import type { TroopUnit } from '../models/troop';
 import type { SenateResponseState } from '../engine/senateResponseEngine';
@@ -41,6 +42,7 @@ import { buildInitialProvinceStates } from '../data/provinceDefinitions';
 import { processSeason } from '../engine/turnSequencer';
 import { incrementLegacy, initLegacyObjectives } from '../engine/legacyEngine';
 import { adjustReputation, computeReputationDelta } from '../engine/reputationEngine';
+import { attemptGather } from '../engine/secretEngine';
 import {
   resolveAmbassadorAction as engineResolveAmbassadorAction,
   type AmbassadorActionId,
@@ -206,6 +208,11 @@ export interface GameState {
   clans: Clan[];
   expandedClanId: string | null;
   selectedLeaderId: string | null;
+
+  // ── Phase 4, Chunk P4-A — Secrets ──────────────────────────────────────────
+  // Single array (plan's recommendation) filtered by `holder` for the two
+  // views — deterrence checks (P4-B) are a two-way scan either way.
+  secrets: Secret[];
 
   // Cursus Honorum
   currentOffice: OfficeId | null;
@@ -482,7 +489,7 @@ export interface GameActions {
   inviteToDinner: (leaderId: string) => void;
   forgeAlliance: (leaderId: string) => void;
   arrangeMarriageForum: (leaderId: string) => void;
-  gatherIntelligence: (leaderId: string) => void;
+  gatherIntelligence: (leaderId: string, agentId: string) => void;
   canvassForVotes: (leaderId: string) => void;
 
   // Cursus
@@ -797,6 +804,7 @@ export const INITIAL_STATE: GameState = {
   clans: STARTING_CLANS,
   expandedClanId: null,
   selectedLeaderId: null,
+  secrets: [],
 
   currentOffice: null,
   officeSeasons: 0,
@@ -1064,7 +1072,18 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
             tribuneSeasonsServed: 0,
             tribuneHostilityDebt: {},
             family: finalState.family.map(c =>
-              c.id === tribuneCharId ? { ...c, officeId: 'tribune' as any } : c
+              c.id === tribuneCharId
+                ? {
+                    ...c,
+                    officeId: 'tribune' as any,
+                    // Phase 4, Chunk P4-A — Tribune is a parallel office (its own
+                    // tribuneHolder id, not the currentOffice/campaigning slot),
+                    // so it's recorded here rather than the election-win branch.
+                    heldOffices: (c.heldOffices ?? []).includes('tribune')
+                      ? c.heldOffices ?? []
+                      : [...(c.heldOffices ?? []), 'tribune' as OfficeId],
+                  }
+                : c
             ),
           };
           seasonEvents.push(
@@ -1564,21 +1583,34 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     get().adjustClanReputation(found.clan.id, repDelta, found.clan.name);
   },
 
-  gatherIntelligence: (leaderId) => {
+  // Phase 4, Chunk P4-A — rewired onto secretEngine.attemptGather. Cost is
+  // for the attempt, win or lose (matches the old action's unconditional
+  // deduction). Success yields a visible Secret and resets that leader's
+  // groundwork; failure raises groundwork toward a future attempt.
+  gatherIntelligence: (leaderId, agentId) => {
     const s = get();
-    if (s.fides < BALANCE.diplomacy.gatherIntelligenceFidesCost) return;
+    if (s.fides < BALANCE.secrets.gatherCostFides) return;
     const label = turnLabel(s);
+    const result = attemptGather(s, leaderId, agentId, Math.random());
+
     set({
-      fides: s.fides - BALANCE.diplomacy.gatherIntelligenceFidesCost,
+      fides: s.fides - BALANCE.secrets.gatherCostFides,
       clans: s.clans.map((clan) => ({
         ...clan,
         leaders: clan.leaders.map((l) =>
-          l.id === leaderId ? { ...l, intelGathered: true } : l
+          l.id === leaderId ? { ...l, intelGroundwork: result.groundwork } : l
         ),
       })),
-      log: [...s.log, mkLog(label, 'Intelligence gathered on a clan leader.', 'neutral')],
+      secrets: result.secret ? [...s.secrets, result.secret] : s.secrets,
+      log: [...s.log, mkLog(
+        label,
+        result.success
+          ? `Intelligence gathered: ${result.secret!.flavorText}`
+          : 'The attempt turns up nothing of use this season.',
+        result.success ? 'good' : 'neutral'
+      )],
       ...bumpActions(s),
-      ...bumpSpend(s, { fides: BALANCE.diplomacy.gatherIntelligenceFidesCost }),
+      ...bumpSpend(s, { fides: BALANCE.secrets.gatherCostFides }),
     });
   },
 
@@ -1858,6 +1890,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       relationship: 80,
       familyTrust: 100,
       officeId: null,
+      heldOffices: [],
       corruptionScore: 0,
       inheritedTraits: [],
       ambitionIds: [],

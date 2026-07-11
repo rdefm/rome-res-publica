@@ -49,6 +49,7 @@ import { applyTroopAttrition, calcMilitaryImperium } from './troopEngine';
 import { processWarSeason } from './warEngine';
 import { tickSenateResponse } from './senateResponseEngine';
 import { calcAntagonismLevel, tickNpcConsul } from './npcConsulEngine';
+import { npcGatherTick } from './secretEngine';
 import { TRIAL_ACTIONS } from '../data/trialActions';
 import { EVENT_DEFS } from '../data/events';
 import { WAR_EVENT_DEFS } from '../data/warEvents';
@@ -146,6 +147,11 @@ export function processSeason(state: GameState): {
     const result = resolveElection(s);
     if (result.won) {
       const office = OFFICES.find((o) => o.id === s.campaigning);
+      // Phase 4, Chunk P4-A — mirror the household-level heldOffices push (above)
+      // onto the actual winning character's own record. campaigningCharacterId
+      // persists past the win (cleared only at succession — inheritanceEngine.ts),
+      // so it correctly identifies the holder for both player and family wins.
+      const winnerId = s.campaigningCharacterId;
       s = {
         ...s,
         currentOffice: s.campaigning,
@@ -153,6 +159,11 @@ export function processSeason(state: GameState): {
         heldOffices: s.heldOffices.includes(s.campaigning!)
           ? s.heldOffices
           : [...s.heldOffices, s.campaigning!],
+        family: s.family.map(c =>
+          c.id === winnerId && s.campaigning && !(c.heldOffices ?? []).includes(s.campaigning!)
+            ? { ...c, heldOffices: [...(c.heldOffices ?? []), s.campaigning!] }
+            : c
+        ),
         campaigning: null,
         campaignVotes: {},
         electionRivals: [],
@@ -928,6 +939,18 @@ export function processSeason(state: GameState): {
         const clan = s.clans.find(c => c.id === clanId);
         events.push(`${clan?.name ?? 'A clan'} has had enough of your vetoes. Their response is coming.`);
       }
+    }
+  }
+
+  // 9b. Phase 4, Chunk P4-A — Secrets season tick. Groundwork persistence
+  // needs no code here (it's written directly at gather-attempt time in
+  // gameStore.gatherIntelligence and doesn't decay — v1) — this step is only
+  // the NPC-side reverse gather roll. Zero ledger lines by design: generated
+  // Secrets sit latent until P4-B adds discovery/agenda surfacing.
+  {
+    const newSecrets = npcGatherTick(s);
+    if (newSecrets.length > 0) {
+      s = { ...s, secrets: [...s.secrets, ...newSecrets] };
     }
   }
 

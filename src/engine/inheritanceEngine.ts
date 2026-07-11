@@ -328,6 +328,7 @@ export function promoteCadetToParterfamilias(cadet: CadetBranch, state: GameStat
     relationship: 100,
     familyTrust: 70, // starts under some suspicion — a distant cousin, not the line everyone expected
     officeId: null,
+    heldOffices: [],
     corruptionScore: 0,
     inheritedTraits: [],
     ambitionIds: [],
@@ -349,6 +350,7 @@ export function promoteCadetToParterfamilias(cadet: CadetBranch, state: GameStat
     relationship: 80,
     familyTrust: 80,
     officeId: null,
+    heldOffices: [],
     corruptionScore: 0,
     inheritedTraits: [],
     ambitionIds: [],

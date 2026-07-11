@@ -562,6 +562,40 @@ function TelemetrySection() {
   );
 }
 
+// ─── Section: Secrets (Phase 4, P4-A) ──────────────────────────────────────
+// No spend/counterplay UI yet (P4-B) — this dump is the only way to see
+// generated Secrets and per-leader groundwork this chunk.
+
+function SecretsSection() {
+  const secrets = useGameStore(s => s.secrets);
+  const clans = useGameStore(s => s.clans);
+
+  const groundworkByLeader = clans
+    .flatMap(c => c.leaders)
+    .filter(l => (l.intelGroundwork ?? 0) > 0)
+    .map(l => ({ id: l.id, name: l.name, groundwork: l.intelGroundwork }));
+
+  const heldByPlayer = secrets.filter(s => s.holder === 'player');
+  const heldAgainstFamily = secrets.filter(s => s.holder !== 'player');
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>HELD BY YOU ({heldByPlayer.length})</Text>
+      <Text style={styles.dump} selectable>
+        {JSON.stringify(heldByPlayer, null, 2)}
+      </Text>
+      <Text style={styles.sectionTitle}>HELD AGAINST YOUR FAMILY ({heldAgainstFamily.length})</Text>
+      <Text style={styles.dump} selectable>
+        {JSON.stringify(heldAgainstFamily, null, 2)}
+      </Text>
+      <Text style={styles.sectionTitle}>INTEL GROUNDWORK (in progress)</Text>
+      <Text style={styles.dump} selectable>
+        {JSON.stringify(groundworkByLeader, null, 2)}
+      </Text>
+    </View>
+  );
+}
+
 // ─── Section: Pace (P2-E) ───────────────────────────────────────────────────
 // Last-10-per-stage averages read from seasonStatsHistory, bucketed by each
 // season's own patronTierAtEnd snapshot (engine/actionEconomyEngine.ts).
@@ -763,7 +797,7 @@ const paceStyles = StyleSheet.create({
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function DebugPanel() {
-  const [tab, setTab] = useState<'resources' | 'characters' | 'events' | 'battle' | 'war' | 'telemetry' | 'pace'>('resources');
+  const [tab, setTab] = useState<'resources' | 'characters' | 'events' | 'battle' | 'war' | 'secrets' | 'telemetry' | 'pace'>('resources');
 
   return (
     <View style={styles.container}>
@@ -771,7 +805,7 @@ export default function DebugPanel() {
 
       {/* Tab switcher */}
       <View style={styles.tabs}>
-        {(['resources', 'characters', 'events', 'battle', 'war', 'telemetry', 'pace'] as const).map(t => (
+        {(['resources', 'characters', 'events', 'battle', 'war', 'secrets', 'telemetry', 'pace'] as const).map(t => (
           <TouchableOpacity
             key={t}
             style={[styles.tab, tab === t && styles.tabActive]}
@@ -790,6 +824,7 @@ export default function DebugPanel() {
         {tab === 'events'     && <EventsSection />}
         {tab === 'battle'     && <BattleSection />}
         {tab === 'war'        && <WarSection />}
+        {tab === 'secrets'    && <SecretsSection />}
         {tab === 'telemetry'  && <TelemetrySection />}
         {tab === 'pace'       && <PaceSection />}
       </ScrollView>
