@@ -14,7 +14,9 @@
 
 import type { GameState } from '../state/gameStore';
 import type { AncestorRecord, FamilyTreeMember, EpilogueOutcome } from '../models/epilogue';
+import type { TrialState } from '../models/trial';
 import { OFFICES } from '../data/offices';
+import { TRIAL_CHARGE_DEFS } from '../data/trialCharges';
 import { getHighestOffice } from './electionEngine';
 import { assembleHistorianParagraph } from '../data/epilogueText';
 
@@ -40,6 +42,17 @@ function buildNotableBeats(state: GameState): string[] {
   if (lost === 1) beats.push('a trial lost');
   else if (lost > 1) beats.push(`${lost} trials lost`);
 
+  // Phase 4, Chunk P4-F — the prosecution-seat mirror of the defense framing
+  // above (symmetric with "trial survived/lost": win = the target found
+  // guilty, loss = acquitted/dismissed and calumnia risked).
+  const prosecutionTrials = (state.trials ?? []).filter(t => t.status === 'resolved' && t.outcome && t.seat === 'prosecution');
+  const prosecutionWins = prosecutionTrials.filter(t => t.outcome === 'fined' || t.outcome === 'exiled' || t.outcome === 'executed').length;
+  const prosecutionLosses = prosecutionTrials.filter(t => t.outcome === 'acquitted' || t.outcome === 'dismissed').length;
+  if (prosecutionWins === 1) beats.push('a prosecution won');
+  else if (prosecutionWins > 1) beats.push(`${prosecutionWins} prosecutions won`);
+  if (prosecutionLosses === 1) beats.push('a prosecution lost to calumnia');
+  else if (prosecutionLosses > 1) beats.push(`${prosecutionLosses} prosecutions lost to calumnia`);
+
   if (state.cadetBranchUsed) beats.push('the name carried on by a cadet branch when the direct line failed');
 
   const tracks = state.crisis;
@@ -50,6 +63,34 @@ function buildNotableBeats(state: GameState): string[] {
     : 'Rome left in relative stability');
 
   return beats;
+}
+
+/**
+ * Phase 4, Chunk P4-F — the run's single "Cicero moment," for the epilogue
+ * paragraph's dedicated famous-trial sentence. Priority: a Vox-Populi win
+ * (convicted a sitting magistrate, trial.convictedSittingMagistrate) beats
+ * any ordinary conviction; ties (including "no Vox Populi win exists") break
+ * on most recent (highest startsSeason). Returns null for a run with no
+ * qualifying win — buildAncestorRecordWithoutParagraph leaves famousTrial
+ * undefined in that case.
+ */
+function pickFamousTrial(state: GameState): string | null {
+  const wins = (state.trials ?? []).filter((t): t is TrialState & { defendant: { kind: 'leader'; leaderId: string } } =>
+    t.status === 'resolved' && t.seat === 'prosecution' && t.defendant.kind === 'leader' &&
+    (t.outcome === 'fined' || t.outcome === 'exiled' || t.outcome === 'executed')
+  );
+  if (wins.length === 0) return null;
+
+  const best = [...wins].sort((a, b) => {
+    if (!!a.convictedSittingMagistrate !== !!b.convictedSittingMagistrate) {
+      return a.convictedSittingMagistrate ? -1 : 1;
+    }
+    return b.startsSeason - a.startsSeason;
+  })[0];
+
+  const leaderName = state.clans.flatMap(c => c.leaders).find(l => l.id === best.defendant.leaderId)?.name ?? 'the accused';
+  const chargeDef = TRIAL_CHARGE_DEFS[best.charge];
+  return `the conviction of ${leaderName} on charges of ${chargeDef.displayName}`;
 }
 
 /** Builds the full record — everything except historianParagraph, which
@@ -64,6 +105,8 @@ export function buildAncestorRecordWithoutParagraph(
     [state.highestOfficeEverHeld, ...state.heldOffices].filter((id): id is string => !!id)
   );
 
+  const famousTrial = pickFamousTrial(state);
+
   return {
     id: `ancestor-${state.turnNumber}-${Date.now()}`,
     gensName: 'Brutia',
@@ -76,6 +119,7 @@ export function buildAncestorRecordWithoutParagraph(
     generations: state.paterfamiliasGenerations,
     notableBeats: buildNotableBeats(state),
     familyTree: buildFamilyTree(state),
+    ...(famousTrial ? { famousTrial } : {}),
     recordedAt: Date.now(),
   };
 }

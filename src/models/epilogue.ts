@@ -52,6 +52,12 @@ export interface AncestorRecord {
   /** The procedurally-assembled "what the historians wrote" paragraph —
    *  see data/epilogueText.ts. */
   historianParagraph: string;
+  /** Phase 4, Chunk P4-F — a short noun-phrase spotlighting this run's single
+   *  most notable prosecution win (the "Cicero moment"), e.g. "the conviction
+   *  of Appius Claudius Pulcher on charges of Treason". Optional/undefined
+   *  for a run with no qualifying win, and absent entirely on any
+   *  Phase-3-and-earlier Hall record — default-spread, must still render. */
+  famousTrial?: string;
   /** Date.now() — Hall of Ancestors sort order (most recent first). */
   recordedAt: number;
 }

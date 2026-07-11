@@ -77,5 +77,11 @@ export function assembleHistorianParagraph(record: RecordDraft): string {
     ? `Across the years it held, the household ${fillOffice(record)}, and men remembered ${fillBeats(record)}.`
     : `The household ${fillOffice(record)} ${fillGenerations(record)}, and men remembered ${fillBeats(record)}.`;
 
-  return `${opener} ${middle}`;
+  // Phase 4, Chunk P4-F — the famous-trial sentence slot. A dedicated
+  // sentence rather than folding into fillBeats, so the run's single Cicero
+  // moment (if any) always reads as its own beat regardless of how crowded
+  // notableBeats already is.
+  const famousTrialSentence = record.famousTrial ? ` Rome still speaks of ${record.famousTrial}.` : '';
+
+  return `${opener} ${middle}${famousTrialSentence}`;
 }

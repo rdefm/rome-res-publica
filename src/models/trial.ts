@@ -91,6 +91,13 @@ export interface TrialState {
   consumedSecretIds: string[];
   status: 'preparing' | 'in_session' | 'resolved';
   outcome?: TrialOutcome;
+  /** Phase 4, Chunk P4-F — set once at resolution (trialEngine.resolveTrialOutcome)
+   *  when this was a prosecution win over a leader who held office at the
+   *  moment of conviction (the "Vox Populi" case). The live ClanLeader.currentOffice
+   *  signal that drives this doesn't survive to epilogue time (offices turn
+   *  over) — this is the only record of it, read by epilogueEngine when
+   *  picking the run's famousTrial spotlight. undefined for every other trial. */
+  convictedSittingMagistrate?: boolean;
   /** Non-null exactly while status === 'in_session' (Phase 4, Chunk P4-E).
    *  Drawn once when turnNumber reaches startsSeason (trialBeatEngine.drawTrialBeats,
    *  turnSequencer.ts) and persisted — chosen over an ephemeral gameStore

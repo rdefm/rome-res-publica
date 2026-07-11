@@ -41,6 +41,7 @@ import { STARTING_BILLS } from '../data/billTemplates';
 import { buildInitialProvinceStates } from '../data/provinceDefinitions';
 import { processSeason } from '../engine/turnSequencer';
 import { incrementLegacy, initLegacyObjectives } from '../engine/legacyEngine';
+import { LEGACY_DEFINITIONS } from '../data/legacyDefinitions';
 import { adjustReputation, computeReputationDelta } from '../engine/reputationEngine';
 import {
   attemptGather,
@@ -1035,6 +1036,21 @@ function normalizePlayerPrep(prep: any): TrialState['playerPrep'] {
     bribedClanIds: [],
     praetorBribed: false,
   };
+}
+
+/**
+ * Phase 4, Chunk P4-F — a save written before a LEGACY_DEFINITIONS entry
+ * existed (e.g. this chunk's prosecutions_won/magistrates_convicted) has a
+ * legacyObjectives array missing that entry entirely; incrementLegacy's
+ * `.map` silently no-ops on an id it can't find, so without this backfill
+ * the milestone would just never track for that save (design invariant 9).
+ */
+function backfillLegacyObjectives(objectives: GameState['legacyObjectives']): GameState['legacyObjectives'] {
+  const have = new Set((objectives ?? []).map(o => o.definitionId));
+  const missing = LEGACY_DEFINITIONS
+    .filter(def => !have.has(def.id))
+    .map(def => ({ definitionId: def.id, currentValue: 0, milestonesReached: [] as number[] }));
+  return missing.length === 0 ? (objectives ?? []) : [...(objectives ?? []), ...missing];
 }
 
 /**
@@ -2795,6 +2811,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     // one (which works too, but leaves evt-cadet-visit tracking nothing
     // until extinction actually happens).
     cadetBranch: savedState.cadetBranch ?? generateCadet(),
+    // Phase 4, Chunk P4-F — see backfillLegacyObjectives's doc comment.
+    legacyObjectives: backfillLegacyObjectives(savedState.legacyObjectives),
     // Phase 4, Chunk P4-C — a pre-P4-C save has the old `trialQueue: Trial[]`
     // shape (and no `trials` key at all — `...savedState` above only
     // overrides trials if the key is actually present in the parsed JSON).

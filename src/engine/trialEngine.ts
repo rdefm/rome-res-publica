@@ -22,6 +22,7 @@ import { getClanStanding } from './reputationEngine';
 import { detectPaterfamiliasDeath } from './inheritanceEngine';
 import { resolveDeathNotice } from '../data/cadetEvents';
 import { TRIAL_CHARGE_DEFS } from '../data/trialCharges';
+import { incrementLegacy } from './legacyEngine';
 import { BALANCE } from '../data/balance';
 
 // ─── Build a new TrialState ───────────────────────────────────────────────────
@@ -183,6 +184,13 @@ export interface VerdictResult {
   /** The PLAYER's own differential (positive = player did better than the
    *  opponent) — calumnia reads this directly, unflipped. */
   differential: number;
+  /** Phase 4, Chunk P4-F — the two sides' final scores (prep×prepShare +
+   *  performance, before juryLean/Ferocity's flat bonus are folded into
+   *  `differential`), exposed so VerdictScene can animate its two strength
+   *  bars filling to the same numbers the verdict was actually decided on,
+   *  without recomputing or duplicating this formula in the UI layer. */
+  finalPlayer: number;
+  finalNpc: number;
 }
 
 /**
@@ -224,7 +232,7 @@ export function computeVerdict(
   else if (defendantDifferential > bands.exiled)    outcome = 'exiled';
   else                                               outcome = 'executed';
 
-  return { outcome, differential };
+  return { outcome, differential, finalPlayer, finalNpc };
 }
 
 // ─── Calumnia ─────────────────────────────────────────────────────────────────
@@ -440,7 +448,44 @@ export function resolveTrialOutcome(
     }
   }
 
-  const resolvedTrial: TrialState = { ...trial, status: 'resolved', outcome, session: null };
+  // ── Prosecution victory rewards (Phase 4, Chunk P4-F, "the Cicero moment") ──
+  // A win is any guilty verdict (fined/exiled/executed already carry the
+  // charge's own consequence above) with the player in the prosecution seat.
+  let convictedSittingMagistrate = false;
+  if (trial.seat === 'prosecution' && outcome !== 'acquitted' && outcome !== 'dismissed' && opponentFound) {
+    const sittingMagistrate = opponentFound.leader.currentOffice !== null;
+    const dignitasGain = BALANCE.trials.rewards.prosecutionWinDignitasBase
+      + opponentFound.leader.votes
+      + (sittingMagistrate ? BALANCE.trials.rewards.sittingMagistrateBonus : 0);
+    s = { ...s, lifetimeDignitas: Math.max(0, s.lifetimeDignitas + dignitasGain) };
+    convictedSittingMagistrate = sittingMagistrate;
+    events.push(`Victory in court! ${defendantName}'s conviction earns +${dignitasGain} Dignitas.`);
+
+    const { updated: legacyAfterWin, newMilestonesReached: winMilestones } =
+      incrementLegacy(s.legacyObjectives, 'prosecutions_won', 1);
+    s = { ...s, legacyObjectives: legacyAfterWin };
+    for (const m of winMilestones) events.push(`Legacy milestone: "${m.label}" — permanent bonus unlocked.`);
+
+    if (sittingMagistrate) {
+      const { updated: legacyAfterMagistrate, newMilestonesReached: magistrateMilestones } =
+        incrementLegacy(s.legacyObjectives, 'magistrates_convicted', 1);
+      s = { ...s, legacyObjectives: legacyAfterMagistrate };
+      for (const m of magistrateMilestones) events.push(`Legacy milestone: "${m.label}" — permanent bonus unlocked.`);
+    }
+  }
+
+  // ── Defense vindicated (Phase 4, Chunk P4-F) — Dismissed tier specifically,
+  // per the plan's own wording: the case thrown out before it could even be
+  // properly argued, a sharper rebuke to the accuser than a plain Acquitted. ──
+  if (trial.seat === 'defense' && outcome === 'dismissed') {
+    s = { ...s, lifetimeDignitas: Math.max(0, s.lifetimeDignitas + BALANCE.trials.rewards.vindicatedDignitas) };
+    events.push(`Vindicated — the case against ${defendantName} collapses outright. +${BALANCE.trials.rewards.vindicatedDignitas} Dignitas.`);
+  }
+
+  const resolvedTrial: TrialState = {
+    ...trial, status: 'resolved', outcome, session: null,
+    ...(convictedSittingMagistrate ? { convictedSittingMagistrate: true } : {}),
+  };
   return { trial: resolvedTrial, state: s, events, counterSuit };
 }
 

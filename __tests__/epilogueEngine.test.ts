@@ -111,6 +111,58 @@ describe('buildAncestorRecord', () => {
   });
 });
 
+// ─── Phase 4, Chunk P4-F — prosecution-seat framing & famousTrial ───────────
+
+describe('buildAncestorRecord — P4-F prosecution framing', () => {
+  function prosecutionTrial(overrides: any = {}) {
+    return {
+      id: 't-pros', seat: 'prosecution', charge: 'peculatus', chargeSource: 'accusation',
+      prosecutor: { kind: 'player', speakerId: 'pc-1' }, defendant: { kind: 'leader', leaderId: 'leader-1' },
+      filedSeason: 0, startsSeason: 5, playerPrep: { logos: 100, pathos: 0, ethos: 0, actionsUsed: [], witnesses: [], bribedClanIds: [], praetorBribed: false },
+      approach: 'procedure', speakerId: 'pc-1', npcStrength: 0, juryLean: 0,
+      consumedSecretIds: [], status: 'resolved', outcome: 'executed', session: null,
+      ...overrides,
+    };
+  }
+
+  test('notableBeats mirrors defense framing for prosecution wins/losses', () => {
+    const state = makeState({
+      trials: [
+        prosecutionTrial({ id: 'p1', outcome: 'executed' }),
+        prosecutionTrial({ id: 'p2', outcome: 'acquitted' }),
+      ] as any,
+      clans: [{ id: 'fabii', name: 'Fabii', gensName: 'Fabius', sigil: '', influence: 0, desc: '', leaders: [{ id: 'leader-1', name: 'Fabius', votes: 5 }] }] as any,
+    });
+    const record = buildAncestorRecord(state, 'victory');
+    expect(record.notableBeats.some(b => b.includes('prosecution won'))).toBe(true);
+    expect(record.notableBeats.some(b => b.includes('prosecution lost to calumnia'))).toBe(true);
+  });
+
+  test('famousTrial prefers a Vox Populi (sitting-magistrate) win over an ordinary conviction', () => {
+    const state = makeState({
+      trials: [
+        prosecutionTrial({ id: 'p1', charge: 'peculatus', defendant: { kind: 'leader', leaderId: 'leader-1' }, startsSeason: 10 }),
+        prosecutionTrial({ id: 'p2', charge: 'maiestas', defendant: { kind: 'leader', leaderId: 'leader-2' }, startsSeason: 20, convictedSittingMagistrate: true }),
+      ] as any,
+      clans: [{
+        id: 'fabii', name: 'Fabii', gensName: 'Fabius', sigil: '', influence: 0, desc: '',
+        leaders: [{ id: 'leader-1', name: 'Fabius', votes: 5 }, { id: 'leader-2', name: 'Marcus Fabius', votes: 5 }],
+      }] as any,
+    });
+    const record = buildAncestorRecord(state, 'victory');
+    expect(record.famousTrial).toContain('Marcus Fabius');
+    expect(record.famousTrial).toContain('Treason');
+    expect(record.historianParagraph).toContain('Rome still speaks of');
+  });
+
+  test('famousTrial is undefined for a run with no prosecution wins (old Hall records must still render)', () => {
+    const state = makeState({ trials: [] });
+    const record = buildAncestorRecord(state, 'victory');
+    expect(record.famousTrial).toBeUndefined();
+    expect(record.historianParagraph).not.toContain('Rome still speaks of');
+  });
+});
+
 describe('assembleHistorianParagraph', () => {
   test('produces a non-empty coherent string for a maximal run', () => {
     const state = makeState({

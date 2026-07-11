@@ -1104,6 +1104,24 @@ export const BALANCE = {
       npcPerformanceEV: 0,
       npcPerformanceTraitNudge: 3,
     },
+
+    // ── Verdict scene rewards (Phase 4, Chunk P4-F) ───────────────────────
+    // Numbers given directly by the plan text (§Chunk P4-F, "Rewards &
+    // records") rather than implementer-picked seeds, unlike most of this
+    // registry.
+    rewards: {
+      /** Prosecution victory (outcome fined/exiled/executed with the player
+       *  in the prosecution seat): dignitas = this + the convicted leader's
+       *  Senate votes. */
+      prosecutionWinDignitasBase: 10,
+      /** Added on top when the convicted leader held office at the moment
+       *  of conviction (ClanLeader.currentOffice !== null) — the "Vox
+       *  Populi" case. */
+      sittingMagistrateBonus: 10,
+      /** Defense victory at the Dismissed tier specifically (not Acquitted,
+       *  per the plan's own wording) — a small vindicated beat. */
+      vindicatedDignitas: 5,
+    },
   },
 };
 

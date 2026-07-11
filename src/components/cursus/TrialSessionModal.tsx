@@ -1,28 +1,36 @@
 /**
- * TrialSessionModal — Phase 4, Chunk P4-E
+ * TrialSessionModal — Phase 4, Chunk P4-E; verdict presentation reworked
+ * Chunk P4-F.
  *
  * Trial day: a full-screen native Modal (same idiom as BattleScreen — always
  * renders above everything else, self-gates, blocks input to the rest of the
  * app while up), mounted once at the App root. Plays the drawn 3-beat
- * sequence (or fast-resolves it), then shows a plain-text outcome screen —
- * the full-screen verdict scene with bars/stamp/animation is P4-F's polish,
- * not this chunk's.
+ * sequence (or fast-resolves it), then hands off to VerdictScene for the
+ * full verdict presentation.
+ *
+ * VerdictScene needs two things the store discards the instant a trial
+ * resolves (concludeTrialSession sets `session: null`): the beat-by-beat
+ * recap and the consequence narration. Rather than persisting either onto
+ * TrialState, this component captures both client-side:
+ *  - `recapRef` accumulates each beat's resolution as it's answered
+ *    (evaluateBeatResponse — the exact pure function the store itself
+ *    calls) or, on fast-resolve, by replaying the remaining beats locally
+ *    with the same pickBestResponse/applyBeatOutcome pair
+ *    fastResolveTrialSession uses internally — same functions, same order,
+ *    so the replay is guaranteed identical to what the store computed.
+ *  - consequence lines are read straight off the log: the length of
+ *    `s.log` just before the resolving call vs. just after brackets exactly
+ *    the narration resolveTrialOutcome/checkCalumnia pushed for this trial.
  */
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../../state/gameStore';
-import { getTrialBeat } from '../../engine/trialBeatEngine';
+import { getTrialBeat, evaluateBeatResponse, pickBestResponse, applyBeatOutcome } from '../../engine/trialBeatEngine';
 import { TRIAL_CHARGE_DEFS } from '../../data/trialCharges';
-import type { TrialOutcome, TrialState, BeatResponse } from '../../models/trial';
+import type { TrialState, BeatResponse, TrialBeatResolution } from '../../models/trial';
+import VerdictScene, { type ConsequenceLine } from './VerdictScene';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
-
-const OUTCOME_LABEL: Record<TrialOutcome, string> = {
-  acquitted: 'ACQUITTED', dismissed: 'DISMISSED', fined: 'FINED', exiled: 'EXILED', executed: 'EXECUTED',
-};
-const OUTCOME_COLOR: Record<TrialOutcome, string> = {
-  acquitted: COLORS.laurel, dismissed: COLORS.laurel, fined: COLORS.goldDim, exiled: COLORS.crimson, executed: COLORS.crimson,
-};
 
 export default function TrialSessionModal() {
   const activeTrial = useGameStore(s => s.trials.find(t => t.status === 'in_session'));
@@ -31,28 +39,62 @@ export default function TrialSessionModal() {
   const answerTrialBeat = useGameStore(s => s.answerTrialBeat);
   const fastResolveTrialSession = useGameStore(s => s.fastResolveTrialSession);
 
-  const [outcomeScreen, setOutcomeScreen] = useState<{ trialId: string; outcome: TrialOutcome } | null>(null);
+  const [verdictData, setVerdictData] = useState<{
+    trial: TrialState;
+    recap: TrialBeatResolution[];
+    consequenceLines: ConsequenceLine[];
+  } | null>(null);
+  const recapRef = useRef<TrialBeatResolution[]>([]);
 
-  const isOpen = !!activeTrial || !!outcomeScreen;
+  const isOpen = !!activeTrial || !!verdictData;
   if (!isOpen) return null;
 
-  function checkResolved(trialId: string) {
+  function checkResolved(trialId: string, preLogLength: number) {
     const updated = useGameStore.getState().trials.find(t => t.id === trialId);
     if (updated?.status === 'resolved' && updated.outcome) {
-      setOutcomeScreen({ trialId, outcome: updated.outcome });
+      const newLog = useGameStore.getState().log;
+      const consequenceLines: ConsequenceLine[] = newLog.slice(preLogLength).map(l => ({
+        text: l.text,
+        type: (l.type === 'good' || l.type === 'bad') ? l.type : 'neutral',
+      }));
+      setVerdictData({ trial: updated, recap: recapRef.current, consequenceLines });
+      recapRef.current = [];
     }
   }
 
   function handleAnswer(beatId: string, responseId: string) {
     if (!activeTrial) return;
+    const beat = getTrialBeat(beatId);
+    const response = beat?.responses.find(r => r.id === responseId);
+    const speaker = family.find(c => c.id === activeTrial.speakerId);
+    if (beat && response && speaker) {
+      const { succeeded, swing } = evaluateBeatResponse(response, speaker, activeTrial);
+      recapRef.current = [...recapRef.current, { beatId, responseId, succeeded, swing }];
+    }
+    const preLogLength = useGameStore.getState().log.length;
     answerTrialBeat(activeTrial.id, beatId, responseId);
-    checkResolved(activeTrial.id);
+    checkResolved(activeTrial.id, preLogLength);
   }
 
   function handleFastResolve() {
     if (!activeTrial) return;
+    const speaker = family.find(c => c.id === activeTrial.speakerId);
+    if (speaker) {
+      let working = activeTrial;
+      const extra: TrialBeatResolution[] = [];
+      while (working.session && working.session.currentBeatIndex < working.session.beatIds.length) {
+        const beatId = working.session.beatIds[working.session.currentBeatIndex];
+        const beat = getTrialBeat(beatId);
+        if (!beat) break;
+        const { response, succeeded, swing } = pickBestResponse(beat, speaker, working);
+        extra.push({ beatId, responseId: response.id, succeeded, swing });
+        working = applyBeatOutcome(working, beat, response, succeeded, swing);
+      }
+      recapRef.current = [...recapRef.current, ...extra];
+    }
+    const preLogLength = useGameStore.getState().log.length;
     fastResolveTrialSession(activeTrial.id);
-    checkResolved(activeTrial.id);
+    checkResolved(activeTrial.id, preLogLength);
   }
 
   const opponentLeaderId = activeTrial
@@ -75,10 +117,12 @@ export default function TrialSessionModal() {
   return (
     <Modal visible={isOpen} animationType="slide" presentationStyle="fullScreen">
       <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-        {outcomeScreen ? (
-          <OutcomeView
-            outcome={outcomeScreen.outcome}
-            onContinue={() => setOutcomeScreen(null)}
+        {verdictData ? (
+          <VerdictScene
+            trial={verdictData.trial}
+            recap={verdictData.recap}
+            consequenceLines={verdictData.consequenceLines}
+            onContinue={() => setVerdictData(null)}
           />
         ) : activeTrial && chargeDef && currentBeat ? (
           <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -142,20 +186,6 @@ function responseAvailable(r: BeatResponse, trial: TrialState): boolean {
   }
 }
 
-// ─── Outcome view (plain — P4-F replaces this with the full verdict scene) ───
-
-function OutcomeView({ outcome, onContinue }: { outcome: TrialOutcome; onContinue: () => void }) {
-  return (
-    <View style={styles.outcomeRoot}>
-      <Text style={styles.outcomeEyebrow}>THE VERDICT</Text>
-      <Text style={[styles.outcomeStamp, { color: OUTCOME_COLOR[outcome] }]}>{OUTCOME_LABEL[outcome]}</Text>
-      <TouchableOpacity style={styles.continueBtn} onPress={onContinue} activeOpacity={0.75}>
-        <Text style={styles.continueText}>Continue</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   scrollContent: { padding: SPACING.lg, paddingBottom: SPACING.xl },
@@ -183,12 +213,4 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md,
   },
   fastResolveText: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 12, letterSpacing: 1 },
-  outcomeRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
-  outcomeEyebrow: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 12, letterSpacing: 4 },
-  outcomeStamp: { fontFamily: FONTS.display, fontSize: 36, fontWeight: '700', marginTop: SPACING.md, letterSpacing: 2 },
-  continueBtn: {
-    marginTop: SPACING.xl, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md,
-    paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl,
-  },
-  continueText: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 14, fontWeight: '600' },
 });

@@ -25,6 +25,7 @@ import {
   applyIntimidateWitness,
   findOpponentLeader,
   resolveTrialOutcome,
+  OUTCOME_CONSEQUENCES,
 } from '../src/engine/trialEngine';
 import { BALANCE } from '../src/data/balance';
 import { TAXATION_CORRUPTION_PER_TURN } from '../src/models/province';
@@ -98,6 +99,12 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
     ownedAssets: [],
     campaignVotes: {},
     campaigning: null,
+    // Phase 4, Chunk P4-F — resolveTrialOutcome's prosecution-win reward
+    // path reads/writes this; every fixture needs a real array, not undefined.
+    legacyObjectives: [
+      { definitionId: 'prosecutions_won', currentValue: 0, milestonesReached: [] },
+      { definitionId: 'magistrates_convicted', currentValue: 0, milestonesReached: [] },
+    ],
     ...overrides,
   };
   return base as unknown as GameState;
@@ -730,5 +737,105 @@ describe('resolveTrialOutcome', () => {
     const result = resolveTrialOutcome(state, trial, null, 0, 0, () => 0);
     expect(result.counterSuit).toBeNull();
     expect(result.events.some(e => e.includes('Calumnia'))).toBe(false);
+  });
+});
+
+// ─── Prosecution victory rewards & defense vindication (Phase 4, Chunk P4-F) ─
+
+describe('resolveTrialOutcome — P4-F rewards', () => {
+  test('a prosecution win grants dignitas base + target votes, and the "Accusator" legacy milestone', () => {
+    const leader = makeLeader({ id: 'leader-1', name: 'Fabius', votes: 12, currentOffice: null });
+    const state = makeState({ clans: [makeClan({ id: 'fabii', leaders: [leader] })], lifetimeDignitas: 50 });
+    const trial = makeTrial({
+      seat: 'prosecution', charge: 'peculatus',
+      prosecutor: { kind: 'player', speakerId: 'pc-1' },
+      defendant: { kind: 'leader', leaderId: 'leader-1' },
+      playerPrep: makePrep({ logos: 100 }),
+      npcStrength: 0,
+    });
+    const opponentFound = { clan: state.clans[0], leader };
+    const result = resolveTrialOutcome(state, trial, opponentFound, 0, 0);
+
+    expect(result.trial.outcome).toBe('executed');
+    // The charge's own consequence (OUTCOME_CONSEQUENCES.executed) always
+    // applies first, on top of which the P4-F reward is added.
+    const expectedGain = OUTCOME_CONSEQUENCES.executed.lifetimeDignitas + BALANCE.trials.rewards.prosecutionWinDignitasBase + 12;
+    expect(result.state.lifetimeDignitas).toBe(50 + expectedGain);
+    expect(result.trial.convictedSittingMagistrate).toBeUndefined();
+    expect(result.state.legacyObjectives.find(o => o.definitionId === 'prosecutions_won')?.currentValue).toBe(1);
+    expect(result.events.some(e => e.includes('Accusator'))).toBe(true);
+  });
+
+  test('convicting a sitting magistrate adds the bonus and the "Vox Populi" milestone', () => {
+    const leader = makeLeader({ id: 'leader-1', name: 'Fabius', votes: 12, currentOffice: 'praetor' });
+    const state = makeState({ clans: [makeClan({ id: 'fabii', leaders: [leader] })], lifetimeDignitas: 50 });
+    const trial = makeTrial({
+      seat: 'prosecution', charge: 'peculatus',
+      prosecutor: { kind: 'player', speakerId: 'pc-1' },
+      defendant: { kind: 'leader', leaderId: 'leader-1' },
+      playerPrep: makePrep({ logos: 100 }),
+      npcStrength: 0,
+    });
+    const opponentFound = { clan: state.clans[0], leader };
+    const result = resolveTrialOutcome(state, trial, opponentFound, 0, 0);
+
+    const expectedGain = OUTCOME_CONSEQUENCES.executed.lifetimeDignitas
+      + BALANCE.trials.rewards.prosecutionWinDignitasBase + 12 + BALANCE.trials.rewards.sittingMagistrateBonus;
+    expect(result.state.lifetimeDignitas).toBe(50 + expectedGain);
+    expect(result.trial.convictedSittingMagistrate).toBe(true);
+    expect(result.state.legacyObjectives.find(o => o.definitionId === 'magistrates_convicted')?.currentValue).toBe(1);
+    expect(result.events.some(e => e.includes('Vox Populi'))).toBe(true);
+  });
+
+  test('a prosecution loss (acquitted/dismissed) grants no reward and no milestone', () => {
+    const leader = makeLeader({ id: 'leader-1', votes: 12, currentOffice: 'praetor' });
+    const state = makeState({ clans: [makeClan({ id: 'fabii', leaders: [leader] })], lifetimeDignitas: 50 });
+    const trial = makeTrial({
+      seat: 'prosecution', charge: 'peculatus',
+      prosecutor: { kind: 'player', speakerId: 'pc-1' },
+      defendant: { kind: 'leader', leaderId: 'leader-1' },
+      playerPrep: makePrep({ logos: 0 }),
+      npcStrength: 100, // well-defended -> the defendant is acquitted, a prosecution loss
+    });
+    const opponentFound = { clan: state.clans[0], leader };
+    const result = resolveTrialOutcome(state, trial, opponentFound, 0, 0, () => 0.99); // no counter-suit
+    expect(result.trial.outcome).toBe('acquitted');
+    // Acquitted's own consequence (+5) applies, and — this decisive a loss —
+    // so does calumnia (-15); neither is the P4-F reward path under test here.
+    expect(result.state.lifetimeDignitas).toBe(
+      50 + OUTCOME_CONSEQUENCES.acquitted.lifetimeDignitas + BALANCE.trials.calumniaDignitas
+    );
+    expect(result.state.legacyObjectives.find(o => o.definitionId === 'prosecutions_won')?.currentValue).toBe(0);
+  });
+
+  test('a defense win at the Dismissed tier grants vindicatedDignitas; Acquitted does not', () => {
+    const dismissedState = makeState({ lifetimeDignitas: 50 });
+    // pathos=40, npc=10 -> standard bands: dismissed (15 > 10, not > 30 -> wait recompute)
+    const dismissedTrial = makeTrial({ seat: 'defense', playerPrep: makePrep({ pathos: 40 }), npcStrength: 10 });
+    const dismissedResult = resolveTrialOutcome(dismissedState, dismissedTrial, null, 0, 0);
+    expect(dismissedResult.trial.outcome).toBe('dismissed');
+    expect(dismissedResult.state.lifetimeDignitas).toBe(50 + BALANCE.trials.rewards.vindicatedDignitas);
+
+    const acquittedState = makeState({ lifetimeDignitas: 50 });
+    const acquittedTrial = makeTrial({ seat: 'defense', playerPrep: makePrep({ pathos: 100 }), npcStrength: 0 });
+    const acquittedResult = resolveTrialOutcome(acquittedState, acquittedTrial, null, 0, 0);
+    expect(acquittedResult.trial.outcome).toBe('acquitted');
+    // Acquitted's own consequence (+5) still applies — just not vindicatedDignitas on top.
+    expect(acquittedResult.state.lifetimeDignitas).toBe(50 + OUTCOME_CONSEQUENCES.acquitted.lifetimeDignitas);
+  });
+});
+
+describe('computeVerdict — finalPlayer/finalNpc (Phase 4, Chunk P4-F)', () => {
+  test('exposes the two sides\' final scores used to decide the verdict', () => {
+    const trial = makeTrial({ seat: 'defense', playerPrep: makePrep({ pathos: 40 }), npcStrength: 10, juryLean: 0 });
+    const { finalPlayer, finalNpc } = computeVerdict(trial, 'standard');
+    expect(finalPlayer).toBeCloseTo(40 * BALANCE.trials.prepShare);
+    expect(finalNpc).toBeCloseTo(10 * BALANCE.trials.prepShare);
+  });
+
+  test('finalPlayer includes performance', () => {
+    const trial = makeTrial({ seat: 'defense', playerPrep: makePrep({ pathos: 40 }), npcStrength: 10, juryLean: 0 });
+    const { finalPlayer } = computeVerdict(trial, 'standard', 5, 8, 0);
+    expect(finalPlayer).toBeCloseTo(40 * BALANCE.trials.prepShare + 8);
   });
 });
