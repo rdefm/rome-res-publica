@@ -23,6 +23,8 @@ import {
   applyBribeJurors,
   applyBribePraetor,
   applyIntimidateWitness,
+  findOpponentLeader,
+  resolveTrialOutcome,
 } from '../src/engine/trialEngine';
 import { BALANCE } from '../src/data/balance';
 import { TAXATION_CORRUPTION_PER_TURN } from '../src/models/province';
@@ -131,6 +133,7 @@ function makeTrial(overrides: Partial<TrialState> = {}): TrialState {
     juryLean: 0,
     consumedSecretIds: [],
     status: 'preparing',
+    session: null,
     ...overrides,
   };
 }
@@ -595,5 +598,137 @@ describe('buildTrialState', () => {
       consumedSecretIds: ['s1'], speakerId: 'pc-1',
     });
     expect(trial.consumedSecretIds).toEqual(['s1']);
+  });
+
+  test('session starts null — populated only once trial day arrives (P4-E)', () => {
+    const trial = buildTrialState({
+      id: 't3', seat: 'defense', charge: 'peculatus', chargeSource: 'accusation',
+      prosecutor: { kind: 'leader', leaderId: 'leader-1' },
+      defendant: { kind: 'family', characterId: 'pc-1' },
+      filedSeason: 10, startsSeason: 13, initialNpcStrength: 10, speakerId: 'pc-1',
+    });
+    expect(trial.session).toBeNull();
+  });
+});
+
+// ─── findOpponentLeader (Phase 4, Chunk P4-E) ────────────────────────────────
+
+describe('findOpponentLeader', () => {
+  test('defense seat reads the prosecutor leader', () => {
+    const clans = [makeClan({ id: 'fabii', leaders: [makeLeader({ id: 'leader-1', name: 'Fabius' })] })];
+    const trial = makeTrial({ seat: 'defense', prosecutor: { kind: 'leader', leaderId: 'leader-1' } });
+    const found = findOpponentLeader(trial, clans);
+    expect(found?.leader.name).toBe('Fabius');
+    expect(found?.clan.id).toBe('fabii');
+  });
+
+  test('prosecution seat reads the defendant leader', () => {
+    const clans = [makeClan({ id: 'fabii', leaders: [makeLeader({ id: 'leader-2', name: 'Fabius Minor' })] })];
+    const trial = makeTrial({ seat: 'prosecution', defendant: { kind: 'leader', leaderId: 'leader-2' } });
+    expect(findOpponentLeader(trial, clans)?.leader.name).toBe('Fabius Minor');
+  });
+
+  test('null when both parties are family (no leader on the other side)', () => {
+    const trial = makeTrial({
+      seat: 'defense',
+      prosecutor: { kind: 'leader', leaderId: 'ghost' },
+      defendant: { kind: 'family', characterId: 'pc-1' },
+    });
+    expect(findOpponentLeader(trial, [])).toBeNull();
+  });
+});
+
+// ─── resolveTrialOutcome (Phase 4, Chunk P4-E) ───────────────────────────────
+// Extracted verbatim from turnSequencer's pre-P4-E step 15 — these tests
+// cover the consequence-application logic that used to run inline there.
+
+describe('resolveTrialOutcome', () => {
+  test('a decisive defense win (acquitted): no character removal, corruption cleared, Dignitas up', () => {
+    const state = makeState({
+      family: [makeCharacter({ id: 'pc-1', corruptionScore: 40 })],
+      lifetimeDignitas: 20,
+    });
+    const trial = makeTrial({
+      seat: 'defense', charge: 'peculatus',
+      defendant: { kind: 'family', characterId: 'pc-1' },
+      playerPrep: makePrep({ logos: 100 }),
+      npcStrength: 0,
+    });
+
+    const { trial: resolved, state: nextState } = resolveTrialOutcome(state, trial, null, 0, 0);
+    expect(resolved.outcome).toBe('acquitted');
+    expect(resolved.status).toBe('resolved');
+    expect(resolved.session).toBeNull();
+    expect(nextState.family.find(c => c.id === 'pc-1')?.corruptionScore).toBe(0);
+    expect(nextState.lifetimeDignitas).toBeGreaterThan(20);
+    expect(nextState.family.find(c => c.id === 'pc-1')).toBeDefined();
+  });
+
+  test('a decisive defense loss (executed) removes a non-player family defendant and dents the player\'s familyTrust', () => {
+    const state = makeState({
+      family: [
+        makeCharacter({ id: 'pc-1', isPlayer: true, familyTrust: 100 }),
+        makeCharacter({ id: 'son-1', isPlayer: false, role: 'son' }),
+      ],
+    });
+    const trial = makeTrial({
+      seat: 'defense', charge: 'peculatus',
+      defendant: { kind: 'family', characterId: 'son-1' },
+      playerPrep: makePrep({ logos: 0 }),
+      npcStrength: 200,
+    });
+
+    const { trial: resolved, state: nextState } = resolveTrialOutcome(state, trial, null, 0, 0);
+    expect(resolved.outcome).toBe('executed');
+    expect(nextState.family.some(c => c.id === 'son-1')).toBe(false);
+    expect(nextState.family.find(c => c.id === 'pc-1')?.familyTrust).toBeLessThan(100);
+  });
+
+  test('a player-filed prosecution that wins big proscribes the convicted leader', () => {
+    const leader = makeLeader({ id: 'leader-1', name: 'Fabius' });
+    const state = makeState({ clans: [makeClan({ id: 'fabii', leaders: [leader] })] });
+    const trial = makeTrial({
+      seat: 'prosecution', charge: 'peculatus',
+      prosecutor: { kind: 'player', speakerId: 'pc-1' },
+      defendant: { kind: 'leader', leaderId: 'leader-1' },
+      playerPrep: makePrep({ logos: 100 }),
+      npcStrength: 0,
+    });
+
+    const opponentFound = { clan: state.clans[0], leader };
+    const { resolved, nextLeader } = (() => {
+      const r = resolveTrialOutcome(state, trial, opponentFound, 0, 0);
+      return { resolved: r.trial, nextLeader: r.state.clans[0].leaders[0] };
+    })();
+    expect(resolved.outcome).toBe('executed'); // -70 defendantDifferential (flipped) <= -30 band
+    expect(nextLeader.proscribed).toBe(true);
+  });
+
+  test('a losing prosecution triggers calumnia and, when the roll hits, a counter-suit', () => {
+    const leader = makeLeader({ id: 'leader-1', name: 'Fabius' });
+    const state = makeState({ clans: [makeClan({ id: 'fabii', leaders: [leader] })], lifetimeDignitas: 50 });
+    const trial = makeTrial({
+      seat: 'prosecution', charge: 'peculatus',
+      prosecutor: { kind: 'player', speakerId: 'pc-1' },
+      defendant: { kind: 'leader', leaderId: 'leader-1' },
+      playerPrep: makePrep({ logos: 0 }),
+      npcStrength: 100, // finalNpc=70, finalPlayer=0 -> differential -70, well below calumniaThreshold
+    });
+
+    const opponentFound = { clan: state.clans[0], leader };
+    const result = resolveTrialOutcome(state, trial, opponentFound, 0, 0, () => 0); // roll=0 always hits counterSuitChance
+    expect(result.state.lifetimeDignitas).toBeLessThan(50);
+    expect(result.counterSuit).not.toBeNull();
+    expect(result.counterSuit?.seat).toBe('defense');
+    expect(result.counterSuit?.defendant).toEqual({ kind: 'family', characterId: trial.speakerId });
+    expect(result.events.some(e => e.includes('Calumnia'))).toBe(true);
+  });
+
+  test('a defense win never triggers calumnia (only losing prosecutions can)', () => {
+    const state = makeState();
+    const trial = makeTrial({ seat: 'defense', playerPrep: makePrep({ logos: 100 }), npcStrength: 0 });
+    const result = resolveTrialOutcome(state, trial, null, 0, 0, () => 0);
+    expect(result.counterSuit).toBeNull();
+    expect(result.events.some(e => e.includes('Calumnia'))).toBe(false);
   });
 });

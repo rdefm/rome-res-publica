@@ -38,12 +38,12 @@ import {
   buildTrialState,
   computeOpponentPrepGrowth,
   computeJuryLean,
-  computeVerdict,
-  checkCalumnia,
-  OUTCOME_CONSEQUENCES,
+  findOpponentLeader,
   tickCorruption,
   tickLeaderCorruption,
 } from './trialEngine';
+import { drawTrialBeats } from './trialBeatEngine';
+import { TRIAL_BEATS } from '../data/trialBeats';
 import { TRIAL_CHARGE_DEFS } from '../data/trialCharges';
 import type { TrialState } from '../models/trial';
 import { computePatronTier, processFavourCallIns } from './patronEngine';
@@ -1355,35 +1355,23 @@ export function processSeason(state: GameState): {
     }
   }
 
-  // 15. Trial resolution + opponent prep growth + jury lean (Phase 4, P4-C)
-  // Every 'preparing' trial grows npcStrength and recomputes juryLean each
-  // season (both formulas live in trialEngine.ts); once turnNumber reaches
-  // startsSeason, the trial resolves via the deterministic verdict math.
-  // The family-defendant consequence branch below is copied verbatim from
-  // the pre-P4-C version (including its P3-C succession-detection comment)
-  // — only the trigger (verdict math instead of resolveTrial's roll) and
-  // the trial's own field names changed. Leader-defendant consequences are
-  // new this chunk (player-filed prosecutions never existed before).
+  // 15. Trial prep growth + jury lean + session entry (Phase 4, P4-C grew
+  // npcStrength/juryLean and resolved the trial synchronously the instant
+  // turnNumber reached startsSeason; P4-E makes trial day an interactive
+  // 3-beat session, so this step no longer resolves anything — it only
+  // grows the case and, when the day arrives, draws the beat queue
+  // (trialBeatEngine.drawTrialBeats) and flips status to 'in_session'.
+  // gameStore's answerTrialBeat/fastResolveTrialSession call
+  // trialEngine.resolveTrialOutcome once the session's last beat resolves —
+  // see that function's header comment for the full verdict/consequences
+  // logic this step used to run inline.
   {
-    const trialEvents: string[] = [];
-    const counterSuits: TrialState[] = [];
-
-    function findClanAndLeaderInState(leaderId: string) {
-      for (const clan of s.clans) {
-        const leader = clan.leaders.find(l => l.id === leaderId);
-        if (leader) return { clan, leader };
-      }
-      return null;
-    }
+    const sessionEvents: string[] = [];
 
     const updatedTrials = (s.trials ?? []).map(trial => {
-      if (trial.status === 'resolved') return trial;
+      if (trial.status !== 'preparing') return trial;
 
-      const opponentLeaderId =
-        trial.seat === 'defense'
-          ? (trial.prosecutor.kind === 'leader' ? trial.prosecutor.leaderId : null)
-          : (trial.defendant.kind === 'leader' ? trial.defendant.leaderId : null);
-      const opponentFound = opponentLeaderId ? findClanAndLeaderInState(opponentLeaderId) : null;
+      const opponentFound = findOpponentLeader(trial, s.clans);
 
       const npcStrength = opponentFound
         ? trial.npcStrength + computeOpponentPrepGrowth(opponentFound.leader.skills.intrigus, opponentFound.clan.influence)
@@ -1393,150 +1381,67 @@ export function processSeason(state: GameState): {
 
       if (s.turnNumber < grownTrial.startsSeason) return grownTrial;
 
-      // ── Resolve ────────────────────────────────────────────────────────
+      // ── Trial day arrives — enter session ──────────────────────────────
+      // Bribe-discovery rolls happen exactly once, right here (the draw is
+      // a one-time event per trial) — BALANCE.trials.prep.juryBribeDiscoveryChance
+      // / praetorBribeDiscoveryChance, "inert until P4-E" per their own
+      // header comments in balance.ts. A discovered bribe's Ethos
+      // contribution is voided immediately, whether or not the player ever
+      // sees/answers its mandatory beat.
+      let ethosAfterDiscovery = grownTrial.playerPrep.ethos;
+      const discoveredBribeClanIds: string[] = [];
+      for (const clanId of grownTrial.playerPrep.bribedClanIds) {
+        if (Math.random() < BALANCE.trials.prep.juryBribeDiscoveryChance) {
+          discoveredBribeClanIds.push(clanId);
+          ethosAfterDiscovery -= BALANCE.trials.prep.bribeJurorsBonusPerBloc;
+        }
+      }
+      let discoveredPraetorBribe = false;
+      if (grownTrial.playerPrep.praetorBribed && Math.random() < BALANCE.trials.prep.praetorBribeDiscoveryChance) {
+        discoveredPraetorBribe = true;
+        ethosAfterDiscovery -= BALANCE.trials.prep.bribePraetorBonus;
+      }
+
+      const unattackedWitnesses = grownTrial.playerPrep.witnesses.filter(w => !w.attacked);
+      const hasUnattackedWitness = unattackedWitnesses.length > 0;
+      const witnessAttackTargetId = hasUnattackedWitness
+        ? unattackedWitnesses[Math.floor(Math.random() * unattackedWitnesses.length)].id
+        : null;
+
       const chargeDef = TRIAL_CHARGE_DEFS[grownTrial.charge];
-      const opponentRhetoric = opponentFound?.leader.skills.rhetoric ?? 5;
-      const { outcome, differential } = computeVerdict(grownTrial, chargeDef.severityTier, opponentRhetoric);
-      const cons = OUTCOME_CONSEQUENCES[outcome];
-      const defendant = grownTrial.defendant;
+      const beatIds = drawTrialBeats(TRIAL_BEATS, {
+        chargeTags: chargeDef.beatTags,
+        approach: grownTrial.approach,
+        opponentTraitIds: opponentFound?.leader.traits ?? [],
+        hasUnattackedWitness,
+        discoveredBribeClanIds,
+        discoveredPraetorBribe,
+      }, Math.random);
 
-      const defendantName = defendant.kind === 'family'
-        ? (s.family.find(c => c.id === defendant.characterId)?.name ?? 'the accused')
+      const sessionDefendant = grownTrial.defendant;
+      const defendantName = sessionDefendant.kind === 'family'
+        ? (s.family.find(c => c.id === sessionDefendant.characterId)?.name ?? 'your family')
         : (opponentFound?.leader.name ?? 'the accused');
+      sessionEvents.push(`⚖️ Trial day has come: ${chargeDef.displayName} — ${defendantName}.`);
 
-      trialEvents.push(`Trial resolved: ${defendantName} — ${outcome.toUpperCase()}.`);
-
-      // reputationDelta lands on "the other side's clan" — the prosecutor's
-      // clan when the player defends, the defendant's clan when the player
-      // prosecutes (both are opponentFound in either seat).
-      if (cons.reputationDelta !== 0 && opponentFound) {
-        const newRep = Math.min(100, Math.max(-100,
-          (s.familyReputations[opponentFound.clan.id] ?? 0) + cons.reputationDelta
-        ));
-        s = { ...s, familyReputations: { ...s.familyReputations, [opponentFound.clan.id]: newRep } };
-      }
-
-      s = { ...s, lifetimeDignitas: Math.max(0, s.lifetimeDignitas + cons.lifetimeDignitas) };
-
-      if (cons.denarii) {
-        s = { ...s, denarii: Math.max(0, s.denarii + cons.denarii) };
-      }
-
-      if (defendant.kind === 'family') {
-        const accused = s.family.find(c => c.id === defendant.characterId);
-
-        if (cons.corruptionClear) {
-          s = {
-            ...s,
-            family: s.family.map(c =>
-              c.id === defendant.characterId ? { ...c, corruptionScore: 0 } : c
-            ),
-          };
-        }
-
-        if (cons.familyTrustDelta) {
-          s = {
-            ...s,
-            family: s.family.map(c =>
-              c.isPlayer ? { ...c, familyTrust: Math.max(0, c.familyTrust + cons.familyTrustDelta!) } : c
-            ),
-          };
-        }
-
-        if (cons.removeCharacter) {
-          // Phase 3, Chunk P3-C — trial execution/exile had the same latent
-          // "silently strips isPlayer with no succession" gap M4's battle-
-          // death path documented (verified — this was a plain filter with
-          // no successor selection at all, worse than M4's minimal one).
-          // Routed through the same shared detection now; a still-pending
-          // succession from earlier this same season takes precedence (the
-          // single pendingSuccession slot can't hold two at once — rare
-          // enough not to handle further this chunk, same as step 10's).
-          if (accused?.isPlayer && !s.pendingSuccession) {
-            const result = detectPaterfamiliasDeath(s.family, defendant.characterId, s.heldOffices);
-            if (result.pendingSuccession) {
-              const p = result.pendingSuccession;
-              const resolution = resolveDeathNotice(p, s.cadetBranch, s.cadetBranchUsed, s.turnNumber);
-              s = {
-                ...s,
-                family: result.family,
-                pendingSuccession: p,
-                pendingEvents: [...s.pendingEvents, resolution.notice],
-                ...(resolution.cadetBranch ? { cadetBranch: resolution.cadetBranch } : {}),
-                ...(resolution.pendingEpilogue ? { pendingEpilogue: resolution.pendingEpilogue } : {}),
-              };
-            } else {
-              s = { ...s, family: result.family };
-            }
-          } else {
-            s = { ...s, family: s.family.filter(c => c.id !== defendant.characterId) };
-          }
-        }
-      } else {
-        // Leader defendant (player-filed prosecution) — no character-removal
-        // or succession system exists for clan leaders. Reuse the existing
-        // `proscribed` flag (the Dictator's Proscription consequence — "vote
-        // contribution treated as 0") for exiled/executed rather than
-        // inventing leader removal/succession machinery this chunk.
-        const targetLeaderId = defendant.leaderId;
-        if (cons.corruptionClear) {
-          s = {
-            ...s,
-            clans: s.clans.map(c => ({
-              ...c,
-              leaders: c.leaders.map(l => l.id === targetLeaderId ? { ...l, corruptionScore: 0 } : l),
-            })),
-          };
-        }
-        if (cons.removeCharacter) {
-          s = {
-            ...s,
-            clans: s.clans.map(c => ({
-              ...c,
-              leaders: c.leaders.map(l => l.id === targetLeaderId ? { ...l, proscribed: true } : l),
-            })),
-          };
-        }
-      }
-
-      // ── Calumnia (losing a player-filed prosecution) ────────────────────
-      if (grownTrial.seat === 'prosecution') {
-        const calumnia = checkCalumnia(grownTrial, differential, Math.random());
-        if (calumnia.triggered) {
-          s = { ...s, lifetimeDignitas: Math.max(0, s.lifetimeDignitas + calumnia.dignitasDelta) };
-          if (opponentFound) {
-            const rep = Math.min(100, Math.max(-100,
-              (s.familyReputations[opponentFound.clan.id] ?? 0) + calumnia.clanRelationsDelta
-            ));
-            s = { ...s, familyReputations: { ...s.familyReputations, [opponentFound.clan.id]: rep } };
-          }
-          trialEvents.push(`Calumnia! Your accusation against ${defendantName} is judged malicious — Dignitas and standing suffer.`);
-
-          if (calumnia.counterSuitRolled && opponentFound) {
-            const counterSuit = buildTrialState({
-              id: `trial-countersuit-${s.turnNumber}`,
-              seat: 'defense',
-              charge: grownTrial.charge,
-              chargeSource: 'accusation',
-              prosecutor: { kind: 'leader', leaderId: opponentFound.leader.id },
-              defendant: { kind: 'family', characterId: grownTrial.speakerId },
-              filedSeason: s.turnNumber,
-              startsSeason: s.turnNumber + 2,
-              initialNpcStrength: BALANCE.trials.corruptionEvidenceBase,
-              speakerId: grownTrial.speakerId,
-            });
-            counterSuits.push(counterSuit);
-            const speakerName = s.family.find(c => c.id === grownTrial.speakerId)?.name ?? 'your speaker';
-            trialEvents.push(`${opponentFound.leader.name} files a counter-suit against ${speakerName}.`);
-          }
-        }
-      }
-
-      return { ...grownTrial, status: 'resolved' as const, outcome };
+      return {
+        ...grownTrial,
+        playerPrep: { ...grownTrial.playerPrep, ethos: Math.max(0, ethosAfterDiscovery) },
+        status: 'in_session' as const,
+        session: {
+          beatIds,
+          currentBeatIndex: 0,
+          performanceSoFar: 0,
+          resolutions: [],
+          discoveredBribeClanIds,
+          discoveredPraetorBribe,
+          witnessAttackTargetId,
+        },
+      };
     });
 
-    s = { ...s, trials: [...updatedTrials, ...counterSuits] };
-    events.push(...trialEvents);
+    s = { ...s, trials: updatedTrials };
+    events.push(...sessionEvents);
   }
 
   // 16. Trial trigger check (Phase 4, P4-C — builds a TrialState now; the

@@ -19,6 +19,9 @@ import type { Secret } from '../models/secret';
 import { SECRET_CLASS_BY_TYPE } from '../data/secretDefinitions';
 import { TAXATION_CORRUPTION_PER_TURN, type TaxationNotch } from '../models/province';
 import { getClanStanding } from './reputationEngine';
+import { detectPaterfamiliasDeath } from './inheritanceEngine';
+import { resolveDeathNotice } from '../data/cadetEvents';
+import { TRIAL_CHARGE_DEFS } from '../data/trialCharges';
 import { BALANCE } from '../data/balance';
 
 // ─── Build a new TrialState ───────────────────────────────────────────────────
@@ -52,7 +55,26 @@ export function buildTrialState(params: {
     juryLean: 0,
     consumedSecretIds: params.consumedSecretIds ?? [],
     status: 'preparing',
+    session: null,
   };
+}
+
+// ─── Opponent lookup (Phase 4, Chunk P4-E) ───────────────────────────────────
+// Shared by turnSequencer.ts (session-entry growth check) and gameStore.ts
+// (session-conclusion consequences) — previously a closure duplicated in
+// turnSequencer's step 15 alone.
+
+export function findOpponentLeader(trial: TrialState, clans: Clan[]): { clan: Clan; leader: ClanLeader } | null {
+  const opponentLeaderId =
+    trial.seat === 'defense'
+      ? (trial.prosecutor.kind === 'leader' ? trial.prosecutor.leaderId : null)
+      : (trial.defendant.kind === 'leader' ? trial.defendant.leaderId : null);
+  if (!opponentLeaderId) return null;
+  for (const clan of clans) {
+    const leader = clan.leaders.find(l => l.id === opponentLeaderId);
+    if (leader) return { clan, leader };
+  }
+  return null;
 }
 
 // ─── Filing gate ──────────────────────────────────────────────────────────────
@@ -250,6 +272,178 @@ export const OUTCOME_CONSEQUENCES: Record<TrialOutcome, {
   executed:  { reputationDelta: -30, corruptionClear: false, lifetimeDignitas: -30, removeCharacter: true, familyTrustDelta: -20 },
 };
 
+// ─── Trial resolution (Phase 4, Chunk P4-E) ──────────────────────────────────
+// Extracted verbatim from turnSequencer.ts's pre-P4-E step 15 (which used to
+// call computeVerdict and apply every consequence synchronously the instant
+// turnNumber reached startsSeason). Trial day is now an interactive 3-beat
+// session (trialBeatEngine.ts) spanning multiple UI turns, so verdict +
+// consequences can no longer run inside processSeason — gameStore's
+// answerTrialBeat/fastResolveTrialSession call this once the session's
+// final beat resolves. turnSequencer.ts's step 15 now only grows
+// npcStrength/juryLean and draws the beat session; it never calls this.
+
+export interface TrialResolutionResult {
+  /** status: 'resolved', outcome set, session: null. */
+  trial: TrialState;
+  /** The full next state — familyReputations/lifetimeDignitas/denarii/
+   *  family/clans deltas already applied (mirrors turnSequencer's own
+   *  `s = {...s, ...}` chaining style, since the original logic touches
+   *  several state slices in sequence). Does NOT include `trials` — the
+   *  caller merges `trial` (and `counterSuit`, if present) into its own
+   *  `trials` array. */
+  state: GameState;
+  events: string[];
+  /** A defense-seat TrialState the calumnia roll spawned, if any — caller
+   *  pushes it into `trials` alongside the resolved `trial`. */
+  counterSuit: TrialState | null;
+}
+
+export function resolveTrialOutcome(
+  state: GameState,
+  trial: TrialState,
+  opponentFound: { clan: Clan; leader: ClanLeader } | null,
+  playerPerformance: number,
+  npcPerformance: number,
+  rng: () => number = Math.random
+): TrialResolutionResult {
+  let s = state;
+  const events: string[] = [];
+  let counterSuit: TrialState | null = null;
+
+  const chargeDef = TRIAL_CHARGE_DEFS[trial.charge];
+  const opponentRhetoric = opponentFound?.leader.skills.rhetoric ?? 5;
+  const { outcome, differential } = computeVerdict(trial, chargeDef.severityTier, opponentRhetoric, playerPerformance, npcPerformance);
+  const cons = OUTCOME_CONSEQUENCES[outcome];
+  const defendant = trial.defendant;
+
+  const defendantName = defendant.kind === 'family'
+    ? (s.family.find(c => c.id === defendant.characterId)?.name ?? 'the accused')
+    : (opponentFound?.leader.name ?? 'the accused');
+
+  events.push(`Trial resolved: ${defendantName} — ${outcome.toUpperCase()}.`);
+
+  // reputationDelta lands on "the other side's clan" — the prosecutor's
+  // clan when the player defends, the defendant's clan when the player
+  // prosecutes (both are opponentFound in either seat).
+  if (cons.reputationDelta !== 0 && opponentFound) {
+    const newRep = Math.min(100, Math.max(-100,
+      (s.familyReputations[opponentFound.clan.id] ?? 0) + cons.reputationDelta
+    ));
+    s = { ...s, familyReputations: { ...s.familyReputations, [opponentFound.clan.id]: newRep } };
+  }
+
+  s = { ...s, lifetimeDignitas: Math.max(0, s.lifetimeDignitas + cons.lifetimeDignitas) };
+
+  if (cons.denarii) {
+    s = { ...s, denarii: Math.max(0, s.denarii + cons.denarii) };
+  }
+
+  if (defendant.kind === 'family') {
+    const accused = s.family.find(c => c.id === defendant.characterId);
+
+    if (cons.corruptionClear) {
+      s = {
+        ...s,
+        family: s.family.map(c =>
+          c.id === defendant.characterId ? { ...c, corruptionScore: 0 } : c
+        ),
+      };
+    }
+
+    if (cons.familyTrustDelta) {
+      s = {
+        ...s,
+        family: s.family.map(c =>
+          c.isPlayer ? { ...c, familyTrust: Math.max(0, c.familyTrust + cons.familyTrustDelta!) } : c
+        ),
+      };
+    }
+
+    if (cons.removeCharacter) {
+      // Same shared-detection routing as turnSequencer's other death paths
+      // (Phase 3, Chunk P3-C) — a still-pending succession from earlier this
+      // same season takes precedence (the single pendingSuccession slot
+      // can't hold two at once — rare enough not to handle further here).
+      if (accused?.isPlayer && !s.pendingSuccession) {
+        const result = detectPaterfamiliasDeath(s.family, defendant.characterId, s.heldOffices);
+        if (result.pendingSuccession) {
+          const p = result.pendingSuccession;
+          const resolution = resolveDeathNotice(p, s.cadetBranch, s.cadetBranchUsed, s.turnNumber);
+          s = {
+            ...s,
+            family: result.family,
+            pendingSuccession: p,
+            pendingEvents: [...s.pendingEvents, resolution.notice],
+            ...(resolution.cadetBranch ? { cadetBranch: resolution.cadetBranch } : {}),
+            ...(resolution.pendingEpilogue ? { pendingEpilogue: resolution.pendingEpilogue } : {}),
+          };
+        } else {
+          s = { ...s, family: result.family };
+        }
+      } else {
+        s = { ...s, family: s.family.filter(c => c.id !== defendant.characterId) };
+      }
+    }
+  } else {
+    // Leader defendant (player-filed prosecution) — reuses the `proscribed`
+    // flag (the Dictator's Proscription consequence) rather than inventing
+    // leader removal/succession machinery.
+    const targetLeaderId = defendant.leaderId;
+    if (cons.corruptionClear) {
+      s = {
+        ...s,
+        clans: s.clans.map(c => ({
+          ...c,
+          leaders: c.leaders.map(l => l.id === targetLeaderId ? { ...l, corruptionScore: 0 } : l),
+        })),
+      };
+    }
+    if (cons.removeCharacter) {
+      s = {
+        ...s,
+        clans: s.clans.map(c => ({
+          ...c,
+          leaders: c.leaders.map(l => l.id === targetLeaderId ? { ...l, proscribed: true } : l),
+        })),
+      };
+    }
+  }
+
+  // ── Calumnia (losing a player-filed prosecution) ────────────────────────
+  if (trial.seat === 'prosecution') {
+    const calumnia = checkCalumnia(trial, differential, rng());
+    if (calumnia.triggered) {
+      s = { ...s, lifetimeDignitas: Math.max(0, s.lifetimeDignitas + calumnia.dignitasDelta) };
+      if (opponentFound) {
+        const rep = Math.min(100, Math.max(-100,
+          (s.familyReputations[opponentFound.clan.id] ?? 0) + calumnia.clanRelationsDelta
+        ));
+        s = { ...s, familyReputations: { ...s.familyReputations, [opponentFound.clan.id]: rep } };
+      }
+      events.push(`Calumnia! Your accusation against ${defendantName} is judged malicious — Dignitas and standing suffer.`);
+
+      if (calumnia.counterSuitRolled && opponentFound) {
+        counterSuit = buildTrialState({
+          id: `trial-countersuit-${s.turnNumber}`,
+          seat: 'defense',
+          charge: trial.charge,
+          chargeSource: 'accusation',
+          prosecutor: { kind: 'leader', leaderId: opponentFound.leader.id },
+          defendant: { kind: 'family', characterId: trial.speakerId },
+          filedSeason: s.turnNumber,
+          startsSeason: s.turnNumber + 2,
+          initialNpcStrength: BALANCE.trials.corruptionEvidenceBase,
+          speakerId: trial.speakerId,
+        });
+        events.push(`${opponentFound.leader.name} files a counter-suit against ${s.family.find(c => c.id === trial.speakerId)?.name ?? 'your speaker'}.`);
+      }
+    }
+  }
+
+  const resolvedTrial: TrialState = { ...trial, status: 'resolved', outcome, session: null };
+  return { trial: resolvedTrial, state: s, events, counterSuit };
+}
+
 // ─── Passive trial trigger check ──────────────────────────────────────────────
 
 /**
@@ -430,6 +624,7 @@ export function convertLegacyTrial(
     consumedSecretIds: [],
     status: legacy.resolved ? 'resolved' : 'preparing',
     outcome: legacy.outcome,
+    session: null,
   };
 }
 

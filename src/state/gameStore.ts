@@ -66,7 +66,17 @@ import {
   applyBribeJurors,
   applyBribePraetor,
   applyIntimidateWitness,
+  findOpponentLeader,
+  resolveTrialOutcome,
 } from '../engine/trialEngine';
+import {
+  evaluateBeatResponse,
+  pickBestResponse,
+  applyBeatOutcome,
+  getTrialBeat,
+  computeNpcPerformance,
+} from '../engine/trialBeatEngine';
+import { TRIAL_CHARGE_DEFS } from '../data/trialCharges';
 import { CLIENT_NAMES } from '../data/clientNames';
 import { SECRET_CLASS_BY_TYPE } from '../data/secretDefinitions';
 import {
@@ -575,6 +585,9 @@ export interface GameActions {
   bribeTrialPraetor: (trialId: string) => void;
   intimidateTrialWitness: (trialId: string) => void;
   selectTrialForBasilica: (trialId: string | null) => void;
+  // Trial day — Phase 4, Chunk P4-E
+  answerTrialBeat: (trialId: string, beatId: string, responseId: string) => void;
+  fastResolveTrialSession: (trialId: string) => void;
 
   // Birth
   confirmBirthNaming: (name: string) => void;
@@ -1021,6 +1034,32 @@ function normalizePlayerPrep(prep: any): TrialState['playerPrep'] {
     witnesses: [],
     bribedClanIds: [],
     praetorBribed: false,
+  };
+}
+
+/**
+ * Phase 4, Chunk P4-E — shared by answerTrialBeat (last beat) and
+ * fastResolveTrialSession: once a trial's session has no more beats to
+ * answer, compute the deterministic verdict + apply every consequence via
+ * trialEngine.resolveTrialOutcome (the exact logic turnSequencer.ts used to
+ * run inline before trial day became interactive), then merge the result
+ * (plus any calumnia counter-suit) back into `trials`.
+ */
+function concludeTrialSession(s: GameState, trial: TrialState): Partial<GameState> {
+  const opponentFound = findOpponentLeader(trial, s.clans);
+  const npcPerformance = computeNpcPerformance(opponentFound?.leader.traits ?? []);
+  const playerPerformance = Math.max(
+    -BALANCE.trials.performanceCap,
+    Math.min(BALANCE.trials.performanceCap, trial.session?.performanceSoFar ?? 0)
+  );
+
+  const result = resolveTrialOutcome(s, trial, opponentFound, playerPerformance, npcPerformance);
+  const others = s.trials.filter(t => t.id !== trial.id);
+
+  return {
+    ...result.state,
+    trials: [...others, result.trial, ...(result.counterSuit ? [result.counterSuit] : [])],
+    log: [...result.state.log, ...result.events.map(e => mkLog(turnLabel(result.state), e, 'neutral'))],
   };
 }
 
@@ -2327,6 +2366,49 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   selectTrialForBasilica: (trialId) => set({ selectedTrialId: trialId }),
 
+  // ─── Trial day: the beat engine (Phase 4, Chunk P4-E) ──────────────────────
+
+  answerTrialBeat: (trialId, beatId, responseId) => {
+    const s = get();
+    const trial = s.trials.find(t => t.id === trialId);
+    if (!trial || trial.status !== 'in_session' || !trial.session) return;
+    if (trial.session.beatIds[trial.session.currentBeatIndex] !== beatId) return;
+
+    const beat = getTrialBeat(beatId);
+    const response = beat?.responses.find(r => r.id === responseId);
+    const speaker = s.family.find(c => c.id === trial.speakerId);
+    if (!beat || !response || !speaker) return;
+
+    const { succeeded, swing } = evaluateBeatResponse(response, speaker, trial);
+    const advancedTrial = applyBeatOutcome(trial, beat, response, succeeded, swing);
+    const sessionDone = !advancedTrial.session || advancedTrial.session.currentBeatIndex >= advancedTrial.session.beatIds.length;
+
+    if (sessionDone) {
+      set(concludeTrialSession(s, advancedTrial));
+    } else {
+      set({ trials: s.trials.map(t => t.id === trialId ? advancedTrial : t) });
+    }
+  },
+
+  fastResolveTrialSession: (trialId) => {
+    const s = get();
+    const trial = s.trials.find(t => t.id === trialId);
+    if (!trial || trial.status !== 'in_session' || !trial.session) return;
+    const speaker = s.family.find(c => c.id === trial.speakerId);
+    if (!speaker) return;
+
+    let working = trial;
+    while (working.session && working.session.currentBeatIndex < working.session.beatIds.length) {
+      const beatId = working.session.beatIds[working.session.currentBeatIndex];
+      const beat = getTrialBeat(beatId);
+      if (!beat) break; // shouldn't happen — the id was drawn from this same library
+      const { response, succeeded, swing } = pickBestResponse(beat, speaker, working);
+      working = applyBeatOutcome(working, beat, response, succeeded, swing);
+    }
+
+    set(concludeTrialSession(s, working));
+  },
+
   // ─── Birth ──────────────────────────────────────────────────────────────────
 
   confirmBirthNaming: (name) => {
@@ -2726,6 +2808,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     // convertLegacyTrial/turnSequencer's NPC-trigger baseline, for the same
     // reason — an undifferentiated flat bonus has no section it more
     // naturally belongs to).
+    // Phase 4, Chunk P4-E — `session` didn't exist before this chunk, and no
+    // prior chunk ever actually assigned status: 'in_session' (P4-C/D always
+    // resolved synchronously) — a pre-P4-E save can only have 'preparing' or
+    // 'resolved' trials, so `session: t.session ?? null` is a plain
+    // backfill. The defensive `status` reset below only matters if a shape
+    // ever regresses this invariant later (an in_session trial with no live
+    // session would otherwise be stuck forever with no UI able to reach it) —
+    // resetting to 'preparing' lets turnSequencer just redraw it next season.
     trials: (savedState.trials ?? (((savedState as any).trialQueue ?? []) as any[]).map(legacy =>
       convertLegacyTrial(
         legacy,
@@ -2733,7 +2823,12 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         savedState.clans,
         savedState.family.find(c => c.isPlayer)?.id ?? 'pc-1'
       )
-    )).map((t: any) => ({ ...t, playerPrep: normalizePlayerPrep(t.playerPrep) })),
+    )).map((t: any) => ({
+      ...t,
+      playerPrep: normalizePlayerPrep(t.playerPrep),
+      session: t.session ?? null,
+      status: (t.status === 'in_session' && !t.session) ? 'preparing' : t.status,
+    })),
     // Always reset transient UI state — these must not be loaded from disk
     gameStarted:   true,
     debugMode:     false,

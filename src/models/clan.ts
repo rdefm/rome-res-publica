@@ -70,6 +70,24 @@ export interface ClanLeader {
    *  not a simulation of who economically controls which province.
    *  Optional/absent (read as 0) so pre-P4-C saves load unchanged. */
   corruptionScore?: number;
+
+  // ── Phase 4, Chunk P4-E — Trial beats ───────────────────────────────────────
+  /** Trait IDs from data/traits.ts's TRAIT_DEFINITIONS — the same catalog
+   *  used for family Character.inheritedTraits, reused here (per design
+   *  decision) as the "opponent trait" signal trialBeatEngine's beat draw
+   *  keys off, since ClanLeader previously had no traits system at all (only
+   *  `bias`/`sphere` — P4-C's opponent-prep growth skipped a "wealthy trait"
+   *  multiplier for lack of exactly this signal). Starting leaders
+   *  (data/startingClans.ts) are hand-assigned 0-1 fitting traits with NO
+   *  retroactive skillModifiers applied (their skills were hand-tuned before
+   *  traits existed; silently buffing them here would be an undocumented
+   *  rebalance). Procedurally generated successors (reputationEngine.ts's
+   *  generateSuccessor) roll a fresh trait and DO apply skillModifiers via
+   *  applyLeaderTraitModifiers, matching how inheritanceEngine.applyTraitModifiers
+   *  treats new Characters. Optional/absent (read as []) so pre-P4-E saves
+   *  and any ClanLeader literal elsewhere in the codebase load/compile
+   *  unchanged. */
+  traits?: string[];
 }
 
 export interface Clan {

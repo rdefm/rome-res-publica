@@ -3,6 +3,37 @@ import type { Clan, ClanLeader, ClanStanding, LeaderBias } from '../models/clan'
 import type { ElectionRival } from '../models/office';
 import { BALANCE } from '../data/balance';
 import { LEADER_PRAENOMINA } from '../data/clientNames';
+import { TRAIT_DEFINITIONS } from '../data/traits';
+
+// ─── Phase 4, Chunk P4-E — successor traits ──────────────────────────────────
+// Procedurally generated successors (unlike the hand-authored starting
+// leaders in data/startingClans.ts) get a freshly rolled trait AND its
+// skillModifiers applied — there's no hand-tuned baseline here to disturb,
+// unlike the starting roster (see models/clan.ts's ClanLeader.traits doc
+// comment). Mirrors inheritanceEngine.applyTraitModifiers's clamp/shape, but
+// against ClanLeaderSkills (no auctoritas field to touch).
+
+/** 65% chance of inheriting one trait from the pool — leaves a meaningful
+ *  minority of successors traitless, same texture as the starting roster
+ *  (several of whom were deliberately left without one). */
+function rollLeaderTrait(rng: () => number): string | null {
+  if (rng() >= 0.65) return null;
+  const pool = TRAIT_DEFINITIONS;
+  return pool[Math.floor(rng() * pool.length)].id;
+}
+
+function applyLeaderTraitModifiers(skills: ClanLeader['skills'], traitIds: string[]): ClanLeader['skills'] {
+  const updated = { ...skills };
+  for (const id of traitIds) {
+    const trait = TRAIT_DEFINITIONS.find(t => t.id === id);
+    if (!trait?.skillModifiers) continue;
+    const sm = trait.skillModifiers;
+    updated.rhetoric = Math.max(0, Math.min(10, updated.rhetoric + (sm.rhetoric ?? 0)));
+    updated.martial  = Math.max(0, Math.min(10, updated.martial  + (sm.martial  ?? 0)));
+    updated.intrigus = Math.max(0, Math.min(10, updated.intrigus + (sm.intrigus ?? 0)));
+  }
+  return updated;
+}
 
 export function getReputationTier(score: number): ReputationThreshold {
   const sorted = [...REPUTATION_THRESHOLDS].sort((a, b) => b.score - a.score);
@@ -170,6 +201,10 @@ function generateSuccessor(
   const anchor = deriveRelationshipAnchor(freshLeaderForAnchor);
   const relationship = Math.max(rawRelationship, anchor);
 
+  const trait = rollLeaderTrait(Math.random);
+  const traits = trait ? [trait] : [];
+  const skills = applyLeaderTraitModifiers(predecessor.skills, traits);
+
   const leader: ClanLeader = {
     id: `${clan.id}-heir-${predecessor.id}`,
     name,
@@ -185,7 +220,8 @@ function generateSuccessor(
     bio: `Rises to lead the ${clan.name} after ${predecessor.name}'s death.`,
     alliance: false,
     married: false,
-    skills: { ...predecessor.skills },
+    skills,
+    traits,
     heldOffices: [],
     currentOffice: null,
     turnsLeftInOffice: null,

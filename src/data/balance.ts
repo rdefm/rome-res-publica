@@ -1071,7 +1071,9 @@ export const BALANCE = {
       },
       procedure: {
         logos: 1.1,
-        /** Inert until P4-E's beat draw exists. */
+        /** Slot-2 draw weight applied to any candidate beat tagged 'surprise'
+         *  when approach === 'procedure' (trialBeatEngine.drawTrialBeats) —
+         *  no longer inert now that P4-E's beat draw exists. */
         surpriseBeatChanceMultiplier: 0.5,
       },
       sympathy: {
@@ -1079,6 +1081,28 @@ export const BALANCE = {
         logos: 0.9,
         juryLeanWeightMultiplier: 2,
       },
+    },
+
+    // ── Trial day: the beat engine (Phase 4, Chunk P4-E) ──────────────────
+    beats: {
+      /** Exactly 3 beats per session (design overview §2's "3-beat interactive
+       *  sequence"), fewer only if mandatory preemption + a starved pool
+       *  somehow can't fill a slot (data/trialBeats.ts's library is sized to
+       *  avoid this in practice). */
+      beatsPerTrial: 3,
+      /** Per-beat swing clamp — the ceiling a single response's success/failure
+       *  value may contribute before the running total's own ±performanceCap
+       *  clamp (BALANCE.trials.performanceCap, defined above) applies. */
+      beatSwingMax: 10,
+      /** NPC performance is a single value added once at session conclusion
+       *  (not accumulated beat-by-beat like the player's, since the NPC
+       *  doesn't answer beats) — EV-neutral baseline, then nudged by
+       *  trialBeatEngine.computeNpcPerformance if the opponent holds a
+       *  courtroom-savvy trait (sharp_mind/ruthless/great_orator/silver_tongue
+       *  — data/traits.ts). Both seeds are a first-pass implementer's call;
+       *  no distinct number is given in the design plan. */
+      npcPerformanceEV: 0,
+      npcPerformanceTraitNudge: 3,
     },
   },
 };

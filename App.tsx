@@ -19,6 +19,7 @@ import WelcomeBackModal from './src/components/shared/WelcomeBackModal';
 import BattleScreen from './src/screens/BattleScreen';
 import EpilogueScreen from './src/screens/EpilogueScreen';
 import SetPieceOfferModal from './src/components/shared/SetPieceOfferModal';
+import TrialSessionModal from './src/components/cursus/TrialSessionModal';
 import { generateAgenda } from './src/engine/agendaEngine';
 import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle } from './src/components/shared/TabBar';
 import StartMenuScreen from './src/screens/StartMenuScreen';
@@ -176,6 +177,7 @@ function GameRoot() {
       if (s.activeEvent)                               return;
       if (s.pendingBirthNaming)                        return;
       if ((s.pendingAmbitionScopes ?? []).length > 0)  return;
+      if (s.trials.some(t => t.status === 'in_session')) return; // Phase 4, P4-E — trial day
       if (s.agendaViewedTurn >= s.turnNumber)          return;
 
       const items = generateAgenda(s);
@@ -203,10 +205,16 @@ function GameRoot() {
         {/* Modal priority: EventModal → AmbitionSelectionModal → AgendaTablet → WelcomeBackModal.
             BattleScreen is its own full-screen native Modal (Military Overhaul M5) — it takes
             over the whole screen whenever a battle is staging/active, regardless of DOM order.
-            SetPieceOfferModal (M9) self-gates OFF whenever a battle is in progress, so it never
-            stacks with BattleScreen. EpilogueScreen (Phase 3, P3-E) self-gates on runFinished —
-            takes over the whole screen once a run ends, same idiom, outranking everything else
-            here since nothing is actionable once a run is finished. */}
+            TrialSessionModal (Phase 4, P4-E) is the same idiom — a full-screen native Modal
+            self-gated on a trial with status 'in_session'; turnSequencer only ever puts one
+            trial in session at a time (fileProsecution/shouldTriggerTrial both enforce a single
+            active trial system-wide), so it never stacks with itself, though it can in principle
+            coincide with a same-season random event (both are native Modals; no explicit
+            deferral was added for this rare overlap, same looseness this codebase already
+            tolerates elsewhere). SetPieceOfferModal (M9) self-gates OFF whenever a battle is in
+            progress, so it never stacks with BattleScreen. EpilogueScreen (Phase 3, P3-E)
+            self-gates on runFinished — takes over the whole screen once a run ends, same idiom,
+            outranking everything else here since nothing is actionable once a run is finished. */}
         <EventModal />
         <AmbitionSelectionModal />
         <AgendaTablet />
@@ -215,6 +223,7 @@ function GameRoot() {
           onDismiss={() => setShowWelcomeBack(false)}
         />
         <SetPieceOfferModal />
+        <TrialSessionModal />
         <BattleScreen />
         <EpilogueScreen />
       </View>

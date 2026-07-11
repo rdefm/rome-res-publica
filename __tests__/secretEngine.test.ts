@@ -571,7 +571,7 @@ describe('resolveSecretDemand', () => {
       filedSeason: 8, startsSeason: 10,
       playerPrep: { logos: 20, pathos: 0, ethos: 0, actionsUsed: [], witnesses: [], bribedClanIds: [], praetorBribed: false },
       approach: 'procedure', speakerId: 'pc-1', npcStrength: 20, juryLean: 0,
-      consumedSecretIds: [], status: 'preparing',
+      consumedSecretIds: [], status: 'preparing', session: null,
     };
     const state = makeState({
       clans: [makeClan({ leaders: [leader] })], secrets: [secret],

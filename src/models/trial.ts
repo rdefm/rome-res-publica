@@ -91,6 +91,88 @@ export interface TrialState {
   consumedSecretIds: string[];
   status: 'preparing' | 'in_session' | 'resolved';
   outcome?: TrialOutcome;
+  /** Non-null exactly while status === 'in_session' (Phase 4, Chunk P4-E).
+   *  Drawn once when turnNumber reaches startsSeason (trialBeatEngine.drawTrialBeats,
+   *  turnSequencer.ts) and persisted — chosen over an ephemeral gameStore
+   *  field so an app restart mid-trial-day resumes the exact same session
+   *  rather than losing it (unlike activeBattle's "does not survive an app
+   *  restart" precedent). */
+  session: TrialSession | null;
+}
+
+// ─── Phase 4, Chunk P4-E — Trial day: the beat engine ────────────────────────
+
+/** A single answered beat, kept for the eventual verdict scene's (P4-F)
+ *  beat-by-beat recap. */
+export interface TrialBeatResolution {
+  beatId: string;
+  responseId: string;
+  succeeded: boolean;
+  /** Already clamped to ±BALANCE.trials.beatSwingMax. */
+  swing: number;
+}
+
+/** The live state of an in-session trial's 3-beat sequence. */
+export interface TrialSession {
+  /** Exactly BALANCE.trials.beatsPerTrial (3) ids into data/trialBeats.ts's
+   *  TRIAL_BEATS, drawn once at session start — trialBeatEngine.drawTrialBeats. */
+  beatIds: string[];
+  /** 0-based pointer into beatIds — the beat currently awaiting a response. */
+  currentBeatIndex: number;
+  /** Running total, clamped to ±BALANCE.trials.performanceCap as each beat
+   *  resolves (design invariant 1 — trial day is at most the ±30% share). */
+  performanceSoFar: number;
+  resolutions: TrialBeatResolution[];
+  /** Rolled once at session draw (BALANCE.trials.prep.juryBribeDiscoveryChance/
+   *  praetorBribeDiscoveryChance) — a discovered bribe's Ethos bonus is voided
+   *  immediately (playerPrep.ethos reduced) and its mandatory 'bribe_discovered'
+   *  beat forced into the draw ("bribes eat your beats and their bonuses"). */
+  discoveredBribeClanIds: string[];
+  discoveredPraetorBribe: boolean;
+  /** The playerPrep.witnesses[].id targeted by a forced 'witness_attack' beat,
+   *  if one was drawn — null once answered (the response either saves or
+   *  loses the witness) or if no unattacked witness existed at draw time. */
+  witnessAttackTargetId: string | null;
+}
+
+export type BeatResponseKind = 'stat' | 'prep' | 'plain';
+
+/** What a kind: 'prep' response checks for — a prep artifact already bought
+ *  in the Basilica (P4-D), not a fresh spend. */
+export type BeatPrepRequirement =
+  | { kind: 'witness' }
+  | { kind: 'secret_evidence' }
+  | { kind: 'evidence_uses'; min: number };
+
+export interface BeatResponse {
+  id: string;
+  label: string;
+  kind: BeatResponseKind;
+  /** kind: 'stat' only — reuses eventEngine.resolveEventChoice's exact
+   *  threshold idiom (skillVal >= difficulty, no roll — design invariant 2:
+   *  "the verdict itself is a deterministic threshold," and per this
+   *  codebase's own skill-check convention, so is every beat response). */
+  skill?: 'rhetoric' | 'intrigus';
+  difficulty?: number;
+  /** kind: 'prep' only. */
+  requires?: BeatPrepRequirement;
+  swing: { success: number; failure: number };
+  successText: string;
+  failureText: string;
+}
+
+/** tags mixes ChargeId values, TrialApproach values, ClanLeader trait ids
+ *  (data/traits.ts), and the fixed flavor tags below — kept as `string[]`
+ *  rather than a closed union since trait ids are open-ended content, not a
+ *  fixed enum (data/trialBeats.ts is the source of truth for which tags
+ *  actually appear). */
+export type FixedBeatTag = 'surprise' | 'witness_attack' | 'bribe_discovered_jurors' | 'bribe_discovered_praetor' | 'general';
+
+export interface TrialBeat {
+  id: string;
+  tags: string[];
+  complication: string;
+  responses: BeatResponse[];
 }
 
 // ─── Legacy shape — save-migration only ──────────────────────────────────────
