@@ -3,6 +3,8 @@ import {
   attemptGather,
   npcGatherTick,
   generateSecret,
+  generateLatentSecret,
+  latentSecretDiscoveryTick,
   isDeterred,
   computeLeverageBillSupportDelta,
   extortSeasonTick,
@@ -22,7 +24,7 @@ import { BALANCE } from '../src/data/balance';
 import type { Character } from '../src/models/character';
 import type { Clan, ClanLeader } from '../src/models/clan';
 import type { GameState } from '../src/state/gameStore';
-import type { Secret } from '../src/models/secret';
+import type { Secret, LatentSecret } from '../src/models/secret';
 import type { TrialState } from '../src/models/trial';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -37,6 +39,12 @@ function makeCharacter(overrides: Partial<Character> = {}): Character {
     formalImperium: 0, militaryImperium: 0, raisedLegions: [], veterans: [],
     ...overrides,
   };
+}
+
+/** An adult, non-player family member — npcGatherTick's only valid target
+ *  pool as of the player-agency fix (the player is never a target). */
+function makeKin(overrides: Partial<Character> = {}): Character {
+  return makeCharacter({ id: 'kin-1', name: 'Kin', isPlayer: false, ...overrides });
 }
 
 function makeLeader(overrides: Partial<ClanLeader> = {}): ClanLeader {
@@ -150,6 +158,41 @@ describe('generateSecret', () => {
       expect(secret.potency).toBe(1);
     }
   });
+
+  test('traitBias heavily favors the trait-matched type over the uniform pool', () => {
+    // aggressive -> violence (secretDefinitions.ts's TRAIT_TYPE_BIAS). Sweep
+    // the whole roll range with the bias applied — violence should dominate
+    // far past its 1-in-5 uniform share.
+    let violenceCount = 0;
+    const steps = 100;
+    for (let i = 0; i < steps; i++) {
+      const r = i / steps;
+      const rng = seqRng([r, 0, 0]);
+      const secret = generateSecret(
+        { kind: 'family', characterId: 'kin-1' }, 'leader-1', 'Kin', 10, false, rng,
+        { traitBias: ['aggressive'] }
+      );
+      if (secret.type === 'violence') violenceCount++;
+    }
+    // 5 eligible types, violence weighted 3x vs 1x for the rest -> 3/7 ≈ 43%
+    // of the draw, vs. a ~20% uniform baseline — a clear, deliberate lean.
+    expect(violenceCount).toBeGreaterThan(steps * 0.35);
+  });
+
+  test('traitBias with no matching type falls back to the exact uniform draw', () => {
+    // No trait maps to a type outside the pool -> byte-for-byte identical to
+    // calling with no traitBias at all (same single rng() call for type).
+    const rng1 = seqRng([0.5, 0, 0]);
+    const rng2 = seqRng([0.5, 0, 0]);
+    const withoutBias = generateSecret(
+      { kind: 'leader', leaderId: 'leader-1' }, 'player', 'L. Testius', 10, true, rng1
+    );
+    const withUnmatchedBias = generateSecret(
+      { kind: 'leader', leaderId: 'leader-1' }, 'player', 'L. Testius', 10, true, rng2,
+      { traitBias: [] }
+    );
+    expect(withUnmatchedBias.type).toBe(withoutBias.type);
+  });
 });
 
 // ─── attemptGather ─────────────────────────────────────────────────────────
@@ -209,7 +252,10 @@ describe('npcGatherTick', () => {
   test('only leaders below hostileStandingMax roll', () => {
     const friendly = makeLeader({ id: 'friendly', relationship: 80 });
     const hostile = makeLeader({ id: 'hostile', relationship: 10 });
-    const state = makeState({ clans: [makeClan({ leaders: [friendly, hostile] })] });
+    const state = makeState({
+      family: [makeCharacter(), makeKin()],
+      clans: [makeClan({ leaders: [friendly, hostile] })],
+    });
 
     // rng always succeeds when called — only 'hostile' should ever roll.
     const result = npcGatherTick(state, () => 0);
@@ -219,28 +265,89 @@ describe('npcGatherTick', () => {
     expect(result.secrets[0].discovered).toBe(false);
   });
 
+  test('never targets the player, even when the player holds the family\'s only corruption', () => {
+    const hostile = makeLeader({ id: 'hostile', relationship: 10 });
+    const state = makeState({
+      family: [makeCharacter({ corruptionScore: 100 }), makeKin({ corruptionScore: 0 })],
+      clans: [makeClan({ leaders: [hostile] })],
+    });
+
+    const result = npcGatherTick(state, () => 0);
+    expect(result.secrets.length).toBe(1);
+    expect(result.secrets[0].subject).toEqual({ kind: 'family', characterId: 'kin-1' });
+  });
+
+  test('a family with only the player is a safe no-op (the actual player-agency fix)', () => {
+    const hostile = makeLeader({ id: 'hostile', relationship: 10 });
+    const state = makeState({
+      family: [makeCharacter({ corruptionScore: 100 })],
+      clans: [makeClan({ leaders: [hostile] })],
+    });
+    expect(npcGatherTick(state, () => 0).secrets).toEqual([]);
+  });
+
+  test('minors are not eligible targets', () => {
+    const hostile = makeLeader({ id: 'hostile', relationship: 10 });
+    const state = makeState({
+      family: [makeCharacter(), makeKin({ age: BALANCE.succession.regencyMinorAge - 1 })],
+      clans: [makeClan({ leaders: [hostile] })],
+    });
+    expect(npcGatherTick(state, () => 0).secrets).toEqual([]);
+  });
+
+  test('target selection is weighted toward aggressive/ambitious kin over content/cautious kin', () => {
+    const hostile = makeLeader({ id: 'hostile', relationship: 10 });
+    const reckless = makeKin({ id: 'reckless', traits: ['aggressive'] });
+    const meek = makeKin({ id: 'meek', traits: ['content'] });
+
+    let recklessCount = 0;
+    const trials = 200;
+    for (let i = 0; i < trials; i++) {
+      const roll = i / trials;
+      // rng is called for target selection, then per-leader chance, then
+      // generateSecret's internals — vary only the first call (target pick)
+      // deterministically, keep the rest at 0 so the leader always rolls a hit.
+      let call = 0;
+      const rng = () => (call++ === 0 ? roll : 0);
+      const state = makeState({
+        family: [makeCharacter(), reckless, meek],
+        clans: [makeClan({ leaders: [hostile] })],
+      });
+      const result = npcGatherTick(state, rng);
+      if (result.secrets[0]?.subject.kind === 'family' && result.secrets[0].subject.characterId === 'reckless') {
+        recklessCount++;
+      }
+    }
+    // Equal-weight baseline would be ~50%; aggressive's 1.6x weight vs
+    // content's 0.7x should skew well above that.
+    expect(recklessCount).toBeGreaterThan(trials * 0.6);
+  });
+
   test('corruption scales chance up to the cap', () => {
     const hostile = makeLeader({ id: 'hostile', relationship: 10 });
     const cleanFamily = makeState({
-      family: [makeCharacter({ corruptionScore: 0 })],
+      family: [makeCharacter({ corruptionScore: 0 }), makeKin()],
       clans: [makeClan({ leaders: [hostile] })],
     });
     const corruptFamily = makeState({
-      family: [makeCharacter({ corruptionScore: 100 })],
+      family: [makeCharacter({ corruptionScore: 100 }), makeKin()],
       clans: [makeClan({ leaders: [makeLeader({ id: 'hostile', relationship: 10 }) ] })],
     });
 
     // Roll pinned just above the clean-family chance but below the capped
     // corrupt-family chance — clean family should never generate, corrupt should.
+    // The player's own corruption is still "the fuel" for the roll even
+    // though the player can never be the target (see the test above).
     const cleanChance = BALANCE.secrets.npcGatherBase;
     const roll = cleanChance + 0.001;
-    expect(npcGatherTick(cleanFamily, () => roll).secrets.length).toBe(0);
-    expect(npcGatherTick(corruptFamily, () => roll).secrets.length).toBe(1);
+    const constRng = () => roll;
+    expect(npcGatherTick(cleanFamily, constRng).secrets.length).toBe(0);
+    expect(npcGatherTick(corruptFamily, constRng).secrets.length).toBe(1);
   });
 
   test('familyGroundwork resets to 0 on success and accumulates on failure', () => {
     const hostile = makeLeader({ id: 'hostile', relationship: 10, familyGroundwork: 0.05 });
-    const state = makeState({ clans: [makeClan({ leaders: [hostile] })] });
+    const state = makeState({ family: [makeCharacter(), makeKin()], clans: [makeClan({ leaders: [hostile] })] });
 
     const success = npcGatherTick(state, () => 0);
     expect(success.clans[0].leaders[0].familyGroundwork).toBe(0);
@@ -252,10 +359,11 @@ describe('npcGatherTick', () => {
   test('respects maxHeldAgainstFamily per leader', () => {
     const hostile = makeLeader({ id: 'hostile', relationship: 10 });
     const existing: Secret[] = Array.from({ length: BALANCE.secrets.maxHeldAgainstFamily }, (_, i) => ({
-      id: `s${i}`, type: 'affair', subject: { kind: 'family', characterId: 'pc-1' },
+      id: `s${i}`, type: 'affair', subject: { kind: 'family', characterId: 'kin-1' },
       holder: 'hostile', potency: 1, status: 'held', acquiredSeason: 1, flavorText: '',
     }));
     const state = makeState({
+      family: [makeCharacter(), makeKin()],
       clans: [makeClan({ leaders: [hostile] })],
       secrets: existing,
     });
@@ -264,7 +372,7 @@ describe('npcGatherTick', () => {
 
   test('missing state.secrets defaults gracefully (pre-P4-A save)', () => {
     const hostile = makeLeader({ id: 'hostile', relationship: 10 });
-    const state = makeState({ clans: [makeClan({ leaders: [hostile] })] });
+    const state = makeState({ family: [makeCharacter(), makeKin()], clans: [makeClan({ leaders: [hostile] })] });
     delete (state as any).secrets;
     expect(() => npcGatherTick(state, () => 0)).not.toThrow();
   });
@@ -272,6 +380,95 @@ describe('npcGatherTick', () => {
   test('empty family is a safe no-op', () => {
     const state = makeState({ family: [] });
     expect(npcGatherTick(state, () => 0).secrets).toEqual([]);
+  });
+});
+
+// ─── Player-choice blackmail: generateLatentSecret / latentSecretDiscoveryTick ─
+
+describe('generateLatentSecret', () => {
+  test('interpolates {subject} with the given name and carries the given type/potency', () => {
+    const latent = generateLatentSecret('pc-1', 'Marcus', 'electoral_fraud', 2, 10, seqRng([0]));
+    expect(latent.flavorText).not.toContain('{subject}');
+    expect(latent.flavorText).toContain('Marcus');
+    expect(latent.type).toBe('electoral_fraud');
+    expect(latent.characterId).toBe('pc-1');
+    expect(latent.potency).toBe(2);
+    expect(latent.createdSeason).toBe(10);
+  });
+});
+
+describe('latentSecretDiscoveryTick', () => {
+  function makeLatent(overrides: Partial<LatentSecret> = {}): LatentSecret {
+    return {
+      id: 'latent-1', type: 'embezzlement', characterId: 'pc-1',
+      flavorText: 'A discrepancy in the ledgers.', createdSeason: 5, potency: 2,
+      ...overrides,
+    };
+  }
+
+  test('converts into a real, held-but-undiscovered Secret on a hit roll', () => {
+    const hostile = makeLeader({ id: 'hostile', relationship: 10, skills: { rhetoric: 5, martial: 5, intrigus: 5 } });
+    const state = makeState({
+      clans: [makeClan({ leaders: [hostile] })],
+      latentSecrets: [makeLatent()],
+    });
+
+    const result = latentSecretDiscoveryTick(state, () => 0); // always under latentDiscoveryChance
+    expect(result.secrets.length).toBe(1);
+    expect(result.secrets[0].holder).toBe('hostile');
+    expect(result.secrets[0].subject).toEqual({ kind: 'family', characterId: 'pc-1' });
+    expect(result.secrets[0].status).toBe('held');
+    expect(result.secrets[0].discovered).toBe(false);
+    expect(result.secrets[0].potency).toBe(2);
+    expect(result.removedLatentIds).toEqual(['latent-1']);
+  });
+
+  test('no-op on a miss roll', () => {
+    const hostile = makeLeader({ id: 'hostile', relationship: 10 });
+    const state = makeState({
+      clans: [makeClan({ leaders: [hostile] })],
+      latentSecrets: [makeLatent()],
+    });
+
+    const result = latentSecretDiscoveryTick(state, () => 0.999); // always over latentDiscoveryChance
+    expect(result.secrets).toEqual([]);
+    expect(result.removedLatentIds).toEqual([]);
+  });
+
+  test('respects hostileStandingMax — a friendly leader never discovers it', () => {
+    const friendly = makeLeader({ id: 'friendly', relationship: 80 });
+    const state = makeState({
+      clans: [makeClan({ leaders: [friendly] })],
+      latentSecrets: [makeLatent()],
+    });
+
+    const result = latentSecretDiscoveryTick(state, () => 0);
+    expect(result.secrets).toEqual([]);
+    expect(result.removedLatentIds).toEqual([]);
+  });
+
+  test('respects maxHeldAgainstFamily against that character', () => {
+    const hostile = makeLeader({ id: 'hostile', relationship: 10 });
+    const existing: Secret[] = Array.from({ length: BALANCE.secrets.maxHeldAgainstFamily }, (_, i) => ({
+      id: `s${i}`, type: 'affair', subject: { kind: 'family', characterId: 'pc-1' },
+      holder: 'hostile', potency: 1, status: 'held', acquiredSeason: 1, flavorText: '',
+    }));
+    const state = makeState({
+      clans: [makeClan({ leaders: [hostile] })],
+      secrets: existing,
+      latentSecrets: [makeLatent()],
+    });
+
+    const result = latentSecretDiscoveryTick(state, () => 0);
+    expect(result.secrets).toEqual([]);
+    expect(result.removedLatentIds).toEqual([]);
+  });
+
+  test('missing state.latentSecrets defaults gracefully', () => {
+    const hostile = makeLeader({ id: 'hostile', relationship: 10 });
+    const state = makeState({ clans: [makeClan({ leaders: [hostile] })] });
+    expect(() => latentSecretDiscoveryTick(state, () => 0)).not.toThrow();
+    expect(latentSecretDiscoveryTick(state, () => 0).secrets).toEqual([]);
   });
 });
 

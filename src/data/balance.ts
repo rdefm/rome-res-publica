@@ -843,6 +843,30 @@ export const BALANCE = {
     /** Potency 1 / 2 / 3 generation weights (sums to 1). */
     potencyWeights: [0.55, 0.35, 0.10] as [number, number, number],
 
+    /** npcGatherTick never targets the player (see generateSecret's
+     *  `traitBias` option and secretDefinitions.ts's TRAIT_TYPE_BIAS) — only
+     *  adult, non-player kin are eligible. Target is chosen by weighted
+     *  random among them: base weight 1.0, multiplied per trait present via
+     *  this table (a character with none of these traits keeps weight 1.0),
+     *  plus a light +corruptionScore/200 nudge so a corrupt heir stays
+     *  somewhat more exposed without corruption being required. */
+    blackmailTargetTraitWeight: {
+      aggressive: 1.6,
+      ambitious: 1.4,
+      cautious: 0.7,
+      content: 0.7,
+    } as Record<'aggressive' | 'ambitious' | 'cautious' | 'content', number>,
+    /** generateSecret's `traitBias` option multiplies the trait-matched
+     *  SecretType's draw weight (secretDefinitions.ts's TRAIT_TYPE_BIAS) by
+     *  this factor before the weighted draw — a strong lean, not a
+     *  guarantee (other types can still turn up occasionally). */
+    traitTypeBiasWeight: 3,
+    /** Per-season, per-LatentSecret chance (secretEngine.latentSecretDiscoveryTick)
+     *  that a compromising choice the player knowingly made (see
+     *  resourceEngine's `createLatentSecret:` token) gets noticed by a
+     *  hostile leader and converted into a real, demandable Secret. */
+    latentDiscoveryChance: 0.12,
+
     // ── Phase 4, Chunk P4-B — spend/counterplay/NPC behavior ────────────────
     /** Leverage (player, on a held Secret): consumes it, forces the target
      *  bill's support by leader.votes × this, signed for/against. Election

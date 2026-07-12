@@ -9,11 +9,12 @@
  */
 
 import type { GameState } from '../state/gameStore';
-import type { Secret, SecretType, SecretSubject, SecretHolder, PendingSecretDemand } from '../models/secret';
+import type { Secret, SecretType, SecretSubject, SecretHolder, PendingSecretDemand, LatentSecret } from '../models/secret';
 import type { ClanLeader, LeaderBias } from '../models/clan';
 import type { BillType } from '../models/bill';
 import type { ChargeId } from '../models/trial';
-import { SECRET_TYPE_DEFS, SECRET_TYPES, SECRET_CLASS_BY_TYPE } from '../data/secretDefinitions';
+import type { Character, PersonalityTrait } from '../models/character';
+import { SECRET_TYPE_DEFS, SECRET_TYPES, SECRET_CLASS_BY_TYPE, TRAIT_TYPE_BIAS } from '../data/secretDefinitions';
 import { CLAUDIUS_ARC_SECRET_ID, CLAUDIUS_LEADER_ID } from '../data/claudiusArc';
 import { BALANCE } from '../data/balance';
 import { buildTrialState } from './trialEngine';
@@ -48,22 +49,44 @@ function pickWeightedPotency(rng: () => number, maxPotency: 1 | 2 | 3 = 3): 1 | 
 }
 
 /** Equal weight among condition-eligible types (optionally restricted to a
- *  caller-supplied pool, e.g. Audit a Rival's embezzlement/electoral_fraud).
- *  The plan calls for weighting "by leader bias/history" but gives no
- *  numeric table for it (unlike potencyWeights, which is specified) — this
- *  is the simplest defensible reading until a tuning pass wants to correlate
- *  specific SecretTypes with LeaderBias. officeHistoryEligible gates
+ *  caller-supplied pool, e.g. Audit a Rival's embezzlement/electoral_fraud),
+ *  UNLESS `traitBias` is given (npcGatherTick's personality flavoring): the
+ *  type(s) TRAIT_TYPE_BIAS maps the given traits to have their draw weight
+ *  multiplied by BALANCE.secrets.traitTypeBiasWeight — a strong lean, not a
+ *  guarantee, so an aggressive character can still occasionally turn up an
+ *  unrelated type. With no traitBias (or no matching type in `pool`), this
+ *  is byte-for-byte the original uniform draw (same single rng() call), so
+ *  every pre-existing caller is unaffected. officeHistoryEligible gates
  *  provincial_plunder per SECRET_TYPE_DEFS[type].requiresOfficeHistory. */
 function pickWeightedType(
   officeHistoryEligible: boolean,
   rng: () => number,
-  pool: SecretType[] = SECRET_TYPES
+  pool: SecretType[] = SECRET_TYPES,
+  traitBias: PersonalityTrait[] = []
 ): SecretType {
   const eligible = pool.filter(
     t => !SECRET_TYPE_DEFS[t].requiresOfficeHistory || officeHistoryEligible
   );
-  const idx = Math.min(Math.floor(rng() * eligible.length), eligible.length - 1);
-  return eligible[idx];
+
+  const biasedTypes = new Set(
+    traitBias
+      .map(t => TRAIT_TYPE_BIAS[t])
+      .filter((t): t is SecretType => !!t && eligible.includes(t))
+  );
+  if (biasedTypes.size === 0) {
+    const idx = Math.min(Math.floor(rng() * eligible.length), eligible.length - 1);
+    return eligible[idx];
+  }
+
+  const weights = eligible.map(t => (biasedTypes.has(t) ? BALANCE.secrets.traitTypeBiasWeight : 1));
+  const total = weights.reduce((a, b) => a + b, 0);
+  const roll = rng() * total;
+  let cumulative = 0;
+  for (let i = 0; i < eligible.length; i++) {
+    cumulative += weights[i];
+    if (roll < cumulative) return eligible[i];
+  }
+  return eligible[eligible.length - 1];
 }
 
 // ─── Shared generator ─────────────────────────────────────────────────────────
@@ -76,6 +99,11 @@ export interface GenerateSecretOptions {
   /** Restrict the potency draw to 1..maxPotency. Defaults to 3 — used by
    *  Audit a Rival's "potency-weighted 1–2". */
   maxPotency?: 1 | 2 | 3;
+  /** Biases the type draw toward whatever secretDefinitions.ts's
+   *  TRAIT_TYPE_BIAS maps these traits to (see pickWeightedType) — used by
+   *  npcGatherTick to flavor a targeted family member's Secret by their
+   *  personality (e.g. an aggressive character skews toward `violence`). */
+  traitBias?: PersonalityTrait[];
 }
 
 export function generateSecret(
@@ -87,7 +115,7 @@ export function generateSecret(
   rng: () => number = Math.random,
   options?: GenerateSecretOptions
 ): Secret {
-  const type = pickWeightedType(officeHistoryEligible, rng, options?.typePool);
+  const type = pickWeightedType(officeHistoryEligible, rng, options?.typePool, options?.traitBias);
   const potency = pickWeightedPotency(rng, options?.maxPotency ?? 3);
   const templates = SECRET_TYPE_DEFS[type].flavorTemplates;
   const template = templates[Math.min(Math.floor(rng() * templates.length), templates.length - 1)];
@@ -188,16 +216,51 @@ export interface NpcGatherTickResult {
   clans: GameState['clans'];
 }
 
+/** Weighted-random pick among eligible kin for npcGatherTick's target. Base
+ *  weight 1.0, multiplied per trait present via
+ *  BALANCE.secrets.blackmailTargetTraitWeight (a character with none of
+ *  those traits keeps weight 1.0), plus a light +corruptionScore/200 nudge
+ *  so a corrupt heir stays somewhat more exposed without corruption being
+ *  required — kin normally sit at corruptionScore 0 (only the player's own
+ *  score ever accrues, resourceEngine's `corruption` token), so this is a
+ *  minor tiebreaker, not the primary signal trait weighting is. */
+function pickBlackmailTarget(candidates: Character[], rng: () => number): Character {
+  const traitWeights = BALANCE.secrets.blackmailTargetTraitWeight as Record<string, number>;
+  const weights = candidates.map(c => {
+    const traitMultiplier = c.traits.reduce((mult, t) => mult * (traitWeights[t] ?? 1), 1);
+    return traitMultiplier + (c.corruptionScore ?? 0) / 200;
+  });
+  const total = weights.reduce((a, b) => a + b, 0);
+  const roll = rng() * total;
+  let cumulative = 0;
+  for (let i = 0; i < candidates.length; i++) {
+    cumulative += weights[i];
+    if (roll < cumulative) return candidates[i];
+  }
+  return candidates[candidates.length - 1];
+}
+
 /**
  * Each leader whose relationship (the codebase's "standing" for this purpose
  * — see offices.ts's audit-rival, which gates hostility the same way) is
  * below hostileStandingMax rolls once this season. Odds scale with the
  * highest corruptionScore among the player's own family (corruption is the
- * fuel) plus this leader's own familyGroundwork — the mirror of the
- * player's intelGroundwork, persisting across failed attempts and jumping
- * on an exposed Extort (BALANCE.secrets.extortRetaliationGroundwork).
- * Targets the single most-corrupt family member (the "magnet"); ties
- * resolve to array order. Respects maxHeldAgainstFamily per leader.
+ * fuel — the player's own dealings put the household at risk) plus this
+ * leader's own familyGroundwork — the mirror of the player's
+ * intelGroundwork, persisting across failed attempts and jumping on an
+ * exposed Extort (BALANCE.secrets.extortRetaliationGroundwork).
+ *
+ * The player is never the target — only adult (age >= regencyMinorAge),
+ * non-player kin are eligible, chosen by personality-weighted random
+ * (pickBlackmailTarget) rather than "whoever is most corrupt": kin
+ * corruptionScore is normally 0 (only the player's own score ever ticks),
+ * so treating it as the selector would have made this pick meaningless.
+ * No eligible kin (e.g. an only-child player with no other family yet) means
+ * no Secret generates this season at all — this is the deliberate fix for
+ * the old behavior, where the target was effectively always the player. The
+ * chosen target's traits flavor the Secret's type (generateSecret's
+ * traitBias) — see secretDefinitions.ts's TRAIT_TYPE_BIAS. Respects
+ * maxHeldAgainstFamily per leader.
  */
 export function npcGatherTick(state: GameState, rng: () => number = Math.random): NpcGatherTickResult {
   if (state.family.length === 0) return { secrets: [], clans: state.clans };
@@ -207,6 +270,11 @@ export function npcGatherTick(state: GameState, rng: () => number = Math.random)
     0
   );
 
+  const eligibleTargets = state.family.filter(
+    c => !c.isPlayer && c.age >= BALANCE.succession.regencyMinorAge
+  );
+  if (eligibleTargets.length === 0) return { secrets: [], clans: state.clans };
+
   const heldAgainstFamilyByLeader = new Map<string, number>();
   for (const s of state.secrets ?? []) {
     if (s.subject.kind === 'family' && s.holder !== 'player') {
@@ -214,10 +282,7 @@ export function npcGatherTick(state: GameState, rng: () => number = Math.random)
     }
   }
 
-  const target = state.family.reduce(
-    (best, c) => ((c.corruptionScore ?? 0) > (best.corruptionScore ?? 0) ? c : best),
-    state.family[0]
-  );
+  const target = pickBlackmailTarget(eligibleTargets, rng);
   // Defensive optional-chaining: heldOffices is a new (P4-A) required field,
   // but plenty of pre-existing test fixtures and legacy code paths construct
   // Character objects via loose type-casts that predate it.
@@ -245,7 +310,8 @@ export function npcGatherTick(state: GameState, rng: () => number = Math.random)
           target.name,
           state.turnNumber,
           officeHistoryEligible,
-          rng
+          rng,
+          { traitBias: target.traits }
         );
         // Phase 4, Chunk P4-B — starts hidden from the player; revealed by a
         // demand firing (turnSequencer's NPC decision step) or a successful
@@ -263,6 +329,116 @@ export function npcGatherTick(state: GameState, rng: () => number = Math.random)
   }));
 
   return { secrets: newSecrets, clans };
+}
+
+// ─── Player-choice blackmail — latent secrets ────────────────────────────────
+// A general mechanism (not a one-off): any event choice can offer a real
+// reward (votes, denarii) at the risk of a compromising fact that MAY later
+// be discovered and used against the player, via resourceEngine's
+// `createLatentSecret:<type>:<potency>` effect token — see compromisingEvents.ts.
+// Unlike npcGatherTick's ambient, no-agency generation, the player always
+// knows exactly what they risked and why.
+
+/**
+ * Builds a LatentSecret for a compromising choice the player just made.
+ * Reuses SECRET_TYPE_DEFS' {subject} flavor templates — the same
+ * interpolation generateSecret uses — so the real Secret this may become
+ * (via latentSecretDiscoveryTick) reads consistently with every other
+ * Secret in the game once discovered.
+ */
+export function generateLatentSecret(
+  characterId: string,
+  characterName: string,
+  type: SecretType,
+  potency: 1 | 2 | 3,
+  turnNumber: number,
+  rng: () => number = Math.random
+): LatentSecret {
+  const templates = SECRET_TYPE_DEFS[type].flavorTemplates;
+  const template = templates[Math.min(Math.floor(rng() * templates.length), templates.length - 1)];
+  const flavorText = template.split('{subject}').join(characterName);
+
+  return {
+    id: `latent-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+    type,
+    characterId,
+    flavorText,
+    createdSeason: turnNumber,
+    potency,
+  };
+}
+
+export interface LatentSecretDiscoveryResult {
+  secrets: Secret[];
+  removedLatentIds: string[];
+}
+
+/**
+ * Each season, every outstanding LatentSecret has a flat
+ * BALANCE.secrets.latentDiscoveryChance chance of being noticed by a
+ * hostile leader. On a hit it's promoted into a real, family-subject Secret
+ * (status 'held', discovered false) — from that point indistinguishable
+ * from an npcGatherTick-generated Secret, so it rides the existing
+ * demand/exposure pipeline (scanNpcSecretDecisions, resolveSecretDemand)
+ * unchanged. Same eligibility gates as npcGatherTick: leader standing below
+ * hostileStandingMax, and under maxHeldAgainstFamily against this specific
+ * character; eligible leaders are weighted by intrigus (sharper leaders
+ * notice more). Called from turnSequencer step 9b, right after npcGatherTick.
+ */
+export function latentSecretDiscoveryTick(
+  state: GameState,
+  rng: () => number = Math.random
+): LatentSecretDiscoveryResult {
+  const latents = state.latentSecrets ?? [];
+  if (latents.length === 0) return { secrets: [], removedLatentIds: [] };
+
+  const heldAgainstByLeaderAndCharacter = new Map<string, number>();
+  for (const s of state.secrets ?? []) {
+    if (s.subject.kind === 'family' && s.holder !== 'player') {
+      const key = `${s.holder}:${s.subject.characterId}`;
+      heldAgainstByLeaderAndCharacter.set(key, (heldAgainstByLeaderAndCharacter.get(key) ?? 0) + 1);
+    }
+  }
+
+  const secrets: Secret[] = [];
+  const removedLatentIds: string[] = [];
+
+  for (const latent of latents) {
+    if (rng() >= BALANCE.secrets.latentDiscoveryChance) continue;
+
+    const eligibleLeaders = state.clans.flatMap(c => c.leaders).filter(l => {
+      if (l.relationship >= BALANCE.secrets.hostileStandingMax) return false;
+      const alreadyHeld = heldAgainstByLeaderAndCharacter.get(`${l.id}:${latent.characterId}`) ?? 0;
+      return alreadyHeld < BALANCE.secrets.maxHeldAgainstFamily;
+    });
+    if (eligibleLeaders.length === 0) continue;
+
+    const weights = eligibleLeaders.map(l => Math.max(0.1, l.skills.intrigus));
+    const total = weights.reduce((a, b) => a + b, 0);
+    let roll = rng() * total;
+    let chosen = eligibleLeaders[eligibleLeaders.length - 1];
+    for (let i = 0; i < eligibleLeaders.length; i++) {
+      roll -= weights[i];
+      if (roll <= 0) { chosen = eligibleLeaders[i]; break; }
+    }
+
+    secrets.push({
+      id: `secret-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+      type: latent.type,
+      subject: { kind: 'family', characterId: latent.characterId },
+      holder: chosen.id,
+      potency: latent.potency,
+      status: 'held',
+      acquiredSeason: state.turnNumber,
+      flavorText: latent.flavorText,
+      discovered: false,
+    });
+    removedLatentIds.push(latent.id);
+    const key = `${chosen.id}:${latent.characterId}`;
+    heldAgainstByLeaderAndCharacter.set(key, (heldAgainstByLeaderAndCharacter.get(key) ?? 0) + 1);
+  }
+
+  return { secrets, removedLatentIds };
 }
 
 // ─── Deterrence (Phase 4, Chunk P4-B) ────────────────────────────────────────

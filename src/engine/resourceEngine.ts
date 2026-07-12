@@ -16,6 +16,8 @@ import {
 import { getTierFromLevel } from '../models/crisis';
 import { BALANCE } from '../data/balance';
 import { applySuccession, promoteCadetToParterfamilias } from './inheritanceEngine';
+import { generateLatentSecret } from './secretEngine';
+import type { SecretType } from '../models/secret';
 
 export interface ApplyEffectOptions {
   previewClientName?: string;
@@ -515,6 +517,50 @@ export function applyEffectString(
       // there's no numeric key±N form for a string-enum top-level field.
       if (key === 'setPendingEpilogue') {
         patch.pendingEpilogue = parts[1] as GameState['pendingEpilogue'];
+        continue;
+      }
+
+      // ── createLatentSecret:<type>:<potency> ─────────────────────────────
+      // The general mechanism behind player-choice blackmail (data/
+      // compromisingEvents.ts): any event choice can offer a real reward at
+      // the risk of a compromising fact the player knowingly took on. Plants
+      // a LatentSecret on the player character — nobody holds it yet; each
+      // season secretEngine.latentSecretDiscoveryTick (turnSequencer step
+      // 9b) rolls a chance for a hostile leader to notice it and turn it
+      // into a real, demandable Secret via the existing pipeline.
+      if (key === 'createLatentSecret') {
+        const type = parts[1] as SecretType;
+        const potency = (parseInt(parts[2] ?? '1', 10) || 1) as 1 | 2 | 3;
+        const player = (patch.family ?? state.family).find(c => c.isPlayer);
+        if (player) {
+          const latent = generateLatentSecret(player.id, player.name, type, potency, state.turnNumber);
+          patch.latentSecrets = [...(patch.latentSecrets ?? state.latentSecrets ?? []), latent];
+        }
+        continue;
+      }
+
+      // ── bribeVotes:<n> ───────────────────────────────────────────────────
+      // Sets the n clan leaders with the highest votes (among those not
+      // already pledged 'for') to campaignVotes 'for' — the same lever
+      // secretEngine.resolveSecretDemand's leverage_election comply branch
+      // already uses for a single named leader, generalized to N for a
+      // flat "buy the tribes" event reward. Only meaningful mid-campaign;
+      // the originating event is expected to gate on the 'campaigning'
+      // condition, but this token is itself a no-op (sets nothing) if
+      // called outside one, since campaignVotes is otherwise unused.
+      if (key === 'bribeVotes') {
+        const n = parseInt(parts[1] ?? '0', 10) || 0;
+        const currentVotes = patch.campaignVotes ?? state.campaignVotes;
+        const targets = state.clans
+          .flatMap(c => c.leaders)
+          .filter(l => currentVotes[l.id] !== 'for')
+          .sort((a, b) => b.votes - a.votes)
+          .slice(0, n);
+        if (targets.length > 0) {
+          const bribed = { ...currentVotes };
+          for (const l of targets) bribed[l.id] = 'for';
+          patch.campaignVotes = bribed;
+        }
         continue;
       }
 

@@ -103,7 +103,7 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     support: -5, turnsLeft: 3,
     duration: 12, renewable: true,
     renewalFlavour: 'The development mandate has lapsed. Governors may once again neglect their provinces without senatorial censure.',
-    passEffect: 'stability+3|crisis-economy-4',
+    passEffect: 'stability+3|crisis-economy-8',
     failEffect: 'crisis-economy+3',
     repealable: true,
   },
@@ -123,7 +123,7 @@ export const BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmitted'> & { i
     desc: 'Expansion of the aqueduct network to outlying districts.',
     type: 'economic',
     support: 25, turnsLeft: 3,
-    passEffect: 'stability+8|crisis-economy-4',   // infrastructure investment eases economy
+    passEffect: 'stability+8|crisis-economy-8',   // infrastructure investment eases economy
     failEffect: 'crisis-economy+5',
     repealable: false,
   },
@@ -373,7 +373,7 @@ export const HISTORICAL_BILL_TEMPLATES: (Omit<Bill, 'playerVote' | 'playerSubmit
     desc: 'An emergency tax levy to replenish the public treasury. The Senate agrees this is necessary. The people agree this is their money.',
     type: 'emergency',
     support: -20, turnsLeft: 3,
-    passEffect: 'treasury+20|plebs-8',
+    passEffect: 'treasury+20|plebs-8|crisis-economy-12',
     failEffect: 'treasury-5|crisis-economy+4',   // tax failure worsens economic crisis
     repealable: false,
   },

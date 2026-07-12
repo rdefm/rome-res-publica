@@ -20,6 +20,8 @@ const SaveSchema = z.object({
   clans: z.array(z.any()),
   // Phase 4, Chunk P4-A — .default([]) ensures pre-P4-A saves load cleanly.
   secrets: z.array(z.any()).default([]),
+  // Player-choice blackmail — .default([]) ensures pre-existing saves load cleanly.
+  latentSecrets: z.array(z.any()).default([]),
   // .default([]) ensures save files created before this feature load cleanly
   clients: z.array(z.object({
     id: z.string(),

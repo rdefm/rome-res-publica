@@ -3,6 +3,7 @@
 // lives in engine/secretEngine.ts.
 
 import type { SecretType, SecretClass } from '../models/secret';
+import type { PersonalityTrait } from '../models/character';
 
 export interface SecretTypeDefinition {
   type: SecretType;
@@ -101,6 +102,42 @@ export const SECRET_TYPE_DEFS: Record<SecretType, SecretTypeDefinition> = {
       "{subject} requisitioned grain 'for the legions' that the legions never saw.",
     ],
   },
+  violence: {
+    type: 'violence',
+    displayName: 'Violence',
+    class: 'social',
+    icon: '🩸',
+    // Social, like affair/impiety — a scandal, not a criminal charge. Roman
+    // law has no vis-style charge modeled in this codebase's 5-entry
+    // ChargeId union, and adding one is out of scope here; exposure costs
+    // Dignitas/relationship through the same scandal branch as affair/impiety.
+    chargeType: null,
+    flavorTemplates: [
+      "{subject} broke a rival's fingers in a Suburan alley, and paid the physician well to forget the face.",
+      "A hired bruiser did {subject}'s bidding — the man he crippled still can't grip a stylus.",
+      "{subject} beat a freedman half senseless over a gambling debt, and the freedman remembers exactly who.",
+      "A brawl outside a wine shop left one man walking with a stick for the rest of his life — {subject} started it.",
+      "{subject}'s bodyguards were seen dragging a moneylender from his own door and leaving him broken in the gutter.",
+      "Witnesses at the games saw {subject} strike a heckler with a stone — the man never spoke clearly again.",
+    ],
+  },
+};
+
+/**
+ * Personality-trait affinity for the random background-blackmail path
+ * (secretEngine.npcGatherTick) — the type a targeted family member's traits
+ * make most likely, not a hard requirement. Consumed by
+ * secretEngine.generateSecret's `traitBias` option, which multiplies the
+ * matching type's draw weight by BALANCE.secrets.traitTypeBiasWeight rather
+ * than forcing it outright, so an aggressive character can still turn up an
+ * embezzlement Secret occasionally. impiety/provincial_plunder have no
+ * strong personality affinity and stay in the general, unbiased pool.
+ */
+export const TRAIT_TYPE_BIAS: Partial<Record<PersonalityTrait, SecretType>> = {
+  aggressive: 'violence',
+  ambitious: 'electoral_fraud',
+  cautious: 'embezzlement',
+  content: 'affair',
 };
 
 export const SECRET_CLASS_BY_TYPE: Record<SecretType, SecretClass> = Object.fromEntries(

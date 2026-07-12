@@ -10,7 +10,7 @@ import type { ActiveAmbition } from '../models/ambition';
 import type { LegacyObjective } from '../models/legacyObjective';
 import type { PatronTier } from '../models/patronLadder';
 import type { TrialState, TrialApproach, ChargeId, ChargeSource } from '../models/trial';
-import type { Secret, PendingSecretDemand } from '../models/secret';
+import type { Secret, PendingSecretDemand, LatentSecret } from '../models/secret';
 import type { ProvinceState, GovernorPolicy, CampaignState, OfficerVolunteerState } from '../models/province';
 import type { TroopUnit } from '../models/troop';
 import type { SenateResponseState } from '../engine/senateResponseEngine';
@@ -252,6 +252,12 @@ export interface GameState {
   // Single array (plan's recommendation) filtered by `holder` for the two
   // views — deterrence checks (P4-B) are a two-way scan either way.
   secrets: Secret[];
+  // ── Player-choice blackmail — compromising facts nobody holds yet ─────────
+  // Planted by resourceEngine's `createLatentSecret:` token (see
+  // data/compromisingEvents.ts); promoted into an ordinary Secret by
+  // secretEngine.latentSecretDiscoveryTick (turnSequencer step 9b). See
+  // models/secret.ts's LatentSecret doc comment.
+  latentSecrets: LatentSecret[];
   // ── Phase 4, Chunk P4-B — pending NPC demand ───────────────────────────────
   // See models/secret.ts's PendingSecretDemand doc comment.
   pendingSecretDemand: PendingSecretDemand | null;
@@ -891,6 +897,7 @@ export const INITIAL_STATE: GameState = {
   // (turnSequencer.ts step 9b also excludes it by id explicitly — belt and
   // braces, since that guard alone wouldn't survive turn 2 onward).
   secrets: [buildClaudiusStartingSecret('pc-1', 1)],
+  latentSecrets: [],
   pendingSecretDemand: null,
   claudiusPatience: null,
 

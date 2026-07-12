@@ -57,6 +57,7 @@ import { tickSenateResponse } from './senateResponseEngine';
 import { calcAntagonismLevel, tickNpcConsul } from './npcConsulEngine';
 import {
   npcGatherTick,
+  latentSecretDiscoveryTick,
   extortSeasonTick,
   computeExtortionDrain,
   computeBurnVoteLoss,
@@ -68,6 +69,7 @@ import { CLAUDIUS_ARC_SECRET_ID, CLAUDIUS_LEADER_ID, CLAUDIUS_CLAN_ID } from '..
 import { EVENT_DEFS } from '../data/events';
 import { WAR_EVENT_DEFS } from '../data/warEvents';
 import { CADET_EVENT_DEFS } from '../data/cadetEvents';
+import { COMPROMISING_EVENT_DEFS } from '../data/compromisingEvents';
 import { OFFICES } from '../data/offices';
 import { AUTO_BILL_TEMPLATES, BILL_TEMPLATES, HISTORICAL_BILL_TEMPLATES } from '../data/billTemplates';
 import { getProvinceDefinition } from '../data/provinceDefinitions';
@@ -965,6 +967,22 @@ export function processSeason(state: GameState): {
     const gatherResult = npcGatherTick(s);
     s = { ...s, clans: gatherResult.clans, secrets: [...(s.secrets ?? []), ...gatherResult.secrets] };
 
+    // ── Player-choice blackmail: latent-secret discovery ───────────────────
+    // Compromising choices the player knowingly made (data/compromisingEvents.ts's
+    // createLatentSecret: token) may get noticed by a hostile leader this
+    // season — see secretEngine.latentSecretDiscoveryTick's header comment.
+    // Converted entries become ordinary Secrets and fall straight into the
+    // same demand pipeline as npcGatherTick's own output below.
+    const discoveryResult = latentSecretDiscoveryTick(s);
+    if (discoveryResult.secrets.length > 0) {
+      s = {
+        ...s,
+        secrets: [...s.secrets, ...discoveryResult.secrets],
+        latentSecrets: (s.latentSecrets ?? []).filter(l => !discoveryResult.removedLatentIds.includes(l.id)),
+      };
+      events.push('Someone has taken an interest in a matter you thought was closed.');
+    }
+
     // ── P4-B: extortion ticks, both directions ────────────────────────────
     // Player extorting a leader: income + exposure roll (extortSeasonTick).
     // A leader extorting the player family (already complied): flat drain,
@@ -1331,7 +1349,7 @@ export function processSeason(state: GameState): {
       chosenDef = getEventDef('evt-war-mamertines') as typeof chosenDef;
     } else {
       // Normal random event — tutorial queue exhausted or standard start
-      chosenDef = pickRandomEvent([...EVENT_DEFS, ...WAR_EVENT_DEFS, ...CADET_EVENT_DEFS], s);
+      chosenDef = pickRandomEvent([...EVENT_DEFS, ...WAR_EVENT_DEFS, ...CADET_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS], s);
     }
 
     if (chosenDef) {

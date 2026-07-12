@@ -7,9 +7,10 @@ export type SecretType =
   | 'impiety'
   | 'embezzlement'
   | 'electoral_fraud'
-  | 'provincial_plunder';
+  | 'provincial_plunder'
+  | 'violence';
 
-/** affair/impiety → 'social'; everything else → 'criminal'. Derived via a
+/** affair/impiety/violence → 'social'; everything else → 'criminal'. Derived via a
  *  lookup in secretDefinitions.ts (SECRET_CLASS_BY_TYPE) rather than stored
  *  redundantly on Secret — the save schema treats `secrets` as z.any(), so
  *  there's no schema-simplicity argument for storing it, and a derived value
@@ -83,4 +84,28 @@ export interface PendingSecretDemand {
   kind: 'leverage_bill' | 'leverage_election' | 'extort';
   billId?: string;
   direction?: 'for' | 'against';
+}
+
+/**
+ * A compromising fact created by a deliberate player choice (an event's
+ * `createLatentSecret:<type>:<potency>` effect token — see resourceEngine.ts)
+ * that nobody holds yet — the player knowingly took the risk in exchange for
+ * a real reward (votes, denarii). Distinct from a `Secret`: no `holder`,
+ * because nothing has been "gathered" against the family yet. Each season,
+ * secretEngine.latentSecretDiscoveryTick rolls a chance for a hostile leader
+ * to stumble onto it; on a hit it's promoted into a real family-subject
+ * `Secret` (status 'held', discovered false) and removed from this pool —
+ * from that point on it's indistinguishable from an npcGatherTick-generated
+ * Secret and rides the existing demand/exposure pipeline unchanged.
+ */
+export interface LatentSecret {
+  id: string;
+  type: SecretType;
+  /** Whose compromising fact this is — normally the player's own id, since
+   *  createLatentSecret always targets the player character. */
+  characterId: string;
+  flavorText: string;
+  /** GameState.turnNumber at creation — display/ordering only. */
+  createdSeason: number;
+  potency: 1 | 2 | 3;
 }
