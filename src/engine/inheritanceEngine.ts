@@ -50,6 +50,66 @@ export function isBirthEligible(family: Character[]): boolean {
   return playerOk && spouseOk;
 }
 
+// ─── Remarriage — keeping births alive across generations ────────────────────
+// Births only ever check "does the CURRENT paterfamilias have a spouse" — that
+// logic is already generation-agnostic (isBirthEligible/calcBirthProbability
+// read isPlayer/role, not a specific character id), but nothing in this
+// codebase ever GRANTS a new spouse: applySuccession promotes an heir without
+// one (an unmarried son/daughter, or the spouse's own line), and a spouse can
+// die of old age the same as anyone else (turnSequencer step 10's yearly
+// mortality roll iterates the whole family). Either way, births silently stop
+// forever for that generation once a spouse is missing. This closes the gap
+// the same passive-roll way births themselves work.
+
+/**
+ * True while the paterfamilias exists, is of marrying/childbearing age, and
+ * has no spouse in the family — covers a freshly-succeeded heir who
+ * inherited without one AND an existing paterfamilias whose spouse died.
+ */
+export function needsSpouse(family: Character[]): boolean {
+  const player = family.find(c => c.isPlayer);
+  if (!player) return false;
+  const hasSpouse = family.some(c => c.role === 'spouse');
+  return !hasSpouse && player.age >= 18 && player.age <= 54;
+}
+
+/**
+ * Procedurally arranges a new spouse for a spouseless paterfamilias — same
+ * name-pool convention as suggestChildName. This game's fiction is
+ * consistently a male paterfamilias / female spouse (every existing flavor
+ * line assumes it, e.g. BirthNamingModal's "Livia has delivered..."), so the
+ * generated spouse always draws from ROMAN_NAMES_FEMALE.
+ */
+export function generateSpouse(familyName: string): Character {
+  const praenomen = ROMAN_NAMES_FEMALE[Math.floor(Math.random() * ROMAN_NAMES_FEMALE.length)];
+  return {
+    id: `spouse-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+    name: `${praenomen} ${familyName}`,
+    role: 'spouse',
+    isPlayer: false,
+    age: 18 + Math.floor(Math.random() * 15), // 18–32, comfortably within the childbearing window
+    skills: {
+      rhetoric: 3 + Math.floor(Math.random() * 5),
+      martial: Math.floor(Math.random() * 2),
+      intrigus: 3 + Math.floor(Math.random() * 5),
+    },
+    traits: [],
+    ambition: null,
+    relationship: 70,
+    familyTrust: 100,
+    officeId: null,
+    heldOffices: [],
+    corruptionScore: 0,
+    inheritedTraits: [],
+    ambitionIds: [],
+    reputationScores: {},
+    formalImperium: 0,
+    militaryImperium: 0,
+    raisedLegions: [],
+    veterans: [],
+  };
+}
+
 // ─── Trait inheritance ────────────────────────────────────────────────────────
 
 export function resolveInheritedTraits(

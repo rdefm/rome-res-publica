@@ -809,6 +809,13 @@ export const BALANCE = {
      *  paterfamilias's familyTrust field directly (a fresh reign starting
      *  under a cloud), not a separate GameState-level stat. */
     nameOtherHeirFamilyTrustPenalty: -15,
+    /** Per-season chance a spouseless-but-eligible paterfamilias (a fresh
+     *  heir who inherited unmarried, or one widowed by the yearly mortality
+     *  roll) is arranged a new spouse — inheritanceEngine.needsSpouse/
+     *  generateSpouse. Keeps births passively available across generations
+     *  instead of silently dying out the first time a spouse is missing.
+     *  FIRST-PASS/UNVERIFIED, same treatment as every other constant here. */
+    remarriageChance: 0.15,
   },
 
   /** Phase 3, Chunk P3-D — Cadet Branch. FIRST-PASS/UNVERIFIED, same

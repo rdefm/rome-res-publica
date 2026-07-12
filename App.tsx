@@ -213,7 +213,13 @@ function GameRoot() {
         <StatusBar style="light" backgroundColor={COLORS.bg} />
         <ResourceBar />
         <AppNavigator />
-        {/* Modal priority: EventModal → AmbitionSelectionModal → AgendaTablet → WelcomeBackModal.
+        {/* Modal priority: EventModal → AmbitionSelectionModal → BirthNamingModal → AgendaTablet → WelcomeBackModal.
+            BirthNamingModal was imported but never mounted here until this fix — pendingBirthNaming
+            was being set correctly by turnSequencer's passive birth check, but with no modal ever
+            rendering, confirmBirthNaming (which actually appends the child to `family`) could never
+            fire, and the stuck pendingBirthNaming silently blocked every future birth roll too
+            (turnSequencer's `s.pendingBirthNaming === null` gate). Self-gated on pendingBirthNaming,
+            same idiom as AmbitionSelectionModal, so its position here is order-of-priority only.
             BattleScreen is its own full-screen native Modal (Military Overhaul M5) — it takes
             over the whole screen whenever a battle is staging/active, regardless of DOM order.
             TrialSessionModal (Phase 4, P4-E) is the same idiom — a full-screen native Modal
@@ -228,6 +234,7 @@ function GameRoot() {
             outranking everything else here since nothing is actionable once a run is finished. */}
         <EventModal />
         <AmbitionSelectionModal />
+        <BirthNamingModal />
         <AgendaTablet />
         <WelcomeBackModal
           visible={showWelcomeBack}

@@ -2,11 +2,15 @@
 // tests. This file only covers the P3-C/P3-D additions to
 // inheritanceEngine.ts; the pre-existing birth/trait functions in that file
 // had no dedicated test file before P3-C either (verified) and are out of
-// this file's scope.
+// this file's scope. Remarriage (needsSpouse/generateSpouse) is a later
+// addition, covered below — it exists specifically to keep the pre-existing
+// birth mechanic alive across successions, so it belongs alongside the
+// other succession-adjacent tests here rather than starting a new file.
 
 import {
   mortalityChance, rollsDead, getHeirOrder, detectPaterfamiliasDeath,
-  generateCadet, promoteCadetToParterfamilias,
+  generateCadet, promoteCadetToParterfamilias, needsSpouse, generateSpouse,
+  isBirthEligible,
 } from '../src/engine/inheritanceEngine';
 import { resolveDeathNotice } from '../src/data/cadetEvents';
 import { BALANCE } from '../src/data/balance';
@@ -189,6 +193,56 @@ describe('promoteCadetToParterfamilias', () => {
     expect(patch.pendingSuccession).toBeNull();
     expect(patch.regency).toBeNull();
     expect(patch.paterfamiliasGenerations).toBe(2);
+  });
+});
+
+describe('needsSpouse', () => {
+  test('true for an eligible-age paterfamilias with no spouse in the family', () => {
+    const family = [makeCharacter({ age: 30 })];
+    expect(needsSpouse(family)).toBe(true);
+  });
+
+  test('false once a spouse exists, regardless of who else is in the family', () => {
+    const family = [
+      makeCharacter({ age: 30 }),
+      makeCharacter({ id: 'spouse-1', role: 'spouse', isPlayer: false, age: 28 }),
+    ];
+    expect(needsSpouse(family)).toBe(false);
+  });
+
+  test('false outside the 18-54 eligible age window, even without a spouse', () => {
+    expect(needsSpouse([makeCharacter({ age: 17 })])).toBe(false);
+    expect(needsSpouse([makeCharacter({ age: 55 })])).toBe(false);
+  });
+
+  test('false with no paterfamilias at all (defensive — should not happen in practice)', () => {
+    expect(needsSpouse([])).toBe(false);
+  });
+});
+
+describe('generateSpouse', () => {
+  test('produces a valid, adult, non-player spouse Character', () => {
+    const spouse = generateSpouse('Brutus');
+    expect(spouse.role).toBe('spouse');
+    expect(spouse.isPlayer).toBe(false);
+    expect(spouse.age).toBeGreaterThanOrEqual(18);
+    expect(spouse.age).toBeLessThanOrEqual(32);
+    expect(spouse.name.endsWith('Brutus')).toBe(true);
+  });
+
+  test('two generated spouses have distinct ids', () => {
+    const a = generateSpouse('Brutus');
+    const b = generateSpouse('Brutus');
+    expect(a.id).not.toBe(b.id);
+  });
+
+  test('a freshly-generated spouse satisfies isBirthEligible alongside an eligible paterfamilias — closes the remarriage → births loop', () => {
+    const player = makeCharacter({ age: 30, isPlayer: true });
+    const spouse = generateSpouse('Brutus');
+    expect(needsSpouse([player])).toBe(true);
+    expect(isBirthEligible([player])).toBe(false); // no spouse yet
+    expect(needsSpouse([player, spouse])).toBe(false);
+    expect(isBirthEligible([player, spouse])).toBe(true); // remarriage unblocks births
   });
 });
 

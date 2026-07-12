@@ -29,6 +29,8 @@ import {
   calcBirthProbability,
   resolveInheritedTraits,
   suggestChildName,
+  needsSpouse,
+  generateSpouse,
   rollsDead,
   detectPaterfamiliasDeath,
 } from './inheritanceEngine';
@@ -1651,6 +1653,21 @@ export function processSeason(state: GameState): {
         leaders: c.leaders.map(l => ({ ...l, corruptionScore: tickLeaderCorruption(l) })),
       })),
     };
+  }
+
+  // 16c. Passive remarriage check — keeps births available across
+  // generations. A freshly-succeeded heir inherits without a spouse, and an
+  // existing spouse can die of old age the same as anyone else (step 10's
+  // yearly mortality roll) — either way births would otherwise stop for
+  // good, since nothing else in this codebase ever grants a new spouse. See
+  // inheritanceEngine.needsSpouse/generateSpouse's header comment.
+  if (needsSpouse(s.family)) {
+    if (Math.random() < BALANCE.succession.remarriageChance) {
+      const player = s.family.find(c => c.isPlayer)!;
+      const spouse = generateSpouse('Brutus');
+      s = { ...s, family: [...s.family, spouse] };
+      events.push(`${spouse.name} joins the household as ${player.name}'s wife.`);
+    }
   }
 
   // 17. Passive birth check
