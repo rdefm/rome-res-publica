@@ -13,7 +13,15 @@ import {
 import { COLORS, FONTS } from '../../utils/theme';
 import type { ProvinceState } from '../../models/province';
 import { getRelationshipTier } from '../../models/province';
-import { ITALY_PROVINCES } from '../../data/provinceDefinitions';
+import { ITALY_PROVINCES, SICILY_PROVINCES } from '../../data/provinceDefinitions';
+
+// M10: Sicily has no map art of its own (see SICILY_PROVINCES' header comment
+// in provinceDefinitions.ts) — its two defs are overlaid onto map_italia.png
+// alongside the Italy set. A def with no matching ProvinceState (Sicily
+// before it's ceded) simply renders nothing, per the `if (!province) return
+// null` guard below — so this list doubles as "everything with a node on
+// this map image", not "everything currently Roman".
+const MAP_ITALIA_PROVINCES = [...ITALY_PROVINCES, ...SICILY_PROVINCES];
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 //
@@ -75,7 +83,7 @@ export default function MapView({ provinces, onProvincePress, selectedProvinceId
         resizeMode="stretch"
       />
 
-      {ITALY_PROVINCES.map(def => {
+      {MAP_ITALIA_PROVINCES.map(def => {
         const province = provinces.find(p => p.id === def.id);
         if (!province) return null;
 

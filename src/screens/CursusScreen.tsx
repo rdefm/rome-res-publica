@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Pressable,
+  Animated, PanResponder, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { useGameStore } from '../state/gameStore';
 import { OFFICES, TRIBUNE_OFFICE } from '../data/offices';
 import type { OfficeId, OfficeAction } from '../models/office';
@@ -11,8 +13,12 @@ import { calcPlayerElectionScore, calcNpcElectionScore, PLAYER_BASE_SCORE } from
 import { evaluateGates } from '../engine/officeActionEngine';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
+import BasilicaSheet from '../components/cursus/BasilicaSheet';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 import InfoTap from '../components/shared/InfoTap';
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+const BASILICA_SHEET_HEIGHT = SCREEN_HEIGHT * 0.72;
 
 // ─── Family member picker ─────────────────────────────────────────────────────
 
@@ -179,14 +185,20 @@ function OfficeRung({
   const office = OFFICES.find((o) => o.id === officeId)!;
   const isPlayer = character.isPlayer;
 
+  // Phase 4, Chunk P4-A — non-player "held" now reads the character's own
+  // historical record (character.heldOffices) instead of character.officeId,
+  // which real elections never actually set for a family member (only the
+  // household-wide currentOffice slot and the Tribune special-case do — see
+  // turnSequencer.ts's election-win branch). isCurrent is left as-is: the
+  // single-office-slot model isn't being redesigned here.
   const isCurrent = isPlayer ? currentOffice === officeId : character.officeId === officeId;
-  const isHeld    = isPlayer ? heldOffices.includes(officeId) : character.officeId === officeId;
+  const isHeld    = isPlayer ? heldOffices.includes(officeId) : (character.heldOffices ?? []).includes(officeId);
   const isCampaigning = campaigning === officeId && campaigningCharacterId === character.id;
 
   const prereqMet = !office.prerequisite ||
     (isPlayer
       ? (heldOffices.includes(office.prerequisite) || currentOffice === office.prerequisite)
-      : character.officeId === office.prerequisite);
+      : (character.heldOffices ?? []).includes(office.prerequisite));
   const ageOk           = character.age >= office.minAge;
   const noCampaignActive = !campaigning;
   const isEligible = !isCurrent && !isCampaigning && !isHeld && prereqMet && ageOk && noCampaignActive;
@@ -663,6 +675,77 @@ export default function CursusScreen() {
   const [selectedCharId, setSelectedCharId] = useState(player?.id ?? '');
   const selectedChar = family.find(c => c.id === selectedCharId) ?? player;
 
+  // ── The Basilica (Phase 4, Chunk P4-D) — full-screen sheet, opened from
+  // CuriaScreen's TrialBanner (requestNavigation) or an agenda deep-link.
+  // Mirrors ProvinciaeScreen's Animated/PanResponder drag-sheet shell.
+  const navigation = useNavigation();
+  const selectedTrialId = useGameStore(s => s.selectedTrialId);
+  const selectTrialForBasilica = useGameStore(s => s.selectTrialForBasilica);
+  const basilicaReturnTab = useGameStore(s => s.basilicaReturnTab);
+  const setBasilicaReturnTab = useGameStore(s => s.setBasilicaReturnTab);
+  const [basilicaTrialId, setBasilicaTrialId] = useState<string | null>(null);
+  const basilicaAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const basilicaVisible = basilicaTrialId !== null;
+
+  function openBasilica(trialId: string) {
+    setBasilicaTrialId(trialId);
+    Animated.spring(basilicaAnim, {
+      toValue: SCREEN_HEIGHT - BASILICA_SHEET_HEIGHT,
+      useNativeDriver: false,
+      tension: 65,
+      friction: 11,
+    }).start();
+  }
+
+  function closeBasilica() {
+    Animated.timing(basilicaAnim, {
+      toValue: SCREEN_HEIGHT,
+      duration: 240,
+      useNativeDriver: false,
+    }).start(() => {
+      setBasilicaTrialId(null);
+      // Send the player back to whichever tab they were actually on before
+      // a deep-link (e.g. CuriaScreen's "Open the Basilica" button) switched
+      // them to Cursus — otherwise closing the sheet just stranded them
+      // here. null (they were already on Cursus) means stay put.
+      if (basilicaReturnTab) {
+        navigation.navigate(basilicaReturnTab as never);
+        setBasilicaReturnTab(null);
+      }
+    });
+  }
+
+  useEffect(() => {
+    if (selectedTrialId) {
+      openBasilica(selectedTrialId);
+      selectTrialForBasilica(null);
+    }
+  }, [selectedTrialId]);
+
+  const basilicaPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: (_, gs) => gs.dy > 0,
+      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 8,
+      onPanResponderMove: (_, gs) => {
+        if (gs.dy > 0) {
+          basilicaAnim.setValue(SCREEN_HEIGHT - BASILICA_SHEET_HEIGHT + gs.dy);
+        }
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > 100 || gs.vy > 0.5) {
+          closeBasilica();
+        } else {
+          Animated.spring(basilicaAnim, {
+            toValue: SCREEN_HEIGHT - BASILICA_SHEET_HEIGHT,
+            useNativeDriver: false,
+            tension: 65,
+            friction: 11,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
   return (
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <View style={styles.header}>
@@ -707,11 +790,41 @@ export default function CursusScreen() {
         )}
       </ScrollView>
 
+      {basilicaVisible && basilicaTrialId && (
+        <>
+          <Animated.View
+            style={[
+              cs.scrim,
+              {
+                opacity: basilicaAnim.interpolate({
+                  inputRange: [SCREEN_HEIGHT - BASILICA_SHEET_HEIGHT, SCREEN_HEIGHT],
+                  outputRange: [0.5, 0],
+                  extrapolate: 'clamp',
+                }),
+              },
+            ]}
+            // @ts-ignore
+            pointerEvents="none"
+          />
+          <Animated.View
+            style={[cs.sheetContainer, { top: basilicaAnim }]}
+            {...basilicaPanResponder.panHandlers}
+          >
+            <BasilicaSheet trialId={basilicaTrialId} onClose={closeBasilica} />
+          </Animated.View>
+        </>
+      )}
+
       <SeasonOverlay />
       <OfficeActionResultModal />
     </SafeAreaView>
   );
 }
+
+const cs = StyleSheet.create({
+  scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' },
+  sheetContainer: { position: 'absolute', left: 0, right: 0, height: BASILICA_SHEET_HEIGHT },
+});
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.bg, paddingTop: RESOURCE_BAR_HEIGHT },

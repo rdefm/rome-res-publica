@@ -3,6 +3,7 @@ import type { Client, ClientType } from '../models/client';
 import type { EventInstance } from '../models/event';
 import type { CrisisTrackId } from '../models/crisis';
 import type { Bill } from '../models/bill';
+import type { TroopUnit } from '../models/troop';
 import {
   calcResourceIncome,
   applyEffectString,
@@ -28,24 +29,50 @@ import {
   calcBirthProbability,
   resolveInheritedTraits,
   suggestChildName,
+  needsSpouse,
+  generateSpouse,
+  rollsDead,
+  detectPaterfamiliasDeath,
 } from './inheritanceEngine';
+import { resolveDeathNotice } from '../data/cadetEvents';
 import {
   shouldTriggerTrial,
-  buildTrial,
-  resolveTrial,
-  OUTCOME_CONSEQUENCES,
+  buildTrialState,
+  computeOpponentPrepGrowth,
+  computeJuryLean,
+  findOpponentLeader,
   tickCorruption,
+  tickLeaderCorruption,
 } from './trialEngine';
+import { drawTrialBeats } from './trialBeatEngine';
+import { TRIAL_BEATS } from '../data/trialBeats';
+import { TRIAL_CHARGE_DEFS } from '../data/trialCharges';
+import type { TrialState } from '../models/trial';
 import { computePatronTier, processFavourCallIns } from './patronEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import { BALANCE } from '../data/balance';
 import { computeTotalAssetBonuses } from './assetEngine';
+import { computeHouseBonuses } from './houseEngine';
 import { tickAllProvinces } from './provinceEngine';
 import { applyTroopAttrition, calcMilitaryImperium } from './troopEngine';
+import { processWarSeason } from './warEngine';
 import { tickSenateResponse } from './senateResponseEngine';
 import { calcAntagonismLevel, tickNpcConsul } from './npcConsulEngine';
-import { TRIAL_ACTIONS } from '../data/trialActions';
+import {
+  npcGatherTick,
+  latentSecretDiscoveryTick,
+  extortSeasonTick,
+  computeExtortionDrain,
+  computeBurnVoteLoss,
+  scanNpcSecretDecisions,
+  isDeterred,
+  resolveClaudiusDefiance,
+} from './secretEngine';
+import { CLAUDIUS_ARC_SECRET_ID, CLAUDIUS_LEADER_ID, CLAUDIUS_CLAN_ID } from '../data/claudiusArc';
 import { EVENT_DEFS } from '../data/events';
+import { WAR_EVENT_DEFS } from '../data/warEvents';
+import { CADET_EVENT_DEFS } from '../data/cadetEvents';
+import { COMPROMISING_EVENT_DEFS } from '../data/compromisingEvents';
 import { OFFICES } from '../data/offices';
 import { AUTO_BILL_TEMPLATES, BILL_TEMPLATES, HISTORICAL_BILL_TEMPLATES } from '../data/billTemplates';
 import { getProvinceDefinition } from '../data/provinceDefinitions';
@@ -113,9 +140,19 @@ export function processSeason(state: GameState): {
   }
 
   // 1. Advance season / year
+  //
+  // Phase 3, Chunk P3-A — pre-existing bug fix (flagged during ripeness-curve
+  // work, reported and approved before applying): `year` is stored negative
+  // (INITIAL_STATE.year = -264) and every display site reads Math.abs(year).
+  // This previously did `s.year - 1` at the Winter→Spring crossing, which
+  // moves the stored value FURTHER negative — so the displayed BC year
+  // climbed (264 → 265 → 266...) instead of descending toward the historical
+  // 241 BC end of the First Punic War. `+1` moves it toward 0, so the
+  // displayed year correctly descends (264 → 263 → ...). Ripeness math
+  // (warEngine.computeRipeness) depends on this direction being correct.
   const newSeasonIndex = (s.seasonIndex + 1) % 4;
   const crossedNewYear = newSeasonIndex === 0;
-  const newYear = crossedNewYear ? s.year - 1 : s.year;
+  const newYear = crossedNewYear ? s.year + 1 : s.year;
   s = { ...s, seasonIndex: newSeasonIndex, year: newYear, turnNumber: s.turnNumber + 1 };
 
   const seasonNames = ['Spring', 'Summer', 'Autumn', 'Winter'];
@@ -129,6 +166,11 @@ export function processSeason(state: GameState): {
     const result = resolveElection(s);
     if (result.won) {
       const office = OFFICES.find((o) => o.id === s.campaigning);
+      // Phase 4, Chunk P4-A — mirror the household-level heldOffices push (above)
+      // onto the actual winning character's own record. campaigningCharacterId
+      // persists past the win (cleared only at succession — inheritanceEngine.ts),
+      // so it correctly identifies the holder for both player and family wins.
+      const winnerId = s.campaigningCharacterId;
       s = {
         ...s,
         currentOffice: s.campaigning,
@@ -136,6 +178,11 @@ export function processSeason(state: GameState): {
         heldOffices: s.heldOffices.includes(s.campaigning!)
           ? s.heldOffices
           : [...s.heldOffices, s.campaigning!],
+        family: s.family.map(c =>
+          c.id === winnerId && s.campaigning && !(c.heldOffices ?? []).includes(s.campaigning!)
+            ? { ...c, heldOffices: [...(c.heldOffices ?? []), s.campaigning!] }
+            : c
+        ),
         campaigning: null,
         campaignVotes: {},
         electionRivals: [],
@@ -334,6 +381,20 @@ export function processSeason(state: GameState): {
 
   s = { ...s, crisis: updatedCrisis, crisisLevel: newCrisisLevel };
 
+  // Phase 3, Chunk P3-E — Crisis-100 hard terminal ("The Republic Falls").
+  // Previously "escalating penalties but no hard stop" (verified — this is
+  // the first place crisisLevel is ever checked against a ceiling). Fires
+  // once and only once: gated on pendingEpilogue not already being set, so
+  // it can never override a war outcome or gens_ends that landed the same
+  // season, and never re-fires once set.
+  // Phase 3, Chunk P3-F — suppressed in Endless mode (per the plan's default:
+  // crises persist and punish past 241 BC, but never hard-end the sandbox).
+  // Extinction (gens_ends, set elsewhere in this file) is NOT guarded here —
+  // a family can still die out in Endless, same as any other run.
+  if (!s.endlessMode && !s.pendingEpilogue && newCrisisLevel >= BALANCE.epilogue.crisisTerminalThreshold) {
+    s = { ...s, pendingEpilogue: 'republic_falls' };
+  }
+
   const TRACK_LABELS: Record<CrisisTrackId, string> = {
     war: 'War', unrest: 'Unrest', constitution: 'Constitution', economy: 'Economy',
   };
@@ -478,6 +539,32 @@ export function processSeason(state: GameState): {
   }
 
   events.push(`Income: +${finalFides} Fides${finalDenarii > 0 ? `, +${finalDenarii} Denarii` : ''}`);
+
+  // 7b. Family House — location bonuses NOT part of calcResourceIncome's
+  // Fides/Denarii shape: Palatine's flat Dignitas/season, and less-prestigious
+  // neighborhoods' small per-season relationship drift toward leaders sharing
+  // the house's faction alignment (houseEngine.computeHouseBonuses).
+  {
+    const houseBonuses = computeHouseBonuses(s.house);
+    if (houseBonuses.dignitas > 0) {
+      s = { ...s, lifetimeDignitas: s.lifetimeDignitas + houseBonuses.dignitas };
+    }
+    if (houseBonuses.factionRelPerSeason !== 0 && houseBonuses.factionBias) {
+      const bias = houseBonuses.factionBias;
+      const delta = houseBonuses.factionRelPerSeason;
+      s = {
+        ...s,
+        clans: s.clans.map(clan => ({
+          ...clan,
+          leaders: clan.leaders.map(l =>
+            l.bias === bias
+              ? { ...l, relationship: Math.min(100, Math.max(-100, l.relationship + delta)) }
+              : l
+          ),
+        })),
+      };
+    }
+  }
 
   // 7b. NPC consul tick (Chunk 1C) ────────────────────────────────────────────
   // Recompute antagonism level each season, then run seasonal behaviour.
@@ -724,6 +811,82 @@ export function processSeason(state: GameState): {
     s = { ...s, family: updatedFamily };
   }
 
+  // 9d2. Military Overhaul M8 — unit lifecycle: loyalty season tick.
+  // +5/season while a character personally commands an unresolved
+  // activeCampaign (the existing abstract campaign system's closest analog
+  // to "on campaign, same commander" for the new set-piece muster — see
+  // musterEngine.ts's header comment for the fuller reconciliation, incl.
+  // the caveat that the personal-commander campaign flow is currently
+  // stubbed at the UI layer and so a started campaign never resolves —
+  // this tick still fires correctly off activeCampaign's own fields
+  // regardless). Otherwise idle decay toward 50, once per year only
+  // (Winter -> Spring rollover), same cadence as every other yearly-only
+  // system in this file (see crossedNewYear above). Applies to BOTH
+  // raisedLegions and veterans, unlike 9d's attrition (veterans only).
+  {
+    const commandingCharacterIds = new Set(
+      s.provinces
+        .map(p => p.activeCampaign)
+        .filter((c): c is NonNullable<typeof c> => !!c && !c.resolved && c.commanderCharacterId !== null)
+        .map(c => c.commanderCharacterId as string),
+    );
+    const lc = BALANCE.battle.lifecycle;
+    const moveToward = (current: number, step: number, target: number): number => {
+      if (current > target) return Math.max(target, current - step);
+      if (current < target) return Math.min(target, current + step);
+      return current;
+    };
+    const clampLoyalty = (v: number) => Math.min(100, Math.max(0, v));
+    const updatedFamily = s.family.map(c => {
+      const hasTroops = (c.raisedLegions?.length ?? 0) > 0 || (c.veterans?.length ?? 0) > 0;
+      if (!hasTroops) return c;
+      const onCampaign = commandingCharacterIds.has(c.id);
+      if (!onCampaign && !crossedNewYear) return c;
+      const applyTick = (t: TroopUnit): TroopUnit => {
+        const newLoyalty = onCampaign
+          ? t.bondToCommander + lc.loyaltyGainPerCampaignSeason
+          : moveToward(t.bondToCommander, Math.abs(lc.idleLoyaltyDecayPerYear), lc.idleLoyaltyDecayTarget);
+        return { ...t, bondToCommander: clampLoyalty(newLoyalty) };
+      };
+      return {
+        ...c,
+        raisedLegions: (c.raisedLegions ?? []).map(applyTick),
+        veterans: (c.veterans ?? []).map(applyTick),
+      };
+    });
+    s = { ...s, family: updatedFamily };
+  }
+
+  // 9d3. Military Overhaul M9 — war score season tick. Skirmish drift,
+  // weariness, threshold-crossing notices, and the provisional set-piece
+  // scheduler (warEngine.ts's seam) for every active war. Placed right
+  // after 9d2 (both are military-upkeep-adjacent); crisis escalation (step
+  // 5, earlier) reads state.wars as it stood BEFORE this step runs — see
+  // crisisEngine.ts's calcWarEscalation comment for why that's consistent
+  // with every other crisis input in this file.
+  //
+  // M10 WIDENING (per the plan's Cross-Chunk Notes: turnSequencer.ts is only
+  // touched by M9's one step, not a new one for M10) — a treaty resolving
+  // (pass/fail/dictate-auto-ratify) this season can now also patch denarii,
+  // family (prisoner release), provinces (Sicily cession), and bills (a
+  // triumph petition) via warResult.statePatch. lifetimeDignitas is merged
+  // explicitly rather than just spread, since both the pre-existing
+  // lifetimeDignitasDelta path (set-piece decline) and the new statePatch
+  // path (face-saver clause) can independently want to change it the same
+  // season.
+  {
+    const warResult = processWarSeason(s);
+    const mergedLifetimeDignitas = (warResult.statePatch.lifetimeDignitas ?? s.lifetimeDignitas) + warResult.lifetimeDignitasDelta;
+    s = {
+      ...s,
+      ...warResult.statePatch,
+      wars: warResult.wars,
+      pendingEvents: [...s.pendingEvents, ...warResult.noticeEvents],
+      lifetimeDignitas: mergedLifetimeDignitas,
+    };
+    events.push(...warResult.events);
+  }
+
   // 9e. Recalculate militaryImperium
   {
     const updatedFamily = s.family.map(c => {
@@ -824,11 +987,313 @@ export function processSeason(state: GameState): {
     }
   }
 
-  // 10. Age family members
-  s = {
-    ...s,
-    family: s.family.map((c) => ({ ...c, age: c.age + (crossedNewYear ? 1 : 0) })),
-  };
+  // 9b. Phase 4, Chunks P4-A + P4-B — Secrets season tick. Grown in place per
+  // the plan's cross-chunk note ("one step, grown in place"), not a new step.
+  // Player-side groundwork needs no code here (written directly at
+  // gather-attempt time in gameStore.gatherIntelligence, no decay — v1).
+  {
+    // ── P4-A: NPC-side reverse gather ─────────────────────────────────────
+    const gatherResult = npcGatherTick(s);
+    s = { ...s, clans: gatherResult.clans, secrets: [...(s.secrets ?? []), ...gatherResult.secrets] };
+
+    // ── Player-choice blackmail: latent-secret discovery ───────────────────
+    // Compromising choices the player knowingly made (data/compromisingEvents.ts's
+    // createLatentSecret: token) may get noticed by a hostile leader this
+    // season — see secretEngine.latentSecretDiscoveryTick's header comment.
+    // Converted entries become ordinary Secrets and fall straight into the
+    // same demand pipeline as npcGatherTick's own output below.
+    const discoveryResult = latentSecretDiscoveryTick(s);
+    if (discoveryResult.secrets.length > 0) {
+      s = {
+        ...s,
+        secrets: [...s.secrets, ...discoveryResult.secrets],
+        latentSecrets: (s.latentSecrets ?? []).filter(l => !discoveryResult.removedLatentIds.includes(l.id)),
+      };
+      events.push('Someone has taken an interest in a matter you thought was closed.');
+    }
+
+    // ── P4-B: extortion ticks, both directions ────────────────────────────
+    // Player extorting a leader: income + exposure roll (extortSeasonTick).
+    // A leader extorting the player family (already complied): flat drain,
+    // no roll — see secretEngine.computeExtortionDrain's header comment.
+    let extortIncome = 0;
+    let extortDrain = 0;
+    const extortLogs: string[] = [];
+    let secretsAfterExtort = s.secrets;
+    let clansAfterExtort = s.clans;
+
+    for (const secret of s.secrets) {
+      if (secret.status !== 'extorting') continue;
+
+      if (secret.holder === 'player' && secret.subject.kind === 'leader') {
+        const result = extortSeasonTick(secret, Math.random());
+        extortIncome += result.income;
+        secretsAfterExtort = secretsAfterExtort.map(sec =>
+          sec.id === secret.id ? { ...sec, status: result.newStatus } : sec
+        );
+        if (result.exposed) {
+          const leaderId = secret.subject.leaderId;
+          clansAfterExtort = clansAfterExtort.map(c => ({
+            ...c,
+            leaders: c.leaders.map(l => l.id === leaderId
+              ? {
+                  ...l,
+                  relationship: Math.max(-100, l.relationship + result.relationshipDelta),
+                  familyGroundwork: Math.min(
+                    BALANCE.secrets.groundworkCap,
+                    (l.familyGroundwork ?? 0) + result.retaliationGroundworkDelta
+                  ),
+                }
+              : l),
+          }));
+          const leaderName = clansAfterExtort.flatMap(c => c.leaders).find(l => l.id === leaderId)?.name ?? 'your target';
+          extortLogs.push(`Your extortion of ${leaderName} is discovered — the well runs dry, and they take note.`);
+        }
+      } else if (secret.subject.kind === 'family' && secret.holder !== 'player') {
+        extortDrain += computeExtortionDrain(secret);
+      }
+    }
+
+    s = {
+      ...s,
+      clans: clansAfterExtort,
+      secrets: secretsAfterExtort,
+      denarii: Math.max(0, s.denarii + extortIncome - extortDrain),
+    };
+    if (extortIncome > 0) events.push(`Extortion income: +${extortIncome} Denarii.`);
+    if (extortDrain > 0) events.push(`Extortion drain: −${extortDrain} Denarii, quietly paid.`);
+    events.push(...extortLogs);
+
+    // ── P4-B: NPC decisions — burns apply immediately (unilateral, no
+    // player choice); at most one leverage/extort demand queues as an
+    // event this season (pendingSecretDemand is a single slot, mirroring
+    // the pre-existing pendingCanvass* pattern — guarded so an unanswered
+    // demand already in the queue is never silently overwritten). ─────────
+    // Phase 4, Chunk P4-G — the Claudius arc's starting Secret is excluded
+    // from the generic scan: it's a scripted, three-choice arc (comply /
+    // play for time / defy — see evt-claud-01 below), not the generic
+    // two-choice demand this pool would otherwise pick for it. Left in, his
+    // own seeded relationship (-30, startingClans.ts) is already at/below
+    // npcBurnStandingMax, which would auto-burn the arc's own Secret in the
+    // very first eligible season — well before the scripted demand ever
+    // gets a chance to fire.
+    const decisions = scanNpcSecretDecisions(s).filter(d => d.secretId !== CLAUDIUS_ARC_SECRET_ID);
+
+    for (const decision of decisions) {
+      if (decision.action !== 'burn') continue;
+      const clan = s.clans.find(c => c.id === decision.clanId);
+      const leader = clan?.leaders.find(l => l.id === decision.leaderId);
+      const secret = s.secrets.find(sec => sec.id === decision.secretId);
+      if (!clan || !leader || !secret) continue;
+
+      const voteLoss = computeBurnVoteLoss(leader.votes);
+      const currentRep = s.familyReputations[clan.id] ?? 0;
+      s = {
+        ...s,
+        clans: s.clans.map(c => c.id === clan.id ? {
+          ...c,
+          leaders: c.leaders.map(l => l.id === leader.id ? { ...l, votes: Math.max(0, l.votes - voteLoss) } : l),
+        } : c),
+        familyReputations: { ...s.familyReputations, [clan.id]: Math.min(currentRep, BALANCE.secrets.burnClanRepFloor) },
+        secrets: s.secrets.map(sec => sec.id === secret.id ? { ...sec, status: 'spent' as const, discovered: true } : sec),
+      };
+      events.push(`Scandal: ${leader.name} burns what they held rather than lose it quietly — ${secret.flavorText} ${clan.name} turns hostile.`);
+    }
+
+    if (!s.pendingSecretDemand) {
+      const demandDecision = decisions.find(d => d.action !== 'burn');
+      if (demandDecision) {
+        const secret = s.secrets.find(sec => sec.id === demandDecision.secretId);
+        const leader = s.clans.flatMap(c => c.leaders).find(l => l.id === demandDecision.leaderId);
+        const demandSubject = secret?.subject;
+        if (secret && leader && demandSubject && demandSubject.kind === 'family') {
+          const targetChar = s.family.find(c => c.id === demandSubject.characterId);
+          const defId = demandDecision.action === 'extort' ? 'evt-secret-demand-extortion' : 'evt-secret-demand-leverage';
+          const kind: 'leverage_bill' | 'leverage_election' | 'extort' =
+            demandDecision.action === 'leverage_bill' ? 'leverage_bill'
+            : demandDecision.action === 'leverage_election' ? 'leverage_election'
+            : 'extort';
+
+          const targetBill = demandDecision.billId ? s.bills.find(b => b.id === demandDecision.billId) : undefined;
+          const bodyText =
+            kind === 'leverage_bill'
+              ? `${leader.name} corners you after the session: he knows what you know he knows. His price is your voice on "${targetBill?.name ?? 'the bill before the Senate'}" — nothing more, nothing less.`
+              : kind === 'leverage_election'
+              ? `${leader.name} sends word through an intermediary: his support in your campaign has a price, and you already know what he holds.`
+              : `${leader.name}'s man arrives with an open hand and a closed mouth. He will keep quiet — for a fee, paid quietly, every season, for as long as you allow it.`;
+
+          s = {
+            ...s,
+            // Discovery — the demand firing IS how the player learns this
+            // Secret exists (plan's discovery paragraph, first branch).
+            secrets: s.secrets.map(sec => sec.id === secret.id ? { ...sec, discovered: true } : sec),
+            pendingEvents: [...s.pendingEvents, injectNoticeEvent(defId, s.turnNumber, targetChar?.id ?? 'pc-1', { bodyText })],
+            pendingSecretDemand: {
+              secretId: secret.id,
+              leaderId: leader.id,
+              clanId: demandDecision.clanId,
+              kind,
+              billId: demandDecision.billId,
+              direction: demandDecision.direction,
+            },
+          };
+          events.push(`${leader.name} makes their move — a demand awaits your answer.`);
+        }
+      }
+    }
+
+    // ── Phase 4, Chunk P4-G — the Claudius arc ──────────────────────────────
+    // Patience countdown first — may cancel (deterrence) or auto-resolve to
+    // defiance before the demand-injection check below runs this same
+    // season, so order matters here.
+    if (s.claudiusPatience !== null) {
+      if (isDeterred(CLAUDIUS_LEADER_ID, s.secrets)) {
+        // The standoff itself is a complete resolution of the arc (design
+        // point 1) — cancel the countdown rather than let a frozen Secret
+        // eventually "auto-defy" into a trial that can't actually be filed.
+        s = { ...s, claudiusPatience: null };
+      } else {
+        const remaining = s.claudiusPatience - 1;
+        if (remaining <= 0) {
+          const { patch, logMsg } = resolveClaudiusDefiance(s);
+          s = { ...s, ...patch };
+          events.push(`His patience runs out. ${logMsg}`);
+        } else {
+          s = { ...s, claudiusPatience: remaining };
+        }
+      }
+    }
+
+    // The demand (evt-claud-01) — condition-gated: the arc Secret still
+    // held and unfrozen, no demand already pending, no active countdown, no
+    // succession/epilogue mid-flight, year 2+ (open-ended rather than a
+    // hard year-3 cutoff — a guided run's tutorial can finish anywhere
+    // around year 2-3 depending on pacing; capping the window risks the arc
+    // never firing at all for a slower run), cooldown respected between
+    // firings, and a live bill to name.
+    if (
+      !s.pendingSecretDemand &&
+      s.claudiusPatience === null &&
+      !s.pendingSuccession &&
+      !s.pendingEpilogue
+    ) {
+      const claudiusSecret = s.secrets.find(sec => sec.id === CLAUDIUS_ARC_SECRET_ID && sec.status === 'held');
+      const yearsSinceStart = s.year - s.gensFoundedYear;
+      const tutorialDone = (s.tutorialQueue ?? []).length === 0;
+      const cooldownElapsed = claudiusSecret
+        ? (s.turnNumber - (claudiusSecret.lastActedSeason ?? -Infinity)) >= BALANCE.secrets.npcAi.npcUseCooldownSeasons
+        : false;
+
+      if (
+        claudiusSecret &&
+        cooldownElapsed &&
+        tutorialDone &&
+        yearsSinceStart >= 1 &&
+        !isDeterred(CLAUDIUS_LEADER_ID, s.secrets)
+      ) {
+        const leader = s.clans.flatMap(c => c.leaders).find(l => l.id === CLAUDIUS_LEADER_ID);
+        // Bias-matched bill preferred (same signal npcSecretDecision uses
+        // generically), falling back to whatever's live — the demand's
+        // flavor names a bill, but no SPECIFIC named bill is reliably live
+        // this early (verified: only a "keep >=2 queued" refill exists,
+        // drawing from AUTO_BILL_TEMPLATES in a fixed order, not a
+        // guaranteed-present named bill).
+        const targetBill = s.bills.find(b => b.type === 'optimates') ?? s.bills[0];
+        if (leader && targetBill) {
+          const bodyText =
+            `${leader.name} finds you after the session, unhurried. He has never needed to raise his voice. ` +
+            `"A small matter, between houses that understand each other. Your voice, on the floor, when ` +
+            `‘${targetBill.name}’ is called. Nothing you would not have considered anyway." ` +
+            `He does not name what he holds. He does not need to.`;
+          s = {
+            ...s,
+            pendingEvents: [...s.pendingEvents, injectNoticeEvent('evt-claud-01', s.turnNumber, s.family.find(c => c.isPlayer)?.id ?? 'pc-1', { bodyText })],
+            pendingSecretDemand: {
+              secretId: claudiusSecret.id,
+              leaderId: leader.id,
+              clanId: CLAUDIUS_CLAN_ID,
+              kind: 'leverage_bill',
+              billId: targetBill.id,
+              direction: 'for',
+            },
+          };
+          events.push(`${leader.name} makes his move — a demand awaits your answer.`);
+        }
+      }
+    }
+  }
+
+  // 10. Age family members + Phase 3, Chunk P3-C — yearly natural-mortality
+  // roll. No pre-existing natural-death system existed anywhere in this
+  // codebase before this chunk (verified) — this is the first one. Rolled
+  // only at the yearly rollover (same crossedNewYear gate aging already
+  // uses), one roll per character, in family-array order; the first hit
+  // wins (a same-season second death would collide with the single
+  // pendingSuccession slot — rare enough at realistic family sizes not to
+  // handle further this chunk). Battle death is a separate, immediate path
+  // (musterEngine.ts's applyBattleOutcome) funnelled through the SAME
+  // detectPaterfamiliasDeath -> successionEvents.ts sequence — see that
+  // file's header comment for why the two were unified rather than left as
+  // two divergent succession systems.
+  {
+    const aged = s.family.map((c) => ({ ...c, age: c.age + (crossedNewYear ? 1 : 0) }));
+    let family = aged;
+
+    if (crossedNewYear && !s.pendingSuccession) {
+      const deceased = aged.find(c => rollsDead(c));
+      if (deceased) {
+        const result = detectPaterfamiliasDeath(aged, deceased.id, s.heldOffices);
+        family = result.family;
+        if (result.pendingSuccession) {
+          const p = result.pendingSuccession;
+          const resolution = resolveDeathNotice(p, s.cadetBranch, s.cadetBranchUsed, s.turnNumber);
+          s = {
+            ...s,
+            pendingSuccession: p,
+            pendingEvents: [...s.pendingEvents, resolution.notice],
+            ...(resolution.cadetBranch ? { cadetBranch: resolution.cadetBranch } : {}),
+            ...(resolution.pendingEpilogue ? { pendingEpilogue: resolution.pendingEpilogue } : {}),
+          };
+          events.push(`${p.deceasedName} has died.`);
+        } else {
+          events.push(`${deceased.name} has died.`);
+        }
+      }
+    }
+
+    s = { ...s, family };
+  }
+
+  // 10b. Phase 3, Chunk P3-C — regency-ends check. Same crossedNewYear gate
+  // as step 10 (per the plan's "reuse the existing yearly-rollover gate"
+  // instruction) — checked against the heir's just-incremented age, not a
+  // separate year comparison, to avoid any off-by-one between the two.
+  if (crossedNewYear && s.regency) {
+    const heir = s.family.find(c => c.id === s.regency!.heirId);
+    if (heir && heir.age >= BALANCE.succession.regencyMinorAge) {
+      const regent = s.family.find(c => c.id === s.regency!.regentId);
+      s = {
+        ...s,
+        regency: null,
+        pendingEvents: [...s.pendingEvents, injectNoticeEvent('evt-succession-regency-ends', s.turnNumber, heir.id, {
+          title: 'Come of Age',
+          bodyText: `${heir.name} comes of age and takes the household in his own name`
+            + (regent ? ` — ${regent.name} steps back from governing it.` : '.'),
+        })],
+      };
+      events.push(`${heir.name} comes of age; the regency ends.`);
+    }
+  }
+
+  // 10c. Phase 3, Chunk P3-D — cadet-branch aging. Same yearly gate; he can
+  // die of old age like anyone else, but per D4's documented lifecycle
+  // choice there is no continuous "regenerate his son" background process
+  // — a dead cadet is only lazily replaced at the moment extinction
+  // actually needs him (cadetEvents.resolveDeathNotice).
+  if (crossedNewYear && s.cadetBranch?.alive) {
+    const aged = { ...s.cadetBranch, age: s.cadetBranch.age + 1 };
+    s = { ...s, cadetBranch: rollsDead(aged) ? { ...aged, alive: false } : aged };
+  }
 
   // 11. Auto-inject bills
   {
@@ -902,9 +1367,18 @@ export function processSeason(state: GameState): {
         s = { ...s, tutorialQueue: tutorialQueue.slice(1) };
       }
       // gate.wait (both false): leave queue intact, no event this season
+    } else if (!(s.wars ?? []).some(w => w.enemyId === 'carthage')) {
+      // Phase 3, Chunk P3-B — Mamertine ignition: guaranteed once eligible
+      // (tutorial queue empty, per the branch above; no Carthage war yet),
+      // not weighted into the random pool — the plan wants this "fires in
+      // the first or second year", which a competing-on-weight pick can't
+      // promise. The guard is permanent — once any 'carthage' WarState
+      // exists (any branch of evt-war-mamertines creates one via the
+      // startWar: effect token), this never fires again.
+      chosenDef = getEventDef('evt-war-mamertines') as typeof chosenDef;
     } else {
       // Normal random event — tutorial queue exhausted or standard start
-      chosenDef = pickRandomEvent(EVENT_DEFS, s);
+      chosenDef = pickRandomEvent([...EVENT_DEFS, ...WAR_EVENT_DEFS, ...CADET_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS], s);
     }
 
     if (chosenDef) {
@@ -1006,7 +1480,8 @@ export function processSeason(state: GameState): {
     const player = s.family.find(c => c.isPlayer);
     if (player && player.id !== s.tribuneHolder) {
       const assetBonuses = computeTotalAssetBonuses(s.ownedAssets);
-      const shield = assetBonuses.corruptionShield ?? 0;
+      const houseBonuses = computeHouseBonuses(s.house);
+      const shield = (assetBonuses.corruptionShield ?? 0) + houseBonuses.corruptionShield;
       const newScore = tickCorruption(player.corruptionScore, s.crisisLevel, shield);
       if (newScore !== player.corruptionScore) {
         s = {
@@ -1019,64 +1494,103 @@ export function processSeason(state: GameState): {
     }
   }
 
-  // 15. Trial resolution
+  // 15. Trial prep growth + jury lean + session entry (Phase 4, P4-C grew
+  // npcStrength/juryLean and resolved the trial synchronously the instant
+  // turnNumber reached startsSeason; P4-E makes trial day an interactive
+  // 3-beat session, so this step no longer resolves anything — it only
+  // grows the case and, when the day arrives, draws the beat queue
+  // (trialBeatEngine.drawTrialBeats) and flips status to 'in_session'.
+  // gameStore's answerTrialBeat/fastResolveTrialSession call
+  // trialEngine.resolveTrialOutcome once the session's last beat resolves —
+  // see that function's header comment for the full verdict/consequences
+  // logic this step used to run inline.
   {
-    let trialEvents: string[] = [];
-    const updatedTrials = s.trialQueue.map(trial => {
-      if (trial.resolved) return trial;
-      const newTurns = trial.turnsRemaining - 1;
-      if (newTurns > 0) return { ...trial, turnsRemaining: newTurns };
+    const sessionEvents: string[] = [];
 
-      const outcome = resolveTrial(trial);
-      const cons = OUTCOME_CONSEQUENCES[outcome];
-      const accused = s.family.find(c => c.id === trial.accusedCharacterId);
-      const accusedName = accused?.name ?? 'the accused';
+    const updatedTrials = (s.trials ?? []).map(trial => {
+      if (trial.status !== 'preparing') return trial;
 
-      trialEvents.push(`Trial resolved: ${accusedName} — ${outcome.toUpperCase()}.`);
+      const opponentFound = findOpponentLeader(trial, s.clans);
 
-      if (cons.reputationDelta !== 0 && trial.accusingClanId) {
-        const newRep = Math.min(100, Math.max(-100,
-          (s.familyReputations[trial.accusingClanId] ?? 0) + cons.reputationDelta
-        ));
-        s = { ...s, familyReputations: { ...s.familyReputations, [trial.accusingClanId]: newRep } };
+      const npcStrength = opponentFound
+        ? trial.npcStrength + computeOpponentPrepGrowth(opponentFound.leader.skills.intrigus, opponentFound.clan.influence)
+        : trial.npcStrength;
+      const juryLean = computeJuryLean(s.clans, s.familyReputations);
+      const grownTrial: TrialState = { ...trial, npcStrength, juryLean };
+
+      if (s.turnNumber < grownTrial.startsSeason) return grownTrial;
+
+      // ── Trial day arrives — enter session ──────────────────────────────
+      // Bribe-discovery rolls happen exactly once, right here (the draw is
+      // a one-time event per trial) — BALANCE.trials.prep.juryBribeDiscoveryChance
+      // / praetorBribeDiscoveryChance, "inert until P4-E" per their own
+      // header comments in balance.ts. A discovered bribe's Ethos
+      // contribution is voided immediately, whether or not the player ever
+      // sees/answers its mandatory beat.
+      let ethosAfterDiscovery = grownTrial.playerPrep.ethos;
+      const discoveredBribeClanIds: string[] = [];
+      for (const clanId of grownTrial.playerPrep.bribedClanIds) {
+        if (Math.random() < BALANCE.trials.prep.juryBribeDiscoveryChance) {
+          discoveredBribeClanIds.push(clanId);
+          ethosAfterDiscovery -= BALANCE.trials.prep.bribeJurorsBonusPerBloc;
+        }
+      }
+      let discoveredPraetorBribe = false;
+      if (grownTrial.playerPrep.praetorBribed && Math.random() < BALANCE.trials.prep.praetorBribeDiscoveryChance) {
+        discoveredPraetorBribe = true;
+        ethosAfterDiscovery -= BALANCE.trials.prep.bribePraetorBonus;
       }
 
-      s = { ...s, lifetimeDignitas: Math.max(0, s.lifetimeDignitas + cons.lifetimeDignitas) };
+      const unattackedWitnesses = grownTrial.playerPrep.witnesses.filter(w => !w.attacked);
+      const hasUnattackedWitness = unattackedWitnesses.length > 0;
+      const witnessAttackTargetId = hasUnattackedWitness
+        ? unattackedWitnesses[Math.floor(Math.random() * unattackedWitnesses.length)].id
+        : null;
 
-      if (cons.denarii) {
-        s = { ...s, denarii: Math.max(0, s.denarii + cons.denarii) };
-      }
+      const chargeDef = TRIAL_CHARGE_DEFS[grownTrial.charge];
+      const beatIds = drawTrialBeats(TRIAL_BEATS, {
+        chargeTags: chargeDef.beatTags,
+        approach: grownTrial.approach,
+        opponentTraitIds: opponentFound?.leader.traits ?? [],
+        hasUnattackedWitness,
+        discoveredBribeClanIds,
+        discoveredPraetorBribe,
+      }, Math.random);
 
-      if (cons.corruptionClear) {
-        s = {
-          ...s,
-          family: s.family.map(c =>
-            c.id === trial.accusedCharacterId ? { ...c, corruptionScore: 0 } : c
-          ),
-        };
-      }
+      const sessionDefendant = grownTrial.defendant;
+      const defendantName = sessionDefendant.kind === 'family'
+        ? (s.family.find(c => c.id === sessionDefendant.characterId)?.name ?? 'your family')
+        : (opponentFound?.leader.name ?? 'the accused');
+      sessionEvents.push(`⚖️ Trial day has come: ${chargeDef.displayName} — ${defendantName}.`);
 
-      if (cons.familyTrustDelta) {
-        s = {
-          ...s,
-          family: s.family.map(c =>
-            c.isPlayer ? { ...c, familyTrust: Math.max(0, c.familyTrust + cons.familyTrustDelta!) } : c
-          ),
-        };
-      }
-
-      if (cons.removeCharacter) {
-        s = { ...s, family: s.family.filter(c => c.id !== trial.accusedCharacterId) };
-      }
-
-      return { ...trial, resolved: true, outcome };
+      return {
+        ...grownTrial,
+        playerPrep: { ...grownTrial.playerPrep, ethos: Math.max(0, ethosAfterDiscovery) },
+        status: 'in_session' as const,
+        session: {
+          beatIds,
+          currentBeatIndex: 0,
+          performanceSoFar: 0,
+          resolutions: [],
+          discoveredBribeClanIds,
+          discoveredPraetorBribe,
+          witnessAttackTargetId,
+        },
+      };
     });
 
-    s = { ...s, trialQueue: updatedTrials };
-    events.push(...trialEvents);
+    s = { ...s, trials: updatedTrials };
+    events.push(...sessionEvents);
   }
 
-  // 16. Trial trigger check
+  // 16. Trial trigger check (Phase 4, P4-C — builds a TrialState now; the
+  // seeding formula (accuserIntrigus, initial strength, baseline prep) is
+  // copied verbatim from the pre-P4-C buildTrial call per the plan's
+  // instruction to "reuse the formula as the NPC-side initial strength" —
+  // including the sphere-based accuserIntrigus hardcode (7/4), not a switch
+  // to leader.skills.intrigus, to avoid a silent behavior change alongside
+  // the rework. No client trialDefenseBonus here, same as before — only
+  // buildTrialFromState (unused by this call site) ever resolved that.)
   {
     const trigger = shouldTriggerTrial(s);
     if (trigger) {
@@ -1087,19 +1601,72 @@ export function processSeason(state: GameState): {
       const assetBonuses    = computeTotalAssetBonuses(s.ownedAssets);
       const trialDefenseBonus = assetBonuses.trialDefenseBonus ?? 0;
 
-      const newTrial = buildTrial(
-        trigger.accusedId,
-        trigger.accusingClanId,
-        trigger.charge,
-        accuserIntrigus,
-        accused?.corruptionScore ?? 0,
-        trialDefenseBonus
+      const initialNpcStrength = Math.min(100, accuserIntrigus * 2 + (accused?.corruptionScore ?? 0) / 2);
+      const baselinePrep = Math.min(100, 20 + trialDefenseBonus);
+      const player = s.family.find(c => c.isPlayer);
+
+      const newTrial: TrialState = {
+        ...buildTrialState({
+          id: `trial-${Date.now()}`,
+          seat: 'defense',
+          charge: trigger.charge,
+          chargeSource: trigger.chargeSource,
+          prosecutor: { kind: 'leader', leaderId: accuserLeader?.id ?? '' },
+          defendant: { kind: 'family', characterId: trigger.accusedId },
+          filedSeason: s.turnNumber,
+          startsSeason: s.turnNumber + BALANCE.trials.npcInitiatedDelay,
+          initialNpcStrength,
+          speakerId: player?.id ?? trigger.accusedId,
+        }),
+        // Seeded into Logos (implementer's call, same as convertLegacyTrial —
+        // the asset-driven baseline defense bonus is an undifferentiated
+        // flat number, no section it more naturally belongs to).
+        playerPrep: {
+          logos: baselinePrep, pathos: 0, ethos: 0,
+          actionsUsed: [], witnesses: [], bribedClanIds: [], praetorBribed: false,
+        },
+      };
+
+      s = { ...s, trials: [...s.trials, newTrial] };
+      events.push(
+        `⚖️ ${accusingClan?.name ?? 'A rival faction'} has brought charges of ${TRIAL_CHARGE_DEFS[trigger.charge].displayName} against ${accused?.name ?? 'your family'}. Trial begins in ${BALANCE.trials.npcInitiatedDelay} seasons.`
       );
 
-      s = { ...s, trialQueue: [...s.trialQueue, newTrial] };
-      events.push(
-        `⚖️ ${accusingClan?.name ?? 'A rival faction'} has brought charges of ${trigger.charge.replace('_', ' ')} against ${accused?.name ?? 'your family'}. ${newTrial.turnsRemaining} seasons to prepare your defense.`
-      );
+      // Military Overhaul M4: consume the defeatedGeneral flag once it
+      // actually produces a trial (it otherwise re-rolls every season).
+      if (trigger.charge === 'military_incompetence') {
+        const { [`defeatedGeneral-${trigger.accusedId}`]: _consumed, ...restFlags } = s.flags;
+        s = { ...s, flags: restFlags };
+      }
+    }
+  }
+
+  // 16b. Phase 4, Chunk P4-C — leader corruption tick (see
+  // trialEngine.tickLeaderCorruption's header comment for the "no
+  // NPC-governorship simulation exists" caveat). Feeds the corruption-gated
+  // prosecution-filing path.
+  {
+    s = {
+      ...s,
+      clans: s.clans.map(c => ({
+        ...c,
+        leaders: c.leaders.map(l => ({ ...l, corruptionScore: tickLeaderCorruption(l) })),
+      })),
+    };
+  }
+
+  // 16c. Passive remarriage check — keeps births available across
+  // generations. A freshly-succeeded heir inherits without a spouse, and an
+  // existing spouse can die of old age the same as anyone else (step 10's
+  // yearly mortality roll) — either way births would otherwise stop for
+  // good, since nothing else in this codebase ever grants a new spouse. See
+  // inheritanceEngine.needsSpouse/generateSpouse's header comment.
+  if (needsSpouse(s.family)) {
+    if (Math.random() < BALANCE.succession.remarriageChance) {
+      const player = s.family.find(c => c.isPlayer)!;
+      const spouse = generateSpouse('Brutus');
+      s = { ...s, family: [...s.family, spouse] };
+      events.push(`${spouse.name} joins the household as ${player.name}'s wife.`);
     }
   }
 

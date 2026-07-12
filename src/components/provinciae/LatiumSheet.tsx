@@ -9,6 +9,7 @@ import { calcRomeStatModifiers } from '../../engine/resourceEngine';
 import { getCrisisStatusEffects } from '../../engine/crisisEngine';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import type { CrisisTrackId } from '../../models/crisis';
+import HoldingsPanel from './HoldingsPanel';
 
 // ─── Causal indicator helpers ─────────────────────────────────────────────────
 
@@ -52,12 +53,22 @@ const CRISIS_TRACK_LABEL: Record<CrisisTrackId, string> = {
 
 const TRACK_ORDER: CrisisTrackId[] = ['war', 'unrest', 'constitution', 'economy'];
 
+type LatiumTab = 'overview' | 'assets';
+const TABS: { id: LatiumTab; label: string }[] = [
+  { id: 'overview', label: 'OVERVIEW' },
+  { id: 'assets',   label: 'ASSETS' },
+];
+
 // ─── LatiumSheet ──────────────────────────────────────────────────────────────
 
 export default function LatiumSheet({ onClose }: { onClose: () => void }) {
   const rome   = useGameStore(s => s.rome);
   const crisis = useGameStore(s => s.crisis);
   const [crisisModal, setCrisisModal] = useState<CrisisTrackId | null>(null);
+  // Family House rework — matches ProvinceSheet.tsx's OVERVIEW/ASSETS tab
+  // strip (§4) rather than stacking everything in one long scroll, so
+  // Latium's holdings browse the same way every other region's do.
+  const [activeTab, setActiveTab] = useState<LatiumTab>('overview');
 
   const romeMods      = calcRomeStatModifiers(rome);
   const statusEffects = getCrisisStatusEffects(crisis);
@@ -70,107 +81,134 @@ export default function LatiumSheet({ onClose }: { onClose: () => void }) {
       {/* Drag handle */}
       <View style={styles.handle} />
 
+      {/* Province header */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.provinceTitle}>LATIUM</Text>
+          <Text style={styles.provinceSub}>
+            HEARTLAND OF THE REPUBLIC · UNGOVERNABLE
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={styles.closeBtnLabel}>✕</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Tab strip */}
+      <View style={styles.tabStrip}>
+        {TABS.map(tab => (
+          <TouchableOpacity
+            key={tab.id}
+            style={[styles.tab, activeTab === tab.id && styles.tabActive]}
+            onPress={() => setActiveTab(tab.id)}
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-
-        {/* Province header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.provinceTitle}>LATIUM</Text>
-            <Text style={styles.provinceSub}>
-              HEARTLAND OF THE REPUBLIC · UNGOVERNABLE
+        {activeTab === 'overview' && (
+          <>
+            <Text style={styles.flavor}>
+              Latium is Rome's eternal core — the ancient Latin plain from which the Republic grew.
+              It cannot revolt, cannot be taxed separately, and needs no governor. Its loyalty is
+              absolute. What happens here is Rome itself.
             </Text>
-          </View>
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.closeBtnLabel}>✕</Text>
-          </TouchableOpacity>
-        </View>
 
-        <Text style={styles.flavor}>
-          Latium is Rome's eternal core — the ancient Latin plain from which the Republic grew.
-          It cannot revolt, cannot be taxed separately, and needs no governor. Its loyalty is
-          absolute. What happens here is Rome itself.
-        </Text>
+            {/* ── Domestic Conditions ────────────────────────────────────── */}
 
-        {/* ── Domestic Conditions ────────────────────────────────────────────── */}
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>DOMESTIC CONDITIONS</Text>
-          <Text style={styles.sectionSub}>
-            Move these through legislation, grain policy, and public games. They drive crisis
-            escalation — low values make the tracks harder to hold.
-          </Text>
-
-          {/* Popular Sentiment (rome.plebs) */}
-          <View style={styles.statBlock}>
-            <StatBar
-              label={`Popular Sentiment — ${romeMods.plebsLabel}`}
-              value={rome.plebs}
-              color={COLORS.purple}
-              thresholdMarks={[20, 40, 70, 85]}
-            />
-            <View style={styles.causalRow}>
-              <Text style={styles.causalArrow}>↳ Unrest track:</Text>
-              <Text style={[
-                styles.causalValue,
-                { color: plebsContrib.positive ? COLORS.laurel : COLORS.crimson },
-              ]}>
-                {plebsContrib.text}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>DOMESTIC CONDITIONS</Text>
+              <Text style={styles.sectionSub}>
+                Move these through legislation, grain policy, and public games. They drive crisis
+                escalation — low values make the tracks harder to hold.
               </Text>
+
+              {/* Popular Sentiment (rome.plebs) */}
+              <View style={styles.statBlock}>
+                <StatBar
+                  label={`Popular Sentiment — ${romeMods.plebsLabel}`}
+                  value={rome.plebs}
+                  color={COLORS.purple}
+                  thresholdMarks={[20, 40, 70, 85]}
+                />
+                <View style={styles.causalRow}>
+                  <Text style={styles.causalArrow}>↳ Unrest track:</Text>
+                  <Text style={[
+                    styles.causalValue,
+                    { color: plebsContrib.positive ? COLORS.laurel : COLORS.crimson },
+                  ]}>
+                    {plebsContrib.text}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Internal Stability (rome.stability) */}
+              <View style={styles.statBlock}>
+                <StatBar
+                  label={`Internal Stability — ${romeMods.stabilityLabel}`}
+                  value={rome.stability}
+                  color={COLORS.laurel}
+                  thresholdMarks={[20, 40, 70, 85]}
+                />
+                <View style={styles.causalRow}>
+                  <Text style={styles.causalArrow}>↳ Constitution track:</Text>
+                  <Text style={styles.causalValue}>{stabilityNote}</Text>
+                </View>
+              </View>
             </View>
-          </View>
 
-          {/* Internal Stability (rome.stability) */}
-          <View style={styles.statBlock}>
-            <StatBar
-              label={`Internal Stability — ${romeMods.stabilityLabel}`}
-              value={rome.stability}
-              color={COLORS.laurel}
-              thresholdMarks={[20, 40, 70, 85]}
-            />
-            <View style={styles.causalRow}>
-              <Text style={styles.causalArrow}>↳ Constitution track:</Text>
-              <Text style={styles.causalValue}>{stabilityNote}</Text>
+            {/* ── Crisis Tracks overview ─────────────────────────────────── */}
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>CRISIS TRACKS — CURRENT STATE</Text>
+              <Text style={styles.sectionSub}>
+                Read-only. Managed through legislation, provincial governance, and office actions.
+              </Text>
+
+              {/* 2×2 grid — War / Unrest in row 1, Constitution / Economy in row 2 */}
+              <View style={styles.crisisRow}>
+                {TRACK_ORDER.slice(0, 2).map(trackId => (
+                  <CrisisMiniCell
+                    key={trackId}
+                    trackId={trackId}
+                    level={crisis[trackId].level}
+                    label={statusEffects.find(e => e.trackId === trackId)!.label}
+                    onPress={() => setCrisisModal(trackId)}
+                  />
+                ))}
+              </View>
+              <View style={[styles.crisisRow, { marginTop: SPACING.sm }]}>
+                {TRACK_ORDER.slice(2, 4).map(trackId => (
+                  <CrisisMiniCell
+                    key={trackId}
+                    trackId={trackId}
+                    level={crisis[trackId].level}
+                    label={statusEffects.find(e => e.trackId === trackId)!.label}
+                    onPress={() => setCrisisModal(trackId)}
+                  />
+                ))}
+              </View>
             </View>
+          </>
+        )}
+
+        {activeTab === 'assets' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionSub}>
+              Land and enterprises across the Latin heartland — the family's holdings outside its own walls.
+            </Text>
+            <HoldingsPanel />
           </View>
-        </View>
-
-        {/* ── Crisis Tracks overview ─────────────────────────────────────────── */}
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>CRISIS TRACKS — CURRENT STATE</Text>
-          <Text style={styles.sectionSub}>
-            Read-only. Managed through legislation, provincial governance, and office actions.
-          </Text>
-
-          {/* 2×2 grid — War / Unrest in row 1, Constitution / Economy in row 2 */}
-          <View style={styles.crisisRow}>
-            {TRACK_ORDER.slice(0, 2).map(trackId => (
-              <CrisisMiniCell
-                key={trackId}
-                trackId={trackId}
-                level={crisis[trackId].level}
-                label={statusEffects.find(e => e.trackId === trackId)!.label}
-                onPress={() => setCrisisModal(trackId)}
-              />
-            ))}
-          </View>
-          <View style={[styles.crisisRow, { marginTop: SPACING.sm }]}>
-            {TRACK_ORDER.slice(2, 4).map(trackId => (
-              <CrisisMiniCell
-                key={trackId}
-                trackId={trackId}
-                level={crisis[trackId].level}
-                label={statusEffects.find(e => e.trackId === trackId)!.label}
-                onPress={() => setCrisisModal(trackId)}
-              />
-            ))}
-          </View>
-        </View>
-
+        )}
       </ScrollView>
 
       {crisisModal && (
@@ -289,6 +327,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
   },
   headerLeft: { flex: 1 },
@@ -314,6 +353,31 @@ const styles = StyleSheet.create({
     color: COLORS.dust,
     fontFamily: FONTS.ui,
     fontSize: 16,
+  },
+  // ── Tab strip — matches ProvinceSheet.tsx's OVERVIEW/ASSETS/etc. strip ────
+  tabStrip: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+  },
+  tabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.gold,
+  },
+  tabText: {
+    color: COLORS.dust,
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  tabTextActive: {
+    color: COLORS.gold,
+    fontWeight: '700',
   },
   flavor: {
     color: COLORS.dust,

@@ -2,9 +2,11 @@ import type { GameState } from '../state/gameStore';
 import type { Client, ClientType } from '../models/client';
 import type { EventInstance } from '../models/event';
 import type { CrisisTrackId } from '../models/crisis';
+import type { WarState, WarScale } from '../models/war';
 import { parseEffect } from '../models/bill';
 import { generateClientName } from '../data/clientNames';
 import { computeTotalAssetBonuses } from './assetEngine';
+import { computeHouseBonuses } from './houseEngine';
 import { calcAssetGoldOutput, calcAssetFidesOutput } from './provinceEngine';
 import { buildClient, computeTotalClientBonuses } from './clientEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
@@ -14,6 +16,9 @@ import {
 } from './crisisEngine';
 import { getTierFromLevel } from '../models/crisis';
 import { BALANCE } from '../data/balance';
+import { applySuccession, promoteCadetToParterfamilias } from './inheritanceEngine';
+import { generateLatentSecret } from './secretEngine';
+import type { SecretType } from '../models/secret';
 
 export interface ApplyEffectOptions {
   previewClientName?: string;
@@ -171,6 +176,11 @@ export function calcResourceIncome(state: GameState): {
   const assetBonuses = computeTotalAssetBonuses(state.ownedAssets);
   const assetFides = assetBonuses.fides ?? 0;
 
+  // Step 6a: Family House bonuses (Library's recurring Fides, rented businesses'
+  // Fides/gold — dignitas/season and faction relationship drift are NOT part of
+  // this Fides/Denarii income calc; turnSequencer applies those directly).
+  const houseBonuses = computeHouseBonuses(state.house);
+
   // Step 6b: Province asset Fides bonus (former Gratia/Dignitas asset bonuses, now Fides)
   const provinceFidesBonus = state.provinces.reduce(
     (sum, p) => sum + calcAssetFidesOutput(p), 0
@@ -197,25 +207,34 @@ export function calcResourceIncome(state: GameState): {
   const unrestTier = getTierFromLevel(state.crisis.unrest.level);
   const plebsDelta = unrestTier >= 2 ? -3 : 0;
 
-  // Final Fides income
-  const fidesIncome = Math.max(0,
-    Math.round(baseIncome * patronMultiplier)
-    + officeIncome
-    + clanFidesIncome
-    + clientFides
-    + assetFides
-    + provinceFidesBonus
-    + endowmentFides
-    + romeStatFides
-    + crisisFidesDelta   // negative at higher crisis tiers
-  );
+  // Phase 3, Chunk P3-C — a regent governing in a minor heir's name is
+  // less effective than the true paterfamilias would be. Applied to the
+  // WHOLE total (not just baseIncome) — the plan's "×0.75 Fides" framing.
+  const regencyMult = state.regency ? BALANCE.succession.regencyIncomeMult : 1;
 
-  // Denarii income — assets + province gold output + client gold + treasury mod + crisis penalty
+  // Final Fides income
+  const fidesIncome = Math.max(0, Math.round(
+    (
+      Math.round(baseIncome * patronMultiplier)
+      + officeIncome
+      + clanFidesIncome
+      + clientFides
+      + assetFides
+      + houseBonuses.fides
+      + provinceFidesBonus
+      + endowmentFides
+      + romeStatFides
+      + crisisFidesDelta   // negative at higher crisis tiers
+    ) * regencyMult
+  ));
+
+  // Denarii income — assets + house + province gold output + client gold + treasury mod + crisis penalty
   const provinceDenariiBonus = state.provinces.reduce(
     (sum, p) => sum + calcAssetGoldOutput(p), 0
   );
   const denariiIncome =
     (assetBonuses.gold ?? 0)
+    + houseBonuses.gold
     + provinceDenariiBonus
     + (clientBonuses.gold ?? 0)
     + romeMods.denariDelta
@@ -258,6 +277,30 @@ export function applyEffectString(
       const currentCrisis = patch.crisis ?? state.crisis;
       const updatedTrack = applyTrackDelta(currentCrisis[trackId], delta);
       patch.crisis = { ...currentCrisis, [trackId]: updatedTrack };
+      continue;
+    }
+
+    // ── Phase 3, P3-D — bare (no-colon, no-param) tokens ────────────────────
+    // continueAsCadet/cadetVisited take no parameter, so they never match
+    // the colon-gated block below (segment.includes(':') is false for
+    // them) — matched here as whole-segment literals instead. See
+    // cadetEvents.ts's evt-cadet-succession/evt-cadet-visit choices.
+    if (segment === 'continueAsCadet') {
+      const cadet = (patch as any).cadetBranch ?? state.cadetBranch;
+      if (cadet) {
+        Object.assign(patch, promoteCadetToParterfamilias(cadet, { ...state, ...patch } as GameState));
+      }
+      continue;
+    }
+    if (segment === 'cadetVisited') {
+      const cadet = (patch as any).cadetBranch ?? state.cadetBranch;
+      if (cadet) {
+        const metCount = cadet.metCount + 1;
+        patch.cadetBranch = { ...cadet, metCount };
+        if (metCount >= BALANCE.cadet.maxVisits) {
+          patch.flags = { ...(patch.flags ?? state.flags), 'cadet-visits-exhausted': true };
+        }
+      }
       continue;
     }
 
@@ -343,6 +386,205 @@ export function applyEffectString(
         continue;
       }
 
+      // Phase 4, P4-G — grantGroundwork:leaderId:amount. Sets
+      // ClanLeader.intelGroundwork to at least `amount` (never lowers an
+      // existing higher value — a head start, not a reset) — used by
+      // evt-tut-04's rewired investigate choice to grant a strong start
+      // toward the counter-Secret on Ap. Claudius Pulcher. Generic by
+      // leaderId, not Claudius-specific, so any future event can reuse it.
+      if (key === 'grantGroundwork') {
+        const leaderId = parts[1];
+        const amount = parseFloat(parts[2] ?? '0');
+        patch.clans = (patch.clans ?? state.clans).map((clan: any) => ({
+          ...clan,
+          leaders: clan.leaders.map((leader: any) =>
+            leader.id === leaderId
+              ? { ...leader, intelGroundwork: Math.max(leader.intelGroundwork ?? 0, amount) }
+              : leader
+          ),
+        })) as any;
+        continue;
+      }
+
+      // Phase 3, P3-B — startWar:enemyId:scale:openingWarScoreDelta
+      // Scripted ignition events (evt-war-mamertines) trigger war state
+      // through this token rather than a direct store-action call — keeps
+      // event content routed through the same generic effect-string
+      // vocabulary every other event uses, matching this file's existing
+      // colon-token pattern (setFlag/addClient/blackmail/leaderRel above).
+      // Mirrors gameStore.startWar's WarState construction — deliberately
+      // NOT imported from there (this file has no store access, and
+      // gameStore.ts already imports FROM warEngine.ts, which itself
+      // imports FROM this file; importing gameStore.ts here would be
+      // circular). Kept in sync by hand — small, stable shape, same
+      // tradeoff warEngine.ts's buildWarTriumphBill already accepts for an
+      // identical reason (see that function's header comment).
+      if (key === 'startWar') {
+        const enemyId = parts[1];
+        const scale = (parts[2] ?? 'major') as WarScale;
+        const openingDelta = parseInt(parts[3] ?? '0', 10);
+        const wars = patch.wars ?? state.wars ?? [];
+        const alreadyActive = wars.some((w: WarState) => w.active && w.enemyId === enemyId && w.scale === scale);
+        if (!alreadyActive) {
+          const newWar: WarState = {
+            id: `war-${enemyId}-${state.turnNumber}`,
+            active: true,
+            enemyId,
+            scale,
+            provinceId: null,
+            warScore: Math.min(100, Math.max(-100, openingDelta)),
+            startedTurn: state.turnNumber,
+            lastSetPieceTurn: state.turnNumber - BALANCE.war.setPieceOffer.minSpacingTurns,
+            weariness: 0,
+            pendingSetPiece: null,
+            treaty: null,
+            // Ignition always fires within the first few years (see
+            // evt-war-mamertines' condition gate) — always 'opening' under
+            // phaseForYear's own logic for so little elapsed time, so this
+            // avoids importing warEngine.ts here just to recompute it.
+            phase: 'opening',
+            ignitedYear: state.year,
+            endedYear: null,
+            terminalOutcome: null,
+            peaceOffered: false,
+            lastFundingOfferTurn: state.turnNumber - BALANCE.war.funding.recurTurns,
+          };
+          patch.wars = [...wars, newWar];
+        }
+        continue;
+      }
+
+      // Phase 3, P3-B — warScoreDelta:enemyId:±N. Periodic war events
+      // (warEvents.ts) move a specific active war's score through this
+      // token, same reasoning as startWar: above — warScore lives inside a
+      // WarState, not a top-level GameState key, so the generic
+      // key±N parser can't reach it.
+      if (key === 'warScoreDelta') {
+        const enemyId = parts[1];
+        const delta = parseInt(parts[2] ?? '0', 10);
+        const wars = patch.wars ?? state.wars ?? [];
+        patch.wars = wars.map((w: WarState) =>
+          w.active && w.enemyId === enemyId
+            ? { ...w, warScore: Math.min(100, Math.max(-100, w.warScore + delta)) }
+            : w
+        );
+        continue;
+      }
+
+      // Phase 3, P3-C — nextEvent:defId. Queues a follow-up event instance
+      // onto pendingEvents. Exists because this codebase's built-in
+      // EventChoice.nextEventId branching (resolveEventChoice in
+      // eventEngine.ts) discards effectStr entirely whenever any
+      // nextEventId variant is set — there is no way to BOTH apply an
+      // effect (denarii/dignitas/etc.) AND advance to a new scene through
+      // the built-in mechanism (verified before writing this). This token
+      // sidesteps that: successionEvents.ts's funeral choices apply their
+      // effects normally and chain via this token instead. Consumed by
+      // gameStore.resolveEvent's merge (see that file — pendingEvents from
+      // a resolved choice's patch must be merged with, not clobbered by,
+      // the pre-existing queue; that fix shipped alongside this token).
+      if (key === 'nextEvent') {
+        const defId = parts[1];
+        const queued: EventInstance = {
+          defId,
+          firedAtTurn: state.turnNumber,
+          targetCharacterId: instance?.targetCharacterId ?? 'pc-1',
+        };
+        patch.pendingEvents = [...(patch.pendingEvents ?? state.pendingEvents), queued];
+        continue;
+      }
+
+      // Phase 3, P3-C — succeedPaterfamilias:default|alt. Applies
+      // inheritanceEngine.applySuccession using state.pendingSuccession's
+      // eligibleHeirIds (index 0 = default heir, index 1 = the "name a
+      // different heir" alternative). Gracefully falls back to the default
+      // heir if no alternative exists (this codebase's EventChoice has no
+      // per-choice conditional visibility, so "name a different heir" is
+      // always shown — see successionEvents.ts's header comment) — never
+      // soft-locks. A no-op (pendingSuccession stays set) only in the true
+      // extinction case (no eligible heir at all), which this chunk
+      // deliberately does not resolve — that is P3-D's cadet-branch scope;
+      // see this file's header comment / detectPaterfamiliasDeath's caller
+      // in turnSequencer.ts for the distinct no-heir notice shown instead.
+      if (key === 'succeedPaterfamilias') {
+        const which = parts[1];
+        const pending = state.pendingSuccession;
+        const heirId = which === 'alt'
+          ? (pending?.eligibleHeirIds[1] ?? pending?.eligibleHeirIds[0])
+          : pending?.eligibleHeirIds[0];
+        if (pending && heirId) {
+          const succPatch = applySuccession({ ...state, ...patch } as GameState, heirId, which === 'alt' && heirId === pending.eligibleHeirIds[1]);
+          Object.assign(patch, succPatch);
+        }
+        continue;
+      }
+
+      // Phase 3, P3-D — setPendingEpilogue:value. A tiny, generic token
+      // (rather than folding into continueAsCadet's sibling choice) since
+      // "let the Gens end" needs to write pendingEpilogue directly —
+      // there's no numeric key±N form for a string-enum top-level field.
+      if (key === 'setPendingEpilogue') {
+        patch.pendingEpilogue = parts[1] as GameState['pendingEpilogue'];
+        continue;
+      }
+
+      // ── createLatentSecret:<type>:<potency> ─────────────────────────────
+      // The general mechanism behind player-choice blackmail (data/
+      // compromisingEvents.ts): any event choice can offer a real reward at
+      // the risk of a compromising fact the player knowingly took on. Plants
+      // a LatentSecret on the player character — nobody holds it yet; each
+      // season secretEngine.latentSecretDiscoveryTick (turnSequencer step
+      // 9b) rolls a chance for a hostile leader to notice it and turn it
+      // into a real, demandable Secret via the existing pipeline.
+      if (key === 'createLatentSecret') {
+        const type = parts[1] as SecretType;
+        const potency = (parseInt(parts[2] ?? '1', 10) || 1) as 1 | 2 | 3;
+        const player = (patch.family ?? state.family).find(c => c.isPlayer);
+        if (player) {
+          const latent = generateLatentSecret(player.id, player.name, type, potency, state.turnNumber);
+          patch.latentSecrets = [...(patch.latentSecrets ?? state.latentSecrets ?? []), latent];
+        }
+        continue;
+      }
+
+      // ── bribeVotes:<n> ───────────────────────────────────────────────────
+      // Sets the n clan leaders with the highest votes (among those not
+      // already pledged 'for') to campaignVotes 'for' — the same lever
+      // secretEngine.resolveSecretDemand's leverage_election comply branch
+      // already uses for a single named leader, generalized to N for a
+      // flat "buy the tribes" event reward. Only meaningful mid-campaign;
+      // the originating event is expected to gate on the 'campaigning'
+      // condition, but this token is itself a no-op (sets nothing) if
+      // called outside one, since campaignVotes is otherwise unused.
+      if (key === 'bribeVotes') {
+        const n = parseInt(parts[1] ?? '0', 10) || 0;
+        const currentVotes = patch.campaignVotes ?? state.campaignVotes;
+        const targets = state.clans
+          .flatMap(c => c.leaders)
+          .filter(l => currentVotes[l.id] !== 'for')
+          .sort((a, b) => b.votes - a.votes)
+          .slice(0, n);
+        if (targets.length > 0) {
+          const bribed = { ...currentVotes };
+          for (const l of targets) bribed[l.id] = 'for';
+          patch.campaignVotes = bribed;
+        }
+        continue;
+      }
+
+      continue;
+    }
+
+    // ── Phase 3, P3-D — cadetStanding±N ─────────────────────────────────────
+    // key±N form (like the skill grants below), not a colon token — matches
+    // cadetEvents.ts's evt-cadet-visit content (`cadetStanding+5`).
+    const cadetStandingMatch = segment.match(/^cadetStanding([+-]\d+)$/);
+    if (cadetStandingMatch) {
+      const delta = parseInt(cadetStandingMatch[1], 10);
+      const cadet = (patch as any).cadetBranch ?? state.cadetBranch;
+      if (cadet) {
+        patch.cadetBranch = { ...cadet, standing: Math.max(0, Math.min(100, cadet.standing + delta)) };
+      }
       continue;
     }
 

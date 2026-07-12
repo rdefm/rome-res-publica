@@ -1,5 +1,12 @@
 import type { Clan } from '../models/clan';
 
+// ── Phase 4, Chunk P4-E ────────────────────────────────────────────────────
+// `traits` (data/traits.ts's TRAIT_DEFINITIONS ids) are hand-picked to fit
+// each leader's existing bio/skills — no skillModifiers applied here (see
+// models/clan.ts's ClanLeader.traits doc comment for why starting leaders'
+// hand-tuned skill numbers are left untouched). Junior/unestablished leaders
+// are left without a trait rather than one being invented to fill the slot.
+
 export const STARTING_CLANS: Clan[] = [
   {
     id: 'cornelii',
@@ -23,6 +30,7 @@ export const STARTING_CLANS: Clan[] = [
         votes: 18,
         bio: 'Patriarch of the Cornelii. Suspicious of new men and popular reforms.',
         skills: { rhetoric: 8, martial: 4, intrigus: 6 },
+        traits: ['father_of_senate'],
         heldOffices: ['vigintivirate', 'quaestor', 'aedile', 'praetor', 'consul', 'censor'],
         currentOffice: null,
         turnsLeftInOffice: null,
@@ -41,6 +49,7 @@ export const STARTING_CLANS: Clan[] = [
         votes: 12,
         bio: 'Celebrated general. Pragmatic and direct — responds well to honest dealing.',
         skills: { rhetoric: 5, martial: 8, intrigus: 4 },
+        traits: ['conqueror'],
         heldOffices: ['vigintivirate', 'quaestor', 'aedile', 'praetor'],
         currentOffice: 'consul',
         turnsLeftInOffice: 2,
@@ -59,6 +68,7 @@ export const STARTING_CLANS: Clan[] = [
         votes: 8,
         bio: 'High priest of Jupiter. Religious authority gives him veto over auspicious dates.',
         skills: { rhetoric: 6, martial: 2, intrigus: 5 },
+        traits: ['ancient_blood'],
         heldOffices: ['vigintivirate', 'quaestor'],
         currentOffice: null,
         turnsLeftInOffice: null,
@@ -106,6 +116,7 @@ export const STARTING_CLANS: Clan[] = [
         votes: 15,
         bio: 'Firebrand tribune beloved by the urban poor. Has helped the Brutii before.',
         skills: { rhetoric: 7, martial: 4, intrigus: 6 },
+        traits: ['silver_tongue'],
         // Served as quaestor and tribune; needs aedile next
         heldOffices: ['vigintivirate', 'quaestor', 'tribune'],
         currentOffice: null,
@@ -125,6 +136,7 @@ export const STARTING_CLANS: Clan[] = [
         votes: 10,
         bio: 'Controls Valerian trading networks. Backs whoever protects trade routes.',
         skills: { rhetoric: 5, martial: 3, intrigus: 7 },
+        traits: ['sharp_mind'],
         heldOffices: ['vigintivirate', 'quaestor', 'aedile'],
         currentOffice: null,
         turnsLeftInOffice: null,
@@ -172,6 +184,7 @@ export const STARTING_CLANS: Clan[] = [
         votes: 14,
         bio: 'Old and implacable. Has nursed a grudge against the Brutii for two decades.',
         skills: { rhetoric: 7, martial: 6, intrigus: 5 },
+        traits: ['ruthless'],
         heldOffices: ['vigintivirate', 'quaestor', 'aedile', 'praetor', 'consul'],
         currentOffice: null,
         turnsLeftInOffice: null,
@@ -190,6 +203,7 @@ export const STARTING_CLANS: Clan[] = [
         votes: 9,
         bio: 'Less hostile than his patriarch — approachable if the price is right.',
         skills: { rhetoric: 6, martial: 3, intrigus: 7 },
+        traits: ['nobilitas'],
         heldOffices: ['vigintivirate', 'quaestor', 'aedile', 'praetor', 'consul'],
         currentOffice: 'censor',
         turnsLeftInOffice: 4,
@@ -231,11 +245,18 @@ export const STARTING_CLANS: Clan[] = [
         sphere: 'Legal Colleges',
         relationship: -30,
         favour: 0,
-        blackmail: true,
+        // Phase 4, Chunk P4-G — was `true`; the vestigial cosmetic flag
+        // (a dot on LeaderCard, a button-label swap on LeaderDetailPanel —
+        // see resourceEngine.ts's `blackmail` token and offices.ts's own
+        // "dropped per plan review" note) is superseded here by a real,
+        // held-from-game-start criminal Secret (claudiusArc.ts,
+        // buildClaudiusStartingSecret, wired in gameStore's INITIAL_STATE).
+        blackmail: false,
         bias: 'optimates',
         votes: 16,
         bio: "Rome's most feared advocate. Holds evidence of a past Brutus transgression.",
         skills: { rhetoric: 8, martial: 3, intrigus: 9 },
+        traits: ['ruthless'],
         heldOffices: ['vigintivirate', 'quaestor', 'aedile', 'praetor'],
         currentOffice: null,
         turnsLeftInOffice: null,
@@ -254,6 +275,7 @@ export const STARTING_CLANS: Clan[] = [
         votes: 11,
         bio: 'Pragmatic soldier. Might be negotiated with over military matters.',
         skills: { rhetoric: 4, martial: 7, intrigus: 5 },
+        traits: ['soldier_born'],
         heldOffices: ['vigintivirate', 'quaestor'],
         currentOffice: 'aedile',
         turnsLeftInOffice: 3,
@@ -273,6 +295,7 @@ export const STARTING_CLANS: Clan[] = [
         votes: 5,
         bio: 'A calculating young Claudian. Watches the Brutii with measured suspicion.',
         skills: { rhetoric: 5, martial: 5, intrigus: 6 },
+        traits: ['sharp_mind'],
         heldOffices: ['vigintivirate', 'quaestor'],
         currentOffice: null,
         turnsLeftInOffice: null,

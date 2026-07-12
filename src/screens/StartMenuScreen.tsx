@@ -19,6 +19,7 @@ import { useGameStore } from '../state/gameStore';
 import { saveProvider, hasSave, importSave } from '../state/saveLoad';
 import { START_DEFINITIONS } from '../data/startDefinitions';
 import { COLORS, FONTS, SPACING, RADIUS } from '../utils/theme';
+import HallOfAncestorsScreen from './HallOfAncestorsScreen';
 
 const BG = (() => {
   try { return require('../assets/images/menu-bg.png'); } catch { return null; }
@@ -28,10 +29,16 @@ export default function StartMenuScreen() {
   const startGame                   = useGameStore(s => s.startGame);
   const [loading, setLoading]       = useState(false);
   const [saveExists, setSaveExists] = useState(false);
+  // Phase 3, Chunk P3-E — Hall of Ancestors entry point.
+  const [showHall, setShowHall]     = useState(false);
 
   useEffect(() => {
     hasSave().then(setSaveExists).catch(() => setSaveExists(false));
   }, []);
+
+  if (showHall) {
+    return <HallOfAncestorsScreen onBack={() => setShowHall(false)} />;
+  }
 
   async function handleLoad() {
     setLoading(true);
@@ -129,6 +136,9 @@ export default function StartMenuScreen() {
           </TouchableOpacity>
           <TouchableOpacity style={styles.loadBtn} onPress={handleImport} activeOpacity={0.75}>
             <Text style={styles.loadLabel}>Import Save File</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.loadBtn} onPress={() => setShowHall(true)} activeOpacity={0.75}>
+            <Text style={styles.loadLabel}>Hall of Ancestors</Text>
           </TouchableOpacity>
         </View>
 

@@ -483,6 +483,39 @@ describe('calcIndividualEscalation — War track province pressure', () => {
     const delta = calcIndividualEscalation('war', state);
     expect(delta).toBe(0);
   });
+
+  // Military Overhaul M9 — one term from warScore trajectory.
+  test('a badly losing war (warScore < -20) adds +2', () => {
+    const state = makeMinimalState({
+      provinces: [],
+      wars: [{ id: 'w1', active: true, enemyId: 'carthage', scale: 'major', provinceId: null,
+        warScore: -25, startedTurn: 1, lastSetPieceTurn: 1, weariness: 0, pendingSetPiece: null, treaty: null }],
+    } as any);
+    expect(calcIndividualEscalation('war', state)).toBe(2);
+  });
+
+  test('a decisively winning war (warScore >= 20) subtracts 1', () => {
+    const state = makeMinimalState({
+      provinces: [],
+      wars: [{ id: 'w1', active: true, enemyId: 'carthage', scale: 'major', provinceId: null,
+        warScore: 25, startedTurn: 1, lastSetPieceTurn: 1, weariness: 0, pendingSetPiece: null, treaty: null }],
+    } as any);
+    expect(calcIndividualEscalation('war', state)).toBe(-1);
+  });
+
+  test('an inactive war contributes nothing', () => {
+    const state = makeMinimalState({
+      provinces: [],
+      wars: [{ id: 'w1', active: false, enemyId: 'carthage', scale: 'major', provinceId: null,
+        warScore: -90, startedTurn: 1, lastSetPieceTurn: 1, weariness: 0, pendingSetPiece: null, treaty: null }],
+    } as any);
+    expect(calcIndividualEscalation('war', state)).toBe(0);
+  });
+
+  test('a war fixture missing entirely (pre-M9 state) does not crash', () => {
+    const state = makeMinimalState({ provinces: [] });
+    expect(() => calcIndividualEscalation('war', state)).not.toThrow();
+  });
 });
 
 // ─── calcRomeStatVoteModifier ─────────────────────────────────────────────────

@@ -93,4 +93,35 @@ export const LEGACY_DEFINITIONS: LegacyObjectiveDefinition[] = [
       },
     ],
   },
+  // ─── Phase 4, Chunk P4-F — the Cicero moments ──────────────────────────────
+  // Two single-milestone counters rather than tiers on one objective:
+  // "convicted a sitting magistrate" isn't a function of cumulative
+  // conviction count, so it needs its own counter, incremented only on that
+  // narrower condition (trialEngine.resolveTrialOutcome).
+  {
+    id: 'prosecutions_won',
+    title: 'The Accuser',
+    description: 'Prosecutions won in the Roman courts.',
+    trackingUnit: 'Prosecutions won',
+    milestones: [
+      {
+        threshold: 1,
+        label: 'Accusator',
+        permanentBonus: { flatBonus: { lifetimeDignitas: 5 } },
+      },
+    ],
+  },
+  {
+    id: 'magistrates_convicted',
+    title: 'Vox Populi',
+    description: 'Sitting magistrates brought down by prosecution.',
+    trackingUnit: 'Sitting magistrates convicted',
+    milestones: [
+      {
+        threshold: 1,
+        label: 'Vox Populi',
+        permanentBonus: { flatBonus: { lifetimeDignitas: 15 } },
+      },
+    ],
+  },
 ];

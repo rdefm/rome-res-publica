@@ -139,20 +139,99 @@ export const ITALY_PROVINCES: ProvinceDefinition[] = [
   },
 ];
 
+// ─── Sicily Province Definitions (Military Overhaul M10) ────────────────────
+// DEVIATION FROM THE PLAN TEXT (documented per the plan's own §0 instruction):
+// the plan's M10 treaty terms cede "western Sicily / all Sicily" to Rome, but
+// no Mediterranean-map province existed anywhere in this file before M10 —
+// ProvinceMap's 'mediterranean'/'east' values were pure type-level future-
+// proofing with zero content. Design discussion during M10 chose to add real
+// ProvinceDefinition/ProvinceState entries (not a flag-only stub) so a ceded
+// Sicily is actually governable through the existing province system.
+//
+// There is still no Mediterranean map art asset, and MapView.tsx has no
+// per-map switching — so these two provinces are overlaid onto the existing
+// map_italia.png near its southern edge (nodeY 0.90–0.96), a deliberate
+// geographic approximation, not a claim that Sicily is part of the Italian
+// peninsula. They render through MapView's existing `if (!province) return
+// null` guard, which already skips any def with no matching ProvinceState —
+// so simply NOT including them in buildInitialProvinceStates() below is
+// sufficient to keep them invisible ("Carthage still holds this") until the
+// M10 treaty engine (warEngine.ts's applyTreatyEffects) pushes a ProvinceState
+// for them onto state.provinces at cession time. See MapView.tsx's own
+// comment at its province-list import for the render-side half of this.
+export const SICILY_PROVINCES: ProvinceDefinition[] = [
+  {
+    id: 'sicily_west',
+    name: 'Western Sicily',
+    latinName: 'Sicilia Occidentalis',
+    map: 'mediterranean',
+    status: 'unincorporated',
+    profile: 'Freshly ceded Carthaginian territory. Low Relationship, high strategic value.',
+    flavorDescription:
+      'Punic towns and Greek cities along the western coast, wrested from Carthage at the negotiating table rather than by long occupation. The population remembers whose fleet used to call here — governing it well will take patience the legions cannot supply on their own.',
+    startingRelationship: 22,
+    startingInfrastructure: 15,
+    startingLocalSupport: 0,
+    baseGoldOutput: 7,
+    baseImperiumOutput: 2,
+    nodeX: 0.380,
+    nodeY: 0.920,
+    clientIds: [],
+    npcRoleHolder: {
+      name: 'Q. Sicinius',
+      clanId: 'clan-sicinia',
+      trait: 'negligent',
+      policy: { taxation: 'standard', security: 'standard_garrison', development: 'neglect' },
+    },
+    namedWar: 'Sicilian Unrest',
+    threatWeight: 1.3,
+  },
+  {
+    id: 'sicily_east',
+    name: 'Eastern Sicily',
+    latinName: 'Sicilia Orientalis',
+    map: 'mediterranean',
+    status: 'unincorporated',
+    profile: 'Freshly ceded Carthaginian territory. Grain-rich, distant from Rome.',
+    flavorDescription:
+      "Syracuse and the island's Greek east — the granary that made Sicily worth fighting over in the first place. Only reachable once Carthage has quit the whole island; a province this rich will draw governors looking to make a fortune fast.",
+    startingRelationship: 18,
+    startingInfrastructure: 12,
+    startingLocalSupport: 0,
+    baseGoldOutput: 10,
+    baseImperiumOutput: 1,
+    nodeX: 0.500,
+    nodeY: 0.955,
+    clientIds: [],
+    npcRoleHolder: {
+      name: 'M. Laevinus',
+      clanId: 'clan-laevinia',
+      trait: 'corrupt',
+      policy: { taxation: 'heavy', security: 'light_patrol', development: 'exploit' },
+    },
+    namedWar: 'Sicilian Unrest',
+    threatWeight: 1.3,
+  },
+];
+
 // Latium is special — heartland, never in the governable pool
 export function isGovernable(provinceId: string): boolean {
   return provinceId !== 'latium';
 }
 
 export function getProvinceDefinition(id: string): ProvinceDefinition | undefined {
-  return ITALY_PROVINCES.find(p => p.id === id);
+  return [...ITALY_PROVINCES, ...SICILY_PROVINCES].find(p => p.id === id);
 }
 
 // Build initial ProvinceState from definitions
 import type { ProvinceState } from '../models/province';
 
-export function buildInitialProvinceStates(): ProvinceState[] {
-  return ITALY_PROVINCES.map(def => ({
+/** Single-definition → ProvinceState builder, extracted in M10 so the treaty
+ *  engine (warEngine.ts's applyTreatyEffects) can reuse it when adding a
+ *  ceded Sicily province mid-game, not just at buildInitialProvinceStates'
+ *  game-start call site. */
+export function buildProvinceState(def: ProvinceDefinition): ProvinceState {
+  return {
     id: def.id,
     map: def.map,
     status: def.status,
@@ -168,9 +247,15 @@ export function buildInitialProvinceStates(): ProvinceState[] {
     warDeclarationAvailable: false,
     revoltActive: false,
     activeCampaign: null,
-    officerVolunteer: null,          // was missing from original — added here
+    officerVolunteer: null,
     // ── Crisis track inputs (Chunk 2A) ────────────────────────────────────
     infraStagnationSeasons: 0,
     lastInfraScore: def.startingInfrastructure,
-  }));
+  };
+}
+
+export function buildInitialProvinceStates(): ProvinceState[] {
+  // Sicily is deliberately excluded — it only enters state.provinces when
+  // ceded via the M10 treaty engine (see SICILY_PROVINCES' header comment).
+  return ITALY_PROVINCES.map(buildProvinceState);
 }

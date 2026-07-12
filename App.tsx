@@ -16,6 +16,10 @@ import AmbitionSelectionModal from './src/components/shared/AmbitionSelectionMod
 import BirthNamingModal from './src/components/domus/BirthNamingModal';
 import AgendaTablet from './src/components/shared/AgendaTablet';
 import WelcomeBackModal from './src/components/shared/WelcomeBackModal';
+import BattleScreen from './src/screens/BattleScreen';
+import EpilogueScreen from './src/screens/EpilogueScreen';
+import SetPieceOfferModal from './src/components/shared/SetPieceOfferModal';
+import TrialSessionModal from './src/components/cursus/TrialSessionModal';
 import { generateAgenda } from './src/engine/agendaEngine';
 import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle } from './src/components/shared/TabBar';
 import StartMenuScreen from './src/screens/StartMenuScreen';
@@ -135,20 +139,36 @@ function GameRoot() {
   const uiNavRequest  = useGameStore(s => s.uiNavRequest);
   const clearNavRequest = useGameStore(s => s.clearNavRequest);
   const selectCharacter = useGameStore(s => s.selectCharacter);
+  const selectTrialForBasilica = useGameStore(s => s.selectTrialForBasilica);
+  const setBasilicaReturnTab = useGameStore(s => s.setBasilicaReturnTab);
 
   useEffect(() => {
     if (!uiNavRequest) return;
     if (!navRef.isReady()) return;
 
+    // Basilica deep-link (trialId payload) — remember whichever tab the
+    // player was actually on before this switches them to Cursus, so
+    // CursusScreen's closeBasilica can send them back instead of stranding
+    // them on Cursus once the sheet is dismissed (e.g. CuriaScreen's "Open
+    // the Basilica" button). null when they were already on Cursus.
+    if (uiNavRequest.trialId) {
+      const currentTab = navRef.getCurrentRoute()?.name ?? null;
+      setBasilicaReturnTab(currentTab && currentTab !== uiNavRequest.tab ? (currentTab as any) : null);
+    }
+
     // Navigate to the target tab
     navRef.navigate(uiNavRequest.tab as never);
 
-    // Apply payload — selectedCharacterId is the only confirmed store field (v1).
-    // provinceId / billId / trialId: tab landing only per plan §P1-C v1 scope.
+    // Apply payload — selectedCharacterId and trialId (Phase 4, P4-D) are the
+    // only confirmed store fields so far. provinceId / billId: tab landing
+    // only per plan §P1-C v1 scope.
     // TODO (P1-C+): add selectedLeaderId, expandedClanId, provinceId deep-links
     //               once the relevant screen store fields are confirmed.
     if (uiNavRequest.selectedCharacterId) {
       selectCharacter(uiNavRequest.selectedCharacterId);
+    }
+    if (uiNavRequest.trialId) {
+      selectTrialForBasilica(uiNavRequest.trialId);
     }
 
     clearNavRequest();
@@ -168,6 +188,7 @@ function GameRoot() {
       if (s.activeEvent)                               return;
       if (s.pendingBirthNaming)                        return;
       if ((s.pendingAmbitionScopes ?? []).length > 0)  return;
+      if (s.trials.some(t => t.status === 'in_session')) return; // Phase 4, P4-E — trial day
       if (s.agendaViewedTurn >= s.turnNumber)          return;
 
       const items = generateAgenda(s);
@@ -192,14 +213,37 @@ function GameRoot() {
         <StatusBar style="light" backgroundColor={COLORS.bg} />
         <ResourceBar />
         <AppNavigator />
-        {/* Modal priority: EventModal → AmbitionSelectionModal → AgendaTablet → WelcomeBackModal */}
+        {/* Modal priority: EventModal → AmbitionSelectionModal → BirthNamingModal → AgendaTablet → WelcomeBackModal.
+            BirthNamingModal was imported but never mounted here until this fix — pendingBirthNaming
+            was being set correctly by turnSequencer's passive birth check, but with no modal ever
+            rendering, confirmBirthNaming (which actually appends the child to `family`) could never
+            fire, and the stuck pendingBirthNaming silently blocked every future birth roll too
+            (turnSequencer's `s.pendingBirthNaming === null` gate). Self-gated on pendingBirthNaming,
+            same idiom as AmbitionSelectionModal, so its position here is order-of-priority only.
+            BattleScreen is its own full-screen native Modal (Military Overhaul M5) — it takes
+            over the whole screen whenever a battle is staging/active, regardless of DOM order.
+            TrialSessionModal (Phase 4, P4-E) is the same idiom — a full-screen native Modal
+            self-gated on a trial with status 'in_session'; turnSequencer only ever puts one
+            trial in session at a time (fileProsecution/shouldTriggerTrial both enforce a single
+            active trial system-wide), so it never stacks with itself, though it can in principle
+            coincide with a same-season random event (both are native Modals; no explicit
+            deferral was added for this rare overlap, same looseness this codebase already
+            tolerates elsewhere). SetPieceOfferModal (M9) self-gates OFF whenever a battle is in
+            progress, so it never stacks with BattleScreen. EpilogueScreen (Phase 3, P3-E)
+            self-gates on runFinished — takes over the whole screen once a run ends, same idiom,
+            outranking everything else here since nothing is actionable once a run is finished. */}
         <EventModal />
         <AmbitionSelectionModal />
+        <BirthNamingModal />
         <AgendaTablet />
         <WelcomeBackModal
           visible={showWelcomeBack}
           onDismiss={() => setShowWelcomeBack(false)}
         />
+        <SetPieceOfferModal />
+        <TrialSessionModal />
+        <BattleScreen />
+        <EpilogueScreen />
       </View>
     </NavigationContainer>
   );

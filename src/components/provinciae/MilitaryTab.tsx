@@ -1,7 +1,8 @@
 // src/components/provinciae/MilitaryTab.tsx
 // Renders inside ProvinceSheet's MILITARY tab.
 // Shows: active campaign War Room, pending commander election, officer volunteer
-// option, revolt status, and campaign history.
+// option, revolt status, campaign history, and (Military Overhaul M8) the
+// set-piece battle system's army roster for units stationed here.
 
 import React, { useState } from 'react';
 import {
@@ -21,9 +22,17 @@ import type {
   GovernorCandidate,
 } from '../../models/province';
 import type { Character } from '../../models/character';
+import type { TroopUnit } from '../../models/troop';
+import type { Veterancy } from '../../models/battle';
 import { getCampaignEventDef } from '../../data/campaignEvents';
 import type { CampaignAllocation } from '../../engine/campaignEngine';
 import { getOfficerDecisions } from '../../engine/campaignEngine';
+// Military Overhaul M8 — pulled directly via useGameStore rather than
+// threaded through props (ProvinceSheet.tsx already does this for
+// musterVeterans; this is the smaller diff and matches that precedent).
+import { useGameStore } from '../../state/gameStore';
+import { BALANCE } from '../../data/balance';
+import InfoTap from '../shared/InfoTap';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -74,13 +83,21 @@ export default function MilitaryTab({
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [selectedVolunteerId, setSelectedVolunteerId] = useState<string | null>(null);
 
+  // Military Overhaul M8 — army roster (units stationed in THIS province).
+  const flags = useGameStore(s => s.flags);
+  const disbandTroops = useGameStore(s => s.disbandTroops);
+  const payDonative = useGameStore(s => s.payDonative);
+  const rosterOwners = family
+    .map(c => ({ character: c, troops: [...c.raisedLegions, ...c.veterans].filter(t => t.musterProvinceId === province.id) }))
+    .filter(o => o.troops.length > 0);
+
   // The player family member currently serving as governor of this province (if any)
   const playerGovernorChar = province.playerGovernor?.characterId
     ? family.find(c => c.id === province.playerGovernor!.characterId) ?? null
     : null;
 
   // ── No military activity ───────────────────────────────────────────────────
-  if (!campaign && !commanderElection && !officerVolunteer && !province.revoltActive) {
+  if (!campaign && !commanderElection && !officerVolunteer && !province.revoltActive && rosterOwners.length === 0) {
     return (
       <View style={styles.emptyState}>
         <Text style={styles.emptyIcon}>🕊</Text>
@@ -96,6 +113,17 @@ export default function MilitaryTab({
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+
+      {/* ── Legion Roster (Military Overhaul M8) ──────────────────────────── */}
+      {rosterOwners.length > 0 && (
+        <LegionRosterSection
+          owners={rosterOwners}
+          denarii={playerDenarii}
+          flags={flags}
+          onPayDonative={payDonative}
+          onDisband={disbandTroops}
+        />
+      )}
 
       {/* ── Revolt Warning ────────────────────────────────────────────────── */}
       {province.revoltActive && !campaign && (
@@ -256,6 +284,93 @@ export default function MilitaryTab({
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+// Military Overhaul M8 — army roster. `owners` is pre-filtered to units
+// stationed in this province; a Donative applies to that character's WHOLE
+// army (every province), stated inline per the plan's "surface both numbers".
+const VET_TIER_INDEX: Record<Veterancy, number> = { raw: 1, trained: 2, veteran: 3, legendary: 4 };
+
+function LegionRosterSection({
+  owners, denarii, flags, onPayDonative, onDisband,
+}: {
+  owners: { character: Character; troops: TroopUnit[] }[];
+  denarii: number;
+  flags: Record<string, boolean | number>;
+  onPayDonative: (characterId: string) => void;
+  onDisband: (characterId: string, troopIds: string[]) => void;
+}) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>⚔ LEGIONS STATIONED HERE</Text>
+      {owners.map(({ character, troops }) => {
+        const wholeArmy = [...character.raisedLegions, ...character.veterans];
+        const lc = BALANCE.battle.lifecycle;
+        const donativeCost = lc.donativeDenariiPerCohort * wholeArmy.length;
+        const onCooldown = !!flags[`donative-cooldown-${character.id}`];
+        const canAfford = denarii >= donativeCost;
+        return (
+          <View key={character.id} style={styles.rosterOwnerBlock}>
+            <View style={styles.rosterOwnerHeader}>
+              <Text style={styles.rosterOwnerName}>{character.name}'s Army</Text>
+              <InfoTap termId="donative">
+                <TouchableOpacity
+                  style={[styles.donativeBtn, (onCooldown || !canAfford) && styles.btnDisabled]}
+                  onPress={() => onPayDonative(character.id)}
+                  disabled={onCooldown || !canAfford}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.donativeBtnText}>
+                    {onCooldown
+                      ? 'Donative Paid This Year'
+                      : `Donative — ${donativeCost} Den. → +${lc.donativeLoyaltyGain} loyalty, whole army (${wholeArmy.length} units)`}
+                  </Text>
+                </TouchableOpacity>
+              </InfoTap>
+            </View>
+            {troops.map(troop => (
+              <TroopRow
+                key={troop.id}
+                troop={troop}
+                onDisband={() => Alert.alert(
+                  'Disband Unit',
+                  `Disband this ${(troop.unitClass ?? 'legionary').replace('_', ' ')} unit? Its veterancy and loyalty are lost — this cannot be undone. Retaining it instead keeps both, at the cost of ongoing upkeep.`,
+                  [
+                    { text: 'Retain', style: 'cancel' },
+                    { text: 'Disband', style: 'destructive', onPress: () => onDisband(character.id, [troop.id]) },
+                  ],
+                )}
+              />
+            ))}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function TroopRow({ troop, onDisband }: { troop: TroopUnit; onDisband: () => void }) {
+  const tier = VET_TIER_INDEX[troop.veterancy ?? 'raw'];
+  const pips = '●'.repeat(tier) + '○'.repeat(4 - tier);
+  return (
+    <View style={styles.troopRow}>
+      <View style={styles.troopInfo}>
+        <Text style={styles.troopClass}>
+          {(troop.unitClass ?? 'legionary').replace('_', ' ')}
+          {troop.elephantSteady ? ' 🛡' : ''}
+        </Text>
+        <InfoTap termId="veterancy">
+          <Text style={styles.troopPips}>{pips} {troop.veterancy ?? 'raw'}</Text>
+        </InfoTap>
+      </View>
+      <InfoTap termId="loyalty">
+        <ProgressBar label="Loyalty" value={Math.round(troop.bondToCommander)} color={COLORS.laurel} />
+      </InfoTap>
+      <TouchableOpacity style={styles.disbandBtn} onPress={onDisband} activeOpacity={0.75}>
+        <Text style={styles.disbandBtnText}>Disband</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 function CommanderElectionPanel({
   election,
@@ -1088,5 +1203,70 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.marble,
     textAlign: 'center',
+  },
+  // Military Overhaul M8 — Legion Roster
+  rosterOwnerBlock: {
+    marginBottom: SPACING.md,
+  },
+  rosterOwnerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  rosterOwnerName: {
+    fontFamily: FONTS.display,
+    fontSize: 13,
+    color: COLORS.marble,
+  },
+  donativeBtn: {
+    backgroundColor: COLORS.panelElevated,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: COLORS.gold,
+  },
+  donativeBtnText: {
+    fontFamily: FONTS.ui,
+    fontSize: 9,
+    color: COLORS.gold,
+    letterSpacing: 0.3,
+  },
+  troopRow: {
+    backgroundColor: COLORS.panelElevated,
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    marginBottom: 6,
+  },
+  troopInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  troopClass: {
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    color: COLORS.marble,
+    textTransform: 'capitalize',
+  },
+  troopPips: {
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    color: COLORS.goldDim,
+    letterSpacing: 1,
+  },
+  disbandBtn: {
+    alignSelf: 'flex-end',
+    marginTop: 4,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+  },
+  disbandBtnText: {
+    fontFamily: FONTS.ui,
+    fontSize: 9,
+    color: COLORS.crimson,
+    letterSpacing: 0.3,
   },
 });

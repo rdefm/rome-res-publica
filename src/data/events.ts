@@ -288,6 +288,77 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
+  // ─── Military Overhaul M4 — battle notices (weight 0, inject-only) ────────
+  // Fired by musterEngine.applyBattleOutcome's write-back (buildWoundedNotice/
+  // buildBattleDeathNotice/buildRansomDemandNotice). title/bodyText are
+  // overridden dynamically at injection time via injectNoticeEvent with the
+  // affected character's name and (for ransom) the demand amount. Dispatch
+  // voice — terse, military — per the plan's invariant 7 (Philon appears only
+  // back in Rome, not in battle-context notices).
+  {
+    id: 'evt-wounded-notice',
+    title: 'Wounded in Battle',
+    bodyText: 'A dispatch from the field reports a wound taken in the press of battle.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      { id: 'continue', label: 'Continue', successEffect: '', failureEffect: '' },
+    ],
+  },
+  {
+    id: 'evt-battle-death-notice',
+    title: 'Fallen in Battle',
+    bodyText: 'The dispatch is brief, as these things always are.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      { id: 'continue', label: 'Continue', successEffect: '', failureEffect: '' },
+    ],
+  },
+  {
+    id: 'evt-ransom-demand-notice',
+    title: 'Taken Captive',
+    bodyText: 'Word reaches Rome: a family member lives, but is held. Carthage names a price for his return.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      { id: 'continue', label: 'Continue', successEffect: '', failureEffect: '' },
+    ],
+  },
+  // Military Overhaul M8 — this ONE is a Rome-context notice (fires after
+  // the battle, about integrating a captured elephant into the army), so
+  // Philon's voice is in-register here per invariant 7 — unlike the three
+  // above, which are battle dispatches.
+  {
+    id: 'evt-captured-elephant-notice',
+    title: 'Beasts of War, Now Ours',
+    bodyText: 'The beasts of Carthage now eat from Roman hands. Philon is against it.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      { id: 'continue', label: 'Continue', successEffect: '', failureEffect: '' },
+    ],
+  },
+  // Military Overhaul M9 — warEngine.ts injects this whenever |warScore|
+  // newly crosses the sue/forced/dictate threshold for an active war.
+  // Title/body are always overridden via injectNoticeEvent's opts (see
+  // buildThresholdNotice) — dispatch voice, terse, per invariant 7.
+  {
+    id: 'evt-war-threshold-notice',
+    title: 'The War Turns',
+    bodyText: 'The balance of the war has shifted.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      { id: 'continue', label: 'Continue', successEffect: '', failureEffect: '' },
+    ],
+  },
+
   // Fired by turnSequencer step 2b when resolveElection returns contested: true.
   {
     id: 'evt-election-contested',

@@ -19,7 +19,8 @@ export type EventCondition =
   // ── Phase 1 (P1-E) — new condition types ─────────────────────────────────
   | { type: 'flag'; key: string; equals: boolean }
   | { type: 'asset'; definitionId: string }
-  | { type: 'campaigning' };
+  | { type: 'campaigning' }
+  | { type: 'governing' };
 
 // ─── Skill check ─────────────────────────────────────────────────────────────
 

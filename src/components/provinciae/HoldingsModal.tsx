@@ -25,9 +25,6 @@ const ASSET_IMAGES: Record<string, ReturnType<typeof require> | null> = {
   gladiator_school: (() => {
     try { return require('../../assets/images/asset-gladiator-school.png'); } catch { return null; }
   })(),
-  library: (() => {
-    try { return require('../../assets/images/asset-library.png'); } catch { return null; }
-  })(),
   baths: (() => {
     try { return require('../../assets/images/asset-baths.png'); } catch { return null; }
   })(),
@@ -119,14 +116,14 @@ function TierRow({
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
-interface PatrimoniumModalProps {
+interface HoldingsModalProps {
   def: AssetDefinition;
   onClose: () => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function PatrimoniumModal({ def, onClose }: PatrimoniumModalProps) {
+export default function HoldingsModal({ def, onClose }: HoldingsModalProps) {
   const { ownedAssets, denarii, purchaseAsset, upgradeAsset } = useGameStore();
 
   const owned = ownedAssets.find(a => a.definitionId === def.id);

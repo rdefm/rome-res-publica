@@ -11,9 +11,17 @@ import {
 } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import { EVENT_DEFS } from '../../data/events';
+import { WAR_EVENT_DEFS } from '../../data/warEvents';
+import { SUCCESSION_EVENT_DEFS } from '../../data/successionEvents';
+import { CADET_EVENT_DEFS } from '../../data/cadetEvents';
+import { SECRET_EVENT_DEFS } from '../../data/secretEvents';
 import { BALANCE } from '../../data/balance';
 import { computeAllStagePace, type ActionEconomyStage, type StagePaceSummary } from '../../engine/actionEconomyEngine';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
+// Military Overhaul M11 — sandbox army builder + headless harness runner.
+import type { BattleUnit, UnitClass, Veterancy } from '../../models/battle';
+import { ENEMY_GENERAL_LIST } from '../../data/enemyGenerals';
+import { simulateBattles, type BattleSimConfig, type BattleSimAggregate } from '../../engine/battle/battleSim';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -171,7 +179,7 @@ function CharacterSection() {
 function EventsSection() {
   const [search, setSearch] = useState('');
 
-  const filtered = EVENT_DEFS.filter(e =>
+  const filtered = [...EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS, ...CADET_EVENT_DEFS, ...SECRET_EVENT_DEFS].filter(e =>
     e.title.toLowerCase().includes(search.toLowerCase()) ||
     e.id.toLowerCase().includes(search.toLowerCase())
   );
@@ -210,6 +218,329 @@ function EventsSection() {
   );
 }
 
+// ─── Section: Battle (Military Overhaul M5, army builder + harness M11) ────
+// Entry point for the set-piece battle system. The quick button musters the
+// player's own family/troops (synthesizing a small starting force if they
+// have none) against a preset Carthaginian defender — unchanged from M5.
+// Below it, M11 adds a full per-unit army builder for both sides (launches
+// through the exact same DeploymentBoard/BattleScreen pipeline via
+// gameStore.startCustomSandboxBattle) and a headless simulateBattles runner
+// for aggregate tuning stats, reusing the SAME builder armies/generals.
+
+const UNIT_CLASSES: UnitClass[] = ['legionary', 'spear_foot', 'skirmisher', 'cavalry_heavy', 'cavalry_light', 'elephant'];
+const VETERANCIES: Veterancy[] = ['raw', 'trained', 'veteran', 'legendary'];
+const TERRAIN_IDS = Object.keys(BALANCE.battle.terrains);
+
+interface BuilderUnit { id: string; unitClass: UnitClass; veterancy: Veterancy; }
+
+let _builderUnitId = 0;
+function mkBuilderUnit(unitClass: UnitClass, veterancy: Veterancy): BuilderUnit {
+  _builderUnitId += 1;
+  return { id: `builder-${_builderUnitId}`, unitClass, veterancy };
+}
+
+function builderUnitsToBattleUnits(units: BuilderUnit[]): BattleUnit[] {
+  return units.map(u => ({
+    id: u.id, unitClass: u.unitClass, strength: 100, veterancy: u.veterancy,
+    loyalty: 50, elephantSteady: false,
+  }));
+}
+
+function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={[chipStyles.chip, selected && chipStyles.chipSelected]} onPress={onPress}>
+      <Text style={[chipStyles.chipText, selected && chipStyles.chipTextSelected]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function ArmyBuilderSide({
+  label, units, onAdd, onRemove, generalId, onGeneralChange,
+}: {
+  label: string;
+  units: BuilderUnit[];
+  onAdd: (unitClass: UnitClass, veterancy: Veterancy) => void;
+  onRemove: (id: string) => void;
+  generalId: string;
+  onGeneralChange: (id: string) => void;
+}) {
+  const [cls, setCls] = useState<UnitClass>('legionary');
+  const [vet, setVet] = useState<Veterancy>('trained');
+
+  return (
+    <View style={builderStyles.side}>
+      <Text style={styles.sectionTitle}>{label} ({units.length} units)</Text>
+
+      <Text style={builderStyles.subLabel}>General (stock profile)</Text>
+      <View style={chipStyles.chipRow}>
+        {ENEMY_GENERAL_LIST.map(g => (
+          <Chip key={g.id} label={`${g.name} (mar ${g.martial})`} selected={generalId === g.id} onPress={() => onGeneralChange(g.id)} />
+        ))}
+      </View>
+
+      {units.length > 0 && (
+        <View style={builderStyles.unitList}>
+          {units.map(u => (
+            <View key={u.id} style={builderStyles.unitRow}>
+              <Text style={builderStyles.unitRowText}>{u.unitClass} · {u.veterancy}</Text>
+              <TouchableOpacity onPress={() => onRemove(u.id)}>
+                <Text style={styles.flagNote}>✕ remove</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <Text style={builderStyles.subLabel}>Add unit — class</Text>
+      <View style={chipStyles.chipRow}>
+        {UNIT_CLASSES.map(c => <Chip key={c} label={c} selected={cls === c} onPress={() => setCls(c)} />)}
+      </View>
+      <Text style={builderStyles.subLabel}>Add unit — veterancy</Text>
+      <View style={chipStyles.chipRow}>
+        {VETERANCIES.map(v => <Chip key={v} label={v} selected={vet === v} onPress={() => setVet(v)} />)}
+      </View>
+      <TouchableOpacity style={styles.applyBtn} onPress={() => onAdd(cls, vet)}>
+        <Text style={styles.applyBtnText}>+ ADD UNIT</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function ArmyBuilderAndHarnessSection() {
+  const startCustomSandboxBattle = useGameStore(s => s.startCustomSandboxBattle);
+  const activeBattle = useGameStore(s => s.activeBattle);
+  const activeBattleSetup = useGameStore(s => s.activeBattleSetup);
+  const inProgress = !!activeBattle || !!activeBattleSetup;
+
+  const [attackerUnits, setAttackerUnits] = useState<BuilderUnit[]>([]);
+  const [defenderUnits, setDefenderUnits] = useState<BuilderUnit[]>([]);
+  const [attackerGeneralId, setAttackerGeneralId] = useState(ENEMY_GENERAL_LIST[0].id);
+  const [defenderGeneralId, setDefenderGeneralId] = useState(ENEMY_GENERAL_LIST[1]?.id ?? ENEMY_GENERAL_LIST[0].id);
+  const [terrainId, setTerrainId] = useState(TERRAIN_IDS[0]);
+  const [seedText, setSeedText] = useState('');
+
+  const [trialsText, setTrialsText] = useState('100');
+  const [aiVsAi, setAiVsAi] = useState(true);
+  const [harnessResult, setHarnessResult] = useState<BattleSimAggregate | null>(null);
+  const [harnessError, setHarnessError] = useState<string | null>(null);
+
+  function launch() {
+    if (attackerUnits.length === 0 || defenderUnits.length === 0) return;
+    const seed = seedText.trim() === '' ? undefined : parseInt(seedText, 10);
+    startCustomSandboxBattle(
+      builderUnitsToBattleUnits(attackerUnits), attackerGeneralId,
+      builderUnitsToBattleUnits(defenderUnits), defenderGeneralId,
+      terrainId, isNaN(seed as number) ? undefined : seed,
+    );
+  }
+
+  function runHarness() {
+    setHarnessError(null);
+    setHarnessResult(null);
+    if (attackerUnits.length === 0 || defenderUnits.length === 0) {
+      setHarnessError('Add at least one unit to each side first.');
+      return;
+    }
+    const n = clampInt(parseInt(trialsText, 10), 1, 2000, 100);
+    const attackerProfile = ENEMY_GENERAL_LIST.find(g => g.id === attackerGeneralId)!;
+    const defenderProfile = ENEMY_GENERAL_LIST.find(g => g.id === defenderGeneralId)!;
+    const configA: BattleSimConfig = { label: 'A', generalProfile: attackerProfile, army: builderUnitsToBattleUnits(attackerUnits) };
+    const configB: BattleSimConfig = { label: 'B', generalProfile: defenderProfile, army: builderUnitsToBattleUnits(defenderUnits) };
+    try {
+      const result = simulateBattles(configA, configB, n, aiVsAi, BALANCE.battle.terrains[terrainId]);
+      setHarnessResult(result);
+    } catch (e) {
+      setHarnessError((e as Error).message);
+    }
+  }
+
+  return (
+    <>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>ARMY BUILDER (M11)</Text>
+        <Text style={styles.eventId}>
+          Fully synthetic — decoupled from the player's real family/troops. Launches through the same
+          DeploymentBoard/BattleScreen pipeline as every other sandbox entry point.
+        </Text>
+
+        <ArmyBuilderSide
+          label="ATTACKER"
+          units={attackerUnits}
+          onAdd={(c, v) => setAttackerUnits(prev => [...prev, mkBuilderUnit(c, v)])}
+          onRemove={id => setAttackerUnits(prev => prev.filter(u => u.id !== id))}
+          generalId={attackerGeneralId}
+          onGeneralChange={setAttackerGeneralId}
+        />
+        <ArmyBuilderSide
+          label="DEFENDER"
+          units={defenderUnits}
+          onAdd={(c, v) => setDefenderUnits(prev => [...prev, mkBuilderUnit(c, v)])}
+          onRemove={id => setDefenderUnits(prev => prev.filter(u => u.id !== id))}
+          generalId={defenderGeneralId}
+          onGeneralChange={setDefenderGeneralId}
+        />
+
+        <Text style={builderStyles.subLabel}>Terrain</Text>
+        <View style={chipStyles.chipRow}>
+          {TERRAIN_IDS.map(id => (
+            <Chip key={id} label={BALANCE.battle.terrains[id].label} selected={terrainId === id} onPress={() => setTerrainId(id)} />
+          ))}
+        </View>
+
+        <View style={styles.row}>
+          <Text style={styles.rowLabel}>Seed (blank=random)</Text>
+          <TextInput
+            style={styles.input}
+            value={seedText}
+            onChangeText={setSeedText}
+            keyboardType="numeric"
+            placeholder="random"
+            placeholderTextColor={COLORS.dust}
+          />
+        </View>
+
+        <TouchableOpacity style={styles.eventRow} onPress={launch} disabled={inProgress || attackerUnits.length === 0 || defenderUnits.length === 0}>
+          <View style={styles.eventRowInner}>
+            <Text style={styles.eventTitle}>⚔ Launch Custom Battle</Text>
+            <Text style={styles.eventId}>
+              {inProgress ? 'A battle is already in progress'
+                : (attackerUnits.length === 0 || defenderUnits.length === 0) ? 'Add units to both sides first'
+                : 'Opens the deployment screen'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>HEADLESS HARNESS (M11)</Text>
+        <Text style={styles.eventId}>
+          Runs simulateBattles on the SAME builder armies/generals/terrain above, no UI — for tuning
+          stats or reproducing a bug report's aggregate behaviour across many seeds.
+        </Text>
+
+        <View style={styles.row}>
+          <Text style={styles.rowLabel}>Trials</Text>
+          <TextInput
+            style={styles.input}
+            value={trialsText}
+            onChangeText={setTrialsText}
+            keyboardType="numeric"
+            placeholder="100"
+            placeholderTextColor={COLORS.dust}
+          />
+        </View>
+        <View style={chipStyles.chipRow}>
+          <Chip label="AI vs AI" selected={aiVsAi} onPress={() => setAiVsAi(true)} />
+          <Chip label="Trivial (hold formation)" selected={!aiVsAi} onPress={() => setAiVsAi(false)} />
+        </View>
+
+        <TouchableOpacity style={styles.applyBtn} onPress={runHarness}>
+          <Text style={styles.applyBtnText}>▶ RUN HARNESS</Text>
+        </TouchableOpacity>
+
+        {harnessError && <Text style={styles.flagNote}>{harnessError}</Text>}
+        {harnessResult && (
+          <Text style={styles.dump} selectable>
+            {JSON.stringify(harnessResult, null, 2)}
+          </Text>
+        )}
+      </View>
+    </>
+  );
+}
+
+function clampInt(v: number, min: number, max: number, fallback: number): number {
+  if (isNaN(v)) return fallback;
+  return Math.min(max, Math.max(min, v));
+}
+
+function BattleSection() {
+  const startSandboxBattle = useGameStore(s => s.startSandboxBattle);
+  const activeBattle = useGameStore(s => s.activeBattle);
+  const activeBattleSetup = useGameStore(s => s.activeBattleSetup);
+  const inProgress = !!activeBattle || !!activeBattleSetup;
+
+  return (
+    <>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>SANDBOX BATTLE</Text>
+        <Text style={styles.eventId}>
+          Launches a full set-piece battle: deployment, round-by-round orders, break decisions,
+          and an outcome that writes back to real game state via musterEngine.applyBattleOutcome.
+        </Text>
+        <TouchableOpacity style={styles.eventRow} onPress={startSandboxBattle} disabled={inProgress}>
+          <View style={styles.eventRowInner}>
+            <Text style={styles.eventTitle}>⚔ Launch Sandbox Battle</Text>
+            <Text style={styles.eventId}>
+              {inProgress ? 'A battle is already in progress' : 'Opens the deployment screen'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+      <ArmyBuilderAndHarnessSection />
+    </>
+  );
+}
+
+// ─── Section: War (Military Overhaul M9) ───────────────────────────────────
+// No real "declare war" trigger exists anywhere in the app yet (Phase 3A
+// supplies one) — this is the only way to start/advance a war today.
+
+function WarSection() {
+  const wars = useGameStore(s => s.wars);
+  const startWar = useGameStore(s => s.startWar);
+  const endWar = useGameStore(s => s.endWar);
+  const forceSetPieceOffer = useGameStore(s => s.forceSetPieceOffer);
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>WAR SCORE (M9)</Text>
+      <Text style={styles.eventId}>
+        processWarSeason runs every season end for each active war (skirmish drift, weariness,
+        threshold notices, the provisional set-piece scheduler). No in-game "declare war" trigger
+        exists yet — Phase 3A supplies one; this panel is the only entry point today.
+      </Text>
+      <TouchableOpacity
+        style={styles.eventRow}
+        onPress={() => startWar('carthage', 'major', null)}
+      >
+        <View style={styles.eventRowInner}>
+          <Text style={styles.eventTitle}>⚔ Declare War on Carthage</Text>
+          <Text style={styles.eventId}>No-ops if already at war with Carthage</Text>
+        </View>
+      </TouchableOpacity>
+
+      {wars.length === 0 && <Text style={styles.emptyText}>No wars yet.</Text>}
+      {wars.map(war => (
+        <View key={war.id} style={styles.eventRow}>
+          <View style={styles.eventRowInner}>
+            <Text style={styles.eventTitle}>
+              {war.active ? '⚔' : '☮'} {war.enemyId} ({war.scale}) — score {war.warScore}, weariness {war.weariness}
+            </Text>
+            <Text style={styles.eventId}>
+              {war.pendingSetPiece
+                ? `Pending offer: ${war.pendingSetPiece.siteName} (expires turn ${war.pendingSetPiece.expiresTurn})`
+                : 'No pending offer'}
+            </Text>
+            {war.active && (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                <TouchableOpacity onPress={() => forceSetPieceOffer(war.id)} disabled={!!war.pendingSetPiece}>
+                  <Text style={[styles.flagNote, war.pendingSetPiece ? { opacity: 0.4 } : null]}>
+                    Force Set-Piece Offer
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => endWar(war.id)}>
+                  <Text style={styles.flagNote}>End War</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 // ─── Section: Telemetry (P2-A) ─────────────────────────────────────────────
 // Dumps BALANCE and seasonStatsHistory for tuning reference. Chunk P2-E adds
 // a richer "Pace" view (rolling averages, band/time flags) on top of the same
@@ -227,6 +558,40 @@ function TelemetrySection() {
       <Text style={styles.sectionTitle}>BALANCE REGISTRY</Text>
       <Text style={styles.dump} selectable>
         {JSON.stringify(BALANCE, null, 2)}
+      </Text>
+    </View>
+  );
+}
+
+// ─── Section: Secrets (Phase 4, P4-A) ──────────────────────────────────────
+// No spend/counterplay UI yet (P4-B) — this dump is the only way to see
+// generated Secrets and per-leader groundwork this chunk.
+
+function SecretsSection() {
+  const secrets = useGameStore(s => s.secrets);
+  const clans = useGameStore(s => s.clans);
+
+  const groundworkByLeader = clans
+    .flatMap(c => c.leaders)
+    .filter(l => (l.intelGroundwork ?? 0) > 0)
+    .map(l => ({ id: l.id, name: l.name, groundwork: l.intelGroundwork }));
+
+  const heldByPlayer = secrets.filter(s => s.holder === 'player');
+  const heldAgainstFamily = secrets.filter(s => s.holder !== 'player');
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>HELD BY YOU ({heldByPlayer.length})</Text>
+      <Text style={styles.dump} selectable>
+        {JSON.stringify(heldByPlayer, null, 2)}
+      </Text>
+      <Text style={styles.sectionTitle}>HELD AGAINST YOUR FAMILY ({heldAgainstFamily.length})</Text>
+      <Text style={styles.dump} selectable>
+        {JSON.stringify(heldAgainstFamily, null, 2)}
+      </Text>
+      <Text style={styles.sectionTitle}>INTEL GROUNDWORK (in progress)</Text>
+      <Text style={styles.dump} selectable>
+        {JSON.stringify(groundworkByLeader, null, 2)}
       </Text>
     </View>
   );
@@ -304,6 +669,71 @@ function PaceSection() {
   );
 }
 
+const chipStyles = StyleSheet.create({
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.xs,
+    marginBottom: SPACING.xs,
+  },
+  chip: {
+    backgroundColor: COLORS.panelSurface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+  },
+  chipSelected: {
+    backgroundColor: COLORS.panelElevated,
+    borderColor: COLORS.gold,
+  },
+  chipText: {
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    color: COLORS.dust,
+  },
+  chipTextSelected: {
+    color: COLORS.gold,
+  },
+});
+
+const builderStyles = StyleSheet.create({
+  side: {
+    backgroundColor: COLORS.panelSurface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+    gap: 4,
+  },
+  subLabel: {
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    color: COLORS.dust,
+    marginTop: SPACING.xs,
+  },
+  unitList: {
+    gap: 4,
+    marginVertical: SPACING.xs,
+  },
+  unitRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: COLORS.panelElevated,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+  },
+  unitRowText: {
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    color: COLORS.marble,
+  },
+});
+
 const paceStyles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.panelSurface,
@@ -368,7 +798,7 @@ const paceStyles = StyleSheet.create({
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function DebugPanel() {
-  const [tab, setTab] = useState<'resources' | 'characters' | 'events' | 'telemetry' | 'pace'>('resources');
+  const [tab, setTab] = useState<'resources' | 'characters' | 'events' | 'battle' | 'war' | 'secrets' | 'telemetry' | 'pace'>('resources');
 
   return (
     <View style={styles.container}>
@@ -376,7 +806,7 @@ export default function DebugPanel() {
 
       {/* Tab switcher */}
       <View style={styles.tabs}>
-        {(['resources', 'characters', 'events', 'telemetry', 'pace'] as const).map(t => (
+        {(['resources', 'characters', 'events', 'battle', 'war', 'secrets', 'telemetry', 'pace'] as const).map(t => (
           <TouchableOpacity
             key={t}
             style={[styles.tab, tab === t && styles.tabActive]}
@@ -393,6 +823,9 @@ export default function DebugPanel() {
         {tab === 'resources'  && <ResourceSection />}
         {tab === 'characters' && <CharacterSection />}
         {tab === 'events'     && <EventsSection />}
+        {tab === 'battle'     && <BattleSection />}
+        {tab === 'war'        && <WarSection />}
+        {tab === 'secrets'    && <SecretsSection />}
         {tab === 'telemetry'  && <TelemetrySection />}
         {tab === 'pace'       && <PaceSection />}
       </ScrollView>
@@ -603,5 +1036,16 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.sm,
     padding: SPACING.sm,
     marginBottom: SPACING.md,
+  },
+  emptyText: {
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 12,
+    color: COLORS.dust,
+  },
+  flagNote: {
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    color: COLORS.crimson,
   },
 });

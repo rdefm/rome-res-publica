@@ -5,14 +5,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
 import { calcRomeStatModifiers } from '../engine/resourceEngine';
-import { getUnlockedAssetActions } from '../engine/assetEngine';
+import { computeTotalPrepStrength } from '../engine/trialEngine';
 import { calcRomeStatVoteModifier, ALL_BILL_TEMPLATES } from '../data/billTemplates';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import StatBar from '../components/shared/StatBar';
 import CrisisTrackModal from '../components/shared/CrisisTrackModal';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
 import ScrollModal, { PARCHMENT } from '../components/shared/ScrollModal';
-import { TRIAL_ACTIONS } from '../data/trialActions';
+import { TRIAL_CHARGE_DEFS } from '../data/trialCharges';
 import type { Bill, ActiveLaw } from '../models/bill';
 import type { CrisisTrackId, CrisisTrack } from '../models/crisis';
 import { getTierFromLevel } from '../models/crisis';
@@ -24,6 +24,8 @@ import {
   getMunificenceCost,
   getMunificenceEffects,
 } from '../engine/munificenceEngine';
+import { getDesperationTier } from '../engine/warEngine';
+import NegotiationScreen from '../components/war/NegotiationScreen';
 
 // ─── Crisis track configuration ───────────────────────────────────────────────
 
@@ -240,10 +242,11 @@ const rsm = StyleSheet.create({
 });
 
 // ─── Trial banner ─────────────────────────────────────────────────────────────
-
-const CHARGE_LABELS: Record<string, string> = {
-  corruption: 'Corruption', treason: 'Treason', electoral_fraud: 'Electoral Fraud', murder: 'Murder',
-};
+// Phase 4, Chunk P4-C — adapted onto TrialState, not rewritten: same JSX
+// shape/layout as before, minimal diff, per the plan's "the old trial panel
+// keeps working by mapping its legacy defense actions onto the new prep
+// model." A small derived-view (defendantName/opponentLine/etc.) stands in
+// for the old flat Trial fields this component used to read directly.
 
 const OUTCOME_COLORS: Record<string, string> = {
   acquitted: COLORS.laurel, dismissed: COLORS.senatBlue,
@@ -251,12 +254,11 @@ const OUTCOME_COLORS: Record<string, string> = {
 };
 
 function TrialBanner() {
-  const { trialQueue, family, clans, ownedAssets, denarii, fides, takeTrialAction } = useGameStore();
-  const [expanded, setExpanded] = useState(false);
-  const activeTrial = trialQueue.find(t => !t.resolved);
+  const { trials, turnNumber, family, clans, requestNavigation } = useGameStore();
+  const activeTrial = trials.find(t => t.status !== 'resolved');
 
   if (!activeTrial) {
-    const resolved = trialQueue.filter(t => t.resolved && t.outcome);
+    const resolved = trials.filter(t => t.status === 'resolved' && t.outcome);
     if (resolved.length === 0) return null;
     const last = resolved[resolved.length - 1];
     const color = OUTCOME_COLORS[last.outcome!] ?? COLORS.dust;
@@ -267,56 +269,55 @@ function TrialBanner() {
     );
   }
 
-  const accused = family.find(c => c.id === activeTrial.accusedCharacterId);
-  const clan = clans.find(c => c.id === activeTrial.accusingClanId);
-  const unlockedAssetActions = getUnlockedAssetActions(ownedAssets);
-  const resources: Record<string, number> = { denarii, fides };
+  const findLeader = (leaderId: string) => clans.flatMap(c => c.leaders).find(l => l.id === leaderId);
+
+  const defendant = activeTrial.defendant;
+  const prosecutor = activeTrial.prosecutor;
+  const defendantName = defendant.kind === 'family'
+    ? family.find(c => c.id === defendant.characterId)?.name ?? 'Unknown'
+    : findLeader(defendant.leaderId)?.name ?? 'Unknown';
+
+  const opponentLine = activeTrial.seat === 'defense'
+    ? `Brought by ${(prosecutor.kind === 'leader' ? findLeader(prosecutor.leaderId)?.name : null) ?? 'Unknown'}`
+    : `You accuse ${defendantName}`;
+
+  const seasonsRemaining = Math.max(0, activeTrial.startsSeason - turnNumber);
+  const chargeLabel = TRIAL_CHARGE_DEFS[activeTrial.charge]?.displayName ?? activeTrial.charge;
+  const playerStrength = computeTotalPrepStrength(activeTrial.playerPrep, activeTrial.approach);
 
   return (
     <View style={tb.container}>
-      <TouchableOpacity style={tb.header} onPress={() => setExpanded(e => !e)} activeOpacity={0.75}>
+      <View style={tb.header}>
         <View style={tb.headerLeft}>
           <InfoTap termId="trial">
-            <Text style={tb.heading}>⚖️ ACTIVE TRIAL</Text>
+            <Text style={tb.heading}>⚖️ {activeTrial.seat === 'defense' ? 'ACTIVE TRIAL' : 'PROSECUTION FILED'}</Text>
           </InfoTap>
-          <Text style={tb.sub}>{CHARGE_LABELS[activeTrial.charge] ?? activeTrial.charge} · {accused?.name ?? 'Unknown'}</Text>
-          <Text style={tb.sub}>Brought by {clan?.name ?? 'Unknown'} · {activeTrial.turnsRemaining} season{activeTrial.turnsRemaining !== 1 ? 's' : ''} remaining</Text>
-        </View>
-        <Text style={tb.chevron}>{expanded ? '▲' : '▼'}</Text>
-      </TouchableOpacity>
-      <View style={tb.barsRow}>
-        <View style={tb.barWrap}>
-          <Text style={tb.barLabel}>Defense</Text>
-          <View style={tb.barTrack}><View style={[tb.barFill, { width: `${activeTrial.defenseStrength}%`, backgroundColor: COLORS.laurel }]} /></View>
-          <Text style={[tb.barVal, { color: COLORS.laurel }]}>{activeTrial.defenseStrength}</Text>
-        </View>
-        <View style={tb.barWrap}>
-          <Text style={tb.barLabel}>Prosecution</Text>
-          <View style={tb.barTrack}><View style={[tb.barFill, { width: `${activeTrial.prosecutionStrength}%`, backgroundColor: COLORS.crimson }]} /></View>
-          <Text style={[tb.barVal, { color: COLORS.crimson }]}>{activeTrial.prosecutionStrength}</Text>
+          <Text style={tb.sub}>{chargeLabel} · {activeTrial.seat === 'defense' ? defendantName : `vs. ${defendantName}`}</Text>
+          <Text style={tb.sub}>{opponentLine} · {seasonsRemaining} season{seasonsRemaining !== 1 ? 's' : ''} remaining</Text>
         </View>
       </View>
-      {expanded && (
-        <View style={tb.actions}>
-          <Text style={tb.actionsLabel}>DEFENSE ACTIONS</Text>
-          {TRIAL_ACTIONS.map(action => {
-            const alreadyUsed = activeTrial.actionsUsed.includes(action.id);
-            const needsAsset = action.requiresAssetAction && !unlockedAssetActions.includes(action.requiresAssetAction);
-            const canAfford = resources[action.cost.resource] >= action.cost.amount;
-            const disabled = alreadyUsed || !!needsAsset || !canAfford;
-            const resourceLabel = action.cost.resource === 'denarii' ? 'Denarii' : 'Fides';
-            return (
-              <TouchableOpacity key={action.id} style={[tb.actionBtn, disabled && tb.actionBtnDisabled]} disabled={disabled} onPress={() => takeTrialAction(activeTrial.id, action.id)} activeOpacity={0.75}>
-                <View style={tb.actionRow}>
-                  <Text style={tb.actionLabel}>{action.label}</Text>
-                  <Text style={tb.actionCost}>−{action.cost.amount} {resourceLabel}</Text>
-                </View>
-                <Text style={tb.actionDesc}>{alreadyUsed ? 'Already used this trial.' : needsAsset ? `Requires: ${action.requiresAssetAction?.replace('_', ' ')}` : `Defense +${action.defenseBonus}`}</Text>
-              </TouchableOpacity>
-            );
-          })}
+      <View style={tb.barsRow}>
+        <View style={tb.barWrap}>
+          <Text style={tb.barLabel}>Your Strength</Text>
+          <View style={tb.barTrack}><View style={[tb.barFill, { width: `${Math.min(100, playerStrength)}%`, backgroundColor: COLORS.laurel }]} /></View>
+          <Text style={[tb.barVal, { color: COLORS.laurel }]}>{Math.round(playerStrength)}</Text>
         </View>
-      )}
+        <View style={tb.barWrap}>
+          <Text style={tb.barLabel}>Their Strength</Text>
+          <View style={tb.barTrack}><View style={[tb.barFill, { width: `${Math.min(100, activeTrial.npcStrength)}%`, backgroundColor: COLORS.crimson }]} /></View>
+          <Text style={[tb.barVal, { color: COLORS.crimson }]}>{Math.round(activeTrial.npcStrength)}</Text>
+        </View>
+      </View>
+      {/* Phase 4, Chunk P4-D — preparation itself now lives in the Basilica
+          (Cursus). This banner stays the passive status card, per the plan's
+          "opened from any active trial's card." */}
+      <TouchableOpacity
+        style={tb.basilicaBtn}
+        activeOpacity={0.75}
+        onPress={() => requestNavigation({ tab: 'Cursus', trialId: activeTrial.id })}
+      >
+        <Text style={tb.basilicaBtnText}>OPEN THE BASILICA →</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -327,21 +328,14 @@ const tb = StyleSheet.create({
   headerLeft: { flex: 1 },
   heading: { color: COLORS.crimson, fontFamily: FONTS.display, fontSize: 14, fontWeight: '700', letterSpacing: 1, marginBottom: 3 },
   sub: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, marginTop: 1 },
-  chevron: { color: COLORS.dust, fontSize: 14 },
   barsRow: { flexDirection: 'row', gap: SPACING.md, paddingHorizontal: SPACING.md, paddingBottom: SPACING.sm },
   barWrap: { flex: 1 },
   barLabel: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 3 },
   barTrack: { height: 6, backgroundColor: COLORS.bg, borderRadius: 3, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   barFill: { height: '100%', borderRadius: 3 },
   barVal: { fontFamily: FONTS.ui, fontSize: 10, fontWeight: '700', marginTop: 2, textAlign: 'right' },
-  actions: { borderTopWidth: 1, borderTopColor: COLORS.border, padding: SPACING.md },
-  actionsLabel: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', marginBottom: SPACING.sm },
-  actionBtn: { backgroundColor: COLORS.panelElevated, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm, padding: SPACING.sm, marginBottom: SPACING.sm, minHeight: 44 },
-  actionBtnDisabled: { opacity: 0.4 },
-  actionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  actionLabel: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 13, fontWeight: '600', flex: 1 },
-  actionCost: { color: COLORS.denariiColor, fontFamily: FONTS.ui, fontSize: 12, fontWeight: '700' },
-  actionDesc: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11, marginTop: 2 },
+  basilicaBtn: { borderTopWidth: 1, borderTopColor: COLORS.border, padding: SPACING.md, alignItems: 'center' },
+  basilicaBtnText: { color: COLORS.gold, fontFamily: FONTS.ui, fontSize: 12, fontWeight: '700', letterSpacing: 1 },
 });
 
 // ─── Bill card ────────────────────────────────────────────────────────────────
@@ -743,13 +737,19 @@ const modal = StyleSheet.create({
 // ─── CuriaScreen ──────────────────────────────────────────────────────────────
 
 export default function CuriaScreen() {
-  const { rome, crisis, bills, activeLaws, fides, turnNumber, grandGamesVoteBonus } = useGameStore();
+  const { rome, crisis, bills, activeLaws, fides, turnNumber, grandGamesVoteBonus, wars } = useGameStore();
   const [submitVisible, setSubmitVisible] = useState(false);
   const [activeLawsExpanded, setActiveLawsExpanded] = useState(true);
   const [munificenceExpanded, setMunificenceExpanded] = useState(true);
   const [romeStatModal, setRomeStatModal] = useState<RomeStat | null>(null);
   const [crisisModal, setCrisisModal] = useState<CrisisTrackId | null>(null);
+  const [negotiationWarId, setNegotiationWarId] = useState<string | null>(null);
   const romeMods = calcRomeStatModifiers(rome);
+
+  // Military Overhaul M10 — any active war that's reached the sue threshold
+  // unlocks the negotiation entry point (agendaEngine's generator #18 also
+  // points here — see its target: { tab: 'Curia' }).
+  const negotiableWars = (wars ?? []).filter(w => w.active && getDesperationTier(w.warScore) !== 'none');
 
   const TRACK_ORDER: CrisisTrackId[] = ['war', 'unrest', 'constitution', 'economy'];
 
@@ -803,6 +803,37 @@ export default function CuriaScreen() {
             <CrisisTrackCell trackId={TRACK_ORDER[3]} track={crisis[TRACK_ORDER[3]]} onPress={() => setCrisisModal(TRACK_ORDER[3])} />
           </View>
         </View>
+
+        {/* Military Overhaul M10 — War & Peace */}
+        {negotiableWars.length > 0 && (
+          <View style={styles.panel}>
+            <InfoTap termId="peace-negotiation">
+              <Text style={styles.panelTitle}>WAR &amp; PEACE</Text>
+            </InfoTap>
+            <Text style={styles.panelSub}>
+              The war has reached a threshold where terms may be discussed.
+            </Text>
+            {negotiableWars.map(w => (
+              <TouchableOpacity
+                key={w.id}
+                style={styles.warRow}
+                onPress={() => setNegotiationWarId(w.id)}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.warRowLabel}>
+                    War with {w.enemyId.charAt(0).toUpperCase() + w.enemyId.slice(1)}
+                  </Text>
+                  <Text style={styles.warRowSub}>
+                    warScore {w.warScore >= 0 ? '+' : ''}{w.warScore}
+                    {w.treaty?.stage === 'ai_offer' && ' — terms offered'}
+                    {w.treaty?.stage === 'senate_vote' && ' — awaiting Senate vote'}
+                  </Text>
+                </View>
+                <Text style={styles.warRowArrow}>›</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {/* Active bills */}
         <View style={styles.billsHeader}>
@@ -886,6 +917,14 @@ export default function CuriaScreen() {
           onClose={() => setCrisisModal(null)}
         />
       )}
+
+      {negotiationWarId && (
+        <NegotiationScreen
+          warId={negotiationWarId}
+          visible={!!negotiationWarId}
+          onClose={() => setNegotiationWarId(null)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -902,6 +941,16 @@ const styles = StyleSheet.create({
   // Crisis 2×2 grid
   crisisRow: { flexDirection: 'row' },
   crisisGap: { width: SPACING.sm },
+  // War & Peace (M10)
+  warRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: COLORS.panelElevated, borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: RADIUS.sm, paddingHorizontal: SPACING.sm, paddingVertical: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
+  warRowLabel: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 13, fontWeight: '600' },
+  warRowSub: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, marginTop: 2 },
+  warRowArrow: { color: COLORS.dust, fontSize: 18, marginLeft: SPACING.sm },
   // Bills
   billsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
   sectionLabel: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' },

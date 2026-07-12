@@ -238,6 +238,19 @@ describe('ageAndProcessMortality', () => {
     expect(result[0].leaders[0].relationship).toBe(15);
   });
 
+  test('Phase 4, P4-E — a successor rolls a trait and its skillModifiers apply (rng=0 -> first pool entry, sharp_mind)', () => {
+    Math.random = () => 0; // guarantees death, and rollLeaderTrait's 65% gate + pool index both resolve deterministically
+    const predecessor = makeLeader({ id: 'old-leader', age: 79, skills: { rhetoric: 5, martial: 5, intrigus: 5 } });
+    const clans = [makeClan({ leaders: [predecessor] })];
+    const { clans: result } = ageAndProcessMortality(clans);
+    const successor = result[0].leaders[0];
+    expect(successor.traits).toEqual(['sharp_mind']);
+    // sharp_mind: { intrigus: 3, rhetoric: 2 } per data/traits.ts
+    expect(successor.skills.rhetoric).toBe(7);
+    expect(successor.skills.intrigus).toBe(8);
+    expect(successor.skills.martial).toBe(5); // untouched
+  });
+
   test('at most one death per year, keeping the eldest when multiple roll', () => {
     Math.random = () => 0; // both would die
     const younger = makeLeader({ id: 'younger', name: 'Younger', age: 60 });

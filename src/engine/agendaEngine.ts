@@ -8,11 +8,13 @@ import type { AgendaItem, AgendaSeverity } from '../models/agenda';
 import type { CrisisTrackId } from '../models/crisis';
 import { SEVERITY_ORDER } from '../models/agenda';
 import { OFFICES, TRIBUNE_OFFICE } from '../data/offices';
-import { CORRUPTION_TRIAL_THRESHOLD } from './trialEngine';
+import { CORRUPTION_TRIAL_THRESHOLD, computeTotalPrepStrength } from './trialEngine';
 import { getClanStanding } from './reputationEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import { getMunificenceAct } from '../data/munificence';
 import { isSlotUsedThisYear, getMunificenceCost } from './munificenceEngine';
+import { isDeterred } from './secretEngine';
+import { BALANCE } from '../data/balance';
 
 // ─── Crisis tier copy ─────────────────────────────────────────────────────────
 // Labels and penalty strings sourced directly from the tier tables in
@@ -69,13 +71,21 @@ function provinceDisplayName(id: string): string {
 // ─── Generator 1 — Trial pending ─────────────────────────────────────────────
 
 function genTrials(state: GameState): AgendaItem[] {
-  return state.trialQueue
-    .filter(t => !t.resolved)
+  return (state.trials ?? [])
+    .filter(t => t.status !== 'resolved')
     .map(trial => {
-      const accused = state.family.find(c => c.id === trial.accusedCharacterId);
-      const resolvesThisSeason = trial.turnsRemaining <= 1;
-      const losingAndClose =
-        trial.defenseStrength < trial.prosecutionStrength && trial.turnsRemaining <= 2;
+      const defendant = trial.defendant;
+      const defendantName = defendant.kind === 'family'
+        ? state.family.find(c => c.id === defendant.characterId)?.name ?? 'your family'
+        : state.clans.flatMap(c => c.leaders).find(l => l.id === defendant.leaderId)?.name ?? 'the accused';
+
+      const seasonsRemaining = Math.max(0, trial.startsSeason - state.turnNumber);
+      const resolvesThisSeason = seasonsRemaining <= 1;
+      const playerStrength = computeTotalPrepStrength(trial.playerPrep, trial.approach);
+      // Below-estimate-at-T-1 End Season warning (P4-D) folds into this same
+      // severity check rather than new plumbing, per the plan's own
+      // instruction — "extend agenda #24/#1 severity."
+      const losingAndClose = playerStrength < trial.npcStrength && seasonsRemaining <= 2;
       const severity: AgendaSeverity =
         resolvesThisSeason || losingAndClose ? 'critical' : 'warning';
 
@@ -83,9 +93,10 @@ function genTrials(state: GameState): AgendaItem[] {
         id: `agenda-trial-${trial.id}`,
         category: 'trial' as const,
         severity,
-        title: `Trial of ${accused?.name ?? 'your family'}`,
-        detail: `Resolves in ${plural(trial.turnsRemaining, 'season')}. Defense ${trial.defenseStrength} vs prosecution ${trial.prosecutionStrength}.`,
-        target: { tab: 'Curia' as const, trialId: trial.id },
+        title: trial.seat === 'defense' ? `Trial of ${defendantName}` : `Prosecuting ${defendantName}`,
+        detail: `Resolves in ${plural(seasonsRemaining, 'season')}. Your strength ${Math.round(playerStrength)} vs their ${Math.round(trial.npcStrength)}.`,
+        // Phase 4, Chunk P4-D — the Basilica lives in Cursus now, not Curia.
+        target: { tab: 'Cursus' as const, trialId: trial.id },
         sortWeight: resolvesThisSeason ? 0 : 10,
       };
     });
@@ -551,9 +562,12 @@ function genAgingBondedLeader(state: GameState): AgendaItem[] {
 }
 
 // ─── Generator 19 — Munificence games opportunity (P2-F) ────────────────────
-// #17/#18 are reserved by the military overhaul plan. Fires when Unrest is
-// tier >= 2, the shared 'games' slot is unused this year, and the player can
-// afford Fund the Ludi — games are a lever the player may not think to reach for.
+// #17/#18 were reserved here since M4 but couldn't be built until
+// WarState/SetPieceOffer existed as live state (M9) — they're defined below
+// this one, after the Public API marker's original position, since this
+// generator was written first. Fires when Unrest is tier >= 2, the shared
+// 'games' slot is unused this year, and the player can afford Fund the
+// Ludi — games are a lever the player may not think to reach for.
 
 function genMunificenceGamesOpportunity(state: GameState): AgendaItem[] {
   if (state.crisis.unrest.tier < 2) return [];
@@ -576,10 +590,260 @@ function genMunificenceGamesOpportunity(state: GameState): AgendaItem[] {
   }];
 }
 
+// ─── Generator 17 — Pending set-piece offer (Military Overhaul M9) ──────────
+// Reserved since M4 (couldn't be built until WarState/SetPieceOffer were
+// actually live state — that only happens in M9). A dedicated, blocking
+// SetPieceOfferModal is the primary resolution path; this item is a
+// secondary reminder for the AgendaTablet's comprehensive to-do view,
+// matching every other generator's role here.
+
+function genPendingSetPiece(state: GameState): AgendaItem[] {
+  const items: AgendaItem[] = [];
+  for (const war of (state.wars ?? [])) {
+    if (!war.active || !war.pendingSetPiece) continue;
+    items.push({
+      id: `agenda-critical-set-piece-${war.id}`,
+      category: 'military' as const,
+      severity: 'critical',
+      title: `The armies will meet at ${war.pendingSetPiece.siteName}`,
+      detail: 'Give battle, or decline and let the moment pass.',
+      target: { tab: 'Provinciae' as const },
+      sortWeight: 0,
+    });
+  }
+  return items;
+}
+
+// ─── Generator 18 — Peace threshold reached (Military Overhaul M9) ──────────
+// Fires once |warScore| crosses the "sue" threshold for an active war —
+// unlocks the negotiation entry point M10 builds (Curia). Framing differs
+// by who's winning; the war may still be a long way from a treaty, this is
+// just "the option now exists."
+
+function genWarPeaceThreshold(state: GameState): AgendaItem[] {
+  const items: AgendaItem[] = [];
+  for (const war of (state.wars ?? [])) {
+    if (!war.active) continue;
+    if (Math.abs(war.warScore) < BALANCE.war.thresholds.sue) continue;
+    const winning = war.warScore > 0;
+    items.push({
+      id: `agenda-critical-war-peace-${war.id}`,
+      category: 'military' as const,
+      severity: 'critical',
+      title: winning ? `${capitalize(war.enemyId)} may treat for peace` : `Rome may be forced to terms`,
+      detail: winning
+        ? `The war has turned decisively enough that ${capitalize(war.enemyId)} may accept terms.`
+        : `The war has turned badly enough that terms may soon be forced on Rome.`,
+      target: { tab: 'Curia' as const },
+      sortWeight: 0,
+    });
+  }
+  return items;
+}
+
+// ─── Generator 20 — War status (Phase 3, Chunk P3-B) ────────────────────────
+// One line on how the war is going, keyed off WarState.phase (cosmetic —
+// see that type's doc comment) and warScore's sign. `warning` once the War
+// crisis track is tier ≥ 2, `info` otherwise — mirrors CRISIS_TIER_LABELS'
+// own tier-2 cutoff for "the war is now a real strain" framing.
+
+const WAR_PHASE_COPY: Record<string, string> = {
+  not_started: 'The war has not yet begun.',
+  opening: 'The war is young — too early to call.',
+  escalation: 'The war presses on, one side or the other gaining ground.',
+  grinding: 'The war has settled into a grinding stalemate.',
+  ripe: 'The war has run long enough that its end feels close, one way or another.',
+  ended: 'The war is over.',
+};
+
+function genWarStatus(state: GameState): AgendaItem[] {
+  const items: AgendaItem[] = [];
+  if (state.endlessMode) return items; // Phase 3, Chunk P3-F — the war is retired.
+  for (const war of (state.wars ?? [])) {
+    if (!war.active || war.scale !== 'major') continue;
+    const warTier = state.crisis.war.tier;
+    const leaning = war.warScore > 10 ? ' Rome has the better of it.' : war.warScore < -10 ? ' Rome is losing ground.' : '';
+    items.push({
+      id: `agenda-war-status-${war.id}`,
+      category: 'military' as const,
+      severity: warTier >= 2 ? 'warning' : 'info',
+      title: `The war with ${capitalize(war.enemyId)}`,
+      detail: (WAR_PHASE_COPY[war.phase] ?? WAR_PHASE_COPY.escalation) + leaning,
+      target: { tab: 'Curia' as const },
+      sortWeight: 40,
+    });
+  }
+  return items;
+}
+
+// ─── Generator 21 — Sue-for-peace opportunity (Phase 3, Chunk P3-B) ────────
+// Distinct from Generator 18 (genWarPeaceThreshold, Military Overhaul M9):
+// #18 fires off the warScore-based desperation tier (the M9/M10 negotiation
+// surface); #21 fires off the ripeness/weariness-gated abstract lever this
+// chunk adds (WarState.peaceOffered — see warEngine.peaceReachable), which
+// can be true independent of warScore's sign. Both can be true at once.
+
+function genSueForPeaceOpportunity(state: GameState): AgendaItem[] {
+  const items: AgendaItem[] = [];
+  if (state.endlessMode) return items; // Phase 3, Chunk P3-F — the war is retired.
+  for (const war of (state.wars ?? [])) {
+    if (!war.active || war.scale !== 'major' || !war.peaceOffered) continue;
+    items.push({
+      id: `agenda-critical-sue-for-peace-${war.id}`,
+      category: 'military' as const,
+      severity: 'critical',
+      title: `Sue for peace with ${capitalize(war.enemyId)}?`,
+      detail: `The war has worn on long enough that a motion to seek terms now — whatever they may be — can pass the Senate.`,
+      target: { tab: 'Curia' as const },
+      sortWeight: 0,
+    });
+  }
+  return items;
+}
+
+// ─── Generator 22 — Regency in effect (Phase 3, Chunk P3-C) ────────────────
+// Fires whenever a regency is active and the heir is within ~2 years of
+// majority (BALANCE.succession.regencyMinorAge) — a longer regency doesn't
+// need the reminder every season; the income penalty is already visible on
+// the resource bar throughout.
+
+function genRegencyInEffect(state: GameState): AgendaItem[] {
+  if (!state.regency) return [];
+  const heir = state.family.find(c => c.id === state.regency!.heirId);
+  if (!heir) return [];
+  const yearsToMajority = BALANCE.succession.regencyMinorAge - heir.age;
+  if (yearsToMajority > 2) return [];
+
+  const regent = state.family.find(c => c.id === state.regency!.regentId);
+  const untilLabel = Math.abs(state.regency.untilYear);
+  return [{
+    id: 'agenda-warning-regency',
+    category: 'family' as const,
+    severity: 'warning',
+    title: `${regent ? regent.name : 'A regent'} governs in ${heir.name}'s name`,
+    detail: `Income is reduced until ${heir.name} comes of age in ${untilLabel} BC.`,
+    target: { tab: 'Domus' as const },
+    sortWeight: 30,
+  }];
+}
+
+// ─── Generator 23 — Secret demand pending (Phase 4, Chunk P4-B) ────────────
+// Fires while a leader's leverage/extortion demand event awaits an answer
+// (pendingSecretDemand is cleared exactly when resolveEvent's special-case
+// handler resolves comply/defy — see gameStore.ts/secretEngine.resolveSecretDemand).
+
+function genSecretDemandPending(state: GameState): AgendaItem[] {
+  if (!state.pendingSecretDemand) return [];
+  const leader = state.clans.flatMap(c => c.leaders).find(l => l.id === state.pendingSecretDemand!.leaderId);
+  return [{
+    id: 'agenda-secret-demand-pending',
+    category: 'family' as const,
+    severity: 'critical',
+    title: `${leader?.name ?? 'A clan leader'} awaits your answer`,
+    detail: 'A demand invoking what they hold on your family is pending — comply or defy it.',
+    target: { tab: 'Forum' as const, selectedLeaderId: leader?.id },
+    sortWeight: 0,
+  }];
+}
+
+// ─── Generator 24 — Secret held against family (Phase 4, Chunk P4-B) ──────
+// One item per DISCOVERED Secret a leader holds against the family (P4-A's
+// npcGatherTick generates them latent/undiscovered — nothing to warn about
+// until discovery, per the plan's design). Downgrades to 'info' ("stalemate")
+// while a deterrence standoff freezes it — see secretEngine.isDeterred.
+
+function genSecretHeldAgainstFamily(state: GameState): AgendaItem[] {
+  const items: AgendaItem[] = [];
+  for (const secret of state.secrets ?? []) {
+    const subject = secret.subject;
+    if (secret.holder === 'player' || subject.kind !== 'family') continue;
+    if (!secret.discovered || (secret.status !== 'held' && secret.status !== 'extorting')) continue;
+
+    const leader = state.clans.flatMap(c => c.leaders).find(l => l.id === secret.holder);
+    const character = state.family.find(c => c.id === subject.characterId);
+    const frozen = isDeterred(secret.holder, state.secrets);
+
+    items.push({
+      id: `agenda-secret-against-${secret.id}`,
+      category: 'family' as const,
+      severity: frozen ? 'info' : 'warning',
+      title: frozen
+        ? `Stalemate with ${leader?.name ?? 'a clan leader'}`
+        : `${leader?.name ?? 'A clan leader'} holds leverage on ${character?.name ?? 'your family'}`,
+      detail: frozen
+        ? 'Stayed by your hand on his own affairs — neither of you can move first.'
+        : 'Pay it off or discredit it in the Dossier before he decides to use it.',
+      target: { tab: 'Forum' as const, selectedLeaderId: leader?.id },
+      sortWeight: frozen ? 30 : 10,
+    });
+  }
+  return items;
+}
+
+// ─── Generator 25 — Extortion active (Phase 4, Chunk P4-B) ────────────────
+// Info-severity summary of the net per-season Denarii number, both
+// directions — one item total, not one per Secret (the Dossier is where
+// individual extortions are managed).
+
+function genExtortionActive(state: GameState): AgendaItem[] {
+  let income = 0;
+  let drain = 0;
+  for (const secret of state.secrets ?? []) {
+    if (secret.status !== 'extorting') continue;
+    if (secret.holder === 'player' && secret.subject.kind === 'leader') {
+      income += BALANCE.secrets.extortIncomePerPotency * secret.potency;
+    } else if (secret.subject.kind === 'family' && secret.holder !== 'player') {
+      drain += BALANCE.secrets.extortIncomePerPotency * secret.potency;
+    }
+  }
+  if (income === 0 && drain === 0) return [];
+
+  const parts: string[] = [];
+  if (income > 0) parts.push(`+${income} Denarii/season from what you hold`);
+  if (drain > 0) parts.push(`−${drain} Denarii/season to what they hold`);
+
+  return [{
+    id: 'agenda-extortion-active',
+    category: 'economy' as const,
+    severity: 'info',
+    title: 'Extortion in progress',
+    detail: parts.join('; ') + '.',
+    target: { tab: 'Forum' as const },
+    sortWeight: 40,
+  }];
+}
+
+// ─── Generator 26 — Filed prosecution pending (Phase 4, Chunk P4-C) ────────
+// Distinct from #1 (which already lists every active trial, both seats,
+// urgency-framed): a standing "keep preparing" reminder specifically for
+// player-filed prosecutions, opportunity-toned rather than urgency-toned.
+
+function genFiledProsecutionPending(state: GameState): AgendaItem[] {
+  return (state.trials ?? [])
+    .filter(t => t.status === 'preparing' && t.seat === 'prosecution')
+    .map(trial => {
+      const defendant = trial.defendant;
+      const defendantName = defendant.kind === 'leader'
+        ? state.clans.flatMap(c => c.leaders).find(l => l.id === defendant.leaderId)?.name ?? 'the accused'
+        : 'the accused';
+      const seasonsRemaining = Math.max(0, trial.startsSeason - state.turnNumber);
+
+      return {
+        id: `agenda-prosecution-pending-${trial.id}`,
+        category: 'trial' as const,
+        severity: 'opportunity' as const,
+        title: `Your case against ${defendantName} is building`,
+        detail: `${plural(seasonsRemaining, 'season')} left to strengthen it before trial.`,
+        target: { tab: 'Cursus' as const, trialId: trial.id },
+        sortWeight: 20,
+      };
+    });
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Runs all 17 generators against the current state and returns a sorted list
+ * Runs all 26 generators against the current state and returns a sorted list
  * of agenda items. Sort order: severity (critical first) → sortWeight →
  * category (alpha tiebreak for stable ordering).
  *
@@ -605,6 +869,15 @@ export function generateAgenda(state: GameState): AgendaItem[] {
     ...genPatronTierProximity(state),
     ...genAgingBondedLeader(state),
     ...genMunificenceGamesOpportunity(state),
+    ...genPendingSetPiece(state),
+    ...genWarPeaceThreshold(state),
+    ...genWarStatus(state),
+    ...genSueForPeaceOpportunity(state),
+    ...genRegencyInEffect(state),
+    ...genSecretDemandPending(state),
+    ...genSecretHeldAgainstFamily(state),
+    ...genExtortionActive(state),
+    ...genFiledProsecutionPending(state),
   ];
 
   return items.sort((a, b) => {

@@ -86,6 +86,9 @@ export function evalCondition(cond: EventCondition, state: GameState): boolean {
     case 'campaigning': {
       return state.campaigning !== null;
     }
+    case 'governing': {
+      return state.provinces.some(p => p.playerGovernor !== null);
+    }
   }
 }
 
@@ -177,8 +180,20 @@ export function getEventDef(defId: string): EventDef | undefined {
   // Lazy-require to avoid circular dependency and keep HMR working in Expo.
   const { EVENT_DEFS } = require('../data/events');
   const { TUTORIAL_EVENT_DEFS } = require('../data/tutorialEvents');
+  const { WAR_EVENT_DEFS } = require('../data/warEvents');
+  const { SUCCESSION_EVENT_DEFS } = require('../data/successionEvents');
+  const { CADET_EVENT_DEFS } = require('../data/cadetEvents');
+  const { SECRET_EVENT_DEFS } = require('../data/secretEvents');
+  const { CLAUDIUS_ARC_EVENT_DEFS } = require('../data/claudiusArc');
+  const { COMPROMISING_EVENT_DEFS } = require('../data/compromisingEvents');
   return (EVENT_DEFS as EventDef[]).find(d => d.id === defId)
-      ?? (TUTORIAL_EVENT_DEFS as EventDef[]).find(d => d.id === defId);
+      ?? (TUTORIAL_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
+      ?? (WAR_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
+      ?? (SUCCESSION_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
+      ?? (CADET_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
+      ?? (SECRET_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
+      ?? (CLAUDIUS_ARC_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
+      ?? (COMPROMISING_EVENT_DEFS as EventDef[]).find(d => d.id === defId);
 }
 
 // ─── P1-G: Tutorial season gate ──────────────────────────────────────────────

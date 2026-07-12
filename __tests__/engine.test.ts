@@ -3,7 +3,9 @@ import {
   applyFactionDrift,
   calcRomeStats,
   calcTrainingCost,
+  applyEffectString,
 } from '../src/engine/resourceEngine';
+import { BALANCE } from '../src/data/balance';
 import { getCrisisStatusEffects } from '../src/engine/crisisEngine';
 import { scoreAction, chooseAction } from '../src/engine/aiScoring';
 import { parseEffect } from '../src/models/bill';
@@ -327,5 +329,223 @@ describe('scoreAction', () => {
   test('chooseAction returns one of the available actions', () => {
     const action = chooseAction(aggressiveChar, ['vote_for', 'vote_against', 'filibuster'], makeState() as any);
     expect(['vote_for', 'vote_against', 'filibuster']).toContain(action);
+  });
+});
+
+// ─── Phase 3, Chunk P3-C — regency income penalty ───────────────────────────
+
+describe('calcResourceIncome — regency (P3-C)', () => {
+  test('a regency multiplies total fidesIncome by BALANCE.succession.regencyIncomeMult', () => {
+    const noRegency = calcResourceIncome(makeState() as any);
+    const withRegency = calcResourceIncome(makeState({
+      regency: { heirId: 'pc-1', regentId: null, untilYear: -250 },
+    }) as any);
+    expect(withRegency.fidesIncome).toBeLessThan(noRegency.fidesIncome);
+    expect(withRegency.fidesIncome).toBe(Math.round(noRegency.fidesIncome * BALANCE.succession.regencyIncomeMult));
+  });
+
+  test('no regency field at all behaves identically to regency: null (old-save safety)', () => {
+    const explicit = calcResourceIncome(makeState({ regency: null }) as any);
+    const { regency: _omit, ...noRegencyField } = makeState() as any;
+    const implicit = calcResourceIncome(noRegencyField);
+    expect(implicit.fidesIncome).toBe(explicit.fidesIncome);
+  });
+});
+
+// ─── Phase 3, Chunk P3-C — succession effect-string tokens ──────────────────
+
+describe('applyEffectString — nextEvent: token', () => {
+  test('queues a new EventInstance onto pendingEvents', () => {
+    const state = makeState({ pendingEvents: [] }) as any;
+    const patch = applyEffectString('nextEvent:evt-succession-funeral', state);
+    expect(patch.pendingEvents).toHaveLength(1);
+    expect(patch.pendingEvents![0].defId).toBe('evt-succession-funeral');
+  });
+
+  test('appends after any already-pending events rather than replacing them', () => {
+    const existing = { defId: 'evt-existing', firedAtTurn: 1, targetCharacterId: 'pc-1' };
+    const state = makeState({ pendingEvents: [existing] }) as any;
+    const patch = applyEffectString('nextEvent:evt-succession-funeral', state);
+    expect(patch.pendingEvents).toEqual([existing, expect.objectContaining({ defId: 'evt-succession-funeral' })]);
+  });
+});
+
+describe('applyEffectString — succeedPaterfamilias: token', () => {
+  function makeSuccessionState(overrides: Record<string, any> = {}) {
+    return makeState({
+      family: [
+        { id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 42,
+          skills: { rhetoric: 6, martial: 3, intrigus: 4 }, traits: [], ambition: null,
+          relationship: 100, familyTrust: 100, officeId: null, inheritedTraits: [], ambitionIds: [], reputationScores: {} },
+        { id: 'son-1', name: 'Gaius', role: 'son', isPlayer: false, age: 20,
+          skills: { rhetoric: 4, martial: 4, intrigus: 3 }, traits: [], ambition: null,
+          relationship: 90, familyTrust: 80, officeId: null, inheritedTraits: [], ambitionIds: [], reputationScores: {} },
+        { id: 'son-2', name: 'Lucius', role: 'son', isPlayer: false, age: 10,
+          skills: { rhetoric: 1, martial: 1, intrigus: 1 }, traits: [], ambition: null,
+          relationship: 90, familyTrust: 80, officeId: null, inheritedTraits: [], ambitionIds: [], reputationScores: {} },
+      ],
+      pendingSuccession: {
+        deceasedId: 'pc-1', deceasedName: 'Marcus', deceasedAge: 60,
+        rememberedDetail: 'who lived a private life',
+        eligibleHeirIds: ['son-1', 'son-2'],
+      },
+      currentOffice: 'consul', officeSeasons: 2, heldOffices: ['quaestor', 'consul'],
+      ...overrides,
+    }) as any;
+  }
+
+  test('default confirms eligibleHeirIds[0] and clears pendingSuccession + cursus history', () => {
+    const state = makeSuccessionState();
+    const patch = applyEffectString('succeedPaterfamilias:default', state);
+    const heir = patch.family!.find(c => c.id === 'son-1')!;
+    expect(heir.isPlayer).toBe(true);
+    expect(heir.role).toBe('paterfamilias');
+    expect(patch.pendingSuccession).toBeNull();
+    expect(patch.currentOffice).toBeNull();
+    expect(patch.heldOffices).toEqual([]);
+  });
+
+  test('alt confirms eligibleHeirIds[1] and applies the family-trust penalty', () => {
+    const state = makeSuccessionState();
+    const patch = applyEffectString('succeedPaterfamilias:alt', state);
+    const heir = patch.family!.find(c => c.id === 'son-2')!;
+    expect(heir.isPlayer).toBe(true);
+    expect(heir.familyTrust).toBe(80 + BALANCE.succession.nameOtherHeirFamilyTrustPenalty);
+  });
+
+  test('alt gracefully falls back to eligibleHeirIds[0] when no alternative exists (never soft-locks)', () => {
+    const state = makeSuccessionState({
+      pendingSuccession: {
+        deceasedId: 'pc-1', deceasedName: 'Marcus', deceasedAge: 60,
+        rememberedDetail: 'who lived a private life', eligibleHeirIds: ['son-1'],
+      },
+    });
+    const patch = applyEffectString('succeedPaterfamilias:alt', state);
+    const heir = patch.family!.find(c => c.id === 'son-1')!;
+    expect(heir.isPlayer).toBe(true);
+    // Fallback to the default heir is NOT the "named a different heir"
+    // path — no family-trust penalty should apply.
+    expect(heir.familyTrust).toBe(80);
+  });
+
+  test('a minor heir (under regencyMinorAge) enters a regency', () => {
+    const state = makeSuccessionState({
+      pendingSuccession: {
+        deceasedId: 'pc-1', deceasedName: 'Marcus', deceasedAge: 60,
+        rememberedDetail: 'who lived a private life', eligibleHeirIds: ['son-2'],
+      },
+    });
+    const patch = applyEffectString('succeedPaterfamilias:default', state);
+    expect(patch.regency).not.toBeNull();
+    expect(patch.regency!.heirId).toBe('son-2');
+    expect(patch.regency!.untilYear).toBe(state.year + (BALANCE.succession.regencyMinorAge - 10));
+  });
+
+  test('an adult heir (>= regencyMinorAge) does not enter a regency', () => {
+    const state = makeSuccessionState();
+    const patch = applyEffectString('succeedPaterfamilias:default', state);
+    expect(patch.regency).toBeUndefined();
+  });
+
+  test('no-op (does not crash, does not touch family) when pendingSuccession is null', () => {
+    const state = makeSuccessionState({ pendingSuccession: null });
+    const patch = applyEffectString('succeedPaterfamilias:default', state);
+    expect(patch.family).toBeUndefined();
+  });
+
+  test('regent selection: spouse (if adult) over the eldest adult kin', () => {
+    // Realistic family shape for this token's real firing point — the
+    // deceased paterfamilias is already gone from `family` by the time
+    // succeedPaterfamilias: fires (detectPaterfamiliasDeath already
+    // removed them before pendingSuccession was set).
+    const state = makeState({
+      family: [
+        { id: 'spouse-1', name: 'Livia', role: 'spouse', isPlayer: false, age: 38,
+          skills: { rhetoric: 2, martial: 1, intrigus: 3 }, traits: [], ambition: null,
+          relationship: 90, familyTrust: 80, officeId: null, inheritedTraits: [], ambitionIds: [], reputationScores: {} },
+        { id: 'heir-1', name: 'Gaius', role: 'son', isPlayer: false, age: 12,
+          skills: { rhetoric: 1, martial: 1, intrigus: 1 }, traits: [], ambition: null,
+          relationship: 90, familyTrust: 80, officeId: null, inheritedTraits: [], ambitionIds: [], reputationScores: {} },
+      ],
+      pendingSuccession: {
+        deceasedId: 'pc-1', deceasedName: 'Marcus', deceasedAge: 60,
+        rememberedDetail: 'who lived a private life', eligibleHeirIds: ['heir-1'],
+      },
+    }) as any;
+    const patch = applyEffectString('succeedPaterfamilias:default', state);
+    expect(patch.regency!.regentId).toBe('spouse-1');
+  });
+
+  test('regent selection: falls back to null (not a soft-lock) when no adult kin exists', () => {
+    const state = makeState({
+      family: [
+        { id: 'heir-1', name: 'Gaius', role: 'son', isPlayer: false, age: 12,
+          skills: { rhetoric: 1, martial: 1, intrigus: 1 }, traits: [], ambition: null,
+          relationship: 90, familyTrust: 80, officeId: null, inheritedTraits: [], ambitionIds: [], reputationScores: {} },
+      ],
+      pendingSuccession: {
+        deceasedId: 'pc-1', deceasedName: 'Marcus', deceasedAge: 60,
+        rememberedDetail: 'who lived a private life', eligibleHeirIds: ['heir-1'],
+      },
+    }) as any;
+    const patch = applyEffectString('succeedPaterfamilias:default', state);
+    expect(patch.regency!.regentId).toBeNull();
+    expect(patch.family!.find(c => c.id === 'heir-1')?.isPlayer).toBe(true);
+  });
+});
+
+// ─── Phase 3, Chunk P3-D — cadet-branch effect-string tokens ────────────────
+
+describe('applyEffectString — continueAsCadet / setPendingEpilogue / cadetStanding / cadetVisited tokens', () => {
+  const cadet = {
+    id: 'cadet-1', name: 'Quintus Brutia', age: 30,
+    skills: { rhetoric: 3, martial: 3, intrigus: 3 },
+    trait: 'cautious' as const, characterization: 'careful with money',
+    metCount: 0, standing: 40, alive: true,
+  };
+
+  test('continueAsCadet promotes state.cadetBranch into a fresh family and sets cadetBranchUsed/legacyPenaltyMult', () => {
+    const state = makeState({ cadetBranch: cadet, family: [] }) as any;
+    const patch = applyEffectString('continueAsCadet', state);
+    expect(patch.family).toHaveLength(2);
+    expect(patch.family![0].isPlayer || patch.family![1].isPlayer).toBe(true);
+    expect(patch.cadetBranchUsed).toBe(true);
+    expect(patch.legacyPenaltyMult).toBe(BALANCE.cadet.legacyPenaltyMult);
+  });
+
+  test('continueAsCadet is a safe no-op when cadetBranch is null', () => {
+    const state = makeState({ cadetBranch: null, family: [] }) as any;
+    const patch = applyEffectString('continueAsCadet', state);
+    expect(patch.family).toBeUndefined();
+    expect(patch.cadetBranchUsed).toBeUndefined();
+  });
+
+  test('setPendingEpilogue:gens_ends sets the field directly', () => {
+    const state = makeState() as any;
+    const patch = applyEffectString('setPendingEpilogue:gens_ends', state);
+    expect(patch.pendingEpilogue).toBe('gens_ends');
+  });
+
+  test('cadetStanding+N/-N clamps to 0..100', () => {
+    const state = makeState({ cadetBranch: cadet }) as any;
+    const up = applyEffectString('cadetStanding+50', state);
+    expect(up.cadetBranch!.standing).toBe(90);
+    const down = applyEffectString('cadetStanding-90', state);
+    expect(down.cadetBranch!.standing).toBe(0);
+  });
+
+  test('cadetVisited increments metCount and sets the exhausted flag at BALANCE.cadet.maxVisits', () => {
+    const almostDone = { ...cadet, metCount: BALANCE.cadet.maxVisits - 1 };
+    const state = makeState({ cadetBranch: almostDone }) as any;
+    const patch = applyEffectString('cadetVisited', state);
+    expect(patch.cadetBranch!.metCount).toBe(BALANCE.cadet.maxVisits);
+    expect(patch.flags!['cadet-visits-exhausted']).toBe(true);
+  });
+
+  test('cadetVisited below the cap does not set the exhausted flag', () => {
+    const state = makeState({ cadetBranch: cadet }) as any; // metCount: 0
+    const patch = applyEffectString('cadetVisited', state);
+    expect(patch.cadetBranch!.metCount).toBe(1);
+    expect(patch.flags?.['cadet-visits-exhausted']).toBeUndefined();
   });
 });
