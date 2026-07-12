@@ -11,9 +11,9 @@ import {
   TextStyle,
 } from 'react-native';
 import { COLORS, FONTS } from '../../utils/theme';
-import type { ProvinceState } from '../../models/province';
+import type { ProvinceState, ProvinceDefinition } from '../../models/province';
 import { getRelationshipTier } from '../../models/province';
-import { ITALY_PROVINCES } from '../../data/provinceDefinitions';
+import { ALL_PROVINCES } from '../../data/provinceDefinitions';
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 //
@@ -21,6 +21,12 @@ import { ITALY_PROVINCES } from '../../data/provinceDefinitions';
 // the PNG's natural aspect ratio (992×1072). No cropping. The transparent
 // scroll border in the PNG will show the parchment background colour.
 // Node positions are fractions of the rendered image dimensions.
+//
+// Mediterranean provinces (Sicily/Corsica/Sardinia/Africa) are pinned to this
+// same Italia map — Corsica, Sardinia and the NE tip of Sicily are actually
+// drawn on it; the rest are placeholder positions in the open sea/parchment
+// margin until a dedicated Mediterranean map asset exists. See the note atop
+// MEDITERRANEAN_PROVINCES in provinceDefinitions.ts.
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -36,9 +42,15 @@ const NODE_SIZE = 28;
 
 function getNodeColour(
   province: ProvinceState,
-  def: typeof ITALY_PROVINCES[0]
+  def: ProvinceDefinition
 ): { fill: string; border: string } {
   if (def.status === 'heartland') return { fill: COLORS.gold,    border: '#a07828' };
+  // Foreign territory is coloured by owner rather than by Rome's posting/revolt state —
+  // Rome has no Governor/Ambassador there yet, so those signals don't apply.
+  if (province.status === 'foreign') {
+    if (province.owner === 'carthage') return { fill: '#4a2a5a', border: '#7a4a8a' };
+    return { fill: '#3a5a5a', border: '#5a8a8a' }; // independent
+  }
   if (province.revoltActive)     return { fill: '#8b1a1a',       border: '#cc2222' };
   if (province.playerGovernor)   return { fill: '#c47a4a',       border: '#e8963c' };
   if (province.playerAmbassador) return { fill: '#5a8aaa',       border: '#7ab0cc' };
@@ -75,7 +87,7 @@ export default function MapView({ provinces, onProvincePress, selectedProvinceId
         resizeMode="stretch"
       />
 
-      {ITALY_PROVINCES.map(def => {
+      {ALL_PROVINCES.map(def => {
         const province = provinces.find(p => p.id === def.id);
         if (!province) return null;
 
@@ -86,6 +98,7 @@ export default function MapView({ provinces, onProvincePress, selectedProvinceId
         const { fill, border } = getNodeColour(province, def);
         const isSelected  = selectedProvinceId === def.id;
         const isHeartland = def.status === 'heartland';
+        const isForeign   = province.status === 'foreign';
 
         return (
           <TouchableOpacity
@@ -95,7 +108,7 @@ export default function MapView({ provinces, onProvincePress, selectedProvinceId
             activeOpacity={0.75}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            {province.ownedAssets.length > 0 && !isHeartland && (
+            {province.ownedAssets.length > 0 && !isHeartland && !isForeign && (
               <View style={[styles.assetRing, { borderColor: COLORS.denariiColor }]} />
             )}
 

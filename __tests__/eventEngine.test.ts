@@ -500,3 +500,32 @@ describe('checkTutorialGate', () => {
     expect(tutDef?.isTutorial).toBe(true);
   });
 });
+
+describe('evt-messana-appeal — Sicily/Mediterranean province flip trigger', () => {
+  const def = getEventDef('evt-messana-appeal')!;
+
+  test('exists with the two expected choices', () => {
+    expect(def).toBeDefined();
+    expect(def.choices.map(c => c.id).sort()).toEqual(['answer-the-call', 'refuse']);
+  });
+
+  test('is eligible while messanaResolved is unset, ineligible once it is set true', () => {
+    expect(evalCondition(def.conditions[0], makeState({ flags: {} }) as any)).toBe(true);
+    expect(evalCondition(def.conditions[0], makeState({ flags: { messanaResolved: true } }) as any)).toBe(false);
+  });
+
+  test('answering the call sets both the resolved and conquest flags plus a war-track bump', () => {
+    const choice = def.choices.find(c => c.id === 'answer-the-call')!;
+    const { effectStr } = resolveEventChoice(choice, makeState({ flags: {} }) as any);
+    expect(effectStr).toContain('setFlag:messanaResolved:true');
+    expect(effectStr).toContain('setFlag:messanaJoinsRome:true');
+    expect(effectStr).toContain('crisis-war+15');
+  });
+
+  test('refusing sets only the resolved flag, not the conquest flag', () => {
+    const choice = def.choices.find(c => c.id === 'refuse')!;
+    const { effectStr } = resolveEventChoice(choice, makeState({ flags: {} }) as any);
+    expect(effectStr).toContain('setFlag:messanaResolved:true');
+    expect(effectStr).not.toContain('messanaJoinsRome');
+  });
+});

@@ -180,6 +180,8 @@ export default function ProvinciaeScreen() {
           { colour: '#c47a4a',      label: 'Player Governor' },
           { colour: '#5a6b3a',      label: 'NPC Governor' },
           { colour: COLORS.crimson, label: 'Revolt' },
+          { colour: '#4a2a5a',      label: 'Carthaginian' },
+          { colour: '#3a5a5a',      label: 'Independent' },
         ].map(item => (
           <View key={item.label} style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: item.colour }]} />

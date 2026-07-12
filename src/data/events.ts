@@ -1219,4 +1219,42 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
+  // ─── Class F — Sicily / Mediterranean theatre ─────────────────────────────
+
+  {
+    id: 'evt-messana-appeal',
+    title: 'The Mamertine Envoys',
+    bodyText:
+      'A delegation from Messana stands in the Forum, dust of the Sicilian roads still on their ' +
+      'boots. The Mamertines who hold the city are caught between Hiero of Syracuse and a Carthaginian ' +
+      'garrison already inside their walls, and they have come to Rome for help none of their neighbours ' +
+      'will give. Everyone in the Curia understands what answering them means: a fleet across the ' +
+      'strait, and very likely a war with Carthage that no one alive has yet had to fight.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [{ type: 'flag', key: 'messanaResolved', equals: false }],
+    weight: 5,
+    seasons: [0],
+    choices: [
+      {
+        id: 'answer-the-call',
+        label: 'Answer the Mamertine call — send the fleet',
+        successEffect: 'setFlag:messanaResolved:true|setFlag:messanaJoinsRome:true|crisis-war+15|fides+5',
+        failureEffect: '',
+        successText:
+          'The vote carries. Legions embark for the strait before Carthage\'s garrison in Messana ' +
+          'can be reinforced — the Republic has chosen its first war beyond Italy, and there is no ' +
+          'talking its way back out of one now.',
+      },
+      {
+        id: 'refuse',
+        label: 'Refuse — Sicily is not worth a war with Carthage',
+        successEffect: 'setFlag:messanaResolved:true|fides-5',
+        failureEffect: '',
+        successText:
+          'The envoys are sent home empty-handed. Messana will make its peace with Syracuse or ' +
+          'Carthage as it must, and Rome keeps its legions on this side of the strait — for now.',
+      },
+    ],
+  },
+
 ];
