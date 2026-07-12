@@ -16,7 +16,7 @@ export const HOUSE_LOCATION_DEFINITIONS: HouseLocationDefinition[] = [
     cost: 100,
     sellBackFraction: 0.5,
     roomSlots: 2,
-    shopSlots: 4,
+    shopSlots: 2,
     biasAlignment: 'populares',
     locationBonus: { factionRelPerSeason: 2 },
     flavorText: 'A crowded, noisy warren of shops and tenements below the Esquiline — cheap, commercial, and never quiet. The people here remember who lives among them.',
@@ -57,7 +57,7 @@ export const HOUSE_LOCATION_DEFINITIONS: HouseLocationDefinition[] = [
     roomSlots: 4,
     shopSlots: 0,
     biasAlignment: 'optimates',
-    locationBonus: { dignitasPerSeason: 2 },
+    locationBonus: { dignitasPerSeason: 2, factionRelPerSeason: 2 },
     flavorText: "Rome's most prestigious address, where the old consular families keep their houses. No shopfronts sully these walls — but every senator who matters can find your door.",
   },
 ];

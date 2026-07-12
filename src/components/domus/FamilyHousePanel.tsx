@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import { HOUSE_LOCATION_DEFINITIONS, getHouseLocationDefinition } from '../../data/houseLocations';
 import { getHouseRoomDefinition } from '../../data/houseRooms';
 import { HOUSE_BUSINESS_DEFINITIONS, getHouseBusinessDefinition } from '../../data/houseBusinesses';
-import { getAvailableRooms, sellBackValue } from '../../engine/houseEngine';
-import type { RoomDefinition, BusinessDefinition } from '../../models/house';
+import { getAvailableRooms } from '../../engine/houseEngine';
+import type { RoomDefinition, BusinessDefinition, HouseLocationDefinition } from '../../models/house';
 import HousePickerModal, { type HousePickerItem } from './HousePickerModal';
+import RelocateModal from './RelocateModal';
 import ParchmentCard, { PARCHMENT_TEXT } from '../shared/ParchmentCard';
 import InfoTap from '../shared/InfoTap';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
@@ -45,6 +46,7 @@ export default function FamilyHousePanel() {
 
   const [roomPickerOpen, setRoomPickerOpen] = useState(false);
   const [shopPickerSlot, setShopPickerSlot] = useState<number | null>(null);
+  const [relocateTarget, setRelocateTarget] = useState<HouseLocationDefinition | null>(null);
 
   const location = getHouseLocationDefinition(house.locationId);
   if (!location) return null; // defensive — should never happen, house.locationId always a valid id
@@ -55,21 +57,6 @@ export default function FamilyHousePanel() {
   const businessItems: HousePickerItem[] = HOUSE_BUSINESS_DEFINITIONS.map(b => ({
     id: b.type, name: b.name, cost: b.cost, flavorText: b.flavorText, bonusSummary: businessBonusSummary(b),
   }));
-
-  function confirmRelocate(targetId: string) {
-    const target = getHouseLocationDefinition(targetId);
-    if (!target) return;
-    const refund = sellBackValue(house);
-    const net = Math.max(0, target.cost - refund);
-    Alert.alert(
-      `Relocate to ${target.name}?`,
-      `The current house (and everything built or rented in it) sells back for ${refund} Denarii. ${target.name} costs ${target.cost} Denarii — a net cost of ${net} Denarii. Rooms and storefronts do not carry over.`,
-      [
-        { text: 'Stay', style: 'cancel' },
-        { text: 'Relocate', style: 'destructive', onPress: () => buyHouse(targetId) },
-      ],
-    );
-  }
 
   return (
     <View style={styles.container}>
@@ -144,7 +131,7 @@ export default function FamilyHousePanel() {
         {/* Relocate */}
         <Text style={styles.sectionLabel}>RELOCATE</Text>
         {HOUSE_LOCATION_DEFINITIONS.filter(l => l.id !== house.locationId).map(loc => (
-          <TouchableOpacity key={loc.id} activeOpacity={0.75} onPress={() => confirmRelocate(loc.id)}>
+          <TouchableOpacity key={loc.id} activeOpacity={0.75} onPress={() => setRelocateTarget(loc)}>
             <ParchmentCard>
               <Text style={styles.houseName}>{loc.name} <Text style={styles.houseLatin}>({loc.latinName})</Text></Text>
               <Text style={styles.prestige}>{PRESTIGE_LABEL[loc.prestige]} · {loc.roomSlots} rooms · {loc.shopSlots} shops</Text>
@@ -170,6 +157,14 @@ export default function FamilyHousePanel() {
           items={businessItems}
           onPick={(type) => { rentShop(shopPickerSlot, type as any); setShopPickerSlot(null); }}
           onClose={() => setShopPickerSlot(null)}
+        />
+      )}
+      {relocateTarget && (
+        <RelocateModal
+          location={relocateTarget}
+          currentHouse={house}
+          onConfirm={() => { buyHouse(relocateTarget.id); setRelocateTarget(null); }}
+          onClose={() => setRelocateTarget(null)}
         />
       )}
     </View>

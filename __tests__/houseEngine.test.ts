@@ -28,9 +28,10 @@ describe('computeHouseBonuses', () => {
     expect(total).toEqual({ fides: 0, gold: 0, dignitas: 0, corruptionShield: 0, factionRelPerSeason: 0, factionBias: null });
   });
 
-  test('Palatine location bonus: dignitas/season and optimates bias, no relationship drift field set', () => {
+  test('Palatine location bonus: dignitas/season AND optimates relationship drift', () => {
     const total = computeHouseBonuses(makeHouse({ locationId: 'palatine', shops: [] }));
     expect(total.dignitas).toBeGreaterThan(0);
+    expect(total.factionRelPerSeason).toBeGreaterThan(0);
     expect(total.factionBias).toBe('optimates');
   });
 
