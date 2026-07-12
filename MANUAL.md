@@ -1,14 +1,14 @@
 # Rome: Res Publica — Player's Manual
 
-*A guide to guiding a Roman dynasty through the Republic.*
+*A guide to guiding a Roman dynasty through the Republic — and through its first great war.*
 
 ---
 
 ## 1. Introduction
 
-You are the paterfamilias of a Roman family during the Republic. Your task is not to conquer the world in one lifetime — it's to build something that outlasts you: a dynasty that climbs the ladder of office, out-manoeuvres its rivals in the Senate, keeps its provinces loyal, and hands the next generation a stronger house than the one it inherited.
+You are the paterfamilias of a Roman family during the early Republic. Your task is to build a dynasty that climbs the ladder of office, out-manoeuvres its rivals in the Senate and in the shadows, keeps its provinces loyal, and survives — because in this Rome, survival is never guaranteed. You will age. You will die, someday, of nothing more dramatic than old age, and someone will have to pick up what you built. Rome itself is walking into a war it did not choose, against Carthage, and how that war ends will help write the final line of your family's story.
 
-The game is played in **seasons** (Spring, Summer, Autumn, Winter — four to a year). Each season you spend your family's time, favours, and coin across five halls of Roman life — **Domus**, **Forum**, **Cursus Honorum**, **Curia**, and **Provinciae** — then end the season and watch the Republic respond. There is no single "win"; your scorecard is your family's **Lifetime Dignitas**, its offices held, its estates, and how many generations it survives.
+The game is played in **seasons** (Spring, Summer, Autumn, Winter — four to a year). Each season you spend your family's time, favours, and coin across five halls of Roman life — **Domus**, **Forum**, **Cursus Honorum**, **Curia**, and **Provinciae** — then end the season and watch the Republic respond. Sooner or later, one of five endings closes the book on your run: a hard-won **Victory**, a **Peace of Exhaustion**, the humiliation of being **Humbled**, the Republic itself collapsing, or your own line dying out. Every run leaves a permanent entry in your **Hall of Ancestors** — a shelf of every dynasty you've ever run, win or lose.
 
 ---
 
@@ -16,126 +16,138 @@ The game is played in **seasons** (Spring, Summer, Autumn, Winter — four to a 
 
 When you begin, you choose between two paths:
 
-- **The Guided Path** (recommended) — your household secretary, **Philon**, walks you through your first two years, introducing one system at a time: honouring your name with a public act, courting a clan leader, backing a bill in the Senate, gathering intelligence, and eventually standing for your first office. By the end of the tutorial, Philon hands you the household's full ledger — the **Agenda Tablet** — and you're on your own.
+- **The Guided Path** (recommended) — your household secretary, **Philon**, walks you through your first two years, introducing one system at a time. By the end, Philon hands you the full ledger — the **Agenda Tablet** — and you're on your own.
 - **Free Start** — no hand-holding. Every system is open to you from turn one.
 
-Both begin with the same family, the **Brutii**: Marcus Brutus (you, 42, a capable speaker), his wife Livia (a sharp intriguer), and two grown children, Gaius (aggressive, martially inclined) and Julia (cautious, quietly gifted). You begin with no offices, no provinces, and four rival clans watching to see what you're made of.
+Both begin with the same family, the **Brutii**: Marcus Brutus (you, 42, a capable speaker), his wife Livia (a sharp intriguer), and two grown children, Gaius (aggressive, martially inclined) and Julia (cautious, quietly gifted). You begin with no offices, no provinces, four rival clans watching you, one clan leader already holding something over your family's head — and, within your first year or two, a war you never asked for.
+
+From the start menu you can also visit the **Hall of Ancestors** — a read-only record of every run you've ever finished, regardless of how it ended.
 
 ---
 
 ## 3. The Republic at a Glance
 
 ### Resources
-- **Fides** — your political capital: trust, favours, and standing, spent on nearly every social and political action. Fides refills each season based mainly on your best speakers' **Rhetoric**, your standing with clans, your office, and your clients.
-- **Denarii** — plain money. Comes from your estates, your provinces, and your clients; spent on property, banquets, bribes, and hard costs.
-- **Lifetime Dignitas** — a permanent, never-spent score of your family's historical prestige. It never goes down by spending (only rarely by disaster — a conviction, a disgraceful surrender). This is the number that matters most in the long run: it drives your **Patron Tier** and is the closest thing the game has to a running "score."
-- **Imperium** — military-legal authority. It comes from formally held office (a governorship, a command) or from personal legions you've raised, and determines what you're allowed to do militarily without provoking the Senate.
+- **Fides** — your political capital: trust, favours, and standing, spent on nearly every social and political action. Refills each season based mainly on your best speakers' **Rhetoric**, your standing with clans, your office, and your household.
+- **Denarii** — plain money. Comes from your estates, your provinces, your businesses, and your clients; spent on property, banquets, bribes, and hard costs.
+- **Lifetime Dignitas** — a permanent, never-spent score of your family's historical prestige. It drives your **Patron Tier**, and it's the number an ended run's "Legacy" score is built from.
+- **Imperium** — military-legal authority, from formally held office or personal legions raised, determining what you're allowed to do militarily without provoking the Senate.
 
 ### Skills
-Every character has three skills, 0–10:
-- **Rhetoric** — persuasion, speeches, Senate votes, elections, Fides income.
-- **Martial** — command in the field, campaign strength, Imperium from soldiering.
-- **Intrigus** — schemes, blackmail, rigging, skill checks in the shadows.
+Every character has three skills, 0–10: **Rhetoric** (persuasion, speeches, elections, court), **Martial** (command in battle), and **Intrigus** (schemes, blackmail, digging up secrets, rigging).
 
 ### Rome-wide conditions
-Three numbers describe the health of the Republic itself, each 0–100:
-- **Stability** — how well institutions are functioning. Low stability strangles Fides income and accelerates crises; very high stability calms crises.
-- **Plebs (Popular Mood)** — how the common people feel. A furious populace throttles income and stokes Unrest; an ecstatic one boosts income and even waives your clients' favour debts for the season.
-- **Treasury** — the state's coffers. A bankrupt treasury cripples spending bills and triggers emergency tax bills automatically; an overflowing one makes spending easier and soaks up crisis growth.
+Three numbers describe the health of the Republic itself, each 0–100: **Stability**, **Plebs (Popular Mood)**, and **Treasury** — each with income and crisis-growth effects at the extremes (very low is bad for you, very high actively helps).
 
-### The Four Crises
-Beneath everything run four slow-burning tracks — **War, Unrest, Constitution, Economy** — each 0–100 and each with five tiers of severity, from calm to catastrophic (see §8). Ignore them and they compound each other: a constitutional crisis paralyses the Senate's ability to respond to war, economic collapse breeds unrest, and unrest corrodes the constitution in turn.
+### The Four Crises — and a fifth kind of ending
+Beneath everything run four slow-burning tracks — **War, Unrest, Constitution, Economy** — each 0–100, each compounding the others if ignored. Their combined average has a hard ceiling now: if it ever reaches 100, **the Republic itself falls** — an ending in its own right, not just a bad season.
 
 ---
 
 ## 4. Domus — Hearth and Household
 
-Domus is your family itself: who's in it, what they're worth, and what they'll leave behind.
+Domus is your family: who's in it, where it lives, what it's worth, and — now, unavoidably — how it goes on after you.
 
 ### Your Family
-Every family member has an age, a role (paterfamilias, spouse, son, daughter), the three skills above, a handful of **personality traits**, and an **ambition** they're working toward. Traits come in two flavours:
-- A simple, ever-present **temperament** (aggressive / content / ambitious / cautious) that colours how they vote and act on their own initiative.
-- **Heritable traits** (Sharp Mind, Soldier Born, Silver Tongue, Iron Will, Ruthless, Great Orator, and rarer bloodline traits like Ancient Blood, Conqueror, and Nobilitas) that grant real skill bonuses and can be passed to children.
+Every family member has an age, a role, the three skills above, personality traits, and an ambition. Traits come in a simple ever-present **temperament** (aggressive/content/ambitious/cautious) plus rarer **heritable traits** (Sharp Mind, Soldier Born, Silver Tongue, and others) with real skill bonuses, passed to children.
 
-**Training** a family member's skill costs Fides (the price rises the higher the skill already is) and can be done once per person per season — there's no risk of failure, only a cost.
+**Training** a family member's skill costs Fides, rising with the skill's current level — but it's no longer guaranteed to succeed. The higher the skill already is, the harder the next point is to land; building a **Study** in your house (see below) meaningfully improves your odds.
 
 ### Births
-A married couple of childbearing age has a chance each season of a new arrival — better odds with fewer young children already underfoot. When it happens, you get to review the child's inherited traits and either accept them into the family under a name of your choosing, or set the matter aside for later.
+A married couple of childbearing age has a chance each season of a new arrival, better odds with fewer young children underfoot. You review the child's inherited traits and either accept them under a name of your choosing, or set the matter aside.
+
+### Death, Succession, and Regency
+Every family member — including you — ages, and every year each one is quietly checked against the toll of time: negligible under 50, then rising through the decades to a real risk past 80. When someone other than the paterfamilias dies of age, they're simply gone. When the **paterfamilias** dies, a short scripted sequence follows:
+
+1. **A death in the house** — a notice naming the deceased, their age, and what they'll be remembered for.
+2. **The funeral** — a **Lavish** send-off (40 Denarii) buys +15 Lifetime Dignitas and goodwill with both Optimates and Populares leaders; **Modest rites** (3 Fides) buy nothing, and the Forum notices the thrift.
+3. **The new master of the house** — confirm the natural heir (eldest son, then eldest daughter, then eldest spouse, then the next closest relative) or name someone else instead. Overriding the natural order costs the new head of house some family trust.
+
+The new paterfamilias starts their own cursus honorum from a clean slate — no offices carried over, no ongoing campaign. If the heir is still a minor, a **Regency** takes over (the heir's other parent, or the eldest adult relative) — your Fides income drops to three-quarters while a regency lasts, ending automatically the moment the heir comes of age.
+
+**If no eligible heir exists at all**, the line doesn't necessarily end outright — see the Cadet Branch, below.
+
+### The Cadet Branch
+From the very start of the game, a distant cousin exists out on the edges of the family — someone you'll occasionally meet through a rare, purely social event. If your direct line ever dies out completely with no heir to name, and this fallback hasn't been used yet, you're offered a one-time choice: **continue the dynasty through the cadet branch** (a fresh two-person household, cursus reset — but your run's final Legacy score is permanently halved as the price of a lesser bloodline continuing the name) or **let the gens end** here, for good. Once the cadet branch has been used, there's no second safety net — a second extinction is final.
 
 ### Domestic Directives
-Three standing options are always available from the household:
-- **Commission a Laudatio** — a public eulogy/honour for the family, raising Lifetime Dignitas.
-- **Adrogatio (Adopt Talent)** — bring a promising commoner into the family's orbit.
-- **Arrange a Marriage** — a domestic match-making effort separate from the Forum's clan-marriage system (see §5).
+Three standing options: **Commission a Laudatio** (raise Lifetime Dignitas), **Adrogatio** (adopt talent into the family), and a domestic **Arrange a Marriage** (distinct from the Forum's clan-marriage system, §5).
 
 ### Legatum — Your Dynasty's Legacy
-The Legatum panel tracks four long-arc achievements that reward the *whole dynasty*, permanently, once reached — they never regress:
+Long-arc achievement tracks that reward the whole dynasty permanently once reached, never regressing: **The Consular Line** (consulships won), **The Midas Dynasty** (lifetime Denarii earned), **Voice of the Senate** (votes/speeches/bills), and **Endurance of the Gens** (seasons survived) — plus two courtroom-specific honours: **The Accuser**, earned the first time you win a prosecution you brought, and **Vox Populi**, earned the first time you convict a sitting magistrate.
 
-| Track | What it counts | Milestone rewards |
+### Your House
+Your family's residence is no longer a simple list of estates — it's an actual home in one of four Roman neighbourhoods, and where you live says something about you.
+
+| Neighbourhood | Cost | Prestige | Room slots | Shop slots | Leaning | Bonus |
+|---|---|---|---|---|---|---|
+| Subura | 100 Denarii | Low | 2 | 2 | Populares | +2 relationship/season with Populares leaders |
+| Aventine Hill | 150 Denarii | Low | 2 | 3 | Populares | +1 relationship/season with Populares leaders |
+| Caelian Hill | 220 Denarii | Mid | 3 | 2 | None | — |
+| Palatine Hill | 400 Denarii | High | 4 | **0** | Optimates | +2 Lifetime Dignitas/season **and** +2 relationship/season with Optimates leaders |
+
+Every house has **room slots** you build into, one of four kinds:
+
+| Room | Cost | Bonus |
 |---|---|---|
-| **The Consular Line** | Consulships won across your history | 1st: steady Dignitas trickle · 3rd: Dignitas + better Fides income · 7th: "Ancient Nobility" + a rare trait unlock |
-| **The Midas Dynasty** | Total Denarii ever earned | Growing gold income and gold multipliers, capping in an "Urban Insulae" unlock |
-| **Voice of the Senate** | Votes, speeches, and bills you've pushed | Rising Fides income, capping in a "Father of the Senate" trait |
-| **Endurance of the Gens** | Seasons your family has survived | Rising Dignitas trickle, capping in an "Eternal Gens" trait at 200 seasons |
+| Study | 90 Denarii | +20% training success chance |
+| Larger Entry Hall | 100 Denarii | +3 client slots |
+| Kitchen & Dining Room | 110 Denarii | ×1.5 relationship gain from Invite to Dinner |
+| Library | 150 Denarii | +3 Fides/season, plus a one-time +1 Rhetoric the moment it's built |
 
-### Patrimonium — Your Estate
-Buy and upgrade five kinds of personal property, each in three tiers (you must own the previous tier before upgrading): a **Vineyard** and **Insulae** for gold, a **Gladiator School** for martial training and client capacity, a **Library** for Rhetoric and Dignitas, and **Public Baths** for Fides and Intrigus. Top-tier estates unlock unique special actions (hosting banquets, intimidating witnesses, drafting legislation, and so on).
+Every house except a Palatine residence also has **shop slots** — storefronts you can rent out:
+
+| Storefront | Cost | Bonus |
+|---|---|---|
+| Tavern | 50 Denarii | +6 Denarii/season |
+| Bakery | 40 Denarii | +2 Fides/season |
+| Fuller's Shop | 60 Denarii | shields 5 corruption/season |
+| Moneylender's Table | 80 Denarii | +12 Denarii/season (the most profitable, and the least respectable) |
+
+You can **relocate** to any other neighbourhood at any time. Doing so sells your current house back (half its own cost, plus half the cost of everything you built into it) against the new location's price — but every room and business you built is lost; you start the new house bare. (Your four older personal estates — Vineyard, Gladiator School, Insulae, and Baths — didn't move into this system; they're bought and upgraded from **Provinciae → Latium** instead, unchanged. See §8.)
 
 ### Clientela — Your Network
-Clients are the loyal followers who work for your family, split into **Muscle**, **Public Support**, and **Voting Sway** (plus **Provincial** clients recruited abroad — see §7). Each brings a passive bonus — extra Martial, extra Dignitas, extra votes in elections, and so on. You don't recruit clients directly; they come to you as the fruit of the random events and opportunities that arise through the seasons. How many you can support is set by your **Patron Tier**.
+Clients — **Muscle**, **Public Support**, **Voting Sway**, and **Provincial** — each bring a passive bonus. You don't recruit them directly; they arrive as the fruit of random events. How many you can support is set by your Patron Tier plus your house's Entry Hall, if built.
 
 ---
 
-## 5. Forum — Clans and Alliances
+## 5. Forum — Clans, Alliances, and Secrets
 
-Rome runs on relationships, and the Forum is where you manage them.
+The Forum is where you manage Rome's great houses — openly, and in the shadows.
 
 ### The Patron Ladder
-Your **Patron Tier** rises purely from Lifetime Dignitas (spending never lowers it) and governs how many clients you can support, how much your Fides income is multiplied, and how often your existing clients call in favours against you:
-
-| Tier | Dignitas needed | Client slots | Fides multiplier |
-|---|---|---|---|
-| Client Family | 0 | 2 | ×1.00 |
-| Minor Patron | 30 | 4 | ×1.10 |
-| Established Patron | 80 | 6 | ×1.20 |
-| Major Patron | 180 | 9 | ×1.35 |
-| Patrician Lord | 350 | 13 | ×1.50 |
-| Prince of the Republic | 600 | 20 | ×1.75 |
+Your **Patron Tier**, driven purely by Lifetime Dignitas, sets your client capacity, your Fides multiplier, and how often clients call in favours against you.
 
 ### The Four Clans
-Four great houses share the stage with you, each with 3–4 individually named leaders you build relationships with one at a time:
-- **Gens Cornelia** 🦅 — the most powerful patrician house, priesthoods and aristocratic seats.
-- **Gens Valeria** 🐺 — an ancient plebeian clan with populist sympathies; the friendliest house to start with.
-- **Gens Fabia** 🐗 — old rivals of your family, nursing decades-old grudges.
-- **Gens Claudia** ⚖️ — haughty patricians who look down on your house as upstarts, and one of whom starts holding leverage over you.
-
-Every leader has their own **relationship score** (private to you), a political **bias** (Optimates, Populares, military, tradition, or commerce), a career of offices, and flags for marriage, alliance, or blackmail. Building rapport with a clan's most powerful leader shifts the *whole clan's* opinion of your family (its **Family Reputation**) far more than courting a junior member — reputation is what actually determines whether a clan treats you as an ally, is merely cold, or actively works against you.
+**Gens Cornelia** 🦅 (priesthoods and aristocratic seats), **Gens Valeria** 🐺 (populist, the friendliest to start with), **Gens Fabia** 🐗 (old rivals nursing decades-old grudges), and **Gens Claudia** ⚖️ (haughty patricians — and the clan whose leader, Appius Claudius Pulcher, already holds something over your family from turn one; see below). Each has 3–4 named leaders with their own relationship score, political bias, and career. Courting a clan's most powerful leader moves the *whole clan's* opinion of you (its **Family Reputation**) far more than courting a junior member.
 
 ### Winning Leaders Over
-Typical Forum actions against a chosen leader: **Buy Influence** (a quick, cheap relationship nudge), **Invite to Dinner** (a costlier but stronger one), **Forge an Alliance** (once you're on decent terms, locking in a lasting bond), **Arrange a Marriage** (the strongest single relationship boost, requiring real prior standing with both the leader and their clan), and **Gather Intelligence** (a gamble to acquire blackmail leverage over them — or to counter leverage they hold over you).
+**Buy Influence**, **Invite to Dinner**, **Forge an Alliance**, **Arrange a Marriage**, and — the doorway into the game's shadow side — **Gather Intelligence**.
 
-### Family Reputation Tiers
-| Reputation | Standing | Notable effect |
-|---|---|---|
-| −100 | Blood Enemies | Will bring prosecutions against you unprompted |
-| −50 | Rivals | Votes against your bills regardless of merit |
-| −10 | Cold | — |
-| 10 | Neutral | — |
-| 35 | Cordial | Marriage alliances become possible |
-| 60 | Trusted Ally | Warns you before initiating any prosecution |
-| 85 | Bound by Oath | Delivers full voting-bloc support on one bill a year |
+### Secrets — the Dossier
+Somewhere in Rome, everyone has something to hide. **Gather Intelligence** (8 Fides) opens a picker of your family members with their success chance shown plainly (driven by Intrigus, and rising the more times you've quietly tried and failed against that leader before). Success generates a **Secret** on the leader — unless they already hold one against *your* family that you haven't discovered yet, in which case you learn about that instead.
 
-### Elections and Canvassing
-Once you or a family member declares a candidacy (see §6), you can **canvass** clan leaders for votes — either a quick guaranteed pledge, or a riskier appeal that rolls against the leader's standing and your Rhetoric, occasionally sparking its own little event along the way (a demanding tribune, say, offering you a shortcut for a price).
+Secrets come in six flavours, split into two classes that behave very differently:
+- **Social** secrets — an *Affair*, an act of *Impiety*, or an act of *Violence*. Exposing one costs Dignitas and relationship, pure scandal, but it never leads to a courtroom.
+- **Criminal** secrets — *Embezzlement*, *Electoral Fraud*, or *Provincial Plunder* (the last only against someone who's actually governed). These are the ones worth holding onto, because they can send someone to trial.
 
-### Time Takes Its Toll
-Relationships drift slowly back toward a resting point each year depending on your bond (married and allied leaders settle high; leaders you've never courted settle low and won't warm up on their own). Leaders age and, eventually, die — replaced by an heir who inherits some of their votes and relationship, but *not* their marriage, alliance, or blackmail ties. A long-cultivated bond can vanish with a single funeral.
+Once you hold a Secret, the **Dossier** panel opens under that leader with real options: **Leverage** it for a one-time forced outcome (locking their vote in an election, or swinging a live bill); **Extort** it instead for ongoing income (Denarii per season scaled to how damaging the secret is, with a real chance each season it's exposed and lost); **Burn** it outright to permanently cost that leader half their Senate votes, no roll involved; or, for a criminal secret, **File a Prosecution** (see §6). If a leader holds something on you too, and you hold something on them, you're in a mutual standoff — neither of you can safely act, and the game tells you so plainly.
+
+If a Secret is ever held **against** your family and gets discovered, the Dossier's other half appears: **Pay It Off** (an outright, escalating Denarii cost) or **Discredit** it (send an agent to publicly undermine the story — a real chance of success, but a botched attempt only makes the secret worse).
+
+Occasionally an NPC who holds something on you will actually use it — a demand event with a comply-or-defy choice, the real stakes computed on the spot depending on what they're holding. And occasionally you'll be offered the other side of that coin yourself: a **compromising event** letting you bribe the tribes, skim public funds, or squeeze a governed province for extra gain — at the price of planting a dormant secret about your own conduct that may, someday, surface against you.
+
+### The Claudian Price
+Appius Claudius Pulcher already holds an embezzlement secret over your paterfamilias's head from the very start of every game — you'll know it from turn one. When he calls it in, you get an unusually generous third option beyond the normal comply-or-defy: **ask for time**. Waiting buys you exactly one season before it resolves itself one way or the other. Defy him outright, or let the clock run out, and he files formal charges — your very first trial, deliberately built to be a fair fight for a new player to learn the courts on.
+
+### Family Reputation, Elections, and Time
+Building rapport moves a clan's whole reputation toward you, unlocking real cooperation at the higher tiers. Canvass leaders for votes during any election you're contesting. Relationships drift slowly toward a resting point each year; leaders age and eventually die, replaced by heirs who inherit some standing but not marriages, alliances, or blackmail ties.
 
 ---
 
-## 6. Cursus Honorum — The Path of Offices
+## 6. Cursus Honorum — Offices, Elections, and the Courts
 
-This is Rome's ladder of public office, and climbing it is central to building Dignitas, Imperium, and influence.
+This is Rome's ladder of public office — and, since your family can now be hauled before a judge (or do the hauling yourself), the seat of Roman law.
 
 | Office | Minimum Age | Term | Seats | Prerequisite |
 |---|---|---|---|---|
@@ -145,120 +157,127 @@ This is Rome's ladder of public office, and climbing it is central to building D
 | Praetor | 39 | 1 year | 4 | Aedile |
 | Consul | 42 | 1 year | 2 | Praetor |
 | Censor | 45 | 1.5 years | 2 | Consul |
-| Dictator | 50 | 6 months | 1 | Consul, and only in dire crisis |
+| Dictator | 50 | 6 months | 1 | Consul, only in dire crisis |
 
-Running alongside the ladder is **Tribune of the Plebs** (minimum age 30, no prerequisite, one-year term) — a separate, powerful populist office rather than a rung on the ladder. A sitting Tribune is **sacrosanct**: immune to trial for the length of their term.
+**Tribune of the Plebs** runs alongside the ladder rather than on it — sacrosanct, immune to trial for the length of the term.
 
-### Standing for Office
-Any eligible family member (age and prerequisite met, not already mid-campaign) can declare a candidacy. Once declared, the **Election Panel** shows your projected rank against every rival candidate, updating as you canvass leaders and give speeches. Elections resolve automatically at the end of Winter. Higher offices attract stronger, more experienced rivals and cost more Fides to canvass for — the climb gets harder every rung.
+### Standing for Office and Governing
+Declare a candidacy, canvass and campaign, and let the Election Panel track your projected standing until Winter's automatic resolution. In office, spend Fides or Denarii on a menu of unique actions — from modest income boosts to genuinely risky "Extreme" moves with real political fallout. Holding the Consulship pairs you with an NPC co-Consul whose antagonism toward you depends on your standing and your politics.
 
-### Governing in Office
-While holding an office, you unlock a menu of **in-office actions** unique to that seat — spending Fides or Denarii for effects ranging from modest (extra income, a little goodwill) to genuinely risky "Extreme" actions that buy a big result at the cost of real backlash (constitutional damage, enraged clans). A few highlights:
-- **Quaestor** — manage the treasury, audit rivals for leverage, fund the grain dole, or (riskily) skim the books.
-- **Aedile** — champion the people through grain and market oversight; pairs well with hosting games through the Curia's Munificence panel (see below), which gives a sitting Aedile a discount and a boost.
-- **Consul** — push legislation, fund triumphs, invoke consular authority to shield an unauthorized levy, or attempt to override a hostile co-Consul.
-- **Tribune** — veto bills outright, push populist law through the Tribal Assembly (bypassing the Senate entirely if the people are behind you), or protect a client from prosecution.
+### The Basilica — Trial Preparation
+Trials no longer resolve behind the scenes. When one is filed — against your family, or by you against a rival — a countdown of several seasons opens before the **Basilica**, a dedicated trial-prep screen reached from Cursus (Curia's own trial card is now just a status line pointing you there).
 
-Holding the Consulship comes with a twist: you're paired with an **NPC co-Consul** whose antagonism toward you (calm, mildly opposed, hostile, or openly antagonistic) depends on your standing with their clan and how your politics align — a hostile co-Consul will sponsor rival bills and quietly undermine yours.
+**Charges** come in five flavours: **Repetundae** (extortion in a governed province), **Peculatus** (embezzling public funds), **Ambitus** (buying an election rather than winning it), **Maiestas** (treason — the gravest charge), and **Military Incompetence** (a commander's ruinous battlefield failure).
 
-### Trials
-If a rival clan has cause (usually your accumulating **corruption**, or a Republic in deep constitutional crisis), they may bring your family to trial. You have several defensive moves available — hiring advocates, calling in favours, filibustering, intimidating witnesses, bribing juries — each strengthening your defence over the trial's several-season course before a verdict (acquitted, dismissed, fined, exiled, or executed) is reached. A sitting Tribune cannot be tried.
+Pick your **Approach** — free to change any time before the trial starts:
+- **Ferocity** — hit the evidence hard; if your opponent's a weak speaker, you get an outright bonus for going aggressive.
+- **Procedure** — the safe, rules-lawyering path; also dulls the sting of any nasty surprise during the trial itself.
+- **Sympathy** — play to the jury's existing feelings toward you, for good or ill, at the cost of some evidentiary strength.
 
-### Overstepping the Senate
-Raise a personal legion without a sanctioning office behind you, and the Senate notices. Left unanswered, its response escalates in stages — public debate, censure, a declaration that you are an enemy of the state, and finally a consular army marching to settle the matter by force. You can buy time, bribe the matter away, or simply disband your illegal troops before it reaches its worst conclusion — or hold enough force to face the consular army and win, at a cost to your name either way.
+Pick a **speaker** (any adult family member — their Rhetoric matters), then build your case across three fronts:
+- **Logos (evidence)** — *Gather Evidence* (send an agent digging, rising Fides cost each use, capped uses); *Present a Secret as Evidence*, if you hold a matching criminal Secret on your opponent — free, but it consumes the Secret for a large one-time boost.
+- **Pathos (witnesses and appeal)** — *Secure a Witness* (up to two, Denarii); *Prepare an Oration* (Fides, repeatable, scaled to your speaker's Rhetoric); *Intimidate a Key Witness* (a large, one-time Denarii spend requiring your Gladiator School, that weakens the opponent directly instead of strengthening you).
+- **Ethos (character and reputation)** — *Invoke the Ancestors* (free, scaled to your Lifetime Dignitas); *Bribe the Jurors*, per clan bloc; *Bribe the Praetor* — both carry a real, hidden chance of being caught, which voids the bonus and forces a nasty complication on trial day if it happens.
+
+### Trial Day and the Verdict
+When the countdown ends, a live **trial day** plays out: three "beats," each a short courtroom complication with response choices — a skill check against your speaker's Rhetoric or Intrigus, a check against specific prep you bought (a witness, presented evidence), or a safe fallback that always works. A "let your speaker argue it" button will fast-resolve the rest of the day for you, picking sound choices automatically, if you'd rather not play it beat by beat.
+
+The **Verdict Scene** that follows plays out as genuine theatre: the charge read aloud, both sides' strength compared, the jury's lean revealed, your beat choices recapped, and finally the verdict stamped — Acquitted, Dismissed, Fined, Exiled, or Executed — each with its own real consequence, up to and including losing the family member outright.
+
+### Filing a Prosecution — Going on the Offensive
+You are no longer only ever the defendant. Any clan leader whose corruption has grown blatant enough, or whom you hold a criminal Secret on, can be formally charged (a modest Fides cost, and you choose how soon the trial starts — sooner catches them unprepared, later gives you more time to build your case, but them too). Winning a conviction is genuinely rewarding — Lifetime Dignitas scaled to the target's standing, more if they held office at the time, and it's how the Accuser and Vox Populi legacy honours are earned.
+
+It isn't risk-free: lose badly enough and you may be judged to have prosecuted out of malice (**Calumnia**) — a real Dignitas and relationship hit, and a real chance the leader turns around and files a counter-suit against you.
 
 ---
 
 ## 7. Curia — The Senate
 
-The Curia is where Rome's laws are made and its four looming crises are watched.
+The Curia is where Rome's laws are made, its four crises are watched, and — once a war is underway — where peace is eventually made.
 
-### Bills
-The Senate always has a handful of active bills on the table — some you submit yourself (for 10 Fides), some tabled automatically by the state when treasury runs dry or crisis demands it, and some sponsored by a hostile co-Consul. Each bill shows its type (populist, Optimates, constitutional, economic, military, and so on), its current support, and a plain verdict — likely to pass, likely to fail, or too close to call.
+### Bills, Munificence, and Crisis
+Submit and vote on bills, give speeches, filibuster; passed bills with lasting effects become Active Laws. The **Munificence** panel buys public goodwill through feasts, games, temple restoration, and endowments. The four crisis tracks (**War, Unrest, Constitution, Economy**) escalate, cascade into each other, and carry a real cost to your income the higher they climb — and, if their combined average ever tops out completely, they end the Republic outright.
 
-You can act on any bill each season:
-- **Vote** — commit your own voice for or against, moving support directly.
-- **Give a Speech** — a costlier, riskier swing (chance of success scales with your Rhetoric) that can move support much further when it lands.
-- **Filibuster** — buy the bill one more season before it must resolve.
-
-Passed bills with lasting effects become **Active Laws**, some of which can later be repealed via a fresh bill.
-
-### Munificence — Public Largesse
-A dedicated panel for buying the people's goodwill through public spectacle: feasts, grain largesse, funding the Ludi (games), Grand Games (the biggest, rarest spectacle — it even leaves a lingering vote-winning glow for future elections), restoring one of five great temples, or endowing a permanent income stream. Higher acts require a higher Patron Tier, and most can only be done once a year (or once ever, for temple restorations). A sitting **Aedile** gets a real discount and a boosted effect on the games-related acts — timing your Aedileship around a Grand Games is a classic play.
-
-### The Four Crisis Tracks
-| Track | What drives it up | What calms it |
-|---|---|---|
-| **War** | Hostile provinces, ignored military funding | Loyal provinces, successful campaigns |
-| **Unrest** | An unhappy populace, heavy taxation, no games in years | A content populace, Public Support clients, Munificence |
-| **Constitution** | Political polarisation, a stalled Senate, an overreaching office-holder | Passed legislation, calm governance |
-| **Economy** | An empty treasury, stagnant provinces | A full treasury, provincial development |
-
-Each track runs 0–100 across five bands, from calm to catastrophic, each with its own flavour label and a real cost to your income the higher it climbs. Crucially, the tracks feed each other — a constitutional crisis leaves the Senate unable to answer a war, economic collapse breeds unrest, and unrest corrodes the constitution in turn. Left unattended, one bad track becomes four.
+### War and Peace
+Once Rome's war with Carthage has run long enough to reach a real breaking point, a **"War & Peace"** panel appears here, opening the negotiation table — see §9 for the whole arc.
 
 ---
 
-## 8. Provinciae — Governing the Republic's Lands
+## 8. Provinciae — Provinces and the Legions
 
-The province map shows your holdings and the wider Republic's — currently the heartland of **Latium** (Rome itself — it cannot revolt, cannot be taxed, and needs no governor) plus the incorporated Italian provinces of **Cisalpine Gaul, Etruria, Samnium**, and **Campania**. Each province node is colour-coded for who governs it and how loyal it currently is, from a hostile crimson to a loyal gold.
+The province map shows your holdings and Rome's: the heartland of **Latium** (which cannot revolt or be taxed and needs no governor) plus the incorporated Italian provinces of **Cisalpine Gaul, Etruria, Samnium**, and **Campania** — joined, once the war with Carthage ends favourably, by whichever pieces of Sicily you've won at the peace table.
 
 ### Governing a Province
-If a family member holds a governorship, you control three policy dials each season:
-- **Taxation** (Benevolent → Extortionate) — trades gold for relationship and corruption; squeezing a province hard buys short-term gold at the cost of loyalty and a rising corruption score that follows the governor home.
-- **Security** (Neglect → Full Occupation) — trades gold for military strength and a lower revolt chance, at some cost to relationship the harder you clamp down.
-- **Development** (Exploit → Major Works) — trades gold for lasting infrastructure and goodwill, or the reverse if you strip a province for quick cash.
+Three policy dials — **Taxation**, **Security**, and **Development** — each trading gold against relationship, military strength, or infrastructure. A well-run province produces steady gold and Imperium; a mismanaged one produces nothing and risks revolt.
 
-A well-run province produces steady gold and Imperium; a mismanaged one produces nothing and risks revolt. Governorships run for a year at a time.
+### Holdings, Assets, and Clients
+Your family's older personal estates — Vineyard, Gladiator School, Insulae, and the Baths — are bought and upgraded here now, under Latium's **Holdings** tab, unchanged in every other respect (three tiers each, same costs and bonuses as always). Each province separately offers up to seven kinds of purchasable assets and, once Local Support is high enough, named **Provincial Clients** recruited through your **Ambassador**.
 
-### Assets and Clients
-Every province offers up to seven kinds of purchasable provincial assets (farms, inns, garrisons, wharves, temples, grain subscriptions, mines — some restricted to provinces with the right geography), each raising the province's **Local Support** and delivering its own passive bonus. High enough Local Support and relationship unlock **Provincial Clients** — named local figures who, once recruited through your ambassador, grant unique bonuses of their own.
+### The Legions
+Every province where you have troops stationed shows a **Legion Roster** — grouped by owning family member, each unit showing its class, a four-pip **veterancy** indicator (raw through legendary, earned by surviving campaigns and battles, never downgraded), and a **Loyalty** bar. A **Donative** — a Denarii payment scaled to army size, once a year — instantly raises that whole army's loyalty; letting loyalty sag risks desertion in a hard fight. Units can be disbanded, but doing so throws away everything they've earned.
 
-### The Ambassador's Desk
-For territories not yet fully incorporated into the Republic, an **Ambassador** posting lets you build personal rapport, distribute grain, gather intelligence, and recruit local clients — one action per season, term renewed yearly. (On the current Italian map every province is already incorporated, so this desk mostly matters for frontiers yet to come.)
-
-### Military Matters
-When a province turns hostile or falls into open revolt, it stops producing income and its loyalty keeps sliding until answered. A family member with enough standing can lead the response directly as commander, or **volunteer as an officer** under whoever the Senate has appointed — facing a handful of pivotal moments during the campaign (a risky charge, a supply gamble, a final assault) where a bold choice can turn a battle, at real personal risk. Troops that come through campaigns well earn veteran status and grow stronger; troops that come through badly may desert.
-
-You can also **raise a personal legion** directly from any province where you have standing, paying a levy cost that rises if the Republic is in crisis — and rises sharply further if you do it without the sanction of an office (see §6 for what happens if the Senate notices).
-
-*(Note: full turn-by-turn campaign command — allocating manpower, strategy, and morale as a sitting commander, and resolving the campaign event cards that come with it — is still being finished in this build. The officer-volunteer path, legion-raising, and provincial governance described above are all fully playable today.)*
+**Provincial revolts** are handled the old way: raise a legion or volunteer a family member as an officer under whoever the Senate appoints, then weather a handful of pivotal moments as the suppression plays out. **Rome's actual war**, against Carthage, is a different animal entirely — a real, tactical battlefield. See §9.
 
 ---
 
-## 9. The Rhythm of a Season
+## 9. War — Rome and Carthage
 
-Each season, you act — train, canvass, vote, govern, campaign — then press **End Season**, and the Republic answers all at once:
+Within your first year or two, without any warning and without any way to prevent it, word arrives from Messana: Rome is going to war with Carthage over Sicily. You get three ways to react to the news (speak for war, urge caution, or say nothing) — all three lead to the same war, differing only in flavour and a small starting nudge to how it begins.
 
-1. The calendar advances (and, once a year, everyone ages).
-2. Any election you're contesting resolves.
-3. Office terms tick down; a term that runs out is lost.
-4. Bills on the table move toward passing or failing.
-5. The four crisis tracks escalate, cascade into each other, and may cross thresholds that trigger their own events.
-6. Income comes in — Fides and Denarii, shaped by your skills, standing, offices, clients, and Rome's own mood.
-7. Yearly-only effects land at the New Year: relationships settle back toward their resting point, ageing clan leaders may die and be succeeded, and Patron Tier is reassessed.
-8. Provinces tick — producing income, shifting loyalty, escalating or resolving revolts and campaigns.
-9. Trials, if pending, may resolve; new ones may be brought.
-10. Births are checked for eligible couples.
-11. Ambitions are checked for completion, expiry, or replacement.
-12. One story event fires — sometimes scripted, usually drawn at random from dozens of possibilities themed to your circumstances and the season itself.
+### The War Itself
+A single running number, **War Score** (−100 to +100, positive favouring Rome), tracks how the war is going. It drifts slightly each season on its own (better if your army and your paterfamilias's Martial are strong), moves with periodic war-flavoured events (fund a fleet, escort a grain convoy, gamble on a legate's initiative), and swings sharply with actual battles. Leave it unresolved for years and it drifts back toward zero — **weariness** setting in on both sides.
 
-Before you can end the season, **Philon's Agenda Tablet** flags anything urgent — a trial about to conclude, an election closing, a crisis boiling over, a term about to lapse — so nothing catches you entirely by surprise. If something critical is still outstanding, ending the season prompts you to double-check before proceeding.
+### Fighting a Battle
+Periodically the war schedules a real fight: a **Set-Piece Offer** names a site, a terrain, and a named Carthaginian general — each with a real personality (cautious Hanno, cunning Hamilcar with his ambushes, reckless Bomilcar who charges everything, disciplined Xanthippus who never breaks formation). You can **decline** (a real cost to War Score and Dignitas) or **give battle**.
 
-Once the season resolves, a summary overlay lays out everything that changed — resources, crisis levels, Rome's mood — plus the season's headline events, before returning control to you. If you step away for a long stretch, the same summary greets you on your return so you're never lost catching up.
+Battle plays out on three lanes — Left Wing, Centre, Right Wing — plus a Reserve. You assign units (cavalry can't stand in the centre), pick a formation per lane (line, shield wall, open ranks always available; wedge and feigned retreat need a capable captain), name a captain for each lane, choose where your commander himself stands (steadier everywhere in reserve, stronger but riskier if he leads from a lane), and play up to one pre-battle **stratagem** from your hand — an ambush, caltrops, fire arrows to spook enemy elephants, and others.
 
-### Ambitions
-Alongside the day-to-day, your family and its individual members pursue **ambitions** — long-term goals like holding a particular office, reaching a reputation tier, producing an heir, or accumulating wealth, each with its own reward on completion (and sometimes a real cost if you let one expire). Completing some ambitions immediately opens a follow-up, chaining into a longer story for your dynasty.
+Each round resolves the same way in every lane: a charge, a melee exchange, and a morale toll from the casualties taken. A lane whose morale breaks can be exploited by the winner — **pursue** the routing enemy for a harsher kill, or **wheel** into the neighbouring fight and open a second front. Elephants are a genuine gamble on both sides — powerful, but liable to panic and maul friend and foe alike the longer a fight drags on. A battle ends once a side has lost two of its three wings, and is scored **marginal**, **clear**, or **crushing** — casualties, War Score, and any captains lost, wounded, or captured all follow from that tier.
+
+A captured family member can be **ransomed** (pay the demand outright), **negotiated** down (a sharp Intrigus mind can halve the price), or **refused** — leaving them a prisoner, and costing you standing for abandoning them.
+
+### Making Peace
+As War Score swings decisively one way, the war crosses **desperation thresholds** — a point where the losing side might sue for peace, a point where terms can be forced, and a point where they're simply dictated. Once the war has reached that point, Curia's **War & Peace** panel opens the negotiating table: accept or refuse an enemy offer outright, or — if you're Consul — sit down and shop from a menu of real treaty terms (indemnities, prisoner exchanges, ceding Sicilian territory, limiting a defeated navy, face-saving clauses for the losing side) against a budget set by how badly the war is going for whoever's proposing. A tabled treaty is ratified — or rejected — as an ordinary Senate bill.
+
+However the war ends, it's remembered as one of three outcomes: a clear **Victory**, a negotiated **Peace of Exhaustion**, or — if Rome is dictated to — **Rome Humbled**. See §10 for what that means for your family's story.
 
 ---
 
-## 10. Reference
+## 10. Death, Succession, and the End of the Line
+
+Every run of Res Publica ends, eventually — and unlike a normal defeat screen, every ending is written up as history.
+
+### The Five Endings
+- **Victory** — Rome's war is won outright.
+- **Peace of Exhaustion** — the war ends in a negotiated draw, worn down rather than broken.
+- **Rome Humbled** — the war ends with terms dictated to Rome, not by her.
+- **The Republic Falls** — the four crisis tracks together reach their absolute ceiling, and the Republic itself collapses regardless of the war.
+- **The Gens Ends** — your family's direct line dies out completely, with no heir and no cadet branch left to call on.
+
+### The Epilogue
+Whichever ending arrives, a full accounting follows: the years your dynasty spanned, a scored "Legacy" total drawn from your Lifetime Dignitas (halved if a cadet branch had to save the line at some point), the highest office you ever reached, how many generations your family lasted, a snapshot of who (if anyone) survived, a list of the run's proudest and darkest moments — Triumphs celebrated, trials won and lost, a conviction that made your name — and a short, generated "historian's paragraph" summing up how Rome will remember you. A finished Victory offers one more choice: **continue in Endless Mode**, playing on past the war's end with everything else — crises, elections, courts, succession, even the risk of the line dying out — still very much live, only the concluded war itself retired for good.
+
+### The Hall of Ancestors
+Every finished run, of every kind, is filed away permanently in the **Hall of Ancestors** — reachable from the epilogue itself or from the start menu before a new game even begins. It's a trophy shelf, not a save file: nothing carries over mechanically between runs, but the record of every gens you've ever run, and how its story ended, is there to look back on.
+
+---
+
+## 11. The Rhythm of a Season
+
+Each season, you act, then press **End Season**, and the Republic answers all at once: the calendar advances (and, once a year, everyone ages — and is quietly checked against mortality); any election resolves; office terms and bills move forward; the four crises escalate or ease; income arrives; the war, if one is underway, drifts, throws up events, or schedules a battle; provinces tick; secrets held against you may be acted on by their holders; trials move a step closer to their day in the Basilica; births are checked; ambitions are checked for completion or expiry; and one story event fires, scripted or drawn from a very large pool tailored to your circumstances and the season itself.
+
+Before you can end the season, **Philon's Agenda Tablet** flags anything urgent, and a summary overlay afterward lays out everything that changed. If you step away for a long stretch, the same summary greets you on your return.
+
+---
+
+## 12. Reference
 
 ### Saving Your Game
-The game autosaves at the end of every season and whenever you leave the app, so you never need to remember to save manually. From **Settings**, you can also save on demand, export a save file to share or back up, or import one to restore a previous game.
+The game autosaves at the end of every season and whenever you leave the app. From **Settings**, you can also save on demand, export a save file, or import one.
 
 ### The Tabularium
-Every game term you'll encounter — Fides, Imperium, Patron Tier, the Crisis Tracks, and dozens more — is explained in-app. Tap any underlined term where it appears, or open the full alphabetical list from **Settings → Tabularium**.
+Every game term you'll encounter — Fides, Imperium, the Basilica, Logos/Pathos/Ethos, Calumnia, War Score, Regency, the Cadet Branch, and dozens more — is explained in-app. Tap any underlined term, or open the full list from **Settings → Tabularium**.
 
 ---
 
-*Rome was not built in a season. Neither will your dynasty be — but every season is a chance to build it a little further.*
+*Rome was not built in a season. Neither will your dynasty be — and someday, one way or another, its story will be told in full.*
