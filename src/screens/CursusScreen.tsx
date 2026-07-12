@@ -4,6 +4,7 @@ import {
   Animated, PanResponder, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { useGameStore } from '../state/gameStore';
 import { OFFICES, TRIBUNE_OFFICE } from '../data/offices';
 import type { OfficeId, OfficeAction } from '../models/office';
@@ -677,8 +678,11 @@ export default function CursusScreen() {
   // ── The Basilica (Phase 4, Chunk P4-D) — full-screen sheet, opened from
   // CuriaScreen's TrialBanner (requestNavigation) or an agenda deep-link.
   // Mirrors ProvinciaeScreen's Animated/PanResponder drag-sheet shell.
+  const navigation = useNavigation();
   const selectedTrialId = useGameStore(s => s.selectedTrialId);
   const selectTrialForBasilica = useGameStore(s => s.selectTrialForBasilica);
+  const basilicaReturnTab = useGameStore(s => s.basilicaReturnTab);
+  const setBasilicaReturnTab = useGameStore(s => s.setBasilicaReturnTab);
   const [basilicaTrialId, setBasilicaTrialId] = useState<string | null>(null);
   const basilicaAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const basilicaVisible = basilicaTrialId !== null;
@@ -698,7 +702,17 @@ export default function CursusScreen() {
       toValue: SCREEN_HEIGHT,
       duration: 240,
       useNativeDriver: false,
-    }).start(() => setBasilicaTrialId(null));
+    }).start(() => {
+      setBasilicaTrialId(null);
+      // Send the player back to whichever tab they were actually on before
+      // a deep-link (e.g. CuriaScreen's "Open the Basilica" button) switched
+      // them to Cursus — otherwise closing the sheet just stranded them
+      // here. null (they were already on Cursus) means stay put.
+      if (basilicaReturnTab) {
+        navigation.navigate(basilicaReturnTab as never);
+        setBasilicaReturnTab(null);
+      }
+    });
   }
 
   useEffect(() => {

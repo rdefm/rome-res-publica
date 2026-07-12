@@ -109,13 +109,46 @@ export const BALANCE = {
     },
   },
 
-  // ─── P2-C — Deterministic training ─────────────────────────────────────────
+  // ─── P2-C — training ────────────────────────────────────────────────────────
+  // Was fully deterministic (P2-C's own header once said so) until the Family
+  // House rework added a real success roll — see `house.studyRollBaseChance`
+  // et al. below. Fides is still spent on any attempt, success or not (the
+  // existing "cost of trying" framing) — only whether the +1 actually lands
+  // is now uncertain.
   training: {
     /** Cost of training a skill TO targetLevel = this × targetLevel Fides.
      *  E.g. 6→7 costs fidesCostPerTargetLevel × 7. Same for all three skills. */
     fidesCostPerTargetLevel: 3,
     /** Skills cannot be trained above this level. */
     skillCap: 10,
+  },
+
+  // ─── Family House rework ────────────────────────────────────────────────────
+  // FIRST-PASS/UNVERIFIED, same treatment as every other constant group here.
+  clients: {
+    /** Cap on player-initiated client acquisition (gameStore.addClient and the
+     *  canvassing/patronage recruit flows) — houseEngine.getClientSlotCap adds
+     *  the Entry Hall room's bonus on top. Generous by design so this isn't a
+     *  nerf for existing playstyles; event-granted clients (_addClient patches)
+     *  are exempt, matching this codebase's existing narrative-effects-always-
+     *  land convention. */
+    baseSlots: 8,
+  },
+  // Room/location/business BONUS VALUES live in their content files
+  // (data/houseRooms.ts, houseLocations.ts, houseBusinesses.ts) directly —
+  // same convention as AssetDefinition.tiers[].passiveBonus not being
+  // duplicated here. Only the Study's roll FORMULA (not content) lives here.
+  house: {
+    /** houseEngine.rollTraining's success chance =
+     *  studyRollBaseChance − currentSkillLevel × studyRollDifficultyPerPoint
+     *  (+ the built Study room's RoomBonus.trainingRollBonus, if any),
+     *  clamped to [studyRollFloor, studyRollCeiling]. Harder to improve an
+     *  already-high skill, exactly as requested — a skill-10 character sits
+     *  at 30% base, 50% with a Study (houseRooms.ts's trainingRollBonus: 0.20). */
+    studyRollBaseChance: 0.90,
+    studyRollDifficultyPerPoint: 0.06,
+    studyRollFloor: 0.05,
+    studyRollCeiling: 0.95,
   },
 
   // ─── P2-D — Relationship anchors & leader mortality ────────────────────────

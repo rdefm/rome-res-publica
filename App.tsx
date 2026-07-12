@@ -140,10 +140,21 @@ function GameRoot() {
   const clearNavRequest = useGameStore(s => s.clearNavRequest);
   const selectCharacter = useGameStore(s => s.selectCharacter);
   const selectTrialForBasilica = useGameStore(s => s.selectTrialForBasilica);
+  const setBasilicaReturnTab = useGameStore(s => s.setBasilicaReturnTab);
 
   useEffect(() => {
     if (!uiNavRequest) return;
     if (!navRef.isReady()) return;
+
+    // Basilica deep-link (trialId payload) — remember whichever tab the
+    // player was actually on before this switches them to Cursus, so
+    // CursusScreen's closeBasilica can send them back instead of stranding
+    // them on Cursus once the sheet is dismissed (e.g. CuriaScreen's "Open
+    // the Basilica" button). null when they were already on Cursus.
+    if (uiNavRequest.trialId) {
+      const currentTab = navRef.getCurrentRoute()?.name ?? null;
+      setBasilicaReturnTab(currentTab && currentTab !== uiNavRequest.tab ? (currentTab as any) : null);
+    }
 
     // Navigate to the target tab
     navRef.navigate(uiNavRequest.tab as never);

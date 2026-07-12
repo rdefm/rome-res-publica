@@ -35,6 +35,12 @@ const SaveSchema = z.object({
     assignedCharacterId: z.string().optional(),
     turnAcquired: z.number(),
   })).default([]),
+  // Family House rework — optional (not .default()): a missing key means a
+  // pre-rework save, and gameStore.loadGame's `savedState.house ??
+  // INITIAL_STATE.house` fallback is what actually backfills it (same
+  // pattern as `wars`/`cadetBranch`'s per-field migrations there), not this
+  // schema. z.any() loose-validation, same treatment as `secrets`/`clans`.
+  house: z.any().optional(),
   familyReputations: z.record(z.string(), z.number()).default({}),
   lifetimeDignitas: z.number(),
   legacyObjectives: z.array(z.object({
@@ -135,6 +141,7 @@ export class LocalSaveProvider implements SaveProvider {
       activeBattleSetup: _abs,
       activeBattleBridgeCtx: _abbc,
       selectedTrialId: _sti,
+      basilicaReturnTab: _brt,
       ...persistedState
     } = state as any;
     const json = JSON.stringify(persistedState);

@@ -50,6 +50,7 @@ import { computePatronTier, processFavourCallIns } from './patronEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import { BALANCE } from '../data/balance';
 import { computeTotalAssetBonuses } from './assetEngine';
+import { computeHouseBonuses } from './houseEngine';
 import { tickAllProvinces } from './provinceEngine';
 import { applyTroopAttrition, calcMilitaryImperium } from './troopEngine';
 import { processWarSeason } from './warEngine';
@@ -536,6 +537,32 @@ export function processSeason(state: GameState): {
   }
 
   events.push(`Income: +${finalFides} Fides${finalDenarii > 0 ? `, +${finalDenarii} Denarii` : ''}`);
+
+  // 7b. Family House — location bonuses NOT part of calcResourceIncome's
+  // Fides/Denarii shape: Palatine's flat Dignitas/season, and less-prestigious
+  // neighborhoods' small per-season relationship drift toward leaders sharing
+  // the house's faction alignment (houseEngine.computeHouseBonuses).
+  {
+    const houseBonuses = computeHouseBonuses(s.house);
+    if (houseBonuses.dignitas > 0) {
+      s = { ...s, lifetimeDignitas: s.lifetimeDignitas + houseBonuses.dignitas };
+    }
+    if (houseBonuses.factionRelPerSeason !== 0 && houseBonuses.factionBias) {
+      const bias = houseBonuses.factionBias;
+      const delta = houseBonuses.factionRelPerSeason;
+      s = {
+        ...s,
+        clans: s.clans.map(clan => ({
+          ...clan,
+          leaders: clan.leaders.map(l =>
+            l.bias === bias
+              ? { ...l, relationship: Math.min(100, Math.max(-100, l.relationship + delta)) }
+              : l
+          ),
+        })),
+      };
+    }
+  }
 
   // 7b. NPC consul tick (Chunk 1C) ────────────────────────────────────────────
   // Recompute antagonism level each season, then run seasonal behaviour.
@@ -1451,7 +1478,8 @@ export function processSeason(state: GameState): {
     const player = s.family.find(c => c.isPlayer);
     if (player && player.id !== s.tribuneHolder) {
       const assetBonuses = computeTotalAssetBonuses(s.ownedAssets);
-      const shield = assetBonuses.corruptionShield ?? 0;
+      const houseBonuses = computeHouseBonuses(s.house);
+      const shield = (assetBonuses.corruptionShield ?? 0) + houseBonuses.corruptionShield;
       const newScore = tickCorruption(player.corruptionScore, s.crisisLevel, shield);
       if (newScore !== player.corruptionScore) {
         s = {

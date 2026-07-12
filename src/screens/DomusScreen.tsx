@@ -16,19 +16,19 @@ import CharacterActionModal from '../components/domus/CharacterActionModal';
 import DomesticDirectivesTray from '../components/domus/DomesticDirectivesTray';
 import LegatumPanel from '../components/domus/LegatumPanel';
 import ClientelaPanel from '../components/domus/ClientelaPanel';
-import PatrimoniumPanel from '../components/domus/PatrimoniumPanel';
+import FamilyHousePanel from '../components/domus/FamilyHousePanel';
 import DebugPanel from '../components/shared/DebugPanel';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 
 const BG_DOMUS = require('../assets/images/bg-domus.png');
 
-type DomusSection = 'familias' | 'clientela' | 'patrimonium';
+type DomusSection = 'familias' | 'clientela' | 'house';
 
 const SECTIONS: { key: DomusSection; label: string }[] = [
-  { key: 'familias',    label: 'FAMILIAS' },
-  { key: 'clientela',   label: 'CLIENTELA' },
-  { key: 'patrimonium', label: 'PATRIMONIUM' },
+  { key: 'familias',  label: 'FAMILIAS' },
+  { key: 'clientela', label: 'CLIENTELA' },
+  { key: 'house',     label: 'FAMILY HOUSE' },
 ];
 
 export default function DomusScreen() {
@@ -105,7 +105,7 @@ export default function DomusScreen() {
 
                     {key === 'clientela' && <ClientelaPanel />}
 
-                    {key === 'patrimonium' && <PatrimoniumPanel />}
+                    {key === 'house' && <FamilyHousePanel />}
                   </View>
                 )}
               </View>

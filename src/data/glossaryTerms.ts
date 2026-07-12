@@ -184,6 +184,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Forum',
   },
   {
+    id: 'family-house',
+    term: 'Family House',
+    definition: 'Your household\'s residence — one house at a time, relocatable to any of Rome\'s neighborhoods. Each location has its own room slots, storefront slots, and passive bonus (e.g. Palatine grants Dignitas and favor with Optimates leaders; humbler neighborhoods favor Populares and offer more storefronts). Relocating sells the old house back for a fraction of what was invested.',
+    relatedTab: 'Domus',
+  },
+  {
     id: 'governor-policy',
     term: 'Governor Policy',
     definition: 'Three axes — Taxation, Security, Development — set once per season by a province\'s governor. Each axis controls gold extraction, Imperium generation, or infrastructure growth; changes take effect at the next season end.',
@@ -349,6 +355,18 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: 'Security (Governor Policy)',
     definition: 'A governor policy axis controlling military presence. Higher settings generate Imperium and reduce revolt risk but increase Senate scrutiny of the forces maintained.',
     relatedTab: 'Provinciae',
+  },
+  {
+    id: 'storefront',
+    term: 'Storefront',
+    definition: 'A rentable shop slot on any Family House location except the Palatine. Rent it to one of a fixed catalog of businesses (Tavern, Bakery, Fuller\'s Shop, Moneylender) for a recurring passive bonus; vacate it any time.',
+    relatedTab: 'Domus',
+  },
+  {
+    id: 'study',
+    term: 'Study (Family House Room)',
+    definition: 'A Family House room that raises the odds a skill-training attempt succeeds. Training is a roll, not a guarantee — the chance drops as the skill being trained gets higher, and the Study offsets some of that.',
+    relatedTab: 'Domus',
   },
   {
     id: 'succession',

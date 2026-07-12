@@ -6,6 +6,7 @@ import type { WarState, WarScale } from '../models/war';
 import { parseEffect } from '../models/bill';
 import { generateClientName } from '../data/clientNames';
 import { computeTotalAssetBonuses } from './assetEngine';
+import { computeHouseBonuses } from './houseEngine';
 import { calcAssetGoldOutput, calcAssetFidesOutput } from './provinceEngine';
 import { buildClient, computeTotalClientBonuses } from './clientEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
@@ -175,6 +176,11 @@ export function calcResourceIncome(state: GameState): {
   const assetBonuses = computeTotalAssetBonuses(state.ownedAssets);
   const assetFides = assetBonuses.fides ?? 0;
 
+  // Step 6a: Family House bonuses (Library's recurring Fides, rented businesses'
+  // Fides/gold — dignitas/season and faction relationship drift are NOT part of
+  // this Fides/Denarii income calc; turnSequencer applies those directly).
+  const houseBonuses = computeHouseBonuses(state.house);
+
   // Step 6b: Province asset Fides bonus (former Gratia/Dignitas asset bonuses, now Fides)
   const provinceFidesBonus = state.provinces.reduce(
     (sum, p) => sum + calcAssetFidesOutput(p), 0
@@ -214,6 +220,7 @@ export function calcResourceIncome(state: GameState): {
       + clanFidesIncome
       + clientFides
       + assetFides
+      + houseBonuses.fides
       + provinceFidesBonus
       + endowmentFides
       + romeStatFides
@@ -221,12 +228,13 @@ export function calcResourceIncome(state: GameState): {
     ) * regencyMult
   ));
 
-  // Denarii income — assets + province gold output + client gold + treasury mod + crisis penalty
+  // Denarii income — assets + house + province gold output + client gold + treasury mod + crisis penalty
   const provinceDenariiBonus = state.provinces.reduce(
     (sum, p) => sum + calcAssetGoldOutput(p), 0
   );
   const denariiIncome =
     (assetBonuses.gold ?? 0)
+    + houseBonuses.gold
     + provinceDenariiBonus
     + (clientBonuses.gold ?? 0)
     + romeMods.denariDelta

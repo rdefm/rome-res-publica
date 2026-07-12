@@ -2,18 +2,19 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import { ASSET_DEFINITIONS } from '../../data/assetDefinitions';
 import type { AssetDefinition } from '../../models/asset';
-import PatrimoniumModal from './PatrimoniumModal';
+import HoldingsModal from './HoldingsModal';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import ParchmentCard, { PARCHMENT_TEXT } from '../shared/ParchmentCard';
 
 // ─── Asset image map ──────────────────────────────────────────────────────────
+// Family House rework — `library` (formerly here) is gone; ASSET_DEFINITIONS
+// now only ever holds these 4 relocated-to-Latium assets.
 
 const ASSET_IMAGES: Record<string, ReturnType<typeof require> | null> = {
   vineyard: (() => {
@@ -21,9 +22,6 @@ const ASSET_IMAGES: Record<string, ReturnType<typeof require> | null> = {
   })(),
   gladiator_school: (() => {
     try { return require('../../assets/images/asset-gladiator-school.png'); } catch { return null; }
-  })(),
-  library: (() => {
-    try { return require('../../assets/images/asset-library.png'); } catch { return null; }
   })(),
   baths: (() => {
     try { return require('../../assets/images/asset-baths.png'); } catch { return null; }
@@ -112,8 +110,13 @@ function AssetCard({ def, onPress }: { def: AssetDefinition; onPress: () => void
 }
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
+// Family House rework — moved here from Domus's old Patrimonium panel.
+// Unchanged logic: same ASSET_DEFINITIONS, same ownedAssets/purchaseAsset/
+// upgradeAsset store wiring. Embedded as a section inside LatiumSheet.tsx —
+// no ScrollView/container of its own so it can sit inline in that screen's
+// existing ScrollView (avoids a scroll-view-inside-scroll-view).
 
-export default function PatrimoniumPanel() {
+export default function HoldingsPanel() {
   const { ownedAssets } = useGameStore();
   const [selectedDef, setSelectedDef] = useState<AssetDefinition | null>(null);
 
@@ -126,38 +129,30 @@ export default function PatrimoniumPanel() {
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.panelHeader}>PATRIMONIUM — ESTATE & ASSETS</Text>
+      {ownedDefs.length > 0 && (
+        <>
+          <Text style={styles.sectionLabel}>YOUR HOLDINGS</Text>
+          {ownedDefs.map(def => (
+            <AssetCard key={def.id} def={def} onPress={() => setSelectedDef(def)} />
+          ))}
+        </>
+      )}
 
-        {ownedDefs.length > 0 && (
-          <>
-            <Text style={styles.sectionLabel}>YOUR HOLDINGS</Text>
-            {ownedDefs.map(def => (
-              <AssetCard key={def.id} def={def} onPress={() => setSelectedDef(def)} />
-            ))}
-          </>
-        )}
+      {availableDefs.length > 0 && (
+        <>
+          <Text style={styles.sectionLabel}>AVAILABLE TO ACQUIRE</Text>
+          {availableDefs.map(def => (
+            <AssetCard key={def.id} def={def} onPress={() => setSelectedDef(def)} />
+          ))}
+        </>
+      )}
 
-        {availableDefs.length > 0 && (
-          <>
-            <Text style={styles.sectionLabel}>AVAILABLE TO ACQUIRE</Text>
-            {availableDefs.map(def => (
-              <AssetCard key={def.id} def={def} onPress={() => setSelectedDef(def)} />
-            ))}
-          </>
-        )}
-
-        {ownedDefs.length === 0 && availableDefs.length === 0 && (
-          <Text style={styles.emptyText}>No assets available.</Text>
-        )}
-      </ScrollView>
+      {ownedDefs.length === 0 && availableDefs.length === 0 && (
+        <Text style={styles.emptyText}>No holdings available.</Text>
+      )}
 
       {selectedDef && (
-        <PatrimoniumModal def={selectedDef} onClose={() => setSelectedDef(null)} />
+        <HoldingsModal def={selectedDef} onClose={() => setSelectedDef(null)} />
       )}
     </View>
   );
@@ -167,22 +162,7 @@ export default function PatrimoniumPanel() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: SPACING.md,
-    paddingBottom: SPACING.xl,
-  },
-  panelHeader: {
-    color: COLORS.goldDim,
-    fontFamily: FONTS.ui,
-    fontSize: 10,
-    letterSpacing: 8,
-    textTransform: 'uppercase',
-    marginBottom: SPACING.lg,
+    // No flex:1 — embedded inline inside LatiumSheet's own ScrollView.
   },
   sectionLabel: {
     color: COLORS.goldDim,

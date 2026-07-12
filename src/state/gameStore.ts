@@ -6,6 +6,7 @@ import type { OfficeId, ElectionRival } from '../models/office';
 import type { Client } from '../models/client';
 import type { EventInstance } from '../models/event';
 import type { OwnedAsset } from '../models/asset';
+import type { OwnedHouse, RoomType, BusinessType } from '../models/house';
 import type { ActiveAmbition } from '../models/ambition';
 import type { LegacyObjective } from '../models/legacyObjective';
 import type { PatronTier } from '../models/patronLadder';
@@ -18,7 +19,7 @@ import type { CrisisState, CrisisTrackId } from '../models/crisis';
 import type { OfficeActionTargetContext } from '../engine/officeActionEngine';
 // ── Phase 1 (P1-A) ────────────────────────────────────────────────────────────
 import type { StartId } from '../models/gameStart';
-import type { AgendaTarget } from '../models/agenda';
+import type { AgendaTarget, TabName } from '../models/agenda';
 import type { SeasonLedger } from '../models/ledger';
 import { calcLevyCost } from '../engine/troopEngine';
 import {
@@ -87,6 +88,7 @@ import {
   type AmbassadorActionId,
 } from '../engine/provinceEngine';
 import { getProvinceAssetDefinition } from '../data/provinceAssets';
+import { getHouseLocationDefinition } from '../data/houseLocations';
 import { getProvincialClientDef } from '../data/provincialClients';
 import { BALANCE } from '../data/balance';
 import { calcTrainingCost } from '../engine/resourceEngine';
@@ -281,8 +283,15 @@ export interface GameState {
   // Clientela Network
   clients: Client[];
 
-  // Assets (Feature 1)
+  // Assets (Feature 1) — now only ever holds the 4 assets relocated to
+  // Provinciae → Latium (vineyard/gladiator_school/urban_insulae/baths).
+  // The player's own residence lives in `house` below (Family House rework).
   ownedAssets: OwnedAsset[];
+
+  // Family House (replaces Patrimonium-as-a-personal-asset-catalog). Never
+  // null in practice — a starter house is granted at game start (see
+  // INITIAL_STATE below) so the player is never "homeless."
+  house: OwnedHouse;
 
   // Ambitions (Feature 3)
   ambitions: ActiveAmbition[];
@@ -302,6 +311,15 @@ export interface GameState {
    *  requestNavigation; CursusScreen watches it to open the sheet, then
    *  clears it. Excluded from persistence (see saveLoad.ts's transient list). */
   selectedTrialId: string | null;
+  /** The tab the player was actually on right before a `requestNavigation`
+   *  with a `trialId` payload switched them to Cursus to open the Basilica
+   *  (App.tsx's uiNavRequest effect sets this — null if they were already
+   *  on Cursus). CursusScreen's closeBasilica reads it to return the player
+   *  to where they came from instead of stranding them on Cursus — e.g.
+   *  CuriaScreen's "Open the Basilica" button used to leave the player on
+   *  the Cursus tab even after dismissing the sheet. Transient UI field,
+   *  excluded from persistence. */
+  basilicaReturnTab: TabName | null;
 
   // Faction Reputation (Feature 2)
   familyReputations: Record<string, number>;
@@ -569,9 +587,15 @@ export interface GameActions {
   addClient: (type: ClientType, name: string, flavourTitle: string, flavourText: string) => void;
   removeClient: (clientId: string) => void;
 
-  // Assets (Feature 1)
+  // Assets (Feature 1) — now Provinciae → Latium's holdings
   purchaseAsset: (definitionId: string) => void;
   upgradeAsset: (definitionId: string) => void;
+
+  // Family House
+  buyHouse: (locationId: string) => void;
+  buildRoom: (type: RoomType) => void;
+  rentShop: (slotIndex: number, businessType: BusinessType) => void;
+  vacateShop: (slotIndex: number) => void;
 
   // Cursus — family member campaigns
   declareFamilyCampaign: (characterId: string, officeId: OfficeId) => void;
@@ -600,6 +624,7 @@ export interface GameActions {
   bribeTrialPraetor: (trialId: string) => void;
   intimidateTrialWitness: (trialId: string) => void;
   selectTrialForBasilica: (trialId: string | null) => void;
+  setBasilicaReturnTab: (tab: TabName | null) => void;
   // Trial day — Phase 4, Chunk P4-E
   answerTrialBeat: (trialId: string, beatId: string, responseId: string) => void;
   fastResolveTrialSession: (trialId: string) => void;
@@ -866,6 +891,7 @@ export const INITIAL_STATE: GameState = {
   family: STARTING_FAMILY,
   selectedCharacterId: 'pc-1',
   selectedTrialId: null,
+  basilicaReturnTab: null,
   trainedThisSeason: [],
   pendingSuccession: null,
   regency: null,
@@ -913,6 +939,15 @@ export const INITIAL_STATE: GameState = {
   clients: [],
 
   ownedAssets: [],
+  // Family House — a modest starter house in the Subura, free, nothing built
+  // yet (the player is never "homeless"). shopSlots read from the location
+  // def itself rather than hardcoded, so it can't drift out of sync.
+  house: {
+    locationId: 'subura',
+    builtRooms: [],
+    shops: Array(getHouseLocationDefinition('subura')?.shopSlots ?? 0).fill(null),
+    turnAcquired: 1,
+  },
   familyReputations: INITIAL_FAMILY_REPUTATIONS,
   ambitions: [],
   legacyObjectives: initLegacyObjectives(),
@@ -1364,6 +1399,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   // BALANCE.training.skillCap.
   trainCharacter: (characterId, skill) => {
     const s = get();
+    const { rollTraining } = require('../engine/houseEngine');
     const char = s.family.find((c) => c.id === characterId);
     if (!char) return;
     if (s.trainedThisSeason.includes(characterId)) return;
@@ -1372,16 +1408,31 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const targetLevel = currentLevel + 1;
     const cost = calcTrainingCost(currentLevel);
     if (s.fides < cost) return;
+
+    // Family House rework — training now rolls (was 100%-guaranteed):
+    // harder as currentLevel rises, easier with a built Study. Fides is
+    // still spent on the attempt either way — only the +1 is uncertain.
+    const hasStudy = s.house.builtRooms.includes('study');
+    const result = rollTraining(currentLevel, hasStudy, Math.random());
+
     const label = turnLabel(s);
     set({
       fides: s.fides - cost,
-      family: s.family.map((c) =>
-        c.id === characterId
-          ? { ...c, skills: { ...c.skills, [skill]: targetLevel } }
-          : c
-      ),
+      family: result.success
+        ? s.family.map((c) =>
+            c.id === characterId
+              ? { ...c, skills: { ...c.skills, [skill]: targetLevel } }
+              : c
+          )
+        : s.family,
       trainedThisSeason: [...s.trainedThisSeason, characterId],
-      log: [...s.log, mkLog(label, `${char.name} trains ${skill} to ${targetLevel} (−${cost} Fides).`, 'good')],
+      log: [...s.log, mkLog(
+        label,
+        result.success
+          ? `${char.name} trains ${skill} to ${targetLevel} (−${cost} Fides).`
+          : `${char.name}'s training in ${skill} makes no headway this season (−${cost} Fides spent regardless).`,
+        result.success ? 'good' : 'bad'
+      )],
       ...bumpActions(s),
       ...bumpSpend(s, { fides: cost }),
     });
@@ -1887,7 +1938,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   payOffSecret: (secretId) => {
     const s = get();
     const secret = s.secrets.find(sec => sec.id === secretId);
-    if (!secret || secret.holder === 'player' || secret.subject.kind !== 'family' || secret.status !== 'held' || !secret.discovered) return;
+    // 'extorting' is included alongside 'held' — a Secret held against the
+    // family that the player is already complying with (resolveSecretDemand's
+    // 'extort' comply branch) must still be counterable, the same way the
+    // player's own extortion of a leader has a symmetric "Stop Extorting"
+    // verb. Without this, once a demand is complied with there was no way
+    // to ever end the drain — Pay Off/Discredit silently no-op'd forever.
+    if (!secret || secret.holder === 'player' || secret.subject.kind !== 'family'
+      || (secret.status !== 'held' && secret.status !== 'extorting') || !secret.discovered) return;
     const cost = payOffCost(secret.potency);
     if (s.denarii < cost) return;
 
@@ -1904,7 +1962,9 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   discreditSecret: (secretId, agentId) => {
     const s = get();
     const secret = s.secrets.find(sec => sec.id === secretId);
-    if (!secret || secret.holder === 'player' || secret.subject.kind !== 'family' || secret.status !== 'held' || !secret.discovered) return;
+    // See payOffSecret's comment — 'extorting' must remain counterable too.
+    if (!secret || secret.holder === 'player' || secret.subject.kind !== 'family'
+      || (secret.status !== 'held' && secret.status !== 'extorting') || !secret.discovered) return;
     if (s.fides < BALANCE.secrets.discreditCostFides) return;
     const agent = s.family.find(c => c.id === agentId);
     if (!agent) return;
@@ -2049,8 +2109,15 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   // ─── Clientela ──────────────────────────────────────────────────────────────
 
-  addClient: (type, name, flavourTitle, flavourText) => set((s) => {
+  addClient: (type, name, flavourTitle, flavourText) => {
+    const s = get();
     const { buildClient } = require('../engine/clientEngine');
+    const { getClientSlotCap } = require('../engine/houseEngine');
+    // Family House rework — the Entry Hall raises this cap. Player-initiated
+    // acquisition only; event-driven client grants (_addClient patches,
+    // resolveEvent) are exempt, same as every other narrative-effect-always-
+    // lands convention in this codebase.
+    if (s.clients.length >= getClientSlotCap(s.house)) return;
     const newClient = buildClient(
       `client-${Date.now()}`,
       name,
@@ -2059,8 +2126,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       flavourText,
       s.turnNumber,
     );
-    return { clients: [...s.clients, newClient] };
-  }),
+    set({ clients: [...s.clients, newClient] });
+  },
 
   removeClient: (clientId) => set((s) => ({
     clients: s.clients.filter(c => c.id !== clientId),
@@ -2124,6 +2191,111 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       log: [...s.log, mkLog(label, `${def.name} upgraded to ${tierLabel}.`, 'good')],
       ...bumpActions(s),
       ...bumpSpend(s, { denarii: cost }),
+    });
+  },
+
+  // ─── Family House ───────────────────────────────────────────────────────────
+
+  buyHouse: (locationId) => {
+    const s = get();
+    const { getHouseLocationDefinition } = require('../data/houseLocations');
+    const { sellBackValue } = require('../engine/houseEngine');
+
+    if (s.house.locationId === locationId) return; // already here
+    const location = getHouseLocationDefinition(locationId);
+    if (!location) return;
+
+    const refund = sellBackValue(s.house);
+    const netCost = location.cost - refund;
+    if (netCost > 0 && s.denarii < netCost) return;
+
+    const label = turnLabel(s);
+    const newHouse = {
+      locationId,
+      builtRooms: [] as RoomType[],
+      shops: Array(location.shopSlots).fill(null) as (BusinessType | null)[],
+      turnAcquired: s.turnNumber,
+    };
+    set({
+      denarii: s.denarii - netCost,
+      house: newHouse,
+      log: [...s.log, mkLog(
+        label,
+        `The family relocates to ${location.name}. The old house sells for ${refund} Denarii; the move costs ${Math.max(0, netCost)} net.`,
+        'neutral'
+      )],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: Math.max(0, netCost) }),
+    });
+  },
+
+  buildRoom: (type) => {
+    const s = get();
+    const { getHouseLocationDefinition } = require('../data/houseLocations');
+    const { getHouseRoomDefinition } = require('../data/houseRooms');
+    const { hasFreeRoomSlot } = require('../engine/houseEngine');
+
+    if (s.house.builtRooms.includes(type)) return;
+    if (!hasFreeRoomSlot(s.house)) return;
+    const room = getHouseRoomDefinition(type);
+    if (!room) return;
+    if (s.denarii < room.cost) return;
+
+    const label = turnLabel(s);
+    // Library's rhetoricGrant is a ONE-TIME permanent stat grant, applied the
+    // moment the room is built — not folded into the recurring per-season
+    // bonus total (houseEngine.computeHouseBonuses deliberately excludes it).
+    const rhetoricGrant = room.bonus.rhetoricGrant ?? 0;
+    const family = rhetoricGrant > 0
+      ? s.family.map(c => c.isPlayer
+          ? { ...c, skills: { ...c.skills, rhetoric: c.skills.rhetoric + rhetoricGrant } }
+          : c)
+      : s.family;
+
+    set({
+      denarii: s.denarii - room.cost,
+      house: { ...s.house, builtRooms: [...s.house.builtRooms, type] },
+      family,
+      log: [...s.log, mkLog(label, `${room.name} built. (${room.flavorText})`, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: room.cost }),
+    });
+  },
+
+  rentShop: (slotIndex, businessType) => {
+    const s = get();
+    const { getHouseBusinessDefinition } = require('../data/houseBusinesses');
+
+    if (slotIndex < 0 || slotIndex >= s.house.shops.length) return;
+    if (s.house.shops[slotIndex] !== null) return;
+    const business = getHouseBusinessDefinition(businessType);
+    if (!business) return;
+    if (s.denarii < business.cost) return;
+
+    const label = turnLabel(s);
+    const shops = [...s.house.shops];
+    shops[slotIndex] = businessType;
+    set({
+      denarii: s.denarii - business.cost,
+      house: { ...s.house, shops },
+      log: [...s.log, mkLog(label, `${business.name} opens its doors. (${business.flavorText})`, 'good')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: business.cost }),
+    });
+  },
+
+  vacateShop: (slotIndex) => {
+    const s = get();
+    if (slotIndex < 0 || slotIndex >= s.house.shops.length) return;
+    if (s.house.shops[slotIndex] === null) return;
+
+    const label = turnLabel(s);
+    const shops = [...s.house.shops];
+    shops[slotIndex] = null;
+    set({
+      house: { ...s.house, shops },
+      log: [...s.log, mkLog(label, 'The shopfront is vacated.', 'neutral')],
+      ...bumpActions(s),
     });
   },
 
@@ -2403,6 +2575,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   },
 
   selectTrialForBasilica: (trialId) => set({ selectedTrialId: trialId }),
+  setBasilicaReturnTab: (tab) => set({ basilicaReturnTab: tab }),
 
   // ─── Trial day: the beat engine (Phase 4, Chunk P4-E) ──────────────────────
 
@@ -2920,12 +3093,31 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       session: t.session ?? null,
       status: (t.status === 'in_session' && !t.session) ? 'preparing' : t.status,
     })),
+    // Family House rework — `library` was a personal asset (data/assetDefinitions.ts)
+    // before this rework and is now a house room instead; a save written
+    // before this feature existed has no `house` key at all (backfilled from
+    // INITIAL_STATE.house by the top-level spread above, same mechanic every
+    // other per-field migration in this function relies on) and may still
+    // carry a `library` OwnedAsset — migrated onto the (possibly fresh
+    // starter) house as a built room rather than silently dropped, so no
+    // invested progress is lost. Every other relocated asset (vineyard/
+    // gladiator_school/urban_insulae/baths) needs no migration at all — they
+    // keep their exact OwnedAsset shape, just bought from Latium now.
+    ownedAssets: (savedState.ownedAssets ?? []).filter(a => a.definitionId !== 'library'),
+    house: (() => {
+      const baseHouse = savedState.house ?? INITIAL_STATE.house;
+      const hadLibraryAsset = (savedState.ownedAssets ?? []).some(a => a.definitionId === 'library');
+      return (hadLibraryAsset && !baseHouse.builtRooms.includes('library'))
+        ? { ...baseHouse, builtRooms: [...baseHouse.builtRooms, 'library' as const] }
+        : baseHouse;
+    })(),
     // Always reset transient UI state — these must not be loaded from disk
     gameStarted:   true,
     debugMode:     false,
     agendaVisible: false,
     uiNavRequest:  null,
     selectedTrialId: null,
+    basilicaReturnTab: null,
     activeEvent:   null,
   }),
 
@@ -3068,6 +3260,9 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     if (s.clients.some(c => (c as any).provincialClientDefId === clientId)) return;
 
     if (s.fides < 20) return;
+
+    const { getClientSlotCap } = require('../engine/houseEngine');
+    if (s.clients.length >= getClientSlotCap(s.house)) return;
 
     const label = turnLabel(s);
     const newClient = {

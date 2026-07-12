@@ -9,6 +9,7 @@ import { calcRomeStatModifiers } from '../../engine/resourceEngine';
 import { getCrisisStatusEffects } from '../../engine/crisisEngine';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import type { CrisisTrackId } from '../../models/crisis';
+import HoldingsPanel from './HoldingsPanel';
 
 // ─── Causal indicator helpers ─────────────────────────────────────────────────
 
@@ -169,6 +170,20 @@ export default function LatiumSheet({ onClose }: { onClose: () => void }) {
               />
             ))}
           </View>
+        </View>
+
+        {/* ── Holdings (Family House rework) ──────────────────────────────── */}
+        {/* Vineyard, Gladiator School, Insulae, and Baths — relocated here
+            from Domus's old Patrimonium panel. Unchanged mechanically: same
+            OwnedAsset/tier shape, same income-calc wiring — just bought from
+            the heartland now, since these are Roman-soil holdings, not
+            fixtures of the family's own residence. */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>HOLDINGS</Text>
+          <Text style={styles.sectionSub}>
+            Land and enterprises across the Latin heartland — the family's holdings outside its own walls.
+          </Text>
+          <HoldingsPanel />
         </View>
 
       </ScrollView>

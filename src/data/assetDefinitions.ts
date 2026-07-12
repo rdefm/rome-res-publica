@@ -1,5 +1,13 @@
 import type { AssetDefinition } from '../models/asset';
 
+// Family House rework — these 4 assets now buy/upgrade from Provinciae →
+// Latium (components/provinciae/LatiumSheet.tsx) instead of Domus's old
+// Patrimonium panel, but are otherwise UNCHANGED: same OwnedAsset/tier shape,
+// same engine/assetEngine.ts functions, same income-calc wiring in
+// resourceEngine.ts. `library` (the 5th former Patrimonium asset) was
+// removed entirely — it's reborn as a Family House room (data/houseRooms.ts);
+// state/gameStore.ts's loadGame migrates any pre-rework save's `library`
+// OwnedAsset into that room so no investment is lost.
 export const ASSET_DEFINITIONS: AssetDefinition[] = [
   {
     id: 'vineyard',
@@ -28,21 +36,6 @@ export const ASSET_DEFINITIONS: AssetDefinition[] = [
       { tier: 3, label: 'Grand Ludus',       goldCost: 0,   upgradeCost: 250,
         passiveBonus: { clientSlots: 3, martialBonus: 6, fides: 4 },
         unlockedActions: ['intimidate_witness'] },
-    ],
-  },
-  {
-    id: 'library',
-    name: 'Library',
-    category: 'cultural',
-    flavourText: 'Scrolls of philosophy, rhetoric, and law. Knowledge is its own form of power.',
-    tiers: [
-      { tier: 1, label: 'Private Library',   goldCost: 60,  upgradeCost: 0,
-        passiveBonus: { rhetoricalBonus: 3, lifetimeDignitas: 1 } },
-      { tier: 2, label: 'Scholarly Library', goldCost: 0,   upgradeCost: 100,
-        passiveBonus: { rhetoricalBonus: 6, lifetimeDignitas: 2, fides: 1 } },
-      { tier: 3, label: 'Renowned Library',  goldCost: 0,   upgradeCost: 180,
-        passiveBonus: { rhetoricalBonus: 10, lifetimeDignitas: 4, fides: 3 },
-        unlockedActions: ['draft_legislation'] },
     ],
   },
   {
