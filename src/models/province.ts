@@ -6,7 +6,12 @@ export type ProvinceMap = 'italy' | 'mediterranean' | 'east';
 export type ProvinceStatus =
   | 'incorporated'       // Full Roman province — Governor system applies
   | 'unincorporated'     // Foreign/frontier — Ambassador system applies
-  | 'heartland';         // Latium + permanent Rome core — never governable
+  | 'heartland'          // Latium + permanent Rome core — never governable
+  | 'foreign';           // Held by a rival power or independent — no Governor/Ambassador system until it flips to Rome (see ProvinceDefinition.conquestFlag)
+
+// Who currently holds a province. 'rome' covers incorporated/unincorporated/heartland;
+// 'carthage' and 'independent' are only meaningful for status: 'foreign'.
+export type ProvinceOwner = 'rome' | 'carthage' | 'independent';
 
 export type RelationshipTier =
   | 'hostile'       // 0–15
@@ -64,7 +69,10 @@ export interface ProvinceAssetOwned {
 export interface ProvinceState {
   id: string;
   map: ProvinceMap;
-  status: ProvinceStatus; // mirrors ProvinceDefinition.status
+  status: ProvinceStatus; // mirrors ProvinceDefinition.status, but is the mutable copy — this is
+                           // what engines should branch on, since it is the field that actually
+                           // changes at runtime (e.g. a 'foreign' province flipping to Rome)
+  owner: ProvinceOwner;    // mirrors ProvinceDefinition.owner at start; flips with status on conquest
 
   // Relationship with Rome (0–100). Heartland provinces always 100.
   relationshipScore: number;
@@ -245,6 +253,15 @@ export interface ProvinceDefinition {
   latinName: string;
   map: ProvinceMap;
   status: ProvinceStatus;
+  owner: ProvinceOwner;
+  // Set only for status: 'foreign' independent states that are diplomatically bound to a
+  // stronger power without being that power's own territory (e.g. Numidia is a Carthaginian
+  // client, not Carthaginian soil). Purely descriptive — no engine reads it yet.
+  clientOf?: ProvinceOwner;
+  // Set only on status: 'foreign' provinces with a scripted path into Roman hands. When
+  // state.flags[conquestFlag] becomes truthy, provinceEngine.applyProvinceFlips flips this
+  // province's ProvinceState to owner: 'rome', status: 'unincorporated' at the next season tick.
+  conquestFlag?: string;
   profile: string;
   flavorDescription: string;
 

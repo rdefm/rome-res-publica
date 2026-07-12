@@ -104,6 +104,7 @@ export default function ProvinceSheet({
   if (!def) return null;
 
   const isHeartland = def.status === 'heartland';
+  const isForeign = province.status === 'foreign';
   const hasPlayerGovernor = !!province.playerGovernor;
   const hasPlayerAmbassador = !!province.playerAmbassador;
   const relationshipTier = getRelationshipTier(province.relationshipScore);
@@ -151,9 +152,13 @@ export default function ProvinceSheet({
         <View style={styles.headerLeft}>
           <Text style={styles.provinceName}>{def.name.toUpperCase()}</Text>
           <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: getStatusColour(province, def.status) }]} />
+            <View style={[styles.statusDot, { backgroundColor: getStatusColour(province, province.status) }]} />
             <Text style={styles.statusLabel}>
-              {isHeartland ? 'Heartland — Rome Itself' : def.status === 'incorporated' ? 'Incorporated Province' : 'Unincorporated Territory'}
+              {isHeartland
+                ? 'Heartland — Rome Itself'
+                : isForeign
+                ? getForeignLabel(def, province)
+                : province.status === 'incorporated' ? 'Incorporated Province' : 'Unincorporated Territory'}
             </Text>
           </View>
         </View>
@@ -163,7 +168,7 @@ export default function ProvinceSheet({
       </View>
 
       {/* Tab strip */}
-      {!isHeartland && (
+      {!isHeartland && !isForeign && (
         <View style={styles.tabStrip}>
           {tabs.map(tab => (
             <TouchableOpacity
@@ -191,6 +196,8 @@ export default function ProvinceSheet({
       >
         {isHeartland ? (
           <HeartlandView def={def} />
+        ) : isForeign ? (
+          <ForeignTerritoryView def={def} province={province} />
         ) : (
           <>
             {activeTab === 'overview' && (
@@ -496,6 +503,30 @@ function HeartlandView({ def }: { def: ReturnType<typeof getProvinceDefinition> 
   );
 }
 
+// Foreign territory (Carthaginian-held or independent) — no Governor/Ambassador system,
+// so no tabs. Read-only flavor + Rome's diplomatic standing, mirroring HeartlandView.
+function ForeignTerritoryView({
+  def,
+  province,
+}: {
+  def: NonNullable<ReturnType<typeof getProvinceDefinition>>;
+  province: ProvinceState;
+}) {
+  const relLabel = getRelationshipLabel(province.relationshipScore);
+  const relColour = getRelColour(province.relationshipScore);
+  return (
+    <View style={styles.heartlandView}>
+      <Text style={styles.heartlandIcon}>{province.owner === 'carthage' ? '⚓' : '🛡'}</Text>
+      <Text style={styles.heartlandTitle}>{def.latinName}</Text>
+      <Text style={styles.heartlandDesc}>{def.flavorDescription}</Text>
+      <View style={styles.divider} />
+      <Text style={[milStyles.statValue, { color: relColour }]}>
+        Rome's standing: {relLabel} ({Math.round(province.relationshipScore)})
+      </Text>
+    </View>
+  );
+}
+
 function OverviewTab({
   province,
   def,
@@ -596,7 +627,7 @@ function OverviewTab({
       <View style={styles.divider} />
 
       {/* Governor info — incorporated provinces */}
-      {def.status === 'incorporated' && !hasPlayerGovernor && (
+      {province.status === 'incorporated' && !hasPlayerGovernor && (
         <View style={styles.governorInfoBox}>
           <Text style={styles.governorInfoText}>
             🏛 Governorship is assigned by lot after a consular or praetorian term.
@@ -606,7 +637,7 @@ function OverviewTab({
       )}
 
       {/* Ambassador posting button — unincorporated only */}
-      {def.status === 'unincorporated' && !hasPlayerAmbassador && (
+      {province.status === 'unincorporated' && !hasPlayerAmbassador && (
         <TouchableOpacity style={styles.actionButton} onPress={onSeekPosting} activeOpacity={0.75}>
           <Text style={styles.actionButtonText}>✦ Seek Ambassador Posting</Text>
         </TouchableOpacity>
@@ -707,10 +738,20 @@ function getRelColour(score: number): string {
 
 function getStatusColour(province: ProvinceState, status: string): string {
   if (status === 'heartland') return COLORS.gold;
+  if (status === 'foreign') return province.owner === 'carthage' ? '#8a4a7a' : '#5a8a8a';
   if (province.revoltActive) return COLORS.crimson;
   if (province.playerGovernor) return '#c47a4a';
   if (province.playerAmbassador) return '#5a8aaa';
   return '#5a6b3a';
+}
+
+function getForeignLabel(
+  def: NonNullable<ReturnType<typeof getProvinceDefinition>>,
+  province: ProvinceState,
+): string {
+  if (province.owner === 'carthage') return 'Carthaginian Territory';
+  if (def.clientOf) return `Independent — Client of ${def.clientOf === 'carthage' ? 'Carthage' : def.clientOf}`;
+  return 'Independent Power';
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────

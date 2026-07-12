@@ -37,7 +37,7 @@ export function calcProvinceGoldOutput(
   governorMartial: number = 0
 ): number {
   const def = getProvinceDefinition(province.id);
-  if (!def || def.status === 'heartland') return 0;
+  if (!def || province.status === 'heartland' || province.status === 'foreign') return 0;
 
   const baseGold = def.baseGoldOutput;
   const taxMult = TAXATION_GOLD_MULT[policy.taxation];
@@ -152,6 +152,12 @@ export function tickProvince(
     return { updatedProvince: p, goldDelta: 0, imperiumDelta: 0, corruptionDelta: 0, events };
   }
 
+  // Foreign territory (Carthaginian/independent, not yet Roman) — no Governor/Ambassador
+  // system applies, so there is nothing to tick. See applyProvinceFlips for the conquest path.
+  if (p.status === 'foreign') {
+    return { updatedProvince: p, goldDelta: 0, imperiumDelta: 0, corruptionDelta: 0, events };
+  }
+
   let goldDelta = 0;
   let imperiumDelta = 0;
   let corruptionDelta = 0;
@@ -217,7 +223,7 @@ export function tickProvince(
   }
 
   // ── NPC governor ticking ─────────────────────────────────────────────────
-  else if (p.npcRoleHolder && def.status !== 'heartland') {
+  else if (p.npcRoleHolder && p.status !== 'heartland') {
     const npc = p.npcRoleHolder;
     const policy = npc.policy;
 
@@ -263,7 +269,7 @@ export function tickProvince(
   }
 
   // ── Revolt check (incorporated provinces only) ───────────────────────────
-  if (def.status === 'incorporated' && !p.revoltActive) {
+  if (p.status === 'incorporated' && !p.revoltActive) {
     const policy = p.playerGovernor?.policy ?? p.npcRoleHolder?.policy ?? {
       taxation: 'standard' as TaxationNotch,
       security: 'light_patrol' as SecurityNotch,
@@ -280,13 +286,13 @@ export function tickProvince(
   const tier = getRelationshipTier(p.relationshipScore);
 
   // Unincorporated: incorporation available at 86+
-  if (def.status === 'unincorporated' && p.relationshipScore >= 86 && !p.incorporationBillAvailable) {
+  if (p.status === 'unincorporated' && p.relationshipScore >= 86 && !p.incorporationBillAvailable) {
     p = { ...p, incorporationBillAvailable: true };
     events.push(`${def.name} is now ready for incorporation into Rome. A civitas bill can be tabled in the Curia.`);
   }
 
   // Unincorporated: war declaration available at 0–15
-  if (def.status === 'unincorporated' && tier === 'hostile' && !p.warDeclarationAvailable) {
+  if (p.status === 'unincorporated' && tier === 'hostile' && !p.warDeclarationAvailable) {
     p = { ...p, warDeclarationAvailable: true };
     events.push(`${def.name} has become hostile. A War Declaration can now be tabled in the Curia.`);
   }
@@ -303,6 +309,29 @@ export function tickProvince(
 }
 
 /**
+ * Conquest/defection flips — a 'foreign' province joins Rome when the flag named by
+ * its ProvinceDefinition.conquestFlag becomes truthy (set by an event's successEffect,
+ * e.g. 'setFlag:messanaJoinsRome:true'). Flips owner to 'rome' and status to
+ * 'unincorporated' — a freshly-won territory Rome has not yet incorporated, so it falls
+ * straight into the existing unincorporated/Ambassador pathway from the next tick on.
+ * Idempotent: re-checks province.owner so a province already flipped is left alone.
+ */
+export function applyProvinceFlips(
+  provinces: ProvinceState[],
+  flags: GameState['flags']
+): { provinces: ProvinceState[]; events: string[] } {
+  const events: string[] = [];
+  const updated = provinces.map(province => {
+    if (province.owner === 'rome') return province;
+    const def = getProvinceDefinition(province.id);
+    if (!def?.conquestFlag || !flags[def.conquestFlag]) return province;
+    events.push(`${def.name} has joined Rome. It is now unincorporated territory, open to an Ambassador posting.`);
+    return { ...province, owner: 'rome' as const, status: 'unincorporated' as const };
+  });
+  return { provinces: updated, events };
+}
+
+/**
  * Tick all provinces. Returns updated array + aggregate resource deltas.
  */
 export function tickAllProvinces(
@@ -314,11 +343,12 @@ export function tickAllProvinces(
   totalImperiumDelta: number;
   events: string[];
 } {
-  const events: string[] = [];
+  const { provinces: flippedProvinces, events: flipEvents } = applyProvinceFlips(provinces, state.flags);
+  const events: string[] = [...flipEvents];
   let totalGoldDelta = 0;
   let totalImperiumDelta = 0;
 
-  const updatedProvinces = provinces.map(province => {
+  const updatedProvinces = flippedProvinces.map(province => {
     // Find governor martial skill
     const governor = province.playerGovernor;
     let governorMartial = 0;

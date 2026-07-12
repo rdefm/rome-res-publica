@@ -653,7 +653,7 @@ export function processSeason(state: GameState): {
     for (const msg of provinceEvents) events.push(msg);
 
     if (totalGoldDelta > 0 || totalImperiumDelta > 0) {
-      events.push(`Provincial income: +${totalGoldDelta} Gold, +${totalImperiumDelta} Imperium from Italy.`);
+      events.push(`Provincial income: +${totalGoldDelta} Gold, +${totalImperiumDelta} Imperium.`);
     }
 
     // ── 9c-iii: Lex de Viis — province infrastructure boost ─────────────────
@@ -677,8 +677,8 @@ export function processSeason(state: GameState): {
       const lexDeViisActive = (s.activeLaws ?? []).some(l => l.billId === 'lex-de-viis');
 
       if (lexDeViisActive) {
-        const nonHeartlandProvinces = s.provinces.filter(p => p.status !== 'heartland');
-        const provCount = nonHeartlandProvinces.length;
+        const romanRoadProvinces = s.provinces.filter(p => p.status !== 'heartland' && p.status !== 'foreign');
+        const provCount = romanRoadProvinces.length;
 
         if (provCount > 0) {
           const treasuryCost = provCount * 3;
@@ -686,7 +686,7 @@ export function processSeason(state: GameState): {
           s = {
             ...s,
             provinces: s.provinces.map(p =>
-              p.status === 'heartland'
+              (p.status === 'heartland' || p.status === 'foreign')
                 ? p
                 : { ...p, infrastructureRating: Math.min(100, p.infrastructureRating + 1) },
             ),
