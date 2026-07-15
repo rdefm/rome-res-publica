@@ -3,6 +3,7 @@ import type { Client, ClientType } from '../models/client';
 import type { EventInstance } from '../models/event';
 import type { CrisisTrackId } from '../models/crisis';
 import type { WarState, WarScale } from '../models/war';
+import type { Bill } from '../models/bill';
 import { parseEffect } from '../models/bill';
 import { generateClientName } from '../data/clientNames';
 import { computeTotalAssetBonuses } from './assetEngine';
@@ -321,6 +322,91 @@ export function applyEffectString(
         continue;
       }
 
+      // ── tableRefuseMamertineBill ─────────────────────────────────────────
+      // Fired by warEvents.ts's evt-messana-appeal 'refuse' choice. Tables a
+      // low-support Senate motion against answering Messana's plea — hard,
+      // not impossible, to pass (support: -20 is a first-pass/unverified
+      // balance call, same convention as every other bill's numbers). If it
+      // passes, Rome stays out of the war; if it fails or expires (the
+      // likelier outcome), the Senate overrules the player and answers the
+      // call anyway (see its own failEffect). Dedup follows
+      // buildWarTriumphBill's id-prefix pattern (checks both queued and
+      // already-resolved bills) since this can only ever fire once per
+      // playthrough anyway (messanaResolved is set the same moment, gating
+      // out any repeat firing of the event itself).
+      if (key === 'tableRefuseMamertineBill') {
+        const bills = patch.bills ?? state.bills;
+        const alreadyQueued = bills.some(b => b.id.startsWith('refuse-mamertines'))
+          || (state.passedBills ?? []).some(b => b.id.startsWith('refuse-mamertines'));
+        if (!alreadyQueued) {
+          const refuseBill: Bill = {
+            id: `refuse-mamertines-${state.year}`,
+            name: 'Do Not Answer the Mamertine Call',
+            desc: 'A motion urging the Senate to leave Messana to its fate rather than risk war with Carthage over a strait none of Rome\'s neighbours will fight for.',
+            type: 'military',
+            support: -20,
+            turnsLeft: 3,
+            passEffect: 'fides+5',
+            failEffect: 'setFlag:messanaJoinsRome:true|startWar:carthage:major:0|fides-5',
+            playerSubmitted: true,
+            repealable: false,
+          };
+          patch.bills = [...bills, refuseBill];
+        }
+        continue;
+      }
+
+      // ── incorporateProvince:<id> ─────────────────────────────────────────
+      // Fired by a passed incorporation bill (see provinceEngine.
+      // buildIncorporationBill). Flips status: 'unincorporated' →
+      // 'incorporated' and clears incorporationBillAvailable so the bill
+      // can't be re-tabled. Also recalls any player Ambassador posted there
+      // — the Ambassador system stops applying once incorporated (see
+      // ProvinceStatus's own type comments in models/province.ts); a
+      // Governor is later assigned by lot through the existing,
+      // unrelated governor-assignment system.
+      if (key === 'incorporateProvince') {
+        const provinceId = parts[1];
+        const provinces = patch.provinces ?? state.provinces;
+        patch.provinces = provinces.map(p =>
+          p.id === provinceId
+            ? { ...p, status: 'incorporated' as const, incorporationBillAvailable: false, playerAmbassador: null }
+            : p
+        );
+        continue;
+      }
+
+      // ── assignAmbassador:<provinceId>:<characterId> ──────────────────────
+      // Fired by a passed ambassador-posting bill (see provinceEngine.
+      // buildAmbassadorPostingBill). Posts the named character as Ambassador
+      // on the matching province — works on both unincorporated Roman
+      // provinces and, per the foreign-relations plan's chunk WD-D, foreign
+      // ones too (a deliberate reversal of the Mediterranean plan's "no
+      // Ambassador system for foreign provinces" invariant, for Ambassadors
+      // only). turnsServed starts at 0; provinceEngine.tickPlayerAmbassador
+      // (called from both of tickProvince's relevant branches) increments it
+      // each season and ends the posting at the 2-year (8-season) term limit.
+      if (key === 'assignAmbassador') {
+        const provinceId = parts[1];
+        const characterId = parts[2];
+        const provinces = patch.provinces ?? state.provinces;
+        patch.provinces = provinces.map(p =>
+          p.id === provinceId
+            ? {
+                ...p,
+                playerAmbassador: {
+                  characterId,
+                  personalRapport: 0,
+                  turnsServed: 0,
+                  actionsUsedThisTurn: [],
+                  intelRevealed: 0,
+                },
+              }
+            : p
+        );
+        continue;
+      }
+
       if (key === 'clearFlag') {
         // clearFlag:flagKey
         const flagKey = parts[1];
@@ -407,8 +493,8 @@ export function applyEffectString(
       }
 
       // Phase 3, P3-B — startWar:enemyId:scale:openingWarScoreDelta
-      // Scripted ignition events (evt-war-mamertines) trigger war state
-      // through this token rather than a direct store-action call — keeps
+      // Scripted ignition events (evt-messana-appeal, warEvents.ts) trigger
+      // war state through this token rather than a direct store-action call — keeps
       // event content routed through the same generic effect-string
       // vocabulary every other event uses, matching this file's existing
       // colon-token pattern (setFlag/addClient/blackmail/leaderRel above).
@@ -439,7 +525,8 @@ export function applyEffectString(
             pendingSetPiece: null,
             treaty: null,
             // Ignition always fires within the first few years (see
-            // evt-war-mamertines' condition gate) — always 'opening' under
+            // evt-messana-appeal's force-injection guard in turnSequencer.ts)
+            // — always 'opening' under
             // phaseForYear's own logic for so little elapsed time, so this
             // avoids importing warEngine.ts here just to recompute it.
             phase: 'opening',

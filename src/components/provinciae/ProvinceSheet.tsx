@@ -28,8 +28,10 @@ import ProvincialClientCard from './ProvincialClientCard';
 import MilitaryTab from './MilitaryTab';
 import MusterPickerModal from './MusterPickerModal';
 import type { AmbassadorActionId } from '../../engine/provinceEngine';
+import { getIncorporationBillName, getDeclareWarBillName } from '../../engine/provinceEngine';
 import type { Character } from '../../models/character';
 import type { TroopUnit } from '../../models/troop';
+import type { Bill } from '../../models/bill';
 import type { CampaignAllocation } from '../../engine/campaignEngine';
 import { calcTotalImperium } from '../../engine/troopEngine';
 import { useGameStore } from '../../state/gameStore';
@@ -52,6 +54,7 @@ interface ProvinceSheetProps {
   commanderElection: CommanderElectionState | null;
   officerVolunteer: OfficerVolunteerState | null;
   campaignVotes: Record<string, 'for' | 'against' | 'neutral'>;
+  bills: Bill[];
   onClose: () => void;
   onPolicyChange: (provinceId: string, policy: GovernorPolicy) => void;
   onAmbassadorAction: (provinceId: string, actionId: AmbassadorActionId) => void;
@@ -59,6 +62,8 @@ interface ProvinceSheetProps {
   onUpgradeAsset: (provinceId: string, assetId: string) => void;
   onRecruitClient: (provinceId: string, clientId: string) => void;
   onSeekPosting: (provinceId: string) => void;
+  onProposeIncorporation: (provinceId: string) => void;
+  onProposeDeclareWar: (provinceId: string) => void;
   onStartCampaign: (provinceId: string, type: CampaignState['type']) => void;
   onCommitCampaignSeason: (provinceId: string, allocation: CampaignAllocation) => void;
   onResolveCampaignEvent: (provinceId: string, eventId: string, optionId: string) => void;
@@ -82,6 +87,7 @@ export default function ProvinceSheet({
   commanderElection,
   officerVolunteer,
   campaignVotes,
+  bills,
   onClose,
   onPolicyChange,
   onAmbassadorAction,
@@ -89,6 +95,8 @@ export default function ProvinceSheet({
   onUpgradeAsset,
   onRecruitClient,
   onSeekPosting,
+  onProposeIncorporation,
+  onProposeDeclareWar,
   onStartCampaign,
   onCommitCampaignSeason,
   onResolveCampaignEvent,
@@ -104,9 +112,18 @@ export default function ProvinceSheet({
   if (!def) return null;
 
   const isHeartland = def.status === 'heartland';
+  const isForeign = province.status === 'foreign';
   const hasPlayerGovernor = !!province.playerGovernor;
   const hasPlayerAmbassador = !!province.playerAmbassador;
   const relationshipTier = getRelationshipTier(province.relationshipScore);
+  const incorporationBillPending = bills.some(b => b.name === getIncorporationBillName(def));
+  const declareWarEligible = isForeign && !def.clientOf && relationshipTier === 'hostile';
+  const declareWarBillPending = bills.some(b => b.name === getDeclareWarBillName(def));
+  // Fuzzy-matched rather than exact name (unlike the incorporation/declare-war bills) since
+  // the ambassador bill's name also embeds the requesting character, which ProvinceSheet
+  // doesn't otherwise resolve — this just checks "is any posting bill already pending for
+  // this province," regardless of which family member it's for.
+  const ambassadorBillPending = bills.some(b => b.name.startsWith('Ambassador Posting:') && b.name.endsWith(` to ${def.name}`));
 
   // Military section: find the relevant player character for this province.
   // Prefer the active governor; fall back to any family member with troops here.
@@ -151,9 +168,13 @@ export default function ProvinceSheet({
         <View style={styles.headerLeft}>
           <Text style={styles.provinceName}>{def.name.toUpperCase()}</Text>
           <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: getStatusColour(province, def.status) }]} />
+            <View style={[styles.statusDot, { backgroundColor: getStatusColour(province, province.status) }]} />
             <Text style={styles.statusLabel}>
-              {isHeartland ? 'Heartland — Rome Itself' : def.status === 'incorporated' ? 'Incorporated Province' : 'Unincorporated Territory'}
+              {isHeartland
+                ? 'Heartland — Rome Itself'
+                : isForeign
+                ? getForeignLabel(def, province)
+                : def.status === 'incorporated' ? 'Incorporated Province' : 'Unincorporated Territory'}
             </Text>
           </View>
         </View>
@@ -163,7 +184,7 @@ export default function ProvinceSheet({
       </View>
 
       {/* Tab strip */}
-      {!isHeartland && (
+      {!isHeartland && !isForeign && (
         <View style={styles.tabStrip}>
           {tabs.map(tab => (
             <TouchableOpacity
@@ -191,6 +212,16 @@ export default function ProvinceSheet({
       >
         {isHeartland ? (
           <HeartlandView def={def} />
+        ) : isForeign ? (
+          <ForeignTerritoryView
+            def={def}
+            province={province}
+            declareWarEligible={declareWarEligible}
+            declareWarBillPending={declareWarBillPending}
+            ambassadorBillPending={ambassadorBillPending}
+            onProposeDeclareWar={() => onProposeDeclareWar(province.id)}
+            onSeekPosting={() => onSeekPosting(province.id)}
+          />
         ) : (
           <>
             {activeTab === 'overview' && (
@@ -199,7 +230,11 @@ export default function ProvinceSheet({
                 def={def}
                 hasPlayerGovernor={hasPlayerGovernor}
                 hasPlayerAmbassador={hasPlayerAmbassador}
+                playerFides={playerFides}
+                incorporationBillPending={incorporationBillPending}
+                ambassadorBillPending={ambassadorBillPending}
                 onSeekPosting={() => onSeekPosting(province.id)}
+                onProposeIncorporation={() => onProposeIncorporation(province.id)}
               />
             )}
             {activeTab === 'policy' && (
@@ -496,18 +531,86 @@ function HeartlandView({ def }: { def: ReturnType<typeof getProvinceDefinition> 
   );
 }
 
+function ForeignTerritoryView({
+  def,
+  province,
+  declareWarEligible,
+  declareWarBillPending,
+  ambassadorBillPending,
+  onProposeDeclareWar,
+  onSeekPosting,
+}: {
+  def: NonNullable<ReturnType<typeof getProvinceDefinition>>;
+  province: ProvinceState;
+  declareWarEligible: boolean;
+  declareWarBillPending: boolean;
+  ambassadorBillPending: boolean;
+  onProposeDeclareWar: () => void;
+  onSeekPosting: () => void;
+}) {
+  const relLabel = getRelationshipLabel(province.relationshipScore);
+  const relColour = getRelColour(province.relationshipScore);
+  return (
+    <View style={styles.heartlandView}>
+      <Text style={styles.heartlandIcon}>{province.owner === 'carthage' ? '⚓' : '🛡'}</Text>
+      <Text style={styles.heartlandTitle}>{def.latinName}</Text>
+      <Text style={styles.heartlandDesc}>{def.flavorDescription}</Text>
+      <View style={styles.divider} />
+      <Text style={[milStyles.statValue, { color: relColour }]}>
+        Rome's standing: {relLabel} ({Math.round(province.relationshipScore)})
+      </Text>
+      {!province.playerAmbassador && (
+        <TouchableOpacity
+          style={[styles.actionButton, ambassadorBillPending && styles.incorporationBannerDisabled]}
+          onPress={onSeekPosting}
+          disabled={ambassadorBillPending}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.actionButtonText}>
+            {ambassadorBillPending
+              ? '✦ Ambassador posting bill already tabled — awaiting the Senate\'s vote'
+              : '✦ Request Ambassador Posting'}
+          </Text>
+        </TouchableOpacity>
+      )}
+      {declareWarEligible && (
+        <TouchableOpacity
+          style={[styles.incorporationBanner, declareWarBillPending && styles.incorporationBannerDisabled]}
+          onPress={onProposeDeclareWar}
+          disabled={declareWarBillPending}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.incorporationText}>
+            {declareWarBillPending
+              ? '⚔ War bill already tabled — awaiting the Senate\'s vote'
+              : `⚔ Declare War on ${def.name} — relations have soured past restraint`}
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
 function OverviewTab({
   province,
   def,
   hasPlayerGovernor,
   hasPlayerAmbassador,
+  playerFides,
+  incorporationBillPending,
+  ambassadorBillPending,
   onSeekPosting,
+  onProposeIncorporation,
 }: {
   province: ProvinceState;
   def: NonNullable<ReturnType<typeof getProvinceDefinition>>;
   hasPlayerGovernor: boolean;
   hasPlayerAmbassador: boolean;
+  playerFides: number;
+  incorporationBillPending: boolean;
+  ambassadorBillPending: boolean;
   onSeekPosting: () => void;
+  onProposeIncorporation: () => void;
 }) {
   const relLabel = getRelationshipLabel(province.relationshipScore);
   const relColour = getRelColour(province.relationshipScore);
@@ -596,7 +699,7 @@ function OverviewTab({
       <View style={styles.divider} />
 
       {/* Governor info — incorporated provinces */}
-      {def.status === 'incorporated' && !hasPlayerGovernor && (
+      {province.status === 'incorporated' && !hasPlayerGovernor && (
         <View style={styles.governorInfoBox}>
           <Text style={styles.governorInfoText}>
             🏛 Governorship is assigned by lot after a consular or praetorian term.
@@ -606,9 +709,18 @@ function OverviewTab({
       )}
 
       {/* Ambassador posting button — unincorporated only */}
-      {def.status === 'unincorporated' && !hasPlayerAmbassador && (
-        <TouchableOpacity style={styles.actionButton} onPress={onSeekPosting} activeOpacity={0.75}>
-          <Text style={styles.actionButtonText}>✦ Seek Ambassador Posting</Text>
+      {province.status === 'unincorporated' && !hasPlayerAmbassador && (
+        <TouchableOpacity
+          style={[styles.actionButton, ambassadorBillPending && styles.incorporationBannerDisabled]}
+          onPress={onSeekPosting}
+          disabled={ambassadorBillPending}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.actionButtonText}>
+            {ambassadorBillPending
+              ? '✦ Ambassador posting bill already tabled — awaiting the Senate\'s vote'
+              : '✦ Seek Ambassador Posting'}
+          </Text>
         </TouchableOpacity>
       )}
 
@@ -621,11 +733,21 @@ function OverviewTab({
 
       {/* Incorporation available */}
       {province.incorporationBillAvailable && (
-        <View style={styles.incorporationBanner}>
+        <TouchableOpacity
+          style={[
+            styles.incorporationBanner,
+            (incorporationBillPending || playerFides < 10) && styles.incorporationBannerDisabled,
+          ]}
+          onPress={onProposeIncorporation}
+          disabled={incorporationBillPending || playerFides < 10}
+          activeOpacity={0.75}
+        >
           <Text style={styles.incorporationText}>
-            🏛 Incorporation bill available — table in the Curia to absorb this territory permanently
+            {incorporationBillPending
+              ? '🏛 Incorporation bill tabled — awaiting the Senate\'s vote'
+              : '🏛 Table an Incorporation Bill (10 Fides) — absorb this territory permanently'}
           </Text>
-        </View>
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -707,10 +829,20 @@ function getRelColour(score: number): string {
 
 function getStatusColour(province: ProvinceState, status: string): string {
   if (status === 'heartland') return COLORS.gold;
+  if (status === 'foreign') return province.owner === 'carthage' ? '#4a2a5a' : '#3a5a5a';
   if (province.revoltActive) return COLORS.crimson;
   if (province.playerGovernor) return '#c47a4a';
   if (province.playerAmbassador) return '#5a8aaa';
   return '#5a6b3a';
+}
+
+function getForeignLabel(
+  def: NonNullable<ReturnType<typeof getProvinceDefinition>>,
+  province: ProvinceState,
+): string {
+  if (province.owner === 'carthage') return 'Carthaginian Territory';
+  if (def.clientOf) return `Independent — Client of ${def.clientOf === 'carthage' ? 'Carthage' : def.clientOf}`;
+  return 'Independent Power';
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -1014,6 +1146,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.laurel,
     marginBottom: SPACING.sm,
+  } as ViewStyle,
+
+  incorporationBannerDisabled: {
+    opacity: 0.5,
   } as ViewStyle,
 
   incorporationText: {

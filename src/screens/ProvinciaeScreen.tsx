@@ -38,10 +38,14 @@ export default function ProvinciaeScreen() {
   const clients                  = useGameStore(s => s.clients);
   const campaignVotes            = useGameStore(s => s.campaignVotes);
   const selectedCharacterId      = useGameStore(s => s.selectedCharacterId);
+  const bills                    = useGameStore(s => s.bills);
 
   // ── Store actions — only actions that exist in GameActions ───────────────────
   const updateProvincePolicy     = useGameStore(s => s.updateProvincePolicy);
   const resolveAmbassadorAction  = useGameStore(s => s.resolveAmbassadorAction);
+  const proposeIncorporationBill = useGameStore(s => s.proposeIncorporationBill);
+  const proposeDeclareWarBill    = useGameStore(s => s.proposeDeclareWarBill);
+  const seekAmbassadorPosting    = useGameStore(s => s.seekAmbassadorPosting);
   const purchaseProvinceAsset    = useGameStore(s => s.purchaseProvinceAsset);
   const upgradeProvinceAsset     = useGameStore(s => s.upgradeProvinceAsset);
   const recruitProvincialClient  = useGameStore(s => s.recruitProvincialClient);
@@ -180,6 +184,8 @@ export default function ProvinciaeScreen() {
           { colour: '#c47a4a',      label: 'Player Governor' },
           { colour: '#5a6b3a',      label: 'NPC Governor' },
           { colour: COLORS.crimson, label: 'Revolt' },
+          { colour: '#4a2a5a',      label: 'Carthaginian' },
+          { colour: '#3a5a5a',      label: 'Independent' },
         ].map(item => (
           <View key={item.label} style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: item.colour }]} />
@@ -225,13 +231,16 @@ export default function ProvinciaeScreen() {
               commanderElection={null}
               officerVolunteer={selectedProvince?.officerVolunteer ?? null}
               campaignVotes={campaignVotes}
+              bills={bills}
               onClose={closeSheet}
               onPolicyChange={(provinceId, policy) => updateProvincePolicy(provinceId, policy)}
               onAmbassadorAction={(provinceId, actionId) => resolveAmbassadorAction(provinceId, actionId)}
               onPurchaseAsset={(provinceId, assetId) => purchaseProvinceAsset(provinceId, assetId)}
               onUpgradeAsset={(provinceId, assetId) => upgradeProvinceAsset(provinceId, assetId)}
               onRecruitClient={(provinceId, clientId) => recruitProvincialClient(provinceId, clientId)}
-              onSeekPosting={() => {}}
+              onSeekPosting={(provinceId) => seekAmbassadorPosting(provinceId)}
+              onProposeIncorporation={(provinceId) => proposeIncorporationBill(provinceId)}
+              onProposeDeclareWar={(provinceId) => proposeDeclareWarBill(provinceId)}
               onStartCampaign={(provinceId, type) => startCampaign(provinceId, type)}
               onCommitCampaignSeason={() => {}}
               onResolveCampaignEvent={() => {}}

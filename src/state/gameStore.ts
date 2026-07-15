@@ -13,6 +13,7 @@ import type { PatronTier } from '../models/patronLadder';
 import type { TrialState, TrialApproach, ChargeId, ChargeSource } from '../models/trial';
 import type { Secret, PendingSecretDemand, LatentSecret } from '../models/secret';
 import type { ProvinceState, GovernorPolicy, CampaignState, OfficerVolunteerState } from '../models/province';
+import { getRelationshipTier } from '../models/province';
 import type { TroopUnit } from '../models/troop';
 import type { SenateResponseState } from '../engine/senateResponseEngine';
 import type { CrisisState, CrisisTrackId } from '../models/crisis';
@@ -39,7 +40,7 @@ import type { CanvassingEvent, CanvassingEventResult } from '../data/canvassingE
 import { STARTING_FAMILY } from '../data/startingFamily';
 import { STARTING_CLANS } from '../data/startingClans';
 import { STARTING_BILLS } from '../data/billTemplates';
-import { buildInitialProvinceStates } from '../data/provinceDefinitions';
+import { buildInitialProvinceStates, getProvinceDefinition } from '../data/provinceDefinitions';
 import { processSeason } from '../engine/turnSequencer';
 import { incrementLegacy, initLegacyObjectives } from '../engine/legacyEngine';
 import { LEGACY_DEFINITIONS } from '../data/legacyDefinitions';
@@ -86,6 +87,10 @@ import { CLAUDIUS_ARC_SECRET_ID, buildClaudiusStartingSecret } from '../data/cla
 import {
   resolveAmbassadorAction as engineResolveAmbassadorAction,
   type AmbassadorActionId,
+  buildIncorporationBill,
+  buildDeclareWarBill,
+  getForeignWarTargetEnemyId,
+  buildAmbassadorPostingBill,
 } from '../engine/provinceEngine';
 import { getProvinceAssetDefinition } from '../data/provinceAssets';
 import { getHouseLocationDefinition } from '../data/houseLocations';
@@ -652,6 +657,9 @@ export interface GameActions {
   // ── Provinciae ────────────────────────────────────────────────────────
   updateProvincePolicy: (provinceId: string, policy: GovernorPolicy) => void;
   resolveAmbassadorAction: (provinceId: string, actionId: AmbassadorActionId) => void;
+  proposeIncorporationBill: (provinceId: string) => void;
+  proposeDeclareWarBill: (provinceId: string) => void;
+  seekAmbassadorPosting: (provinceId: string) => void;
   purchaseProvinceAsset: (provinceId: string, assetId: string) => void;
   upgradeProvinceAsset: (provinceId: string, assetId: string) => void;
   recruitProvincialClient: (provinceId: string, clientId: string) => void;
@@ -3135,6 +3143,45 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       ),
       ...bumpActions(s),
     }));
+  },
+
+  proposeIncorporationBill: (provinceId) => {
+    const s = get();
+    const province = s.provinces.find(p => p.id === provinceId);
+    if (!province || !province.incorporationBillAvailable) return;
+    const def = getProvinceDefinition(provinceId);
+    if (!def) return;
+    const bill = buildIncorporationBill(province, def);
+    if (s.bills.some(b => b.name === bill.name)) return;
+    get().submitBill(bill);
+  },
+
+  proposeDeclareWarBill: (provinceId) => {
+    const s = get();
+    const province = s.provinces.find(p => p.id === provinceId);
+    if (!province || province.status !== 'foreign') return;
+    const def = getProvinceDefinition(provinceId);
+    if (!def || def.clientOf) return;
+    if (getRelationshipTier(province.relationshipScore) !== 'hostile') return;
+    const enemyId = getForeignWarTargetEnemyId(def);
+    if (s.wars.some(w => w.active && w.enemyId === enemyId)) return;
+    const bill = buildDeclareWarBill(province, def);
+    if (s.bills.some(b => b.name === bill.name)) return;
+    get().submitBill(bill);
+  },
+
+  seekAmbassadorPosting: (provinceId) => {
+    const s = get();
+    const province = s.provinces.find(p => p.id === provinceId);
+    if (!province || province.playerAmbassador) return;
+    if (province.status !== 'unincorporated' && province.status !== 'foreign') return;
+    const def = getProvinceDefinition(provinceId);
+    if (!def) return;
+    const character = s.family.find(c => c.id === s.selectedCharacterId) ?? s.family.find(c => c.isPlayer);
+    if (!character) return;
+    const bill = buildAmbassadorPostingBill(province, def, character.id, character.name);
+    if (s.bills.some(b => b.name === bill.name)) return;
+    get().submitBill(bill);
   },
 
   resolveAmbassadorAction: (provinceId, actionId) => {

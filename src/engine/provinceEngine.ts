@@ -1,15 +1,18 @@
 import type { GameState } from '../state/gameStore';
 import type {
   ProvinceState,
+  ProvinceDefinition,
   GovernorPolicy,
   TaxationNotch,
   SecurityNotch,
   DevelopmentNotch,
+  AmbassadorState,
 } from '../models/province';
 import {
   TAXATION_REL_PER_YEAR,
   TAXATION_CORRUPTION_PER_TURN,
   TAXATION_GOLD_MULT,
+  TAXATION_TREASURY_PER_TURN,
   SECURITY_IMPERIUM_BASE,
   SECURITY_IMPERIUM_MULT,
   SECURITY_REVOLT_DELTA,
@@ -23,8 +26,12 @@ import {
   getRelationshipOutputMultiplier,
   getRelationshipTier,
 } from '../models/province';
+import type { Bill } from '../models/bill';
+import type { WarState } from '../models/war';
 import { getProvinceDefinition } from '../data/provinceDefinitions';
 import { getProvinceAssetDefinition } from '../data/provinceAssets';
+import { BALANCE } from '../data/balance';
+import { resetAmbassadorCooldowns, calcRapportDecay } from './ambassadorEngine';
 
 // ─── Province Engine ──────────────────────────────────────────────────────────
 
@@ -37,7 +44,7 @@ export function calcProvinceGoldOutput(
   governorMartial: number = 0
 ): number {
   const def = getProvinceDefinition(province.id);
-  if (!def || def.status === 'heartland') return 0;
+  if (!def || province.status === 'heartland' || province.status === 'foreign') return 0;
 
   const baseGold = def.baseGoldOutput;
   const taxMult = TAXATION_GOLD_MULT[policy.taxation];
@@ -119,6 +126,50 @@ export function calcRevoltChance(
 }
 
 /**
+ * Per-season Ambassador ticking — rapport decay, cooldown reset, and the
+ * 2-year (8-season) term limit, mirroring GovernorState's 1-year (4-season)
+ * warn-at-3/end-at-4 pattern doubled. Previously entirely unwired: nothing
+ * anywhere incremented AmbassadorState.turnsServed, called
+ * ambassadorEngine.resetAmbassadorCooldowns, or called calcRapportDecay —
+ * DiplomatDesk.tsx's "Season X of 4" display always read "Season 1" as a
+ * result. Foreign-relations plan, chunk WD-D.
+ *
+ * Shared between tickProvince's foreign short-circuit and its main Roman-
+ * unincorporated branch below, since WD-D reverses the "no Ambassador
+ * system for foreign provinces" invariant specifically for Ambassadors, and
+ * both cases need identical handling. provinceName is passed rather than
+ * re-resolved since the foreign branch's caller doesn't always have `def`
+ * on hand at that point.
+ *
+ * Does NOT handle expulsion (ambassadorEngine.checkExpulsion/
+ * resolveExpulsion) — that needs a fides/lifetimeDignitas delta channel
+ * tickProvince's return shape doesn't have (unlike treasuryDelta, which
+ * fits because it's an unconditional flat number, not a conditional one-off
+ * event). Left as a follow-up.
+ */
+function tickPlayerAmbassador(
+  ambassador: AmbassadorState,
+  provinceName: string,
+): { ambassador: AmbassadorState | null; events: string[] } {
+  const events: string[] = [];
+  let updated = resetAmbassadorCooldowns(ambassador);
+  updated = {
+    ...updated,
+    personalRapport: Math.max(0, updated.personalRapport - calcRapportDecay(updated)),
+    turnsServed: updated.turnsServed + 1,
+  };
+
+  if (updated.turnsServed >= 7) {
+    events.push(`✦ ${provinceName}: your ambassador's term ends this season. A new posting bill may be tabled after.`);
+  }
+  if (updated.turnsServed >= 8) {
+    events.push(`Ambassador term concluded in ${provinceName}.`);
+    return { ambassador: null, events };
+  }
+  return { ambassador: updated, events };
+}
+
+/**
  * Tick one province forward one season.
  * Returns updated province state + resource deltas to apply to the game state.
  *
@@ -137,6 +188,7 @@ export function tickProvince(
   goldDelta: number;
   imperiumDelta: number;
   corruptionDelta: number;
+  treasuryDelta: number;
   events: string[];
 } {
   const events: string[] = [];
@@ -144,12 +196,34 @@ export function tickProvince(
 
   // Heartland (Latium) — no ticking needed
   if (p.id === 'latium') {
-    return { updatedProvince: p, goldDelta: 0, imperiumDelta: 0, corruptionDelta: 0, events };
+    return { updatedProvince: p, goldDelta: 0, imperiumDelta: 0, corruptionDelta: 0, treasuryDelta: 0, events };
+  }
+
+  // Foreign territory (Carthaginian/independent, not yet Roman) — no Governor
+  // system or income applies (see applyProvinceFlips for the conquest path), but relations
+  // still drift: a small mean-zero random walk each season, first-pass/tunable, so a foreign
+  // power's relationshipScore isn't frozen at its starting value forever. See
+  // checkForeignWarDeclarations for what reading a 'hostile' drift outcome can lead to.
+  // A playerAmbassador still ticks here too (foreign-relations plan, WD-D reverses the
+  // "no Ambassador for foreign provinces" invariant specifically for Ambassadors) — see
+  // tickPlayerAmbassador. Nothing else (income, revolt, incorporation) ever applies.
+  if (p.status === 'foreign') {
+    const drift = Math.round((Math.random() - 0.5) * 4); // −2..+2
+    p = { ...p, relationshipScore: Math.max(0, Math.min(100, p.relationshipScore + drift)) };
+
+    if (p.playerAmbassador) {
+      const foreignDef = getProvinceDefinition(p.id);
+      const { ambassador, events: ambEvents } = tickPlayerAmbassador(p.playerAmbassador, foreignDef?.name ?? p.id);
+      p = { ...p, playerAmbassador: ambassador };
+      events.push(...ambEvents);
+    }
+
+    return { updatedProvince: p, goldDelta: 0, imperiumDelta: 0, corruptionDelta: 0, treasuryDelta: 0, events };
   }
 
   const def = getProvinceDefinition(p.id);
   if (!def) {
-    return { updatedProvince: p, goldDelta: 0, imperiumDelta: 0, corruptionDelta: 0, events };
+    return { updatedProvince: p, goldDelta: 0, imperiumDelta: 0, corruptionDelta: 0, treasuryDelta: 0, events };
   }
 
   let goldDelta = 0;
@@ -216,8 +290,15 @@ export function tickProvince(
     }
   }
 
+  // ── Player ambassador ticking (foreign-relations plan, WD-D) ─────────────
+  else if (p.playerAmbassador) {
+    const { ambassador, events: ambEvents } = tickPlayerAmbassador(p.playerAmbassador, def.name);
+    p = { ...p, playerAmbassador: ambassador };
+    events.push(...ambEvents);
+  }
+
   // ── NPC governor ticking ─────────────────────────────────────────────────
-  else if (p.npcRoleHolder && def.status !== 'heartland') {
+  else if (p.npcRoleHolder && p.status !== 'heartland') {
     const npc = p.npcRoleHolder;
     const policy = npc.policy;
 
@@ -263,7 +344,7 @@ export function tickProvince(
   }
 
   // ── Revolt check (incorporated provinces only) ───────────────────────────
-  if (def.status === 'incorporated' && !p.revoltActive) {
+  if (p.status === 'incorporated' && !p.revoltActive) {
     const policy = p.playerGovernor?.policy ?? p.npcRoleHolder?.policy ?? {
       taxation: 'standard' as TaxationNotch,
       security: 'light_patrol' as SecurityNotch,
@@ -280,13 +361,13 @@ export function tickProvince(
   const tier = getRelationshipTier(p.relationshipScore);
 
   // Unincorporated: incorporation available at 86+
-  if (def.status === 'unincorporated' && p.relationshipScore >= 86 && !p.incorporationBillAvailable) {
+  if (p.status === 'unincorporated' && p.relationshipScore >= 86 && !p.incorporationBillAvailable) {
     p = { ...p, incorporationBillAvailable: true };
     events.push(`${def.name} is now ready for incorporation into Rome. A civitas bill can be tabled in the Curia.`);
   }
 
   // Unincorporated: war declaration available at 0–15
-  if (def.status === 'unincorporated' && tier === 'hostile' && !p.warDeclarationAvailable) {
+  if (p.status === 'unincorporated' && tier === 'hostile' && !p.warDeclarationAvailable) {
     p = { ...p, warDeclarationAvailable: true };
     events.push(`${def.name} has become hostile. A War Declaration can now be tabled in the Curia.`);
   }
@@ -299,7 +380,118 @@ export function tickProvince(
     };
   }
 
-  return { updatedProvince: p, goldDelta, imperiumDelta, corruptionDelta, events };
+  // ── Public treasury contribution (incorporated provinces only) ───────────
+  // Senate treasury (rome.treasury) income, separate from the player's personal
+  // Gold (calcProvinceGoldOutput). Live-recomputed off whichever tax policy
+  // currently governs, same policy-fallback order used by the revolt check above.
+  let treasuryDelta = 0;
+  if (p.status === 'incorporated') {
+    const policy = p.playerGovernor?.policy ?? p.npcRoleHolder?.policy ?? {
+      taxation: 'standard' as TaxationNotch,
+      security: 'light_patrol' as SecurityNotch,
+      development: 'neglect' as DevelopmentNotch,
+    };
+    treasuryDelta = TAXATION_TREASURY_PER_TURN[policy.taxation];
+  }
+
+  return { updatedProvince: p, goldDelta, imperiumDelta, corruptionDelta, treasuryDelta, events };
+}
+
+/**
+ * Conquest/defection flips — a 'foreign' province joins Rome when the flag named by
+ * its ProvinceDefinition.conquestFlag becomes truthy (set by an event's successEffect,
+ * e.g. 'setFlag:messanaJoinsRome:true'). Flips owner to 'rome' and status to
+ * 'unincorporated' — a freshly-won territory Rome has not yet incorporated, so it falls
+ * straight into the existing unincorporated/Ambassador pathway from the next tick on.
+ * Idempotent: re-checks province.owner so a province already flipped is left alone.
+ */
+export function applyProvinceFlips(
+  provinces: ProvinceState[],
+  flags: GameState['flags']
+): { provinces: ProvinceState[]; events: string[] } {
+  const events: string[] = [];
+  const updated = provinces.map(province => {
+    if (province.owner === 'rome') return province;
+    const def = getProvinceDefinition(province.id);
+    if (!def?.conquestFlag || !flags[def.conquestFlag]) return province;
+    events.push(`${def.name} has joined Rome. It is now unincorporated territory, open to an Ambassador posting.`);
+    return { ...province, owner: 'rome' as const, status: 'unincorporated' as const };
+  });
+  return { provinces: updated, events };
+}
+
+/**
+ * Resolves which "power" a foreign province's owner represents for war
+ * purposes. Carthage-owned provinces (Lilybaeum, Alalia, Olbia, Sulci,
+ * Tripolitania, Carthage itself) all collapse to the single 'carthage'
+ * enemyId — they're territory, not separate powers. An independent province
+ * (Messana, Syracuse, Agrigentum) is its own power, keyed by its own id.
+ * Foreign-relations plan, chunk WD-B/WD-C.
+ */
+export function getForeignWarTargetEnemyId(def: ProvinceDefinition): string {
+  return def.owner === 'carthage' ? 'carthage' : def.id;
+}
+
+/**
+ * Per-season chance a hostile foreign power declares war on Rome unprompted
+ * — mirrors calcRevoltChance's existing probabilistic-risk precedent (a
+ * first-pass/unverified chance, not a telegraphed certainty). Excludes
+ * clients (def.clientOf set, i.e. Numidia) — fighting a client means
+ * fighting its patron, which this doesn't model (see the Mediterranean
+ * plan's design invariant #5). De-dupes multiple provinces sharing the same
+ * owner (Carthage's outposts) down to a single roll per power per season,
+ * and skips any power already at active war with Rome — either from a
+ * pre-existing WarState or one rolled earlier this same call.
+ */
+export function checkForeignWarDeclarations(
+  provinces: ProvinceState[],
+  state: GameState,
+): { newWars: WarState[]; events: string[] } {
+  const events: string[] = [];
+  const newWars: WarState[] = [];
+  const rolledEnemyIds = new Set<string>();
+
+  for (const province of provinces) {
+    if (province.status !== 'foreign') continue;
+    const def = getProvinceDefinition(province.id);
+    if (!def || def.clientOf) continue;
+
+    const enemyId = getForeignWarTargetEnemyId(def);
+    if (rolledEnemyIds.has(enemyId)) continue;
+
+    const alreadyAtWar = state.wars.some(w => w.active && w.enemyId === enemyId)
+      || newWars.some(w => w.enemyId === enemyId);
+    if (alreadyAtWar) continue;
+
+    if (getRelationshipTier(province.relationshipScore) !== 'hostile') continue;
+
+    rolledEnemyIds.add(enemyId);
+    const AI_DECLARE_WAR_CHANCE = 0.08; // first-pass/tunable, per power per season
+    if (Math.random() < AI_DECLARE_WAR_CHANCE) {
+      newWars.push({
+        id: `war-${enemyId}-${state.turnNumber}`,
+        active: true,
+        enemyId,
+        scale: 'major',
+        provinceId: null,
+        warScore: -5, // the power struck first — first-pass/tunable
+        startedTurn: state.turnNumber,
+        lastSetPieceTurn: state.turnNumber - BALANCE.war.setPieceOffer.minSpacingTurns,
+        weariness: 0,
+        pendingSetPiece: null,
+        treaty: null,
+        phase: 'opening',
+        ignitedYear: state.year,
+        endedYear: null,
+        terminalOutcome: null,
+        peaceOffered: false,
+        lastFundingOfferTurn: state.turnNumber - BALANCE.war.funding.recurTurns,
+      });
+      events.push(`⚔ ${def.name} has declared war on Rome — relations had grown too hostile to hold.`);
+    }
+  }
+
+  return { newWars, events };
 }
 
 /**
@@ -312,13 +504,18 @@ export function tickAllProvinces(
   updatedProvinces: ProvinceState[];
   totalGoldDelta: number;
   totalImperiumDelta: number;
+  totalTreasuryDelta: number;
+  newWars: WarState[];
   events: string[];
 } {
-  const events: string[] = [];
+  const { provinces: flippedProvinces, events: flipEvents } = applyProvinceFlips(provinces, state.flags);
+
+  const events: string[] = [...flipEvents];
   let totalGoldDelta = 0;
   let totalImperiumDelta = 0;
+  let totalTreasuryDelta = 0;
 
-  const updatedProvinces = provinces.map(province => {
+  const updatedProvinces = flippedProvinces.map(province => {
     // Find governor martial skill
     const governor = province.playerGovernor;
     let governorMartial = 0;
@@ -338,17 +535,24 @@ export function tickAllProvinces(
       assetImperiumBonus += bonus.imperiumPerTurn ?? 0;
     }
 
-    const { updatedProvince, goldDelta, imperiumDelta, events: pEvents } =
+    const { updatedProvince, goldDelta, imperiumDelta, treasuryDelta, events: pEvents } =
       tickProvince(province, governorMartial, assetRelBonus);
 
     totalGoldDelta += goldDelta;
     totalImperiumDelta += imperiumDelta + assetImperiumBonus;
+    totalTreasuryDelta += treasuryDelta;
     events.push(...pEvents);
 
     return updatedProvince;
   });
 
-  return { updatedProvinces, totalGoldDelta, totalImperiumDelta, events };
+  // Checked after this season's drift has already been applied to
+  // updatedProvinces, so a power that just crossed into 'hostile' this
+  // season is eligible immediately rather than one tick behind.
+  const { newWars, events: warDeclarationEvents } = checkForeignWarDeclarations(updatedProvinces, state);
+  events.push(...warDeclarationEvents);
+
+  return { updatedProvinces, totalGoldDelta, totalImperiumDelta, totalTreasuryDelta, newWars, events };
 }
 
 /**
@@ -474,4 +678,124 @@ export function calcAssetFidesOutput(province: ProvinceState): number {
     total += bonus.fidesPerTurn ?? 0;
   }
   return total;
+}
+
+/**
+ * Deterministic bill name for a province's incorporation bill — the single
+ * source of truth both buildIncorporationBill (below) and any UI checking
+ * for an already-pending bill (gameStore.proposeIncorporationBill's dedup
+ * check; ProvinceSheet.tsx's button state) key off of, so the two can never
+ * drift out of sync with each other.
+ */
+export function getIncorporationBillName(def: ProvinceDefinition): string {
+  return `Incorporate ${def.name}`;
+}
+
+/**
+ * Builds a one-off, player-submitted bill that formally incorporates an
+ * unincorporated province — passed to gameStore.submitBill (which assigns
+ * the id and deducts the standard Fides cost). Passing it fires
+ * resourceEngine.applyEffectString's 'incorporateProvince' token, which
+ * flips status to 'incorporated', clears incorporationBillAvailable, and
+ * recalls any player Ambassador posted there (the Ambassador system stops
+ * applying once incorporated — a Governor is later assigned by lot through
+ * the existing, unrelated governor-assignment system).
+ *
+ * The numeric rewards (lifetimeDignitas/imperium) are a first-pass/unverified
+ * balance call, in the same ballpark as the Mediterranean treaty cession
+ * terms (data/treatyTerms.ts) for a comparably-sized province — revisit in a
+ * future tuning pass. The ongoing per-season contribution to rome.treasury
+ * this unlocks is a separate, general mechanic (see tickProvince's treasury
+ * contribution block above) — it applies to every incorporated province, not
+ * just ones incorporated through this bill, so it is not part of passEffect.
+ */
+export function buildIncorporationBill(province: ProvinceState, def: ProvinceDefinition): Omit<Bill, 'id'> {
+  return {
+    name: getIncorporationBillName(def),
+    desc: `A motion to formally absorb ${def.name} into the Republic as a full province — ending its ambassadorial status and placing it under the Governor system permanently.`,
+    type: 'constitutional',
+    support: 15,
+    turnsLeft: 4,
+    passEffect: `lifetimeDignitas+10|imperium+5|incorporateProvince:${province.id}`,
+    failEffect: 'fides-5',
+    playerSubmitted: true,
+    repealable: false,
+  };
+}
+
+/**
+ * Deterministic bill name for a foreign power's declare-war bill — matches
+ * getIncorporationBillName's role as the single dedup/UI-state source of
+ * truth. Named by province (not by resolved enemyId) since that's what the
+ * player is looking at on the sheet; getForeignWarTargetEnemyId still
+ * collapses Carthage's outposts to one actual war if more than one such
+ * bill somehow gets tabled before the first resolves.
+ */
+export function getDeclareWarBillName(def: ProvinceDefinition): string {
+  return `Declare War on ${def.name}`;
+}
+
+/**
+ * Builds a one-off, player-submitted bill declaring war on a hostile foreign
+ * power, gated by the caller on relationship tier (see
+ * getForeignWarTargetEnemyId / checkForeignWarDeclarations' sibling logic in
+ * this file) — mirrors buildIncorporationBill's shape exactly. Reuses the
+ * existing startWar token verbatim; no new colon-token needed for this.
+ * Numbers are first-pass/unverified, same convention as every other bill in
+ * this codebase.
+ */
+export function buildDeclareWarBill(province: ProvinceState, def: ProvinceDefinition): Omit<Bill, 'id'> {
+  const enemyId = getForeignWarTargetEnemyId(def);
+  return {
+    name: getDeclareWarBillName(def),
+    desc: `A motion to formally declare war on ${def.name} — relations have soured past the point of restraint.`,
+    type: 'military',
+    support: -5,
+    turnsLeft: 3,
+    passEffect: `startWar:${enemyId}:major:5`,
+    failEffect: 'fides-5',
+    playerSubmitted: true,
+    repealable: false,
+  };
+}
+
+/**
+ * Deterministic bill name for an ambassador-posting request — keyed by
+ * character too (not just province), since the same province could
+ * plausibly have different family members petitioned for it across a
+ * playthrough (though not at the same time — dedup still applies per name).
+ */
+export function getAmbassadorPostingBillName(def: ProvinceDefinition, characterName: string): string {
+  return `Ambassador Posting: ${characterName} to ${def.name}`;
+}
+
+/**
+ * Builds a one-off, player-submitted bill posting a character as Ambassador
+ * — works on both status: 'unincorporated' Roman provinces (fixes the
+ * previously-completely-unwired "Seek Ambassador Posting" button) and
+ * status: 'foreign' ones (foreign-relations plan, WD-D — a deliberate
+ * reversal of the Mediterranean plan's "no Ambassador system for foreign
+ * provinces" invariant, for Ambassadors only). Passing it fires
+ * resourceEngine.applyEffectString's 'assignAmbassador' token. The 2-year
+ * (8-season) term this creates is enforced by tickPlayerAmbassador, called
+ * from both of tickProvince's relevant branches. Numbers first-pass/
+ * unverified, same convention as every other bill in this codebase.
+ */
+export function buildAmbassadorPostingBill(
+  province: ProvinceState,
+  def: ProvinceDefinition,
+  characterId: string,
+  characterName: string,
+): Omit<Bill, 'id'> {
+  return {
+    name: getAmbassadorPostingBillName(def, characterName),
+    desc: `A petition to post ${characterName} as Rome's ambassador to ${def.name} for a two-year term.`,
+    type: 'constitutional',
+    support: 10,
+    turnsLeft: 3,
+    passEffect: `assignAmbassador:${province.id}:${characterId}`,
+    failEffect: 'fides-3',
+    playerSubmitted: true,
+    repealable: false,
+  };
 }

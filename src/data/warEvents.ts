@@ -20,50 +20,59 @@ export const WAR_EVENT_DEFS: EventDef[] = [
   // ─── Ignition ────────────────────────────────────────────────────────────
   // weight: 0 — never enters the random pool. turnSequencer.ts step 12
   // force-injects this specific defId once (guard: no 'carthage' entry in
-  // state.wars yet) as soon as the tutorial queue is empty, matching the
-  // plan's "fires in the first or second year, after the tutorial completes"
-  // gate. All three branches ignite the war — see the startWar: effect
-  // token in resourceEngine.ts (kept out of a direct store-action call so
-  // war state stays engine/store-owned, never mutated ad hoc from event copy).
+  // state.wars yet AND flags['messanaResolved'] not yet set) as soon as the
+  // tutorial queue is empty, matching the plan's "fires in the first or
+  // second year, after the tutorial completes" gate.
+  //
+  // Mediterranean-provinces plan, chunk MP-E: this replaces the old
+  // evt-war-mamertines (which guaranteed a Carthage war no matter which of
+  // its 3 choices was picked). That collided with MP-B's province model,
+  // where messana's ProvinceDefinition.conquestFlag is 'messanaJoinsRome' —
+  // evt-war-mamertines never set it, so Messana could never actually flip to
+  // Rome even after "winning" the war it started. This event closes that
+  // loop (see the 'answer-the-call' choice) and, per an explicit product
+  // decision, also opens a real (if difficult) way to avoid the war
+  // entirely: 'refuse' tables a low-support Senate bill rather than
+  // resolving instantly — if it fails (the likelier outcome), the Senate
+  // overrules the player and the war starts anyway. Avoiding a Carthage war
+  // no longer permanently locks out the other 9 Mediterranean provinces
+  // (whose only path to Rome is a treaty ending one, per MP-F) because a
+  // separate, general foreign-relations war-declaration mechanic (planned
+  // separately) gives an alternate route to war if Messana peace holds.
 
   {
-    id: 'evt-war-mamertines',
-    title: 'Envoys from Messana',
+    id: 'evt-messana-appeal',
+    title: 'The Mamertine Envoys',
     bodyText:
-      'A band of Mamertine envoys stand before the Senate, sunburnt and insistent. Syracuse presses them from the south, ' +
-      'a Carthaginian garrison already sits in their citadel, and they beg Rome to make Messana hers instead of anyone else\'s. ' +
-      'The chamber is split — some call it a trap not worth Roman blood over a strait so narrow a man can see the far shore; ' +
-      'others call it the excuse Rome has been waiting for. As a rising voice of the Gens Brutia, you will be asked where you stand.',
+      'A delegation from Messana stands in the Forum, dust of the Sicilian roads still on their ' +
+      'boots. The Mamertines who hold the city are caught between Hiero of Syracuse and a Carthaginian ' +
+      'garrison already inside their walls, and they have come to Rome for help none of their neighbours ' +
+      'will give. Everyone in the Curia understands what answering them means: a fleet across the ' +
+      'strait, and very likely a war with Carthage that no one alive has yet had to fight.',
     imageKey: 'portrait-paterfamilias',
     conditions: [],
     weight: 0,
     choices: [
       {
-        id: 'speak-for-war',
-        label: 'Speak for war',
-        successEffect: 'startWar:carthage:major:8|lifetimeDignitas+3|setFlag:war-ignited-carthage:true',
+        id: 'answer-the-call',
+        label: 'Answer the Mamertine call — send the fleet',
+        successEffect: 'setFlag:messanaResolved:true|setFlag:messanaJoinsRome:true|startWar:carthage:major:8|crisis-war+15|fides+5',
         failureEffect: '',
         successText:
-          'You rise and say plainly what half the room is thinking: Carthage at Messana is a dagger at Italy\'s throat. ' +
-          'The Senate votes for war. Rome\'s legions cross the strait within the season.',
+          'The vote carries. Legions embark for the strait before Carthage\'s garrison in Messana ' +
+          'can be reinforced — the Republic has chosen its first war beyond Italy, and there is no ' +
+          'talking its way back out of one now.',
       },
       {
-        id: 'speak-for-caution',
-        label: 'Urge caution',
-        successEffect: 'startWar:carthage:major:3|fides-3|setFlag:war-ignited-carthage:true',
+        id: 'refuse',
+        label: 'Argue for refusal — Sicily is not worth a war with Carthage',
+        successEffect: 'setFlag:messanaResolved:true|tableRefuseMamertineBill',
         failureEffect: '',
         successText:
-          'You warn against a war fought for men who were pirates a season ago. The Senate votes for war regardless — ' +
-          'Rome was never going to let Carthage sit unchallenged in the strait — but your caution is remembered, and not kindly.',
-      },
-      {
-        id: 'stay-silent',
-        label: 'Say nothing',
-        successEffect: 'startWar:carthage:major:0|lifetimeDignitas-3|setFlag:war-ignited-carthage:true',
-        failureEffect: '',
-        successText:
-          'You let the debate run its course without you. The Senate votes for war without your voice in it — Rome crosses ' +
-          'to Messana regardless, and a man in the Gens Brutia\'s position is expected to have had something to say.',
+          'You make the case plainly: Rome has no business bleeding for Campanian mercenaries who ' +
+          'seized a Greek city by treachery in the first place. Not everyone in the chamber agrees. ' +
+          'A motion against answering the Mamertines is tabled in the Senate — whether it can find ' +
+          'enough support is another matter entirely.',
       },
     ],
   },

@@ -996,17 +996,23 @@ describe('processWarSeason — sue-for-peace bill (P3-B)', () => {
   });
 });
 
-describe('processSeason — Mamertine ignition (P3-B)', () => {
-  test('force-injects evt-war-mamertines once tutorial queue is empty and no carthage war exists', () => {
+describe('processSeason — Mamertine ignition (P3-B / MP-E)', () => {
+  test('force-injects evt-messana-appeal once tutorial queue is empty and no carthage war exists', () => {
     const state = makeState({ tutorialQueue: [] as any, wars: [] });
     const { nextState } = processSeason(state as any);
-    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-war-mamertines')).toBe(true);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-messana-appeal')).toBe(true);
   });
 
   test('never fires again once a carthage war exists', () => {
     const state = makeState({ tutorialQueue: [] as any, wars: [makeWar()] });
     const { nextState } = processSeason(state as any);
-    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-war-mamertines')).toBe(false);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-messana-appeal')).toBe(false);
+  });
+
+  test('never fires again once messanaResolved is set (the "refuse" path can end peacefully without a war)', () => {
+    const state = makeState({ tutorialQueue: [] as any, wars: [], flags: { messanaResolved: true } });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-messana-appeal')).toBe(false);
   });
 });
 
@@ -1017,7 +1023,7 @@ describe('WAR_EVENT_DEFS — content sanity', () => {
   });
 
   test('ignition and terminal notices are weight 0 (never enter the random pool)', () => {
-    const zeroWeightIds = ['evt-war-mamertines', 'evt-war-outcome-victory', 'evt-war-outcome-exhaustion', 'evt-war-outcome-humbled'];
+    const zeroWeightIds = ['evt-messana-appeal', 'evt-war-outcome-victory', 'evt-war-outcome-exhaustion', 'evt-war-outcome-humbled'];
     for (const id of zeroWeightIds) {
       expect(WAR_EVENT_DEFS.find(d => d.id === id)?.weight).toBe(0);
     }

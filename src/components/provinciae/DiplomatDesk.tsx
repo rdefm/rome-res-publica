@@ -184,10 +184,12 @@ export default function DiplomatDesk({
         );
       })}
 
-      {/* Posting info */}
+      {/* Posting info — 2-year (8-season) term, foreign-relations plan chunk WD-D.
+          turnsServed is now actually incremented each season by
+          provinceEngine.tickPlayerAmbassador (previously it never moved). */}
       <View style={styles.postingInfo}>
         <Text style={styles.postingText}>
-          Season {ambassador.turnsServed % 4 + 1} of 4 · Reappointment required after year's end
+          Season {Math.min(ambassador.turnsServed + 1, 8)} of 8 · Reappointment required after two years
         </Text>
       </View>
     </View>

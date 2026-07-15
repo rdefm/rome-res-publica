@@ -356,6 +356,18 @@ export const TAXATION_CORRUPTION_PER_TURN: Record<TaxationNotch, number> = {
   extortionate: 10,
 };
 
+// Public/Senate treasury (rome.treasury) income per season from each currently
+// incorporated province, scaled by its live tax policy. Anchor points (standard
+// 0.5, extortionate 1, benevolent 0) are a first-pass/unverified balance call;
+// light/heavy are linearly interpolated between their neighbours.
+export const TAXATION_TREASURY_PER_TURN: Record<TaxationNotch, number> = {
+  benevolent:   0,
+  light:        0.25,
+  standard:     0.5,
+  heavy:        0.75,
+  extortionate: 1,
+};
+
 export const SECURITY_IMPERIUM_BASE: Record<SecurityNotch, number> = {
   neglect:           0,
   light_patrol:      1,

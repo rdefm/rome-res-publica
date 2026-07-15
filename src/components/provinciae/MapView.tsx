@@ -11,17 +11,9 @@ import {
   TextStyle,
 } from 'react-native';
 import { COLORS, FONTS } from '../../utils/theme';
-import type { ProvinceState } from '../../models/province';
+import type { ProvinceState, ProvinceDefinition } from '../../models/province';
 import { getRelationshipTier } from '../../models/province';
-import { ITALY_PROVINCES, SICILY_PROVINCES } from '../../data/provinceDefinitions';
-
-// M10: Sicily has no map art of its own (see SICILY_PROVINCES' header comment
-// in provinceDefinitions.ts) — its two defs are overlaid onto map_italia.png
-// alongside the Italy set. A def with no matching ProvinceState (Sicily
-// before it's ceded) simply renders nothing, per the `if (!province) return
-// null` guard below — so this list doubles as "everything with a node on
-// this map image", not "everything currently Roman".
-const MAP_ITALIA_PROVINCES = [...ITALY_PROVINCES, ...SICILY_PROVINCES];
+import { ALL_PROVINCES } from '../../data/provinceDefinitions';
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 //
@@ -44,9 +36,13 @@ const NODE_SIZE = 28;
 
 function getNodeColour(
   province: ProvinceState,
-  def: typeof ITALY_PROVINCES[0]
+  def: ProvinceDefinition
 ): { fill: string; border: string } {
   if (def.status === 'heartland') return { fill: COLORS.gold,    border: '#a07828' };
+  if (province.status === 'foreign') {
+    if (province.owner === 'carthage') return { fill: '#4a2a5a', border: '#7a4a8a' };
+    return { fill: '#3a5a5a', border: '#5a8aaa' }; // independent
+  }
   if (province.revoltActive)     return { fill: '#8b1a1a',       border: '#cc2222' };
   if (province.playerGovernor)   return { fill: '#c47a4a',       border: '#e8963c' };
   if (province.playerAmbassador) return { fill: '#5a8aaa',       border: '#7ab0cc' };
@@ -83,7 +79,7 @@ export default function MapView({ provinces, onProvincePress, selectedProvinceId
         resizeMode="stretch"
       />
 
-      {MAP_ITALIA_PROVINCES.map(def => {
+      {ALL_PROVINCES.map(def => {
         const province = provinces.find(p => p.id === def.id);
         if (!province) return null;
 

@@ -726,7 +726,7 @@ export function processSeason(state: GameState): {
     }
 
     // ── 9c-ii: Province tick ─────────────────────────────────────────────────
-    const { updatedProvinces, totalGoldDelta, totalImperiumDelta, events: provinceEvents } =
+    const { updatedProvinces, totalGoldDelta, totalImperiumDelta, totalTreasuryDelta, newWars, events: provinceEvents } =
       tickAllProvinces(s.provinces, s);
 
     s = {
@@ -735,12 +735,14 @@ export function processSeason(state: GameState): {
       denarii:  s.denarii  + totalGoldDelta,
       imperium: s.imperium + totalImperiumDelta,
       lifetimeImperium: (s.lifetimeImperium ?? 0) + Math.max(0, totalImperiumDelta),
+      rome: { ...s.rome, treasury: Math.min(100, Math.max(0, s.rome.treasury + totalTreasuryDelta)) },
+      wars: newWars.length > 0 ? [...s.wars, ...newWars] : s.wars,
     };
 
     for (const msg of provinceEvents) events.push(msg);
 
     if (totalGoldDelta > 0 || totalImperiumDelta > 0) {
-      events.push(`Provincial income: +${totalGoldDelta} Gold, +${totalImperiumDelta} Imperium from Italy.`);
+      events.push(`Provincial income: +${totalGoldDelta} Gold, +${totalImperiumDelta} Imperium.`);
     }
 
     // ── 9c-iii: Lex de Viis — province infrastructure boost ─────────────────
@@ -764,7 +766,10 @@ export function processSeason(state: GameState): {
       const lexDeViisActive = (s.activeLaws ?? []).some(l => l.billId === 'lex-de-viis');
 
       if (lexDeViisActive) {
-        const nonHeartlandProvinces = s.provinces.filter(p => p.status !== 'heartland');
+        // Foreign (Carthaginian/independent) territory excluded — Rome doesn't
+        // build roads in provinces it doesn't hold. Mediterranean-provinces
+        // plan, chunk MP-E.
+        const nonHeartlandProvinces = s.provinces.filter(p => p.status !== 'heartland' && p.status !== 'foreign');
         const provCount = nonHeartlandProvinces.length;
 
         if (provCount > 0) {
@@ -773,7 +778,7 @@ export function processSeason(state: GameState): {
           s = {
             ...s,
             provinces: s.provinces.map(p =>
-              p.status === 'heartland'
+              p.status === 'heartland' || p.status === 'foreign'
                 ? p
                 : { ...p, infrastructureRating: Math.min(100, p.infrastructureRating + 1) },
             ),
@@ -1367,15 +1372,25 @@ export function processSeason(state: GameState): {
         s = { ...s, tutorialQueue: tutorialQueue.slice(1) };
       }
       // gate.wait (both false): leave queue intact, no event this season
-    } else if (!(s.wars ?? []).some(w => w.enemyId === 'carthage')) {
+    } else if (!(s.wars ?? []).some(w => w.enemyId === 'carthage') && !s.flags['messanaResolved']) {
       // Phase 3, Chunk P3-B — Mamertine ignition: guaranteed once eligible
       // (tutorial queue empty, per the branch above; no Carthage war yet),
       // not weighted into the random pool — the plan wants this "fires in
       // the first or second year", which a competing-on-weight pick can't
-      // promise. The guard is permanent — once any 'carthage' WarState
-      // exists (any branch of evt-war-mamertines creates one via the
-      // startWar: effect token), this never fires again.
-      chosenDef = getEventDef('evt-war-mamertines') as typeof chosenDef;
+      // promise.
+      //
+      // Mediterranean-provinces plan, chunk MP-E: retargeted from the old
+      // evt-war-mamertines to evt-messana-appeal (see that event's own
+      // header comment in warEvents.ts for why). The messanaResolved guard
+      // is new — evt-war-mamertines' only guard was "no carthage war yet",
+      // safe because every one of its choices started one. evt-messana-
+      // appeal's 'refuse' choice can resolve into lasting peace (its tabled
+      // bill actually passing) without ever starting a war, so without this
+      // second guard this branch would force-inject the event again every
+      // season thereafter. messanaResolved is set the instant either choice
+      // fires, so it closes the gate immediately regardless of which way
+      // the 'refuse' bill eventually resolves.
+      chosenDef = getEventDef('evt-messana-appeal') as typeof chosenDef;
     } else {
       // Normal random event — tutorial queue exhausted or standard start
       chosenDef = pickRandomEvent([...EVENT_DEFS, ...WAR_EVENT_DEFS, ...CADET_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS], s);
