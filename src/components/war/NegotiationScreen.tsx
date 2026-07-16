@@ -13,7 +13,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import ScrollModal, { PARCHMENT } from '../shared/ScrollModal';
 import { useGameStore } from '../../state/gameStore';
 import { TREATY_TERMS } from '../../data/treatyTerms';
-import { computeTreatyBudget, computePackagePrice, getDesperationTier, losingSide } from '../../engine/warEngine';
+import { computeTreatyBudget, computePackagePrice, getDesperationTier, losingSide, getEligibleTreatyTerms } from '../../engine/warEngine';
 import { FONTS, SPACING, RADIUS, COLORS } from '../../utils/theme';
 import InfoTap from '../shared/InfoTap';
 
@@ -28,9 +28,14 @@ function capitalize(s: string): string {
 }
 
 export default function NegotiationScreen({ warId, visible, onClose }: NegotiationScreenProps) {
-  const { wars, currentOffice, tableTreaty, acceptAiTreatyOffer, refuseAiTreatyOffer } = useGameStore();
+  const { wars, currentOffice, provinces, tableTreaty, acceptAiTreatyOffer, refuseAiTreatyOffer } = useGameStore();
   const war = wars.find(w => w.id === warId);
   const [selected, setSelected] = useState<string[]>([]);
+
+  const eligibleTerms = useMemo(
+    () => (war ? getEligibleTreatyTerms(TREATY_TERMS, war.enemyId, provinces) : []),
+    [war, provinces],
+  );
 
   if (!war) return null;
 
@@ -42,7 +47,7 @@ export default function NegotiationScreen({ warId, visible, onClose }: Negotiati
   const isConsul = currentOffice === 'consul';
 
   function toggleTerm(id: string) {
-    const term = TREATY_TERMS.find(t => t.id === id);
+    const term = eligibleTerms.find(t => t.id === id);
     if (!term) return;
     setSelected(prev => {
       if (prev.includes(id)) return prev.filter(x => x !== id);
@@ -127,7 +132,7 @@ export default function NegotiationScreen({ warId, visible, onClose }: Negotiati
         <Text style={styles.sectionLabel}>TERMS</Text>
       </InfoTap>
 
-      {TREATY_TERMS.map(term => {
+      {eligibleTerms.map(term => {
         const isSelected = selected.includes(term.id);
         const disabled = !isSelected && price + term.warScorePrice > budget;
         return (

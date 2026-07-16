@@ -3,7 +3,7 @@ import {
   computeTreatyBudget, computePackagePrice, calcFactionReactionModifier,
   composeAiOffer, composeAiTreaty, applyTreatyEffects, buildTreatyBill, losingSide,
   computeRipeness, terminalThresholds, phaseForYear, classifyTerminalOutcome,
-  peaceReachable, buildWarFundingBill, buildSueForPeaceBill,
+  peaceReachable, buildWarFundingBill, buildSueForPeaceBill, getEligibleTreatyTerms,
 } from '../src/engine/warEngine';
 import { applyEffectString } from '../src/engine/resourceEngine';
 import { processSeason } from '../src/engine/turnSequencer';
@@ -12,6 +12,7 @@ import { BALANCE } from '../src/data/balance';
 import { WAR_SITES } from '../src/data/warSites';
 import { ENEMY_GENERAL_LIST } from '../src/data/enemyGenerals';
 import { TREATY_TERMS } from '../src/data/treatyTerms';
+import { buildInitialProvinceStates } from '../src/data/provinceDefinitions';
 import { makeSeededRng } from '../src/utils/seededRng';
 import type { Character } from '../src/models/character';
 import type { TroopUnit } from '../src/models/troop';
@@ -410,7 +411,7 @@ describe('calcFactionReactionModifier', () => {
       optimatesRel: 50,
       clans: [makeClan({ leaders: [makeLeader({ bias: 'optimates' }), makeLeader({ id: 'l2', bias: 'optimates' })] })],
     });
-    expect(calcFactionReactionModifier(['sicily_all'], state)).toBeGreaterThan(0);
+    expect(calcFactionReactionModifier(['lilybaeum'], state)).toBeGreaterThan(0);
   });
 
   test('result is clamped within BALANCE.war.treaty.factionReactionClamp', () => {
@@ -425,9 +426,10 @@ describe('calcFactionReactionModifier', () => {
 describe('composeAiOffer / composeAiTreaty', () => {
   const cautiousGeneral = ENEMY_GENERAL_LIST.find(g => g.aggression < 0.5)!;
   const aggressiveGeneral = ENEMY_GENERAL_LIST.find(g => g.aggression >= 0.5)!;
+  const carthageProvinces = buildInitialProvinceStates();
 
   test('composeAiOffer returns only valid, cheap term ids', () => {
-    const offer = composeAiOffer(cautiousGeneral, makeSeededRng(1));
+    const offer = composeAiOffer(cautiousGeneral, 'carthage', carthageProvinces, makeSeededRng(1));
     expect(offer.length).toBeGreaterThan(0);
     for (const id of offer) {
       const term = TREATY_TERMS.find(t => t.id === id);
@@ -437,46 +439,63 @@ describe('composeAiOffer / composeAiTreaty', () => {
   });
 
   test('an aggressive general offers no more terms than a cautious one', () => {
-    const cautious = composeAiOffer(cautiousGeneral, () => 0);
-    const aggressive = composeAiOffer(aggressiveGeneral, () => 0);
+    const cautious = composeAiOffer(cautiousGeneral, 'carthage', carthageProvinces, () => 0);
+    const aggressive = composeAiOffer(aggressiveGeneral, 'carthage', carthageProvinces, () => 0);
     expect(aggressive.length).toBeLessThanOrEqual(cautious.length);
   });
 
   test('composeAiTreaty never exceeds the general-weighted spend cap', () => {
     const budget = 40;
     for (const seed of [1, 2, 3, 4, 5]) {
-      const cautiousPicks = composeAiTreaty(budget, cautiousGeneral, makeSeededRng(seed));
+      const cautiousPicks = composeAiTreaty(budget, cautiousGeneral, 'carthage', carthageProvinces, makeSeededRng(seed));
       expect(computePackagePrice(cautiousPicks)).toBeLessThanOrEqual(Math.round(budget * 0.7));
-      const aggressivePicks = composeAiTreaty(budget, aggressiveGeneral, makeSeededRng(seed));
+      const aggressivePicks = composeAiTreaty(budget, aggressiveGeneral, 'carthage', carthageProvinces, makeSeededRng(seed));
       expect(computePackagePrice(aggressivePicks)).toBeLessThanOrEqual(budget);
     }
   });
 
-  test('composeAiTreaty never selects mutually exclusive terms together', () => {
+  test('composeAiOffer/composeAiTreaty never include a province-cession term whose province is not live-owned by the passed enemyId', () => {
+    // A Gaul war (synthetic enemyId, owns none of the Mediterranean provinces)
+    // should never surface a Carthaginian-owned cession term.
     for (const seed of [1, 2, 3, 4, 5, 6, 7]) {
-      const picks = composeAiTreaty(100, aggressiveGeneral, makeSeededRng(seed));
-      expect(picks.includes('sicily_west') && picks.includes('sicily_all')).toBe(false);
+      const offer = composeAiOffer(aggressiveGeneral, 'a-gaul-revolt', carthageProvinces, makeSeededRng(seed));
+      const treaty = composeAiTreaty(100, aggressiveGeneral, 'a-gaul-revolt', carthageProvinces, makeSeededRng(seed));
+      for (const id of [...offer, ...treaty]) {
+        const term = TREATY_TERMS.find(t => t.id === id);
+        expect(term?.warEndFlags?.provinceTransferToRome).toBeUndefined();
+      }
     }
   });
 });
 
 describe('applyTreatyEffects', () => {
-  test('winner=rome with sicily_west adds the province to state.provinces', () => {
+  test('winner=rome with lilybaeum adds the province to state.provinces', () => {
     const state = makeState();
-    const patch = applyTreatyEffects(['sicily_west'], state, 'rome');
-    expect(patch.provinces?.some(p => p.id === 'sicily_west')).toBe(true);
+    const patch = applyTreatyEffects(['lilybaeum'], state, 'rome');
+    expect(patch.provinces?.some(p => p.id === 'lilybaeum')).toBe(true);
   });
 
-  test('does not duplicate a province already present', () => {
-    const state = makeState({ provinces: [{ id: 'sicily_west' } as any] });
-    const patch = applyTreatyEffects(['sicily_west'], state, 'rome');
-    const count = (patch.provinces ?? state.provinces).filter(p => p.id === 'sicily_west').length;
-    expect(count).toBe(1);
+  test('does not duplicate a province already present — flips it in place instead', () => {
+    const state = makeState({ provinces: [{ id: 'lilybaeum', owner: 'carthage', status: 'foreign' } as any] });
+    const patch = applyTreatyEffects(['lilybaeum'], state, 'rome');
+    const result = patch.provinces ?? state.provinces;
+    const matches = result.filter(p => p.id === 'lilybaeum');
+    expect(matches).toHaveLength(1);
+    expect(matches[0].owner).toBe('rome');
+    expect(matches[0].status).toBe('unincorporated');
+  });
+
+  test('ceding a province already owned by Rome is a no-op', () => {
+    const state = makeState({ provinces: [{ id: 'lilybaeum', owner: 'rome', status: 'unincorporated' } as any] });
+    const patch = applyTreatyEffects(['lilybaeum'], state, 'rome');
+    const result = patch.provinces ?? state.provinces;
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ id: 'lilybaeum', owner: 'rome', status: 'unincorporated' });
   });
 
   test('winner=enemy does not cede any province', () => {
     const state = makeState();
-    const patch = applyTreatyEffects(['sicily_west'], state, 'enemy');
+    const patch = applyTreatyEffects(['lilybaeum'], state, 'enemy');
     expect(patch.provinces).toBeUndefined();
   });
 
@@ -511,7 +530,7 @@ describe('buildTreatyBill', () => {
 
 describe('processWarSeason — treaty resolution (Chunk M10)', () => {
   test('a passed ratification bill ends the war and applies its effects', () => {
-    const treaty = makeTreaty({ termIds: ['sicily_west'], proposedTurn: 10 });
+    const treaty = makeTreaty({ termIds: ['lilybaeum'], proposedTurn: 10 });
     const state = makeState({
       turnNumber: 12,
       wars: [makeWar({ warScore: 75, startedTurn: 1, lastSetPieceTurn: 12, treaty })],
@@ -520,7 +539,7 @@ describe('processWarSeason — treaty resolution (Chunk M10)', () => {
     const result = processWarSeason(state, () => 0);
     expect(result.wars[0].active).toBe(false);
     expect(result.wars[0].treaty?.ratified).toBe(true);
-    expect(result.statePatch.provinces?.some(p => p.id === 'sicily_west')).toBe(true);
+    expect(result.statePatch.provinces?.some(p => p.id === 'lilybaeum')).toBe(true);
   });
 
   test('a passed ratification queues a Triumph petition for the player when Rome wins', () => {

@@ -51,8 +51,12 @@ export interface TreatyTermFactionReaction {
 export interface TreatyTermWarEndFlags {
   /** Clears `captivity` on every family member who has it set. */
   prisonerReturn?: boolean;
-  /** Province ids (from provinceDefinitions.ts's SICILY_PROVINCES) added to
-   *  state.provinces when Rome is the winning side applying this term.
+  /** Province ids (from provinceDefinitions.ts's MEDITERRANEAN_PROVINCES) flipped
+   *  to owner: 'rome' / status: 'unincorporated' when Rome is the winning side
+   *  applying this term — an insert-or-update: the listed province is almost
+   *  always already present in state.provinces as 'foreign' (MP-B populates
+   *  every Mediterranean province from turn 1), so this flips it in place
+   *  rather than inserting a new one (see warEngine.ts's applyTreatyEffects).
    *  Never removes a Roman province — no mechanic for that exists yet, so
    *  the Rome-as-loser mirror of a cession term is dignity/imperium loss
    *  only (see effectsAsLoser), not an actual transfer away from Rome. */
@@ -83,9 +87,10 @@ export interface TreatyTerm {
   effectsAsLoser: string;
   warEndFlags?: TreatyTermWarEndFlags;
   factionReaction: TreatyTermFactionReaction;
-  /** Term ids that can't be selected alongside this one in the same package
-   *  (e.g. sicily_all supersedes sicily_west). Enforced by NegotiationScreen
-   *  at selection time, not by the engine. */
+  /** Term ids that can't be selected alongside this one in the same package.
+   *  Enforced by NegotiationScreen at selection time, not by the engine. No
+   *  current term uses this — the Mediterranean cession terms are each
+   *  atomic/per-province, with no overlapping-region pairs left to exclude. */
   mutuallyExclusiveWith?: string[];
 }
 

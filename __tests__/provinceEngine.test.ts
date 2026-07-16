@@ -1,5 +1,8 @@
 import {
   tickProvince,
+  calcProvinceGoldOutput,
+  isGovernable,
+  applyProvinceFlips,
   checkForeignWarDeclarations,
   getForeignWarTargetEnemyId,
   buildDeclareWarBill,
@@ -9,9 +12,15 @@ import {
 } from '../src/engine/provinceEngine';
 import { applyEffectString } from '../src/engine/resourceEngine';
 import { buildInitialProvinceStates, getProvinceDefinition } from '../src/data/provinceDefinitions';
-import type { ProvinceState, AmbassadorState } from '../src/models/province';
+import type { ProvinceState, AmbassadorState, GovernorPolicy } from '../src/models/province';
 import type { WarState } from '../src/models/war';
 import type { GameState } from '../src/state/gameStore';
+
+const STANDARD_POLICY: GovernorPolicy = {
+  taxation: 'standard',
+  security: 'standard_garrison',
+  development: 'maintain',
+};
 
 // ─── Fixtures (mirrors warEngine.test.ts's pattern) ─────────────────────────
 
@@ -80,6 +89,39 @@ function makeAmbassador(overrides: Partial<AmbassadorState> = {}): AmbassadorSta
 
 afterEach(() => {
   jest.restoreAllMocks();
+});
+
+// ─── Foreign province model basics (Mediterranean plan, chunk MP-G) ────────
+
+describe('provinceEngine — foreign province handling', () => {
+  test('foreign provinces start with owner set from their definition', () => {
+    const carthage = findState('carthage');
+    const messana = findState('messana');
+    const numidia = findState('numidia');
+    expect(carthage.owner).toBe('carthage');
+    expect(carthage.status).toBe('foreign');
+    expect(messana.owner).toBe('independent');
+    expect(numidia.owner).toBe('independent');
+    expect(getProvinceDefinition('numidia')?.clientOf).toBe('carthage');
+  });
+
+  test('isGovernable is false for foreign provinces and latium, true for a normal province', () => {
+    expect(isGovernable(findState('carthage'))).toBe(false);
+    expect(isGovernable(findState('lilybaeum'))).toBe(false);
+    expect(isGovernable(findState('latium'))).toBe(false);
+    expect(isGovernable(findState('campania'))).toBe(true);
+  });
+
+  test('isGovernable reads live status — a flipped foreign province becomes governable', () => {
+    const flipped = applyProvinceFlips(buildInitialProvinceStates(), { messanaJoinsRome: true }).provinces;
+    const messana = flipped.find(p => p.id === 'messana')!;
+    expect(isGovernable(messana)).toBe(true);
+  });
+
+  test('calcProvinceGoldOutput returns 0 for a foreign province regardless of policy', () => {
+    const lilybaeum = findState('lilybaeum');
+    expect(calcProvinceGoldOutput(lilybaeum, STANDARD_POLICY, 5)).toBe(0);
+  });
 });
 
 // ─── Foreign relationship drift (chunk WD-A) ────────────────────────────────
@@ -307,5 +349,49 @@ describe('tickProvince — playerAmbassador term limit', () => {
     const lilybaeum = { ...findState('lilybaeum'), playerAmbassador: makeAmbassador({ turnsServed: 7 }) };
     const result = tickProvince(lilybaeum, 0, 0);
     expect(result.updatedProvince.playerAmbassador).toBeNull();
+  });
+});
+
+// ─── applyProvinceFlips — conquest/defection (Mediterranean plan, chunk MP-C/MP-G) ──
+
+describe('provinceEngine — applyProvinceFlips (conquest/defection)', () => {
+  test('leaves provinces alone when their conquestFlag is not set', () => {
+    const provinces = buildInitialProvinceStates();
+    const { provinces: result, events } = applyProvinceFlips(provinces, {});
+    expect(events).toEqual([]);
+    const messana = result.find(p => p.id === 'messana')!;
+    expect(messana.owner).toBe('independent');
+    expect(messana.status).toBe('foreign');
+  });
+
+  test('flips Messana to Rome when messanaJoinsRome flag is truthy', () => {
+    const provinces = buildInitialProvinceStates();
+    const { provinces: result, events } = applyProvinceFlips(provinces, { messanaJoinsRome: true });
+    const messana = result.find(p => p.id === 'messana')!;
+    expect(messana.owner).toBe('rome');
+    expect(messana.status).toBe('unincorporated');
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatch(/Messana/);
+
+    const carthage = result.find(p => p.id === 'carthage')!;
+    expect(carthage.owner).toBe('carthage');
+    expect(carthage.status).toBe('foreign');
+  });
+
+  test('is idempotent — a province already owned by Rome is left alone even if its flag is still set', () => {
+    const provinces = buildInitialProvinceStates();
+    const first = applyProvinceFlips(provinces, { messanaJoinsRome: true }).provinces;
+    const { provinces: second, events } = applyProvinceFlips(first, { messanaJoinsRome: true });
+    expect(events).toEqual([]);
+    const messana = second.find(p => p.id === 'messana')!;
+    expect(messana.status).toBe('unincorporated');
+  });
+
+  test('a flipped province ticks normally afterward (falls into the unincorporated pathway)', () => {
+    const provinces = buildInitialProvinceStates();
+    const flipped = applyProvinceFlips(provinces, { messanaJoinsRome: true }).provinces;
+    const messana = flipped.find(p => p.id === 'messana')!;
+    const result = tickProvince(messana, 0, 0);
+    expect(result.updatedProvince.status).toBe('unincorporated');
   });
 });

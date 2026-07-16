@@ -30,6 +30,7 @@
 
 import type { GameState } from '../state/gameStore';
 import type { WarState, SetPieceOffer, WarScale, TreatyState, TreatyTerm, WarPhase, WarTerminalOutcome } from '../models/war';
+import type { ProvinceState } from '../models/province';
 import type { EventInstance } from '../models/event';
 import type { BattleUnit, UnitClass } from '../models/battle';
 import type { Bill } from '../models/bill';
@@ -406,13 +407,35 @@ export function calcFactionReactionModifier(termIds: string[], state: GameState)
 
 // ─── AI term composition ─────────────────────────────────────────────────────
 
+/** Single source of truth for "what's actually negotiable in this war" — gates
+ *  any province-cession term on the LIVE owner of every listed province
+ *  matching the war's enemyId (e.g. a Gaul war never offers Carthaginian
+ *  Sicily even though the term exists in TREATY_TERMS's flat list). Terms
+ *  with no provinceTransferToRome are always eligible. */
+export function getEligibleTreatyTerms(
+  terms: TreatyTerm[],
+  enemyId: string,
+  provinces: ProvinceState[],
+): TreatyTerm[] {
+  return terms.filter(t => {
+    const provinceIds = t.warEndFlags?.provinceTransferToRome;
+    if (!provinceIds || provinceIds.length === 0) return true;
+    return provinceIds.every(id => provinces.find(p => p.id === id)?.owner === enemyId);
+  });
+}
+
 /** Sue-tier AI offer: the losing side (when it's the AI) proposes a small,
  *  cheap package the player just accepts/refuses — no term shopping. Higher
  *  aggression generals offer less (fewer/cheaper terms); cautious ones are
  *  more conciliatory. */
-export function composeAiOffer(general: GeneralProfile, rng: () => number = Math.random): string[] {
+export function composeAiOffer(
+  general: GeneralProfile,
+  enemyId: string,
+  provinces: ProvinceState[],
+  rng: () => number = Math.random,
+): string[] {
   const count = BALANCE.war.treaty.aiOfferTermCount;
-  const affordable = TREATY_TERMS
+  const affordable = getEligibleTreatyTerms(TREATY_TERMS, enemyId, provinces)
     .filter(t => t.warScorePrice >= 0 && t.warScorePrice <= 6)
     .sort(() => rng() - 0.5);
   const take = general.aggression >= 0.5 ? Math.max(1, count - 1) : count;
@@ -421,10 +444,16 @@ export function composeAiOffer(general: GeneralProfile, rng: () => number = Math
 
 /** Forced/dictate-tier Rome-as-loser composition: the AI spends up to its
  *  budget, weighted by general aggression — an aggressive general spends the
- *  whole budget (including Sicily, if affordable); a cautious one leaves
- *  budget on the table and favours the face-saver clause. */
-export function composeAiTreaty(budget: number, general: GeneralProfile, rng: () => number = Math.random): string[] {
-  const shuffled = [...TREATY_TERMS].sort(() => rng() - 0.5);
+ *  whole budget (including any affordable province cession); a cautious one
+ *  leaves budget on the table and favours the face-saver clause. */
+export function composeAiTreaty(
+  budget: number,
+  general: GeneralProfile,
+  enemyId: string,
+  provinces: ProvinceState[],
+  rng: () => number = Math.random,
+): string[] {
+  const shuffled = getEligibleTreatyTerms(TREATY_TERMS, enemyId, provinces).sort(() => rng() - 0.5);
   const spendCap = general.aggression >= 0.5 ? budget : Math.round(budget * 0.7);
   const picked: string[] = [];
   let spent = 0;
@@ -475,15 +504,28 @@ export function applyTreatyEffects(
   // Province cession — only when Rome is the winner. No mechanic exists for
   // Rome losing a province it already holds, so the loser-side mirror of a
   // cession term is dignity/imperium loss only (effectsAsLoser, above).
+  // Insert-or-update: MP-B's Mediterranean provinces are pre-populated in
+  // state.provinces from turn 1 as 'foreign', unlike M10's original
+  // sicily_west/sicily_all placeholder which started absent from
+  // state.provinces until ceded — so the common case here is flipping an
+  // existing foreign ProvinceState in place, not inserting a new one. The
+  // flip semantics (owner: 'rome', status: 'unincorporated') exactly match
+  // provinceEngine.applyProvinceFlips, so Messana is idempotently reachable
+  // via either the scripted event or a treaty.
   if (winner === 'rome') {
     const provinceIds = [...new Set(terms.flatMap(t => t.warEndFlags?.provinceTransferToRome ?? []))];
-    const newProvinces = provinceIds
-      .filter(id => !working.provinces.some(p => p.id === id))
-      .map(getProvinceDefinition)
-      .filter((d): d is NonNullable<typeof d> => !!d)
-      .map(buildProvinceState);
-    if (newProvinces.length > 0) {
-      patch.provinces = [...(patch.provinces ?? working.provinces), ...newProvinces];
+    if (provinceIds.length > 0) {
+      const basePatchProvinces = patch.provinces ?? working.provinces;
+      const flippedProvinces = basePatchProvinces.map(p => {
+        if (!provinceIds.includes(p.id) || p.owner === 'rome') return p;
+        return { ...p, owner: 'rome' as const, status: 'unincorporated' as const };
+      });
+      const missingIds = provinceIds.filter(id => !basePatchProvinces.some(p => p.id === id));
+      const newProvinces = missingIds
+        .map(getProvinceDefinition)
+        .filter((d): d is NonNullable<typeof d> => !!d)
+        .map(buildProvinceState);
+      patch.provinces = [...flippedProvinces, ...newProvinces];
     }
   }
 
@@ -691,7 +733,7 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
       events.push(`War with ${next.enemyId}: ${crossing.headline}`);
 
       if (crossing.tier === 'sue' && crossing.winning && !next.treaty) {
-        const offerTermIds = composeAiOffer(general, rng);
+        const offerTermIds = composeAiOffer(general, next.enemyId, statePatch.provinces ?? state.provinces, rng);
         next = {
           ...next,
           treaty: {
@@ -803,7 +845,7 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
     // apply immediately. Only fires when no treaty is already in flight.
     if (!next.treaty && getDesperationTier(next.warScore) === 'dictate' && losingSide(next.warScore) === 'rome') {
       const budget = computeTreatyBudget(next.warScore);
-      const termIds = composeAiTreaty(budget, general, rng);
+      const termIds = composeAiTreaty(budget, general, next.enemyId, statePatch.provinces ?? state.provinces, rng);
       const effectPatch = applyTreatyEffects(termIds, { ...state, ...statePatch }, 'enemy');
       statePatch = {
         ...statePatch,

@@ -421,17 +421,6 @@ export const MEDITERRANEAN_PROVINCES: ProvinceDefinition[] = [
 // All province definitions, across all maps.
 export const ALL_PROVINCES: ProvinceDefinition[] = [...ITALY_PROVINCES, ...MEDITERRANEAN_PROVINCES];
 
-// Latium is special — heartland, never in the governable pool.
-// 'foreign' provinces (Carthaginian/independent territory) are likewise never governable
-// until a conquestFlag flips them to Roman ownership — at that point their status changes
-// to 'unincorporated' and this check (which reads live status, not the static definition)
-// picks that up automatically.
-export function isGovernable(provinceId: string): boolean {
-  if (provinceId === 'latium') return false;
-  const def = getProvinceDefinition(provinceId);
-  return !!def && def.status !== 'foreign';
-}
-
 export function getProvinceDefinition(id: string): ProvinceDefinition | undefined {
   return ALL_PROVINCES.find(p => p.id === id);
 }

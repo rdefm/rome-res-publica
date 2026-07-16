@@ -500,3 +500,36 @@ describe('checkTutorialGate', () => {
     expect(tutDef?.isTutorial).toBe(true);
   });
 });
+
+// ─── evt-messana-appeal — Mediterranean-provinces plan, chunk MP-G ──────────
+// Lives in data/warEvents.ts's WAR_EVENT_DEFS (getEventDef searches that pool
+// too), not data/events.ts — and conditions: [] there, since eligibility is
+// gated by turnSequencer.ts's force-injection guard (no carthage war yet AND
+// !flags.messanaResolved) rather than the event's own conditions array. That
+// guard already has full coverage in warEngine.test.ts's "Mamertine ignition"
+// describe block, so it isn't re-tested here — this block only covers the
+// choices' own content.
+
+describe('evt-messana-appeal — Sicily/Mediterranean province flip trigger', () => {
+  const def = getEventDef('evt-messana-appeal')!;
+
+  test('exists with the two expected choices', () => {
+    expect(def).toBeDefined();
+    expect(def.choices.map(c => c.id).sort()).toEqual(['answer-the-call', 'refuse']);
+  });
+
+  test('answering the call sets both the resolved and conquest flags plus a war-track bump', () => {
+    const choice = def.choices.find(c => c.id === 'answer-the-call')!;
+    const { effectStr } = resolveEventChoice(choice, makeState({ flags: {} }) as any);
+    expect(effectStr).toContain('setFlag:messanaResolved:true');
+    expect(effectStr).toContain('setFlag:messanaJoinsRome:true');
+    expect(effectStr).toContain('crisis-war+15');
+  });
+
+  test('refusing sets only the resolved flag, not the conquest flag', () => {
+    const choice = def.choices.find(c => c.id === 'refuse')!;
+    const { effectStr } = resolveEventChoice(choice, makeState({ flags: {} }) as any);
+    expect(effectStr).toContain('setFlag:messanaResolved:true');
+    expect(effectStr).not.toContain('messanaJoinsRome');
+  });
+});

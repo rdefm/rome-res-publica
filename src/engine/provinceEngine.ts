@@ -126,6 +126,21 @@ export function calcRevoltChance(
 }
 
 /**
+ * Latium (heartland) and any 'foreign' province (Carthaginian/independent
+ * territory, not yet Roman) are never governable. Takes the live
+ * ProvinceState rather than a provinceId — moved here from
+ * data/provinceDefinitions.ts (Mediterranean plan, chunk MP-G fix) because
+ * the original id-only version read the static ProvinceDefinition.status,
+ * which never changes, so a province that flipped to Rome mid-game (conquest
+ * or treaty cession) would incorrectly stay ungovernable forever. Latium is
+ * the only 'heartland'-status province today, so checking status directly
+ * subsumes the old explicit id check.
+ */
+export function isGovernable(province: ProvinceState): boolean {
+  return province.status !== 'heartland' && province.status !== 'foreign';
+}
+
+/**
  * Per-season Ambassador ticking — rapport decay, cooldown reset, and the
  * 2-year (8-season) term limit, mirroring GovernorState's 1-year (4-season)
  * warn-at-3/end-at-4 pattern doubled. Previously entirely unwired: nothing
