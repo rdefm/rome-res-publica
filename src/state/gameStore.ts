@@ -4,7 +4,7 @@ import type { Bill, ActiveLaw } from '../models/bill';
 import type { Clan } from '../models/clan';
 import type { OfficeId, ElectionRival } from '../models/office';
 import type { Client } from '../models/client';
-import type { EventInstance } from '../models/event';
+import type { EventInstance, EventChoice } from '../models/event';
 import type { OwnedAsset } from '../models/asset';
 import type { OwnedHouse, RoomType, BusinessType } from '../models/house';
 import type { ActiveAmbition } from '../models/ambition';
@@ -525,6 +525,16 @@ export interface GameActions {
   // Turn
   endSeason: () => void;
   dismissSeasonOverlay: () => void;
+  /** Phase 5, Chunk P5-A — DebugPanel's auto-season runner. Calls endSeason
+   *  n times with no player input: any fired event is auto-answered with
+   *  its first guaranteed (no-skillCheck) choice (falling back to the first
+   *  choice if every choice rolls), any trial that enters 'in_session' is
+   *  driven via fastResolveTrialSession, any birth naming is confirmed with
+   *  its suggested name, and the season overlay is dismissed each
+   *  iteration. Stops early if the run concludes (runFinished). Returns how
+   *  many seasons actually completed and a note on anything that couldn't
+   *  be auto-driven (the event-chain guard tripping — see implementation). */
+  runIdleSeasons: (n: number) => { seasonsCompleted: number; stuckReason: string | null };
 
   // ── Phase 3, Chunk P3-E ───────────────────────────────────────────────────
   /** From EpilogueScreen — routes back to StartMenuScreen (App.tsx's
@@ -1379,6 +1389,56 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   },
 
   dismissSeasonOverlay: () => set({ seasonOverlayVisible: false, seasonOverlayEvents: [] }),
+
+  runIdleSeasons: (n) => {
+    const { getEventDef } = require('../engine/eventEngine');
+    const notes: string[] = [];
+    let seasonsCompleted = 0;
+
+    for (let i = 0; i < n; i++) {
+      if (get().runFinished) break;
+
+      get().endSeason();
+      seasonsCompleted++;
+
+      // Drain any chain of events (a resolved choice can queue a follow-up
+      // via nextEventId/nextEvent:) with the first guaranteed choice —
+      // deterministic, matching P5-A's spec exactly. Falls back to the
+      // first choice if every choice on a given event rolls a skill check.
+      // The guard exists only to keep a malformed def (a branching cycle)
+      // from hanging the whole run — it should never actually trip.
+      let guard = 0;
+      while (get().activeEvent && guard < 20) {
+        guard++;
+        const active = get().activeEvent!;
+        const def = getEventDef(active.defId);
+        if (!def || def.choices.length === 0) {
+          set({ activeEvent: null });
+          break;
+        }
+        const guaranteed = def.choices.find((c: EventChoice) => !c.skillCheck);
+        const choice = guaranteed ?? def.choices[0];
+        get().resolveEvent(choice.id);
+      }
+      if (guard >= 20) notes.push(`season ${i + 1}: an event chain didn't terminate within ${guard} steps — check for a branching cycle`);
+
+      // Trial beats aren't EventChoices — a trial that entered 'in_session'
+      // this season needs its own driver.
+      for (const trial of get().trials) {
+        if (trial.status === 'in_session') get().fastResolveTrialSession(trial.id);
+      }
+
+      // Birth naming — accept the suggested name rather than blocking.
+      const pendingBirth = get().pendingBirthNaming;
+      if (pendingBirth) get().confirmBirthNaming(pendingBirth.suggestedName);
+
+      // Keep the loop's state clean for the next iteration (and for
+      // whatever screen is open once the runner finishes).
+      get().dismissSeasonOverlay();
+    }
+
+    return { seasonsCompleted, stuckReason: notes.length > 0 ? notes.join('; ') : null };
+  },
 
   returnToStartMenu: () => set({ gameStarted: false }),
 
@@ -2683,14 +2743,20 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const { CADET_EVENT_DEFS }    = require('../data/cadetEvents');
     const { SECRET_EVENT_DEFS }   = require('../data/secretEvents');
     const { CLAUDIUS_ARC_EVENT_DEFS } = require('../data/claudiusArc');
+    const { COMPROMISING_EVENT_DEFS } = require('../data/compromisingEvents');
     const { applyEffectString }   = require('../engine/resourceEngine');
     const { resolveEventChoice }  = require('../engine/eventEngine');
 
     // P1-G: search tutorial pool as well as main pool. P3-B added
     // WAR_EVENT_DEFS, P3-C added SUCCESSION_EVENT_DEFS, P3-D added
     // CADET_EVENT_DEFS, P4-B added SECRET_EVENT_DEFS, P4-G added
-    // CLAUDIUS_ARC_EVENT_DEFS.
-    const allDefs = [...EVENT_DEFS, ...TUTORIAL_EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS, ...CADET_EVENT_DEFS, ...SECRET_EVENT_DEFS, ...CLAUDIUS_ARC_EVENT_DEFS];
+    // CLAUDIUS_ARC_EVENT_DEFS. Phase 5, P5-A bugfix: COMPROMISING_EVENT_DEFS
+    // was missing here despite being in the random-draw pool (turnSequencer.ts
+    // step 12) — any of its 3 events firing meant every choice silently
+    // no-opped (def lookup failed, activeEvent cleared with zero effect
+    // applied). eventEngine.getEventDef already had the correct 8-pool list;
+    // this just matches it.
+    const allDefs = [...EVENT_DEFS, ...TUTORIAL_EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS, ...CADET_EVENT_DEFS, ...SECRET_EVENT_DEFS, ...CLAUDIUS_ARC_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS];
     const def = allDefs.find((d: any) => d.id === s.activeEvent!.defId);
     if (!def) {
       set({ activeEvent: null });

@@ -15,6 +15,9 @@ import { WAR_EVENT_DEFS } from '../../data/warEvents';
 import { SUCCESSION_EVENT_DEFS } from '../../data/successionEvents';
 import { CADET_EVENT_DEFS } from '../../data/cadetEvents';
 import { SECRET_EVENT_DEFS } from '../../data/secretEvents';
+import { TUTORIAL_EVENT_DEFS } from '../../data/tutorialEvents';
+import { CLAUDIUS_ARC_EVENT_DEFS } from '../../data/claudiusArc';
+import { COMPROMISING_EVENT_DEFS } from '../../data/compromisingEvents';
 import { BALANCE } from '../../data/balance';
 import { computeAllStagePace, type ActionEconomyStage, type StagePaceSummary } from '../../engine/actionEconomyEngine';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
@@ -179,7 +182,10 @@ function CharacterSection() {
 function EventsSection() {
   const [search, setSearch] = useState('');
 
-  const filtered = [...EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS, ...CADET_EVENT_DEFS, ...SECRET_EVENT_DEFS].filter(e =>
+  // Phase 5, P5-A — extended to full 8-pool coverage (was missing
+  // TUTORIAL_EVENT_DEFS/CLAUDIUS_ARC_EVENT_DEFS/COMPROMISING_EVENT_DEFS),
+  // matching eventEngine.getEventDef's combined lookup exactly.
+  const filtered = [...EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS, ...CADET_EVENT_DEFS, ...SECRET_EVENT_DEFS, ...TUTORIAL_EVENT_DEFS, ...CLAUDIUS_ARC_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS].filter(e =>
     e.title.toLowerCase().includes(search.toLowerCase()) ||
     e.id.toLowerCase().includes(search.toLowerCase())
   );
@@ -651,6 +657,55 @@ function StagePaceCard({ summary }: { summary: StagePaceSummary }) {
   );
 }
 
+// ─── Section: Auto-season runner (Phase 5, Chunk P5-A) ───────────────────────
+// "Run N seasons idle" — ends seasons with no player input, letting
+// seasonStatsHistory and the crisis/economy state accumulate for P5-H's
+// drift instrument and B–D's weight-sanity checks. Orchestration lives in
+// gameStore.runIdleSeasons (UI stays logic-free) — this component is just
+// the input/trigger/result display.
+function AutoSeasonRunnerSection() {
+  const [count, setCount] = useState('20');
+  const [result, setResult] = useState<{ seasonsCompleted: number; stuckReason: string | null } | null>(null);
+  const [running, setRunning] = useState(false);
+
+  function run() {
+    const n = parseInt(count, 10);
+    if (!n || n <= 0) return;
+    setRunning(true);
+    // Synchronous — a debug-only tool, not meant to stay responsive mid-run.
+    const r = useGameStore.getState().runIdleSeasons(n);
+    setResult(r);
+    setRunning(false);
+  }
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>AUTO-SEASON RUNNER</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+        <TextInput
+          style={[styles.input, { width: 80 }]}
+          value={count}
+          onChangeText={setCount}
+          keyboardType="number-pad"
+          placeholder="20"
+          placeholderTextColor={COLORS.dust}
+        />
+        <TouchableOpacity style={styles.applyBtn} onPress={run} disabled={running}>
+          <Text style={styles.applyBtnText}>{running ? 'RUNNING…' : '▶ RUN SEASONS IDLE'}</Text>
+        </TouchableOpacity>
+      </View>
+      {result && (
+        <View style={{ marginTop: SPACING.sm }}>
+          <Text style={paceStyles.emptyText}>
+            Completed {result.seasonsCompleted} season(s).
+            {result.stuckReason ? ` Could not fully auto-drive: ${result.stuckReason}` : ' No sequence needed manual intervention.'}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 function PaceSection() {
   const seasonStatsHistory = useGameStore(s => s.seasonStatsHistory);
   const summaries = computeAllStagePace(seasonStatsHistory);
@@ -827,7 +882,7 @@ export default function DebugPanel() {
         {tab === 'war'        && <WarSection />}
         {tab === 'secrets'    && <SecretsSection />}
         {tab === 'telemetry'  && <TelemetrySection />}
-        {tab === 'pace'       && <PaceSection />}
+        {tab === 'pace'       && <><AutoSeasonRunnerSection /><PaceSection /></>}
       </ScrollView>
     </View>
   );
