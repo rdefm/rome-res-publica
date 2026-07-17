@@ -21,6 +21,10 @@ export interface AncestorRecord {
   /** Distinct from any Character id — a record id, unique per epilogue. */
   id: string;
   gensName: string;
+  /** Phase 5, Chunk P5-E — which starting family this run used. Optional/
+   *  undefined on any pre-P5-E Hall record (default-spread as 'brutii' at
+   *  read time — every historical record before this chunk was Brutii). */
+  gensId?: import('./gameStart').GensId;
   /** GameState.year at run start — always -264 today (no alternate starts
    *  exist yet), stored rather than hardcoded so a future start variant
    *  doesn't need this file touched. */

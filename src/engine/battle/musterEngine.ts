@@ -588,7 +588,7 @@ export function applyBattleOutcome(
         family = result.family;
         if (result.pendingSuccession) {
           const p = result.pendingSuccession;
-          const resolution = resolveDeathNotice(p, cadetBranch, state.cadetBranchUsed, ctx.turnNumber);
+          const resolution = resolveDeathNotice(p, cadetBranch, state.cadetBranchUsed, ctx.turnNumber, state.gensName);
           pendingSuccession = p;
           pendingEvents = [...pendingEvents, resolution.notice];
           if (resolution.cadetBranch) cadetBranch = resolution.cadetBranch;

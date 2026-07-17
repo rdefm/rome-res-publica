@@ -2,6 +2,14 @@
 // Replaced the old START_OPTIONS list with a two-card picker driven by
 // START_DEFINITIONS (src/data/startDefinitions.ts). Debug bypass retained.
 // onStart prop removed; startGame is called directly from the store.
+//
+// Phase 5, Chunk P5-E — START_DEFINITIONS grew two more entries (Gens
+// Duilia/Manlia); this screen just maps over whatever's in the array, so no
+// structural change was needed beyond computing each card's lock state from
+// the Hall of Ancestors and adding the "preview locked families" debug
+// toggle (DebugPanel itself only mounts after a game starts, per
+// DomusScreen.tsx — this toggle is the pre-game equivalent for a screen no
+// running game exists yet to attach a real debug panel to).
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -9,6 +17,7 @@ import {
   Text,
   ImageBackground,
   TouchableOpacity,
+  ScrollView,
   StyleSheet,
   Platform,
   ActivityIndicator,
@@ -18,6 +27,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
 import { saveProvider, hasSave, importSave } from '../state/saveLoad';
 import { START_DEFINITIONS } from '../data/startDefinitions';
+import { loadHall } from '../state/ancestorStore';
+import type { AncestorRecord } from '../models/epilogue';
 import { COLORS, FONTS, SPACING, RADIUS } from '../utils/theme';
 import HallOfAncestorsScreen from './HallOfAncestorsScreen';
 
@@ -31,9 +42,14 @@ export default function StartMenuScreen() {
   const [saveExists, setSaveExists] = useState(false);
   // Phase 3, Chunk P3-E — Hall of Ancestors entry point.
   const [showHall, setShowHall]     = useState(false);
+  // Phase 5, Chunk P5-E — unlock state for Gens Duilia/Manlia, computed live
+  // from the Hall (no separate unlock flag to migrate or lose, per E2).
+  const [hallRecords, setHallRecords] = useState<AncestorRecord[]>([]);
+  const [debugUnlockAll, setDebugUnlockAll] = useState(false);
 
   useEffect(() => {
     hasSave().then(setSaveExists).catch(() => setSaveExists(false));
+    loadHall().then(setHallRecords).catch(() => setHallRecords([]));
   }, []);
 
   if (showHall) {
@@ -68,6 +84,11 @@ export default function StartMenuScreen() {
     }
   }
 
+  function handleStartPress(def: typeof START_DEFINITIONS[number], unlocked: boolean) {
+    if (!unlocked) return; // locked cards are inert without the debug toggle
+    startGame(def.id, debugUnlockAll ? 'debug' : 'senator');
+  }
+
   return (
     <ImageBackground
       source={BG ?? undefined}
@@ -84,32 +105,40 @@ export default function StartMenuScreen() {
           <View style={styles.titleRule} />
         </View>
 
-        {/* ── Two-card start picker ── */}
-        <View style={styles.cardsBlock}>
+        {/* ── Start picker ── */}
+        <ScrollView style={styles.cardsScroll} contentContainerStyle={styles.cardsBlock}>
           <Text style={styles.sectionLabel}>BEGIN</Text>
 
-          {START_DEFINITIONS.map(def => (
-            <TouchableOpacity
-              key={def.id}
-              style={[
-                styles.startCard,
-                def.recommended && styles.startCardRecommended,
-              ]}
-              onPress={() => startGame(def.id)}
-              activeOpacity={0.82}
-            >
-              {def.recommended && (
-                <View style={styles.laurel}>
-                  <Text style={styles.laurelText}>RECOMMENDED</Text>
-                </View>
-              )}
-              <Text style={styles.cardName}>{def.name}</Text>
-              <Text style={styles.cardSubtitle}>{def.subtitle}</Text>
-              <Text style={styles.cardDesc}>{def.description}</Text>
-            </TouchableOpacity>
-          ))}
+          {START_DEFINITIONS.map(def => {
+            const unlocked = debugUnlockAll || !def.isUnlocked || def.isUnlocked(hallRecords);
+            return (
+              <TouchableOpacity
+                key={def.id}
+                style={[
+                  styles.startCard,
+                  def.recommended && styles.startCardRecommended,
+                  !unlocked && styles.startCardLocked,
+                ]}
+                onPress={() => handleStartPress(def, unlocked)}
+                activeOpacity={unlocked ? 0.82 : 1}
+              >
+                {def.recommended && (
+                  <View style={styles.laurel}>
+                    <Text style={styles.laurelText}>RECOMMENDED</Text>
+                  </View>
+                )}
+                <Text style={[styles.cardName, !unlocked && styles.cardTextLocked]}>{def.name}</Text>
+                <Text style={[styles.cardSubtitle, !unlocked && styles.cardTextLocked]}>{def.subtitle}</Text>
+                {unlocked ? (
+                  <Text style={styles.cardDesc}>{def.description}</Text>
+                ) : (
+                  <Text style={styles.cardLockedCondition}>🔒 {def.unlockCondition}</Text>
+                )}
+              </TouchableOpacity>
+            );
+          })}
 
-          {/* Debug bypass — small, below the main cards */}
+          {/* Debug bypasses — small, below the main cards */}
           <TouchableOpacity
             style={styles.debugBtn}
             onPress={() => startGame('standard', 'debug')}
@@ -117,7 +146,16 @@ export default function StartMenuScreen() {
           >
             <Text style={styles.debugText}>⚙ Debug Mode</Text>
           </TouchableOpacity>
-        </View>
+          <TouchableOpacity
+            style={styles.debugBtn}
+            onPress={() => setDebugUnlockAll(v => !v)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.debugText}>
+              {debugUnlockAll ? '🔓 Previewing locked families (tap to hide)' : '🔒 Preview locked families'}
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
 
         {/* ── Continue / Load section ── */}
         <View style={styles.loadBlock}>
@@ -197,7 +235,10 @@ const styles = StyleSheet.create({
   },
 
   // ── Start cards ───────────────────────────────────────────────────────────
-  cardsBlock: { gap: SPACING.sm },
+  // Phase 5, Chunk P5-E — wrapped in a ScrollView (cardsScroll) now that
+  // there are 4 cards instead of 2; cardsBlock becomes its contentContainerStyle.
+  cardsScroll: { flexGrow: 0 },
+  cardsBlock: { gap: SPACING.sm, paddingBottom: SPACING.sm },
 
   startCard: {
     backgroundColor: 'rgba(26,23,20,0.88)',
@@ -209,6 +250,10 @@ const styles = StyleSheet.create({
   startCardRecommended: {
     borderColor: COLORS.goldDim,
     borderWidth: 1.5,
+  },
+  // Phase 5, Chunk P5-E — locked Duilia/Manlia cards.
+  startCardLocked: {
+    opacity: 0.55,
   },
 
   // "Recommended" laurel badge
@@ -248,6 +293,16 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.bodyRegular,
     fontSize: 12,
     color: COLORS.dust,
+    lineHeight: 17,
+  },
+  // Phase 5, Chunk P5-E
+  cardTextLocked: {
+    color: COLORS.dust,
+  },
+  cardLockedCondition: {
+    fontFamily: FONTS.bodyRegular,
+    fontSize: 12,
+    color: COLORS.goldDim,
     lineHeight: 17,
   },
 

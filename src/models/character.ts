@@ -29,7 +29,14 @@ export interface AmbitionGoal {
 export interface Character {
   id: string;
   name: string;
-  role: 'paterfamilias' | 'spouse' | 'son' | 'daughter';
+  // 'brother'/'sister' — Phase 5, Chunk P5-E — a sibling of the paterfamilias
+  // (same generation, not his child). Added for Gens Duilia's starting
+  // roster; deliberately excluded from getHeirOrder (inheritanceEngine.ts),
+  // which allowlists 'son'/'daughter'/'spouse' explicitly rather than
+  // filtering-out known roles, so a sibling is correctly never heir-eligible
+  // without any extra guard needed. No exhaustive switch on `.role` exists
+  // anywhere in the codebase (verified), so this is a safe additive change.
+  role: 'paterfamilias' | 'spouse' | 'son' | 'daughter' | 'brother' | 'sister';
   isPlayer: boolean;
   age: number;
   skills: CharacterSkills;

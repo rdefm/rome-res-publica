@@ -55,7 +55,11 @@ export default function CharacterCard({ character, selected, onPress }: Characte
             ) : (
               <View style={styles.portraitFallback}>
                 <Text style={{ fontSize: 36 }}>
-                  {character.role === 'spouse' ? '👩' : character.role === 'son' ? '👦' : '👧'}
+                  {character.role === 'spouse' ? '👩'
+                    : character.role === 'son' ? '👦'
+                    : character.role === 'brother' ? '🧔'
+                    : character.role === 'sister' ? '👧'
+                    : '👧'}
                 </Text>
               </View>
             )}

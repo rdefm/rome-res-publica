@@ -19,7 +19,7 @@ import type { SenateResponseState } from '../engine/senateResponseEngine';
 import type { CrisisState, CrisisTrackId } from '../models/crisis';
 import type { OfficeActionTargetContext } from '../engine/officeActionEngine';
 // ── Phase 1 (P1-A) ────────────────────────────────────────────────────────────
-import type { StartId } from '../models/gameStart';
+import type { StartId, GensId } from '../models/gameStart';
 import type { AgendaTarget, TabName } from '../models/agenda';
 import type { SeasonLedger } from '../models/ledger';
 import { calcLevyCost } from '../engine/troopEngine';
@@ -476,6 +476,24 @@ export interface GameState {
   // ── Phase 1 — Agenda tablet + tutorial (P1-A) ──────────────────────────────
   /** Which start configuration launched this game. */
   startId: StartId;
+
+  // ── Phase 5, Chunk P5-E — gens identity (alternate starting families) ──────
+  // Four grammatical forms, all needed somewhere in the codebase's existing
+  // flavor text (verified by the P5-E neutrality sweep) — stored explicitly
+  // rather than derived, matching STARTING_CLANS' own precedent of storing
+  // both `name: 'Gens Cornelia'` and `gensName: 'Cornelius'` side by side
+  // rather than computing one from the other.
+  /** Stable machine key. 'brutii' for the original/guided family. */
+  gensId: GensId;
+  /** Masculine surname, e.g. 'Brutus' — used in character full names and
+   *  generateSpouse/suggestChildName/generateCadet. */
+  gensSurname: string;
+  /** Feminine/adjectival form, e.g. 'Brutia' — used in "Gens {gensName}"
+   *  phrasing (epilogue, historian paragraph, patron tier-up notice). */
+  gensName: string;
+  /** Collective plural, e.g. 'Brutii' — used in "the {gensPlural}" idioms
+   *  (log messages, birth/adoption/client-join notices). */
+  gensPlural: string;
   /** Ordered defIds remaining in the guided tutorial script. Empty = no active script or standard start. */
   tutorialQueue: string[];
   /** turnNumber of the last season the tablet auto-opened. −1 = never opened. Prevents re-open within same season. */
@@ -1037,6 +1055,13 @@ export const INITIAL_STATE: GameState = {
 
   // ── Phase 1 — Agenda tablet + tutorial (P1-A) ──────────────────────────────
   startId: 'standard' as StartId,
+
+  // ── Phase 5, Chunk P5-E — gens identity ────────────────────────────────────
+  gensId: 'brutii' as GensId,
+  gensSurname: 'Brutus',
+  gensName: 'Brutia',
+  gensPlural: 'Brutii',
+
   tutorialQueue: [],
   agendaViewedTurn: -1,
   agendaVisible: false,
@@ -1227,16 +1252,39 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       tutorialQueue = rawQueue.slice(1);
     }
 
+    // Phase 5, Chunk P5-E — stateOverrides was documented on StartDefinition
+    // (models/gameStart.ts) but never actually applied here; this is the
+    // exact extension point Duilia/Manlia need (family, resources,
+    // familyReputations, ownedAssets, gens identity). Guided/standard set no
+    // overrides, so they're unaffected — this is additive.
+    const stateOverrides = (startDef?.stateOverrides ?? {}) as Partial<GameState>;
+    const gensPlural = (stateOverrides.gensPlural as string | undefined) ?? INITIAL_STATE.gensPlural;
+    const gensName   = (stateOverrides.gensName   as string | undefined) ?? INITIAL_STATE.gensName;
+
+    // Fired once, only for an alternate family — Philon's one sanctioned
+    // family-specific line (see evt-new-house-notice's own comment).
+    if (stateOverrides.gensId && stateOverrides.gensId !== 'brutii') {
+      pendingGameStart = [
+        ...pendingGameStart,
+        injectNoticeEvent(
+          'evt-new-house-notice', 0,
+          ((stateOverrides.family as any[])?.find(c => c.isPlayer)?.id ?? 'pc-1'),
+        ),
+      ];
+    }
+
     set({
       ...INITIAL_STATE,
+      ...stateOverrides,
       gameStarted: true,
       debugMode: mode === 'debug',
       startId: startId as StartId,
       tutorialQueue,
       pendingEvents: pendingGameStart,
       lastActiveAt: Date.now(),
-      // P3-D — generated once per run, both start types.
-      cadetBranch: generateCadet(),
+      log: [mkLog('264 BC · Spring', `The ${gensPlural} begin their ascent.`, 'neutral')],
+      // P3-D — generated once per run, every start.
+      cadetBranch: generateCadet(gensName),
     });
   },
 
@@ -1533,7 +1581,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const label = turnLabel(s);
     set({
       denarii: s.denarii - 50,
-      log: [...s.log, mkLog(label, 'Adrogatio performed. A citizen adopted into the Brutii.', 'neutral')],
+      log: [...s.log, mkLog(label, `Adrogatio performed. A citizen adopted into the ${s.gensPlural}.`, 'neutral')],
       ...bumpActions(s),
       ...bumpSpend(s, { denarii: 50 }),
     });
@@ -2130,7 +2178,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       familyReputations: newReps,
       ...(crossedThreshold ? {
         seasonOverlayEvents: [...s.seasonOverlayEvents,
-          `${clanName} now regards the Brutii as "${crossedThreshold.label}".`]
+          `${clanName} now regards the ${s.gensPlural} as "${crossedThreshold.label}".`]
       } : {}),
     });
   },
@@ -2734,7 +2782,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set({
       family: [...s.family, child],
       pendingBirthNaming: null,
-      log: [...s.log, mkLog(label, `${name} is born into the Brutii.`, 'good')],
+      log: [...s.log, mkLog(label, `${name} is born into the ${s.gensPlural}.`, 'good')],
     });
   },
 
@@ -3125,7 +3173,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     // rather than only the first time resolveDeathNotice lazily regenerates
     // one (which works too, but leaves evt-cadet-visit tracking nothing
     // until extinction actually happens).
-    cadetBranch: savedState.cadetBranch ?? generateCadet(),
+    cadetBranch: savedState.cadetBranch ?? generateCadet((savedState as any).gensName ?? 'Brutia'),
     // Phase 4, Chunk P4-F — see backfillLegacyObjectives's doc comment.
     legacyObjectives: backfillLegacyObjectives(savedState.legacyObjectives),
     // Phase 4, Chunk P4-G — a save written before the Claudius arc existed
@@ -3407,7 +3455,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set({
       clients: [...s.clients, newClient as any],
       fides: s.fides - 20,
-      log: [...s.log, mkLog(label, `${clientDef.name} joins the Brutii as a provincial client.`, 'good')],
+      log: [...s.log, mkLog(label, `${clientDef.name} joins the ${s.gensPlural} as a provincial client.`, 'good')],
       ...bumpActions(s),
       ...bumpSpend(s, { fides: 20 }),
     });

@@ -2,12 +2,24 @@
 
 /**
  * Identifies which start configuration launched the current game.
- * Extend this union when new starts are added (e.g. 'alternate-family' in Phase 5).
- * Only two values branch on startId anywhere in the codebase:
+ * Phase 5, Chunk P5-E added 'duilia'/'manlia' — the anticipated "alternate
+ * family" extension this type's own comment predicted. `startId` is written
+ * to GameState but never read/compared anywhere else in the codebase
+ * (verified) beyond the two hooks below, so extending this union is safe:
  *   (1) the new-game store action populates tutorialQueue from TUTORIAL_SCRIPTS
  *   (2) StartMenuScreen renders a picker card per definition.
  */
-export type StartId = 'guided' | 'standard';
+export type StartId = 'guided' | 'standard' | 'duilia' | 'manlia';
+
+// ─── Gens ID (Phase 5, Chunk P5-E) ───────────────────────────────────────────
+
+/**
+ * Which starting family a run uses. Stored on GameState directly (not
+ * derived from StartId at read time) since 'guided' and 'standard' are both
+ * 'brutii' — see src/data/altFamilies.ts for Duilia/Manlia's full data and
+ * unlock predicates.
+ */
+export type GensId = 'brutii' | 'duilia' | 'manlia';
 
 // ─── Start definition ─────────────────────────────────────────────────────────
 
@@ -25,6 +37,9 @@ export interface StartDefinition {
    * Shallow-merged over INITIAL_STATE when this start begins a new game.
    * Typed as a loose record to avoid a circular dependency with gameStore.ts.
    * All values must be valid GameState field values; enforced at the call site.
+   * Phase 5, Chunk P5-E — this was documented but never actually applied by
+   * startGame; wired up this chunk (the exact extension point Duilia/Manlia
+   * needed).
    */
   stateOverrides?: Record<string, unknown>;
   /**
@@ -33,4 +48,17 @@ export interface StartDefinition {
    * Only the 'guided' start sets this.
    */
   tutorialScriptId?: string;
+  /**
+   * Phase 5, Chunk P5-E — plain-language unlock condition shown on a locked
+   * start-menu card. Absent = always available (guided/standard).
+   */
+  unlockCondition?: string;
+  /**
+   * Phase 5, Chunk P5-E — pure predicate over the Hall of Ancestors; no
+   * separate unlock flag to migrate or lose. `hall` is loosely typed
+   * (AncestorRecord[] in practice) to avoid a circular dependency with
+   * models/epilogue.ts, same rationale as stateOverrides' own loose typing.
+   * Absent = always available.
+   */
+  isUnlocked?: (hall: any[]) => boolean;
 }

@@ -18,12 +18,16 @@ import type { EpilogueOutcome } from '../models/epilogue';
 import HallOfAncestorsScreen from './HallOfAncestorsScreen';
 import InfoTap from '../components/shared/InfoTap';
 
+// Phase 5, Chunk P5-E — 'victory'/'gens_ends' tones were hardcoded 'Gens
+// Brutia'/'Brutia', found during the gens-neutrality sweep. `{gensName}` is
+// filled from the record's own field at render time (same placeholder
+// convention as data/epilogueText.ts).
 const OUTCOME_BANNER: Record<EpilogueOutcome, { title: string; color: string; tone: string }> = {
-  victory:        { title: 'Victory',              color: COLORS.gold,         tone: 'Rome triumphant — and the Gens Brutia with it.' },
+  victory:        { title: 'Victory',              color: COLORS.gold,         tone: 'Rome triumphant — and the Gens {gensName} with it.' },
   exhaustion:     { title: 'Peace of Exhaustion',   color: COLORS.dust,         tone: 'Worn down, not broken.' },
   humbled:        { title: 'Rome Humbled',          color: COLORS.crimsonMuted, tone: 'Terms were dictated, not won.' },
   republic_falls: { title: 'The Republic Falls',    color: COLORS.crimson,      tone: 'What Rome was, it is no longer.' },
-  gens_ends:      { title: 'The Gens Ends',         color: COLORS.crimsonDark,  tone: 'The name Brutia falls silent.' },
+  gens_ends:      { title: 'The Gens Ends',         color: COLORS.crimsonDark,  tone: 'The name {gensName} falls silent.' },
 };
 
 export default function EpilogueScreen() {
@@ -45,6 +49,7 @@ export default function EpilogueScreen() {
   }
 
   const banner = OUTCOME_BANNER[record!.outcome];
+  const bannerTone = banner.tone.replace('{gensName}', record!.gensName);
 
   return (
     <Modal visible={isOpen} animationType="slide" presentationStyle="fullScreen">
@@ -53,7 +58,7 @@ export default function EpilogueScreen() {
 
           <View style={[styles.bannerBlock, { borderColor: banner.color }]}>
             <Text style={[styles.bannerTitle, { color: banner.color }]}>{banner.title}</Text>
-            <Text style={styles.bannerTone}>{banner.tone}</Text>
+            <Text style={styles.bannerTone}>{bannerTone}</Text>
             <Text style={styles.bannerYears}>
               {Math.abs(record!.foundedYear)} BC — {Math.abs(record!.endedYear)} BC
             </Text>

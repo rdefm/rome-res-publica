@@ -1211,6 +1211,54 @@ export const BALANCE = {
       vindicatedDignitas: 5,
     },
   },
+
+  // ─── Phase 5, Chunk P5-E — Alternate starting families ───────────────────
+  // Brutii's own starts (INITIAL_STATE, gameStore.ts): fides 30, denarii 200,
+  // lifetimeDignitas 0. Both alt families are free-start-only sidegrades —
+  // per invariant 3/4 neither should cross a Patron Tier threshold at start
+  // (Tier 1 requires lifetimeDignitas >= 30) or approach
+  // trialEngine.CORRUPTION_TRIAL_THRESHOLD (60), so neither gets an
+  // unintended mechanical head start or immediate trial risk.
+  altFamilies: {
+    duilia: {
+      /** ~3x Brutii's 200 — "buy your way in" is the whole hook. */
+      startingDenarii: 600,
+      /** Brutii's own lifetimeDignitas is already 0 — "~0.5x" is trivially
+       *  satisfied by any low number; kept at 0 like Brutii (no inherited
+       *  prestige at all, matching "new money, no name"). */
+      startingLifetimeDignitas: 0,
+      /** Slightly below Brutii's 30 — cash-rich, trust-poor. */
+      startingFides: 20,
+      /** All four clans start here — "nobody knows them" (Brutii's own
+       *  default anchor is 0; this is the Cold band per
+       *  REPUTATION_THRESHOLDS, -50 to -10). */
+      startingClanReputation: -15,
+    },
+    manlia: {
+      /** Below Brutii's 200 — a disgraced house has spent down its reserves. */
+      startingDenarii: 80,
+      /** Below Brutii's 30 — public trust takes time to rebuild. */
+      startingFides: 15,
+      /** Above Brutii's/Duilia's 0 ("moderate") but nowhere near the Tier 1
+       *  threshold (30) — some residual prestige from before the disgrace,
+       *  no mechanical head start. */
+      startingLifetimeDignitas: 20,
+      /** Elevated but safely under CORRUPTION_TRIAL_THRESHOLD (60) — real
+       *  pressure (nudges secret-generation targeting odds, corruptionScore
+       *  / 200 per secretEngine.ts) without an immediate trial risk from
+       *  turn one. */
+      startingCorruption: 40,
+      /** Fabii and Claudii (the two proudest old patrician houses — natural
+       *  judges of a disgraced peer) hostile; Cornelii neutral (aloof,
+       *  focused on its own aristocratic circle); Valerii sympathetic
+       *  (the populist clan extending sympathy to a humbled patrician
+       *  house — an intentional, slightly unusual pairing, noted in the
+       *  P5-E commit). */
+      hostileClanReputation: -60,
+      neutralClanReputation: 0,
+      sympatheticClanReputation: 35,
+    },
+  },
 };
 
 // ─── Known un-extracted tunables ───────────────────────────────────────────

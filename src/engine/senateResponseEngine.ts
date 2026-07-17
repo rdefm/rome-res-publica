@@ -124,7 +124,9 @@ export function tickSenateResponse(
       const censuraBill = {
         id:              `senate-censura-${turnNumber}`,
         title:           'Senatus Consultum de Censura',
-        description:     'The Senate moves to censure the Brutii for raising an unsanctioned personal levy. If passed, Fides income is suspended until all illegal troops are disbanded.',
+        // Phase 5, Chunk P5-E — was hardcoded 'the Brutii', found during the
+        // gens-neutrality sweep.
+        description:     `The Senate moves to censure the ${state.gensPlural} for raising an unsanctioned personal levy. If passed, Fides income is suspended until all illegal troops are disbanded.`,
         type:            'censure',
         forVotes:        0,
         againstVotes:    0,

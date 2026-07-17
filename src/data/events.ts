@@ -9,7 +9,7 @@ export const EVENT_DEFS: EventDef[] = [
     title: 'A Man With Useful Skills',
     bodyText:
       'A scarred freedman named {clientName} approaches your steward. He offers his ' +
-      'services — and those of his associates — to the Brutii. No questions asked.',
+      'services — and those of his associates — to the {gensPlural}. No questions asked.',
     imageKey: 'portrait-paterfamilias',
     conditions: [],
     weight: 7,
@@ -34,7 +34,7 @@ export const EVENT_DEFS: EventDef[] = [
     title: 'A Voice for the People',
     bodyText:
       'A plebeian advocate named {clientName} has been singing the praises of the ' +
-      'Brutii in the Forum. He seeks formal patronage in return.',
+      '{gensPlural} in the Forum. He seeks formal patronage in return.',
     imageKey: 'portrait-paterfamilias',
     conditions: [],
     weight: 7,
@@ -275,6 +275,32 @@ export const EVENT_DEFS: EventDef[] = [
     title: 'Rome Remembers',
     bodyText:
       'Philon: "What Rome is given, Rome remembers, Domine."',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      {
+        id: 'continue',
+        label: 'Continue',
+        successEffect: '',
+        failureEffect: '',
+      },
+    ],
+  },
+
+  // ─── Phase 5, Chunk P5-E — alternate-family opening notice ────────────────
+  // Fired once at gameStart by gameStore.startGame, only when gensId !==
+  // 'brutii' (title/bodyText overridden dynamically via injectNoticeEvent,
+  // same pattern as evt-patron-tier-up above). Philon's one sanctioned
+  // family-specific appearance per the P5-E cross-chunk voice-registers
+  // note (the other being the Saturnalia cameo, P5-B) — he serves the
+  // household, not the gens, hence the one adaptive line rather than a
+  // longer scene.
+  {
+    id: 'evt-new-house-notice',
+    title: 'A New House',
+    bodyText:
+      'Philon: "A new house, Domine, but ledgers are ledgers."',
     imageKey: 'portrait-paterfamilias',
     conditions: [],
     weight: 0,
@@ -674,7 +700,7 @@ export const EVENT_DEFS: EventDef[] = [
         failureEffect: '',
         successText:
           'The fires burn late and the street fills with people leaping them for luck, laughing at ' +
-          'the ones who mistime it. Someone starts a joke about the Brutii and it is, for once, a fond one.',
+          'the ones who mistime it. Someone starts a joke about your household and it is, for once, a fond one.',
       },
       {
         id: 'abstain',
@@ -781,7 +807,7 @@ export const EVENT_DEFS: EventDef[] = [
         failureEffect: '',
         successText:
           'Carts of grain and vinegar move through the affected streets under your steward\'s direction. ' +
-          'You do not go yourself — no senator does — but the Brutii name is spoken in the Subura ' +
+          'You do not go yourself — no senator does — but your family\'s name is spoken in the Subura ' +
           'with something other than indifference for the rest of the summer.',
       },
       {
@@ -1151,7 +1177,7 @@ export const EVENT_DEFS: EventDef[] = [
         successText:
           'Three days of open house, distributed gifts, and an ox roasted in the courtyard. ' +
           'By the fourth day you are tired and poorer, and somehow this is satisfying. ' +
-          'The name Brutii is heard in the streets without a pause before it.',
+          'Your family\'s name is heard in the streets without a pause before it.',
       },
       {
         id: 'economise',
@@ -1279,7 +1305,7 @@ export const EVENT_DEFS: EventDef[] = [
     bodyText:
       'Eros, freed from your household three years ago and prosperous enough since to have opinions ' +
       'about his own future, asks a favour: permission to trade under the family name in the grain ' +
-      'markets near the Forum Boarium, where a Brutii association would open doors that a freedman\'s ' +
+      'markets near the Forum Boarium, where a {gensPlural} association would open doors that a freedman\'s ' +
       'own name still does not. He has been loyal. He is also, transparently, asking for something valuable.',
     imageKey: 'portrait-paterfamilias',
     conditions: [],

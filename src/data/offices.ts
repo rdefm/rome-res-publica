@@ -140,7 +140,7 @@ export const OFFICES: Office[] = [
         cost: '40 Denarii',
         costVal: 40,
         resource: 'denarii',
-        desc: 'Wine and conversation. All leaders warm slightly to the Brutii.',
+        desc: 'Wine and conversation. All leaders warm slightly to your family.',
         effect: (state) => {
           const clans = state.clans.map((c) => ({
             ...c,

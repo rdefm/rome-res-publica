@@ -15,10 +15,10 @@ import { injectNoticeEvent } from '../engine/eventEngine';
 import { generateCadet } from '../engine/inheritanceEngine';
 import { buildDeathCardBody, buildNoHeirBody } from './successionEvents';
 
-function buildCadetOfferBody(p: PendingSuccession, cadet: CadetBranch): string {
+function buildCadetOfferBody(p: PendingSuccession, cadet: CadetBranch, gensName: string): string {
   return `${p.deceasedName}, ${p.deceasedAge} — ${p.rememberedDetail} — has died, and no one of the direct line ` +
     `remains to take up the name. But the name is not yet extinct: ${cadet.name}, ${cadet.characterization}, ` +
-    `is still of the Gens Brutia. He could carry it forward — a lesser branch stepping into the light — or the ` +
+    `is still of the Gens ${gensName}. He could carry it forward — a lesser branch stepping into the light — or the ` +
     `family could let itself end here.`;
 }
 
@@ -43,6 +43,11 @@ export function resolveDeathNotice(
   cadetBranch: CadetBranch | null,
   cadetBranchUsed: boolean,
   turnNumber: number,
+  // Phase 5, Chunk P5-E — feminine/adjectival form (e.g. 'Brutia'), threaded
+  // through to buildCadetOfferBody/generateCadet, which both used to
+  // hardcode it. All three call sites (turnSequencer.ts x2, musterEngine.ts)
+  // have state.gensName in scope.
+  gensName: string,
 ): DeathNoticeResolution {
   if (p.eligibleHeirIds.length > 0) {
     return {
@@ -56,10 +61,10 @@ export function resolveDeathNotice(
     // D4's lifecycle choice: no continuous "keep a living backup" process —
     // lazily regenerate right here if he died of old age first, so the
     // safety net never fails to catch. Written back by the caller.
-    const effectiveCadet = (cadetBranch && cadetBranch.alive) ? cadetBranch : generateCadet();
+    const effectiveCadet = (cadetBranch && cadetBranch.alive) ? cadetBranch : generateCadet(gensName);
     return {
       notice: injectNoticeEvent('evt-cadet-succession', turnNumber, p.deceasedId, {
-        title: 'The Line Falters', bodyText: buildCadetOfferBody(p, effectiveCadet),
+        title: 'The Line Falters', bodyText: buildCadetOfferBody(p, effectiveCadet, gensName),
       }),
       cadetBranch: effectiveCadet,
     };
@@ -67,7 +72,7 @@ export function resolveDeathNotice(
 
   return {
     notice: injectNoticeEvent('evt-succession-no-heir', turnNumber, p.deceasedId, {
-      title: 'The Line Ends', bodyText: buildNoHeirBody(p),
+      title: 'The Line Ends', bodyText: buildNoHeirBody(p, gensName),
     }),
     pendingEpilogue: 'gens_ends',
   };
@@ -87,7 +92,7 @@ export const CADET_EVENT_DEFS: EventDef[] = [
     id: 'evt-cadet-visit',
     title: 'A Distant Cousin Calls',
     bodyText:
-      'A Brutius of the lesser branch pays a call at the domus — not close kin, but kin all the same. He asks ' +
+      'A cousin of the lesser branch pays a call at the domus — not close kin, but kin all the same. He asks ' +
       'nothing beyond an afternoon\'s welcome, and the household obliges, if a little unsure what to make of him.',
     imageKey: 'portrait-paterfamilias',
     conditions: [{ type: 'flag', key: 'cadet-visits-exhausted', equals: false }],
@@ -98,7 +103,7 @@ export const CADET_EVENT_DEFS: EventDef[] = [
         label: 'Welcome him warmly',
         successEffect: 'cadetStanding+5|cadetVisited',
         failureEffect: '',
-        successText: 'He leaves pleased with the visit, and a little more sure the Gens Brutia knows his name.',
+        successText: 'He leaves pleased with the visit, and a little more sure the family knows his name.',
       },
       {
         id: 'receive-politely',
@@ -132,7 +137,7 @@ export const CADET_EVENT_DEFS: EventDef[] = [
         label: 'Let the Gens end',
         successEffect: 'setPendingEpilogue:gens_ends',
         failureEffect: '',
-        successText: 'The household is closed. The name Brutia will be spoken of, from now on, only in the past tense.',
+        successText: 'The household is closed. The family\'s name will be spoken of, from now on, only in the past tense.',
       },
     ],
   },

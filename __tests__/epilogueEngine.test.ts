@@ -33,6 +33,7 @@ function makeCrisisTrack(id: string, level: number) {
 function makeState(overrides: Partial<GameState> = {}): GameState {
   return {
     year: -250, turnNumber: 40, gensFoundedYear: -264,
+    gensId: 'brutii', gensSurname: 'Brutus', gensName: 'Brutia', gensPlural: 'Brutii',
     lifetimeDignitas: 80, legacyPenaltyMult: 1,
     highestOfficeEverHeld: 'consul', heldOffices: [],
     paterfamiliasGenerations: 2,
@@ -58,6 +59,9 @@ describe('buildAncestorRecord', () => {
     const record = buildAncestorRecord(state, outcome);
     expect(record.outcome).toBe(outcome);
     expect(record.gensName).toBe('Brutia');
+    // Phase 5, Chunk P5-E — gensName/gensId are now read from state, not
+    // hardcoded (found during the gens-neutrality sweep).
+    expect(record.gensId).toBe('brutii');
     expect(record.foundedYear).toBe(-264);
     expect(record.endedYear).toBe(-250);
     expect(record.historianParagraph.length).toBeGreaterThan(0);

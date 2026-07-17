@@ -1255,7 +1255,7 @@ export function processSeason(state: GameState): {
         family = result.family;
         if (result.pendingSuccession) {
           const p = result.pendingSuccession;
-          const resolution = resolveDeathNotice(p, s.cadetBranch, s.cadetBranchUsed, s.turnNumber);
+          const resolution = resolveDeathNotice(p, s.cadetBranch, s.cadetBranchUsed, s.turnNumber, s.gensName);
           s = {
             ...s,
             pendingSuccession: p,
@@ -1683,7 +1683,7 @@ export function processSeason(state: GameState): {
   if (needsSpouse(s.family)) {
     if (Math.random() < BALANCE.succession.remarriageChance) {
       const player = s.family.find(c => c.isPlayer)!;
-      const spouse = generateSpouse('Brutus');
+      const spouse = generateSpouse(s.gensSurname);
       s = { ...s, family: [...s.family, spouse] };
       events.push(`${spouse.name} joins the household as ${player.name}'s wife.`);
     }
@@ -1704,13 +1704,13 @@ export function processSeason(state: GameState): {
         intrigus: Math.max(1, Math.min(8, Math.round((player.skills.intrigus + spouse.skills.intrigus) / 2 + (Math.random() * 2 - 1)))),
       };
 
-      const suggestedName = suggestChildName(role, 'Brutus');
+      const suggestedName = suggestChildName(role, s.gensSurname);
 
       s = {
         ...s,
         pendingBirthNaming: { suggestedName, role, inheritedTraits, baseSkills },
       };
-      events.push(`A child is expected in the Brutii household. Name them before the season ends.`);
+      events.push(`A child is expected in the ${s.gensPlural} household. Name them before the season ends.`);
     }
   }
 
@@ -1731,7 +1731,7 @@ export function processSeason(state: GameState): {
           `Your household may now sponsor ${tierDef.passiveBonus.clientSlots} clients, ` +
           `and Fides income rises ×${tierDef.passiveBonus.fidesMultiplier.toFixed(2)}.`;
         const noticeBody =
-          `Philon does not smile often. "Rome has taken notice, Domine. The Gens Brutia now stands as ` +
+          `Philon does not smile often. "Rome has taken notice, Domine. The Gens ${s.gensName} now stands as ` +
           `${tierDef.label}. ${bonusLine} Greater names carry greater expectations."`;
         const player = s.family.find(c => c.isPlayer);
         s = {

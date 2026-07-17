@@ -109,7 +109,11 @@ export function buildAncestorRecordWithoutParagraph(
 
   return {
     id: `ancestor-${state.turnNumber}-${Date.now()}`,
-    gensName: 'Brutia',
+    // Phase 5, Chunk P5-E — was hardcoded 'Brutia' regardless of the actual
+    // run's family; every finished run's Hall record silently mis-recorded
+    // this until now (found during the gens-neutrality sweep).
+    gensName: state.gensName,
+    gensId: state.gensId,
     foundedYear: state.gensFoundedYear,
     endedYear: state.year,
     outcome,

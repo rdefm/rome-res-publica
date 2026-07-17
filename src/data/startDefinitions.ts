@@ -1,4 +1,5 @@
 import type { StartDefinition } from '../models/gameStart';
+import { ALT_FAMILIES } from './altFamilies';
 
 // ─── Start definitions ────────────────────────────────────────────────────────
 //
@@ -30,6 +31,59 @@ export const START_DEFINITIONS: StartDefinition[] = [
       'All events are available from the first season; no scripted guidance. ' +
       'The Republic will not wait for you to find your feet.',
     recommended: false,
+  },
+  // ─── Phase 5, Chunk P5-E — alternate starting families ────────────────────
+  // Free-start-only sidegrades (invariant 3/5) unlocked by Hall of Ancestors
+  // records — see altFamilies.ts's isUnlocked predicates. Both reuse the
+  // free start's own agency (no tutorial script), differing only in
+  // stateOverrides.
+  {
+    id: 'duilia',
+    name: 'Gens Duilia',
+    subtitle: '"Nova Pecunia" — buy your way into a Republic that sneers at you',
+    description:
+      'Gaius Duilius has coin enough to shame half the Senate and a name none of them recognize. ' +
+      'Wealthy, connected to nobody, and starting from nothing but money. ' +
+      'The Republic can be bought a door at a time — if you can stomach how it looks.',
+    recommended: false,
+    stateOverrides: {
+      gensId: ALT_FAMILIES.duilia.gensId,
+      gensSurname: ALT_FAMILIES.duilia.gensSurname,
+      gensName: ALT_FAMILIES.duilia.gensName,
+      gensPlural: ALT_FAMILIES.duilia.gensPlural,
+      family: ALT_FAMILIES.duilia.family,
+      denarii: ALT_FAMILIES.duilia.denarii,
+      fides: ALT_FAMILIES.duilia.fides,
+      lifetimeDignitas: ALT_FAMILIES.duilia.lifetimeDignitas,
+      familyReputations: ALT_FAMILIES.duilia.familyReputations,
+      ownedAssets: ALT_FAMILIES.duilia.ownedAssets,
+    },
+    unlockCondition: ALT_FAMILIES.duilia.unlockCondition,
+    isUnlocked: ALT_FAMILIES.duilia.isUnlocked,
+  },
+  {
+    id: 'manlia',
+    name: 'Gens Manlia',
+    subtitle: '"The Disgraced" — claw back a name the Forum still whispers about',
+    description:
+      'Titus Manlius carries a patrician name and the weight of what it did to earn its disgrace. ' +
+      'Capable, resented, and one loose word from real trouble. ' +
+      'Every clan in Rome remembers exactly why this house fell — some more fondly than others.',
+    recommended: false,
+    stateOverrides: {
+      gensId: ALT_FAMILIES.manlia.gensId,
+      gensSurname: ALT_FAMILIES.manlia.gensSurname,
+      gensName: ALT_FAMILIES.manlia.gensName,
+      gensPlural: ALT_FAMILIES.manlia.gensPlural,
+      family: ALT_FAMILIES.manlia.family,
+      denarii: ALT_FAMILIES.manlia.denarii,
+      fides: ALT_FAMILIES.manlia.fides,
+      lifetimeDignitas: ALT_FAMILIES.manlia.lifetimeDignitas,
+      familyReputations: ALT_FAMILIES.manlia.familyReputations,
+      ownedAssets: ALT_FAMILIES.manlia.ownedAssets,
+    },
+    unlockCondition: ALT_FAMILIES.manlia.unlockCondition,
+    isUnlocked: ALT_FAMILIES.manlia.isUnlocked,
   },
 ];
 

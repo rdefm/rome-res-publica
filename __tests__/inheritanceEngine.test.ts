@@ -151,7 +151,7 @@ function makeCadet(overrides: Partial<CadetBranch> = {}): CadetBranch {
 
 describe('generateCadet', () => {
   test('produces a valid CadetBranch within BALANCE.cadet bounds', () => {
-    const cadet = generateCadet();
+    const cadet = generateCadet('Brutia');
     expect(cadet.age).toBeGreaterThanOrEqual(BALANCE.cadet.ageMin);
     expect(cadet.age).toBeLessThanOrEqual(BALANCE.cadet.ageMax);
     expect(cadet.skills.rhetoric).toBeGreaterThanOrEqual(BALANCE.cadet.skillMin);
@@ -163,8 +163,8 @@ describe('generateCadet', () => {
   });
 
   test('two generated cadets have distinct ids', () => {
-    const a = generateCadet();
-    const b = generateCadet();
+    const a = generateCadet('Brutia');
+    const b = generateCadet('Brutia');
     expect(a.id).not.toBe(b.id);
   });
 });
@@ -253,7 +253,7 @@ describe('resolveDeathNotice (cadetEvents.ts)', () => {
   };
 
   test('has-heir case still fires the plain P3-C death card', () => {
-    const result = resolveDeathNotice({ ...p, eligibleHeirIds: ['son-1'] }, null, false, 10);
+    const result = resolveDeathNotice({ ...p, eligibleHeirIds: ['son-1'] }, null, false, 10, 'Brutia');
     expect(result.notice.defId).toBe('evt-succession-death');
     expect(result.cadetBranch).toBeUndefined();
     expect(result.pendingEpilogue).toBeUndefined();
@@ -261,21 +261,21 @@ describe('resolveDeathNotice (cadetEvents.ts)', () => {
 
   test('no-heir + cadet available (alive) fires the continuation offer using the existing cadet unchanged', () => {
     const cadet = makeCadet({ alive: true });
-    const result = resolveDeathNotice(p, cadet, false, 10);
+    const result = resolveDeathNotice(p, cadet, false, 10, 'Brutia');
     expect(result.notice.defId).toBe('evt-cadet-succession');
     expect(result.cadetBranch).toEqual(cadet);
   });
 
   test('no-heir + cadet dead lazily regenerates a fresh one', () => {
     const deadCadet = makeCadet({ alive: false });
-    const result = resolveDeathNotice(p, deadCadet, false, 10);
+    const result = resolveDeathNotice(p, deadCadet, false, 10, 'Brutia');
     expect(result.notice.defId).toBe('evt-cadet-succession');
     expect(result.cadetBranch).not.toEqual(deadCadet);
     expect(result.cadetBranch?.alive).toBe(true);
   });
 
   test('no-heir + cadetBranchUsed already true goes straight to the dark ending, no cadet touched', () => {
-    const result = resolveDeathNotice(p, makeCadet(), true, 10);
+    const result = resolveDeathNotice(p, makeCadet(), true, 10, 'Brutia');
     expect(result.notice.defId).toBe('evt-succession-no-heir');
     expect(result.cadetBranch).toBeUndefined();
     expect(result.pendingEpilogue).toBe('gens_ends');

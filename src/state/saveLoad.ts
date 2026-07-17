@@ -120,6 +120,18 @@ const SaveSchema = z.object({
   currentEpilogueRecord: z.any().nullable().default(null),
   // Phase 3, Chunk P3-F — .default(false) ensures pre-P3-F saves load cleanly.
   endlessMode: z.boolean().default(false),
+  // Phase 5, Chunk P5-E — .default()s ensure pre-P5-E saves (every one of
+  // which was Brutii) load cleanly. parse()'s result is discarded (see
+  // load()/importSave() below), so these defaults only matter for
+  // validation, not migration — gameStore.loadGame's `{...INITIAL_STATE,
+  // ...savedState}` spread already backfills a missing key from
+  // INITIAL_STATE's own 'brutii' defaults with no extra per-field logic
+  // needed (unlike wars/trials, this is a plain top-level scalar, not a
+  // nested shape change).
+  gensId: z.enum(['brutii', 'duilia', 'manlia']).default('brutii'),
+  gensSurname: z.string().default('Brutus'),
+  gensName: z.string().default('Brutia'),
+  gensPlural: z.string().default('Brutii'),
 });
 
 export interface SaveProvider {

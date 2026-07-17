@@ -34,10 +34,11 @@ export function buildDeathCardBody(p: PendingSuccession): string {
 
 /** The no-heir notice's dynamic bodyText — see evt-succession-no-heir's
  *  own comment for why this is a distinct dead-end rather than the normal
- *  funeral/heir-confirmation chain. */
-export function buildNoHeirBody(p: PendingSuccession): string {
+ *  funeral/heir-confirmation chain. `gensName` — Phase 5, Chunk P5-E — was
+ *  hardcoded 'Brutia'. */
+export function buildNoHeirBody(p: PendingSuccession, gensName: string): string {
   return `${p.deceasedName}, ${p.deceasedAge} — ${p.rememberedDetail} — has died, and no one remains ` +
-    `of the Gens Brutia fit to take up the name.`;
+    `of the Gens ${gensName} fit to take up the name.`;
 }
 
 export const SUCCESSION_EVENT_DEFS: EventDef[] = [
@@ -96,7 +97,7 @@ export const SUCCESSION_EVENT_DEFS: EventDef[] = [
         // Numbers mirror BALANCE.succession.funeral.lavish — kept in sync by hand.
         successEffect: 'denarii-40|lifetimeDignitas+15|optimatesRel+5|popularesRel+5|nextEvent:evt-succession-heir',
         failureEffect: '',
-        successText: 'The Gens Brutia spends what it must. Rome remembers the pyre.',
+        successText: 'The household spends what it must. Rome remembers the pyre.',
       },
       {
         id: 'modest-funeral',

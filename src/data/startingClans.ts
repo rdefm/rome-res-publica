@@ -114,7 +114,7 @@ export const STARTING_CLANS: Clan[] = [
         blackmail: false,
         bias: 'populares',
         votes: 15,
-        bio: 'Firebrand tribune beloved by the urban poor. Has helped the Brutii before.',
+        bio: 'Firebrand tribune beloved by the urban poor. Has helped your family before.',
         skills: { rhetoric: 7, martial: 4, intrigus: 6 },
         traits: ['silver_tongue'],
         // Served as quaestor and tribune; needs aedile next
@@ -168,7 +168,7 @@ export const STARTING_CLANS: Clan[] = [
     gensName: 'Fabius',
     sigil: '🐗',
     influence: 70,
-    desc: 'Ancient rivals of the Brutii. Control northern tribal votes.',
+    desc: 'Ancient rivals of your family. Control northern tribal votes.',
     leaders: [
       {
         id: 'fabius-maximus',
@@ -182,7 +182,7 @@ export const STARTING_CLANS: Clan[] = [
         blackmail: false,
         bias: 'optimates',
         votes: 14,
-        bio: 'Old and implacable. Has nursed a grudge against the Brutii for two decades.',
+        bio: 'Old and implacable. Has nursed a grudge against your family for two decades.',
         skills: { rhetoric: 7, martial: 6, intrigus: 5 },
         traits: ['ruthless'],
         heldOffices: ['vigintivirate', 'quaestor', 'aedile', 'praetor', 'consul'],
@@ -234,7 +234,7 @@ export const STARTING_CLANS: Clan[] = [
     gensName: 'Claudius',
     sigil: '⚖️',
     influence: 75,
-    desc: 'Haughty patricians who view the Brutii as upstarts.',
+    desc: 'Haughty patricians who view your family as upstarts.',
     leaders: [
       {
         id: 'claudius-pulcher',
@@ -254,7 +254,7 @@ export const STARTING_CLANS: Clan[] = [
         blackmail: false,
         bias: 'optimates',
         votes: 16,
-        bio: "Rome's most feared advocate. Holds evidence of a past Brutus transgression.",
+        bio: "Rome's most feared advocate. Holds evidence of a past transgression by your family.",
         skills: { rhetoric: 8, martial: 3, intrigus: 9 },
         traits: ['ruthless'],
         heldOffices: ['vigintivirate', 'quaestor', 'aedile', 'praetor'],
@@ -293,7 +293,7 @@ export const STARTING_CLANS: Clan[] = [
         blackmail: false,
         bias: 'optimates',
         votes: 5,
-        bio: 'A calculating young Claudian. Watches the Brutii with measured suspicion.',
+        bio: 'A calculating young Claudian. Watches your family with measured suspicion.',
         skills: { rhetoric: 5, martial: 5, intrigus: 6 },
         traits: ['sharp_mind'],
         heldOffices: ['vigintivirate', 'quaestor'],

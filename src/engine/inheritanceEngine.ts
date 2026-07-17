@@ -333,9 +333,12 @@ export function applySuccession(state: GameState, heirId: string, isAlternative:
 
 const CADET_PERSONALITY_TRAITS: PersonalityTrait[] = ['aggressive', 'content', 'ambitious', 'cautious'];
 
+// {gensName} filled at generation time — Phase 5, Chunk P5-E — was hardcoded
+// 'Gens Brutia', found during the gens-neutrality sweep. Same placeholder
+// convention as data/epilogueText.ts.
 const CADET_CHARACTERIZATIONS: Record<PersonalityTrait, string> = {
   aggressive: 'quick to speak his mind and quicker to take offence',
-  content: 'a quiet man who has never asked the Gens Brutia for anything',
+  content: 'a quiet man who has never asked the Gens {gensName} for anything',
   ambitious: 'a man who watches the main line\'s fortunes with more interest than he lets on',
   cautious: 'careful with money and careful with words, in that order',
 };
@@ -344,8 +347,11 @@ const CADET_CHARACTERIZATIONS: Record<PersonalityTrait, string> = {
  *  models/character.ts's CadetBranch doc comment for why he isn't a
  *  playable Character until/unless promoted. Reuses LEADER_PRAENOMINA
  *  (reputationEngine.ts's existing successor-generator pool) per the plan's
- *  explicit instruction, rather than inventing a second name pool. */
-export function generateCadet(): CadetBranch {
+ *  explicit instruction, rather than inventing a second name pool.
+ *  `gensName` — Phase 5, Chunk P5-E — the feminine/adjectival form (e.g.
+ *  'Brutia'), matching this function's own pre-existing naming convention;
+ *  was hardcoded before this chunk. */
+export function generateCadet(gensName: string): CadetBranch {
   const c = BALANCE.cadet;
   const praenomen = LEADER_PRAENOMINA[Math.floor(Math.random() * LEADER_PRAENOMINA.length)];
   const age = c.ageMin + Math.floor(Math.random() * (c.ageMax - c.ageMin + 1));
@@ -354,11 +360,11 @@ export function generateCadet(): CadetBranch {
 
   return {
     id: `cadet-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
-    name: `${praenomen} Brutia`,
+    name: `${praenomen} ${gensName}`,
     age,
     skills: { rhetoric: skill(), martial: skill(), intrigus: skill() },
     trait,
-    characterization: CADET_CHARACTERIZATIONS[trait],
+    characterization: CADET_CHARACTERIZATIONS[trait].replace('{gensName}', gensName),
     metCount: 0,
     standing: c.startingStanding,
     alive: true,
@@ -375,7 +381,9 @@ export function generateCadet(): CadetBranch {
  *  flags; the caller (gameStore's continueAsCadet: token) is responsible
  *  for NOT touching anything else. */
 export function promoteCadetToParterfamilias(cadet: CadetBranch, state: GameState): Partial<GameState> {
-  const spouseName = `${ROMAN_NAMES_FEMALE[Math.floor(Math.random() * ROMAN_NAMES_FEMALE.length)]} Brutia`;
+  // Phase 5, Chunk P5-E — was hardcoded 'Brutia', found during the
+  // gens-neutrality sweep; `state` was already a parameter here.
+  const spouseName = `${ROMAN_NAMES_FEMALE[Math.floor(Math.random() * ROMAN_NAMES_FEMALE.length)]} ${state.gensName}`;
   const newPaterfamilias: Character = {
     id: cadet.id,
     name: cadet.name,

@@ -42,7 +42,9 @@ const OPENERS: Record<AncestorRecord['outcome'], string[]> = {
     'What the Gens {gensName} built, it built inside a Republic that did not outlast it.',
   ],
   gens_ends: [
-    'The name Brutia is, from this point, spoken only in the past tense.',
+    // Phase 5, Chunk P5-E — was hardcoded 'Brutia', not interpolated, found
+    // during the gens-neutrality sweep.
+    'The name {gensName} is, from this point, spoken only in the past tense.',
     'The Gens {gensName} ends here — not with the Republic, which endures without it.',
     'History continues. The Gens {gensName} does not.',
   ],

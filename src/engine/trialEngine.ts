@@ -376,7 +376,7 @@ export function resolveTrialOutcome(
         const result = detectPaterfamiliasDeath(s.family, defendant.characterId, s.heldOffices);
         if (result.pendingSuccession) {
           const p = result.pendingSuccession;
-          const resolution = resolveDeathNotice(p, s.cadetBranch, s.cadetBranchUsed, s.turnNumber);
+          const resolution = resolveDeathNotice(p, s.cadetBranch, s.cadetBranchUsed, s.turnNumber, s.gensName);
           s = {
             ...s,
             family: result.family,

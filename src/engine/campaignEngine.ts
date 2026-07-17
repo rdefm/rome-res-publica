@@ -397,8 +397,10 @@ export function generateCommanderCandidates(
     .map(c => ({
       characterId: c.id,
       characterName: c.name,
-      clanId: 'brutii',
-      clanName: 'Brutii',
+      // Phase 5, Chunk P5-E — was hardcoded 'brutii'/'Brutii', found during
+      // the gens-neutrality sweep.
+      clanId: state.gensId,
+      clanName: state.gensPlural,
       isPlayerFamily: true,
       martialSkill: c.skills.martial,
       eligibleOffices: ['praetor', 'consul'],
