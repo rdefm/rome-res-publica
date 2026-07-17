@@ -1,5 +1,6 @@
 import { rollClientBonus, computeTotalClientBonuses } from '../src/engine/clientEngine';
-import { resolveEventChoice, pickRandomEvent, evalCondition, checkTutorialGate, getEventDef } from '../src/engine/eventEngine';
+import { resolveEventChoice, pickRandomEvent, evalCondition, isEventEligible, checkTutorialGate, getEventDef } from '../src/engine/eventEngine';
+import { applyEffectString } from '../src/engine/resourceEngine';
 import { EVENT_DEFS } from '../src/data/events';
 import type { ClientType, Client } from '../src/models/client';
 import type { EventChoice, EventCondition, EventDef } from '../src/models/event';
@@ -509,6 +510,205 @@ describe('checkTutorialGate', () => {
 // guard already has full coverage in warEngine.test.ts's "Mamertine ignition"
 // describe block, so it isn't re-tested here — this block only covers the
 // choices' own content.
+
+// ─── Phase 5, Chunk P5-C — Event Batch II: The Republic Reacts ──────────────
+// Covers the eventEngine.ts 'office' condition fix (previously dead — read a
+// nonexistent player.heldOffice field instead of state.currentOffice) and
+// force-fires each new crisisTrack/rome/office/resource-gated event from a
+// matching debug state, the pure-function equivalent of DebugPanel's
+// force-fire tool for a chat session without a live device.
+
+describe("evalCondition — 'office' fix (P5-C)", () => {
+  test('matches when state.currentOffice equals the held office', () => {
+    const cond: EventCondition = { type: 'office', held: 'quaestor' };
+    expect(evalCondition(cond, makeState({ currentOffice: 'quaestor' }) as any)).toBe(true);
+    expect(evalCondition(cond, makeState({ currentOffice: 'aedile' }) as any)).toBe(false);
+    expect(evalCondition(cond, makeState({ currentOffice: null }) as any)).toBe(false);
+  });
+
+  test('is independent of any per-character officeId field', () => {
+    // Regression guard: the old (broken) implementation read a nonexistent
+    // player.heldOffice field. Confirm a character-level officeId does NOT
+    // make the condition pass — only state.currentOffice matters.
+    const cond: EventCondition = { type: 'office', held: 'consul' };
+    const state = makeState({
+      currentOffice: null,
+      family: [{ id: 'pc-1', isPlayer: true, officeId: 'consul' }],
+    });
+    expect(evalCondition(cond, state as any)).toBe(false);
+  });
+});
+
+describe('P5-C Batch II — schema and eligibility', () => {
+  const P5C_IDS = [
+    'evt-cri-unrest-bread-queue',
+    'evt-cri-unrest-demagogue',
+    'evt-cri-economy-moneylender-collapse',
+    'evt-cri-economy-contractors-abandon',
+    'evt-cri-constitution-veto-standoff',
+    'evt-cri-constitution-extralegal-command',
+    'evt-cri-war-widows-petition',
+    'evt-cri-war-refugee-families',
+    'evt-cri-war-profiteer-partnership',
+    'evt-rome-plebs-low-shop-shutters',
+    'evt-rome-treasury-property-levy',
+    'evt-rome-stability-high-complacency',
+    'evt-off-quaestor-account-whisper',
+    'evt-off-aedile-market-weights',
+    'evt-off-praetor-impossible-docket',
+    'evt-off-tribune-doorstep-supplicants',
+    'evt-off-consul-levy-noshows',
+    'evt-rep-salutatio-parasites',
+    'evt-rep-low-fides-social-creditor',
+    'evt-rep-new-man-sponsorship',
+    'evt-rep-new-man-vindicated',
+    'evt-rep-new-man-embarrassment',
+  ];
+
+  test('every P5-C id exists exactly once in EVENT_DEFS with weight > 0', () => {
+    for (const id of P5C_IDS) {
+      const matches = EVENT_DEFS.filter(d => d.id === id);
+      expect(matches).toHaveLength(1);
+      expect(matches[0].weight).toBeGreaterThan(0);
+    }
+  });
+
+  test('every choice has successEffect/failureEffect strings and no invented skills', () => {
+    for (const id of P5C_IDS) {
+      const def = EVENT_DEFS.find(d => d.id === id)!;
+      for (const choice of def.choices) {
+        expect(typeof choice.successEffect).toBe('string');
+        expect(typeof choice.failureEffect).toBe('string');
+        if (choice.skillCheck) {
+          expect(['rhetoric', 'martial', 'intrigus']).toContain(choice.skillCheck.skill);
+        }
+        // Terminal choices (no nextEventId) must carry successText.
+        if (!choice.nextEventId && !choice.nextEventIdOnSuccess) {
+          expect(choice.successText).toBeTruthy();
+        }
+        // Terminal failure paths (a skill check with no nextEventIdOnFailure) must carry failureText.
+        if (choice.skillCheck && !choice.nextEventIdOnFailure) {
+          expect(choice.failureText).toBeTruthy();
+        }
+      }
+    }
+  });
+
+  test('crisisTrack-gated events fire only once their track is elevated', () => {
+    const trackByEvent: Record<string, CrisisTrack['id']> = {
+      'evt-cri-unrest-bread-queue': 'unrest',
+      'evt-cri-unrest-demagogue': 'unrest',
+      'evt-cri-economy-moneylender-collapse': 'economy',
+      'evt-cri-economy-contractors-abandon': 'economy',
+      'evt-cri-constitution-veto-standoff': 'constitution',
+      'evt-cri-constitution-extralegal-command': 'constitution',
+      'evt-cri-war-widows-petition': 'war',
+      'evt-cri-war-refugee-families': 'war',
+      'evt-cri-war-profiteer-partnership': 'war',
+    };
+    for (const [id, track] of Object.entries(trackByEvent)) {
+      const def = EVENT_DEFS.find(d => d.id === id)!;
+      const lowState = makeState({
+        crisis: {
+          war: makeTrack('war', 10), unrest: makeTrack('unrest', 10),
+          constitution: makeTrack('constitution', 10), economy: makeTrack('economy', 10),
+        },
+      });
+      expect(isEventEligible(def, lowState as any)).toBe(false);
+
+      const highLevels = { war: 10, unrest: 10, constitution: 10, economy: 10, [track]: 90 };
+      const highState = makeState({
+        crisis: {
+          war: makeTrack('war', highLevels.war), unrest: makeTrack('unrest', highLevels.unrest),
+          constitution: makeTrack('constitution', highLevels.constitution),
+          economy: makeTrack('economy', highLevels.economy),
+        },
+      });
+      expect(isEventEligible(def, highState as any)).toBe(true);
+    }
+  });
+
+  test('rome-stat-gated events fire only at the extreme they name', () => {
+    const midState = makeState({ rome: { stability: 70, plebs: 60, treasury: 50 } });
+    expect(isEventEligible(EVENT_DEFS.find(d => d.id === 'evt-rome-plebs-low-shop-shutters')!, midState as any)).toBe(false);
+    expect(isEventEligible(EVENT_DEFS.find(d => d.id === 'evt-rome-treasury-property-levy')!, midState as any)).toBe(false);
+    expect(isEventEligible(EVENT_DEFS.find(d => d.id === 'evt-rome-stability-high-complacency')!, midState as any)).toBe(false);
+
+    const extremeState = makeState({ rome: { stability: 90, plebs: 5, treasury: 2 } });
+    expect(isEventEligible(EVENT_DEFS.find(d => d.id === 'evt-rome-plebs-low-shop-shutters')!, extremeState as any)).toBe(true);
+    expect(isEventEligible(EVENT_DEFS.find(d => d.id === 'evt-rome-treasury-property-levy')!, extremeState as any)).toBe(true);
+    expect(isEventEligible(EVENT_DEFS.find(d => d.id === 'evt-rome-stability-high-complacency')!, extremeState as any)).toBe(true);
+  });
+
+  test('office-gated events fire only while the player holds that exact office', () => {
+    const officeByEvent: Record<string, string> = {
+      'evt-off-quaestor-account-whisper': 'quaestor',
+      'evt-off-aedile-market-weights': 'aedile',
+      'evt-off-praetor-impossible-docket': 'praetor',
+      'evt-off-tribune-doorstep-supplicants': 'tribune',
+      'evt-off-consul-levy-noshows': 'consul',
+    };
+    for (const [id, office] of Object.entries(officeByEvent)) {
+      const def = EVENT_DEFS.find(d => d.id === id)!;
+      expect(isEventEligible(def, makeState({ currentOffice: null }) as any)).toBe(false);
+      expect(isEventEligible(def, makeState({ currentOffice: 'vigintivirate' }) as any)).toBe(false);
+      expect(isEventEligible(def, makeState({ currentOffice: office }) as any)).toBe(true);
+    }
+  });
+
+  test('standing-reactive events gate on lifetimeDignitas/fides as named', () => {
+    const salutatio = EVENT_DEFS.find(d => d.id === 'evt-rep-salutatio-parasites')!;
+    expect(isEventEligible(salutatio, makeState({ lifetimeDignitas: 50 }) as any)).toBe(false);
+    expect(isEventEligible(salutatio, makeState({ lifetimeDignitas: 200 }) as any)).toBe(true);
+
+    const creditor = EVENT_DEFS.find(d => d.id === 'evt-rep-low-fides-social-creditor')!;
+    expect(isEventEligible(creditor, makeState({ fides: 30 }) as any)).toBe(false);
+    expect(isEventEligible(creditor, makeState({ fides: 5 }) as any)).toBe(true);
+  });
+
+  test('new-man Pattern D: sponsorship flag gates the vindicated follow-up, decline flag gates the embarrassment follow-up', () => {
+    const vindicated = EVENT_DEFS.find(d => d.id === 'evt-rep-new-man-vindicated')!;
+    const embarrassment = EVENT_DEFS.find(d => d.id === 'evt-rep-new-man-embarrassment')!;
+
+    expect(isEventEligible(vindicated, makeState({ flags: {} }) as any)).toBe(false);
+    expect(isEventEligible(vindicated, makeState({ flags: { 'rep-new-man-sponsored': true } }) as any)).toBe(true);
+    expect(isEventEligible(embarrassment, makeState({ flags: { 'rep-new-man-sponsored': true } }) as any)).toBe(false);
+
+    expect(isEventEligible(embarrassment, makeState({ flags: {} }) as any)).toBe(false);
+    expect(isEventEligible(embarrassment, makeState({ flags: { 'rep-new-man-declined': true } }) as any)).toBe(true);
+    expect(isEventEligible(vindicated, makeState({ flags: { 'rep-new-man-declined': true } }) as any)).toBe(false);
+
+    // Both follow-ups clear the flag they consume in every terminal choice.
+    for (const choice of vindicated.choices) {
+      expect(choice.successEffect).toContain('setFlag:rep-new-man-sponsored:false');
+    }
+    for (const choice of embarrassment.choices) {
+      expect(choice.successEffect).toContain('setFlag:rep-new-man-declined:false');
+    }
+  });
+
+  // Regression guard: an earlier draft used a colon inside the flag name
+  // itself ('rep-new-man:sponsored'), which silently broke setFlag's
+  // 3-part parser (setFlag:flagKey:value splits on every ':', so a 4th
+  // segment gets misread as the value instead of part of the key). Caught
+  // by manual review of resourceEngine.ts, not by the eligibility tests
+  // above (which only exercise evalCondition, never the effect-string
+  // parser) — asserted directly here so it can't silently regress.
+  test('setFlag effect strings actually set the intended boolean flag via applyEffectString', () => {
+    const sponsorChoice = EVENT_DEFS.find(d => d.id === 'evt-rep-new-man-sponsorship')!
+      .choices.find(c => c.id === 'sponsor-him')!;
+    const patch = applyEffectString(sponsorChoice.successEffect, makeState({ flags: {} }) as any);
+    expect(patch.flags).toEqual({ 'rep-new-man-sponsored': true });
+
+    const vindicated = EVENT_DEFS.find(d => d.id === 'evt-rep-new-man-vindicated')!;
+    const clearChoice = vindicated.choices.find(c => c.id === 'accept-public-credit')!;
+    const clearPatch = applyEffectString(
+      clearChoice.successEffect,
+      makeState({ flags: { 'rep-new-man-sponsored': true } }) as any,
+    );
+    expect(clearPatch.flags?.['rep-new-man-sponsored']).toBe(false);
+  });
+});
 
 describe('evt-messana-appeal — Sicily/Mediterranean province flip trigger', () => {
   const def = getEventDef('evt-messana-appeal')!;

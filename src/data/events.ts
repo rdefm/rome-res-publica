@@ -1957,4 +1957,979 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
+  // ─── Phase 5, Chunk P5-C — Event Batch II: The Republic Reacts ─────────────
+  // State-reactive Rome: crisis-track thresholds, Rome-stat extremes,
+  // office-gated working-day scenes, and standing-reactive beats. All four
+  // condition families (crisisTrack, rome, office, resource/lifetimeDignitas)
+  // are genuinely new to the random-draw pool — see docs/content-audit.md,
+  // which found zero events using any of them before this batch.
+  //
+  // Crisis-track events gate on the same track their fiction dramatizes,
+  // "elevated" read as tier 2+ (level ≥ 40) per crisisEngine.ts's own band
+  // table, except evt-cri-constitution-extralegal-command (≥ 50 — a more
+  // severe rumor than a routine veto standoff).
+  //
+  // "office" conditions below depend on the eventEngine.ts fix earlier in
+  // this commit (state.currentOffice, not the nonexistent player.heldOffice)
+  // — without it this whole category is unreachable content.
+
+  // ── Crisis-track-reactive ───────────────────────────────────────────────
+
+  {
+    id: 'evt-cri-unrest-bread-queue',
+    title: 'The Queue Turns',
+    bodyText:
+      'The bread queue outside your insula on the Vicus has been forming since before dawn, and today ' +
+      'it did not stay a queue. A stone — or a loaf thrown hard enough to be one — caught a woman across ' +
+      'the temple before your doorkeeper Tiro got the bar across the gate. The street beyond is still ' +
+      'full, and it is not getting quieter.',
+    imageKey: 'bread-queue-vicus',
+    conditions: [{ type: 'crisisTrack', track: 'unrest', op: 'gte', value: 40 }],
+    weight: 7,
+    choices: [
+      {
+        id: 'send-guard',
+        label: 'Send the household guard to clear the street',
+        skillCheck: { characterId: 'player', skill: 'martial', difficulty: 5 },
+        successEffect: 'crisis-unrest-4|fides+3',
+        failureEffect: 'crisis-unrest+4|fides-4',
+        successText:
+          'Tiro\'s men form a line, not a wedge, and the street breaks up in good order rather than ' +
+          'panic. Word gets around that your gate is not an easy one to test.',
+        failureText:
+          'The line breaks the wrong way. Someone in the crowd calls it what it looks like — a rich ' +
+          'man\'s men against a hungry street — and the phrase outlives the afternoon.',
+      },
+      {
+        id: 'denarii-dole',
+        label: 'Open your stores to the queue (−25 Denarii)',
+        successEffect: 'denarii-25|plebs+5|crisis-unrest-3',
+        failureEffect: '',
+        successText:
+          'Your steward carries out what grain can be spared. It is gone within the hour, and so, ' +
+          'mostly, is the crowd — fed people are harder to keep angry than hungry ones.',
+      },
+      {
+        id: 'stay-away',
+        label: 'Keep the gate barred and wait it out',
+        successEffect: 'crisis-unrest+5|fides-2',
+        failureEffect: '',
+        successText:
+          'The queue disperses on its own, eventually. It disperses having watched your gate stay shut ' +
+          'the whole time, which is its own kind of message.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-cri-unrest-demagogue',
+    title: 'Named From the Rostra',
+    bodyText:
+      'Vibius Ollius has a voice built for the Rostra and a grievance built around your family\'s name. ' +
+      '"Ask them," he tells the crowd, pointing without quite pointing at you, "why grain costs what it ' +
+      'costs while their granaries are full." It is not entirely fair. It is not entirely unfair either, ' +
+      'and the crowd has stopped to listen.',
+    imageKey: 'demagogue-rostra',
+    conditions: [{ type: 'crisisTrack', track: 'unrest', op: 'gte', value: 40 }],
+    weight: 6,
+    choices: [
+      {
+        id: 'answer-him',
+        label: 'Answer him from the Rostra yourself (Rhetoric check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'fides+8',
+        failureEffect: 'fides-8|crisis-unrest+3',
+        successText:
+          'You take the question seriously and the crowd seriously, and by the end they are nodding ' +
+          'more than they are jeering. Ollius has to find a new target for next week.',
+        failureText:
+          'You misjudge the room. Ollius lets you finish and then takes the silence apart piece by ' +
+          'piece; the crowd leaves more certain of him than it was when it arrived.',
+      },
+      {
+        id: 'dignified-silence',
+        label: 'Say nothing — let the accusation exhaust itself',
+        successEffect: 'fides-2|crisis-unrest-1',
+        failureEffect: '',
+        successText:
+          'You decline to be baited into a fight on his ground. It costs you a little standing with ' +
+          'those who wanted a fight, and buys a little quiet with everyone else.',
+      },
+      {
+        id: 'quiet-smear',
+        label: 'Have your agents quietly discredit him instead (Intrigus check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 6 },
+        successEffect: 'fides+3|crisis-unrest-2',
+        failureEffect: 'fides-5|crisis-unrest+4',
+        successText:
+          'A rumor about Ollius\'s own grain dealings makes its way through the same crowd he speaks ' +
+          'to. He is still shouting. Fewer people are still listening.',
+        failureText:
+          'The rumor is traced back to your door within the week. Ollius has a new speech now, and it ' +
+          'is about you again — this time with evidence.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-cri-economy-moneylender-collapse',
+    title: 'The Banker\'s Ruin',
+    bodyText:
+      'Gaius Fufidius\'s banking house has failed overnight, and one of your own clients had two years\' ' +
+      'savings sitting in it. He arrives at your domus not to ask for coin outright — patrons are not ' +
+      'obliged, and he knows it — but to ask, plainly, whether his patron intends to let him lose ' +
+      'everything without a word said on his behalf.',
+    imageKey: 'banker-ruined',
+    conditions: [{ type: 'crisisTrack', track: 'economy', op: 'gte', value: 40 }],
+    weight: 6,
+    choices: [
+      {
+        id: 'cover-losses',
+        label: 'Cover his losses yourself (−35 Denarii)',
+        successEffect: 'denarii-35|fides+5',
+        failureEffect: '',
+        successText:
+          'He does not have the words for it and does not try very hard to find them. Word of the ' +
+          'gesture reaches other clients faster than you expected it to.',
+      },
+      {
+        id: 'help-recover',
+        label: 'Use your standing to press Fufidius\'s creditors on his behalf (Intrigus check, difficulty 5)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 5 },
+        successEffect: 'fides+4|crisis-economy-3',
+        failureEffect: 'fides-3',
+        successText:
+          'Enough pressure in enough quiet rooms recovers a portion of what was lost — not all of it, ' +
+          'but enough that your client stops looking like a ruined man.',
+        failureText:
+          'Fufidius\'s creditors have larger names than yours leaning on them already. Your effort adds ' +
+          'nothing to the pile except the appearance of trying.',
+      },
+      {
+        id: 'offer-nothing',
+        label: 'Offer sympathy and nothing else — his losses are not your debt',
+        successEffect: 'fides-4',
+        failureEffect: '',
+        successText:
+          'You are, strictly, correct. He thanks you for your time in a voice that says he will ' +
+          'remember exactly how much that time was worth.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-cri-economy-contractors-abandon',
+    title: 'The Unfinished Portico',
+    bodyText:
+      'Marcus Herennius has pulled his men off the new portico by the grain market, half-built and now ' +
+      'roofless before the autumn rains. He is not being difficult, he says — he simply cannot pay ' +
+      'labourers with a public contract that the treasury has stopped honoring on schedule. The ' +
+      'half-finished columns are becoming a joke in the Forum, and not a kind one.',
+    imageKey: 'unfinished-portico',
+    conditions: [{ type: 'crisisTrack', track: 'economy', op: 'gte', value: 40 }],
+    weight: 6,
+    choices: [
+      {
+        id: 'fund-personally',
+        label: 'Advance the labourers\' pay from your own purse (−30 Denarii)',
+        successEffect: 'denarii-30|stability+4',
+        failureEffect: '',
+        successText:
+          'The work resumes within the week. Nobody in the Forum forgets whose coin finished what the ' +
+          'treasury started and abandoned.',
+      },
+      {
+        id: 'petition-treasury',
+        label: 'Petition formally for the treasury to honor the contract (Rhetoric check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'stability+3|fides+3',
+        failureEffect: 'fides-3',
+        successText:
+          'The petition shames the right people into finding the coin after all. It is not a fast ' +
+          'process, but it is, this once, a working one.',
+        failureText:
+          'The treasury has larger holes to plug than one portico. Your petition joins a stack of ' +
+          'others making exactly the same case.',
+      },
+      {
+        id: 'let-it-stand',
+        label: 'Let it stand unfinished — the treasury\'s failure is not yours to fix',
+        successEffect: 'stability-4',
+        failureEffect: '',
+        successText:
+          'The columns stay as they are, a small monument to a Republic that started something it ' +
+          'could not finish. People walk past it and draw their own conclusions.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-cri-constitution-veto-standoff',
+    title: 'The Tribune\'s Standoff',
+    bodyText:
+      'Gnaeus Marcius has vetoed the consuls\' business for the fourth session running, and the courts ' +
+      'have simply stopped scheduling anything that might be blocked — which is nearly everything. The ' +
+      'consuls call it obstruction. Marcius calls it the office working exactly as designed. Both of ' +
+      'them are, in the narrow sense, right, which is the whole problem.',
+    imageKey: 'tribune-veto-standoff',
+    conditions: [{ type: 'crisisTrack', track: 'constitution', op: 'gte', value: 40 }],
+    weight: 6,
+    choices: [
+      {
+        id: 'side-tribune',
+        label: 'Back the Tribune\'s veto publicly',
+        successEffect: 'popularesRel+6|optimatesRel-6',
+        failureEffect: '',
+        successText:
+          'You call it what Marcius calls it: the office working. The consuls do not forget who said so.',
+      },
+      {
+        id: 'side-consuls',
+        label: 'Back the consuls against the obstruction',
+        successEffect: 'optimatesRel+6|popularesRel-6',
+        failureEffect: '',
+        successText:
+          'You call it obstruction, plainly, and the consuls are grateful for one voice saying so ' +
+          'without hedging. The tribal assembly hears about it by evening.',
+      },
+      {
+        id: 'broker-compromise',
+        label: 'Broker a narrow compromise between them (Rhetoric check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'fides+6|crisis-constitution-5',
+        failureEffect: 'fides-4|crisis-constitution+3',
+        successText:
+          'It takes two private meetings and a concession from each man that neither wanted to make ' +
+          'in public, but the courts sit again by the week\'s end.',
+        failureText:
+          'Neither man will move first, and your attempt to make them looks, from the outside, like ' +
+          'meddling that accomplished nothing.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-cri-constitution-extralegal-command',
+    title: 'A Command Beyond the Grant',
+    bodyText:
+      'Word from the south is that the proconsul Lucius Postumius has kept his army under arms three ' +
+      'months past the Senate\'s grant, citing necessity that the Senate itself never voted on. Nobody ' +
+      'is yet calling it what it would be called if a man with fewer legions did it. Everybody in the ' +
+      'Curia is thinking the word anyway.',
+    imageKey: 'proconsul-dispatch',
+    conditions: [{ type: 'crisisTrack', track: 'constitution', op: 'gte', value: 50 }],
+    weight: 5,
+    choices: [
+      {
+        id: 'denounce-publicly',
+        label: 'Denounce the overreach publicly (Rhetoric check, difficulty 7)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 7 },
+        successEffect: 'fides+8|crisis-constitution-4',
+        failureEffect: 'fides-6',
+        successText:
+          'The speech lands. Postumius, whatever he intended, cannot ignore a Senate that has finally ' +
+          'said the word aloud, and his dispatches turn noticeably more deferential within the month.',
+        failureText:
+          'Half the chamber agrees with you and says nothing, which is worse than disagreement. ' +
+          'Postumius hears about the speech and does not appear to have changed a single habit.',
+      },
+      {
+        id: 'say-nothing',
+        label: 'Say nothing — a proconsul with an army is not an argument worth losing',
+        successEffect: 'crisis-constitution+4',
+        failureEffect: '',
+        successText:
+          'You keep your own counsel. The precedent stands unchallenged, which is precisely what makes ' +
+          'it a precedent.',
+      },
+      {
+        id: 'quiet-inquiry',
+        label: 'Open a quiet inquiry into his conduct instead (Intrigus check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 6 },
+        successEffect: 'fides+3|crisis-constitution-3',
+        failureEffect: 'fides-3|crisis-constitution+2',
+        successText:
+          'Nothing is said publicly, but Postumius\'s own officers start receiving careful, ' +
+          'unattributable questions about his authority. The command is relinquished within the season.',
+        failureText:
+          'The inquiry goes nowhere and Postumius\'s people find out it was asked. He now knows exactly ' +
+          'who was asking, which is not a thing you wanted him to know.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-cri-war-widows-petition',
+    title: 'The War-Widows\' Petition',
+    bodyText:
+      'The widow Sulpicia stands at your gate with eleven other women behind her, all of them dressed in ' +
+      'the same undyed mourning, all of them married to men who did not come back from the same ' +
+      'campaign. She does not ask for pity. She asks, in a voice that has clearly rehearsed staying ' +
+      'level, what the Republic intends to do about eleven households with no one left to feed them.',
+    imageKey: 'widow-at-the-door',
+    conditions: [{ type: 'crisisTrack', track: 'war', op: 'gte', value: 40 }],
+    weight: 6,
+    choices: [
+      {
+        id: 'personal-stipend',
+        label: 'Grant them a stipend from your own household (−30 Denarii)',
+        successEffect: 'denarii-30|fides+6|plebs+4',
+        failureEffect: '',
+        successText:
+          'Sulpicia counts the sum without comment, which from her is its own form of thanks. Word of ' +
+          'it travels through every household that lost a man to the same campaign.',
+      },
+      {
+        id: 'refer-treasury',
+        label: 'Direct them to petition the treasury formally',
+        successEffect: 'fides-2|plebs-2',
+        failureEffect: '',
+        successText:
+          'It is the correct procedure. Sulpicia\'s face makes clear what she thinks of correct ' +
+          'procedure when it is offered instead of bread.',
+      },
+      {
+        id: 'turn-away',
+        label: 'Explain that this is not a matter for a private household to solve',
+        successEffect: 'fides-6|plebs-4',
+        failureEffect: '',
+        successText:
+          'You are not wrong about the responsibility. You are, Sulpicia\'s look makes clear, entirely ' +
+          'wrong about the moment to say so.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-cri-war-refugee-families',
+    title: 'Refugees From Agrigentum',
+    bodyText:
+      'A Sicilian woman named Klytia arrives at your gate with three children and nothing else worth ' +
+      'naming — her husband dead, her house burned in the sack of Agrigentum, her Greek accented enough ' +
+      'that half the household stares before anyone thinks to translate. She has heard, somewhere on ' +
+      'the road north, that a Roman patron\'s door is the only kind worth knocking on.',
+    imageKey: 'refugee-family',
+    conditions: [{ type: 'crisisTrack', track: 'war', op: 'gte', value: 40 }],
+    weight: 5,
+    choices: [
+      {
+        id: 'take-as-clients',
+        label: 'Take the family in as clients (−15 Denarii)',
+        successEffect: 'denarii-15|addClient:publicSupport:Refugee of Agrigentum:Klytia',
+        failureEffect: '',
+        successText:
+          'Klytia accepts patronage the way a drowning woman accepts a rope — gratefully, and without ' +
+          'pretending she had another option. Her gratitude, for what it is worth, is not performed.',
+      },
+      {
+        id: 'alms-and-send-on',
+        label: 'Give what alms you can and point her toward the grain dole (−10 Denarii)',
+        successEffect: 'denarii-10|fides+1',
+        failureEffect: '',
+        successText:
+          'She takes the coin with a small, correct bow and moves on toward the city\'s public charity, ' +
+          'one more displaced family among the hundreds the war has made.',
+      },
+      {
+        id: 'refuse-entry',
+        label: 'Have the doorkeeper turn her away — your household is not a refuge',
+        successEffect: 'fides-4|crisis-unrest+2',
+        failureEffect: '',
+        successText:
+          'Tiro closes the gate gently enough. She does not argue. She simply moves to the next house, ' +
+          'and the next, one of a great many doors closing on a great many mornings like this one.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-cri-war-profiteer-partnership',
+    title: 'The Contractor\'s Offer',
+    bodyText:
+      'Titus Volumnius has made a considerable fortune supplying the legions with everything from grain ' +
+      'to leather, and he would like your name attached to his next contract — quietly, as a silent ' +
+      'partner, in exchange for a share large enough to notice. He is careful never to say the word ' +
+      '"profiteering." He does not need to; you both know the word regardless.',
+    imageKey: 'war-profiteer',
+    conditions: [{ type: 'crisisTrack', track: 'war', op: 'gte', value: 40 }],
+    weight: 5,
+    choices: [
+      {
+        id: 'accept-partnership',
+        label: 'Accept the silent partnership',
+        successEffect: 'denarii+40|createLatentSecret:embezzlement:2',
+        failureEffect: '',
+        successText:
+          'The coin arrives quarterly, discreetly, and without a paper trail that names you. Volumnius ' +
+          'is a careful man. Careful men remember everything they were careful about.',
+      },
+      {
+        id: 'refuse-partnership',
+        label: 'Decline — the legions\' supply is not a fortune to be made',
+        successEffect: 'lifetimeDignitas+4',
+        failureEffect: '',
+        successText:
+          'Volumnius shrugs, unoffended, and finds another name for his contract by the week\'s end. ' +
+          'You have lost nothing you will miss, and kept something you would have.',
+      },
+    ],
+  },
+
+  // ── Rome-stat-reactive ───────────────────────────────────────────────────
+
+  {
+    id: 'evt-rome-plebs-low-shop-shutters',
+    title: 'Broken Shutters on the Vicus',
+    bodyText:
+      'Someone went down the Vicus overnight with a crowbar and no particular target — a baker\'s ' +
+      'shutter here, a cobbler\'s stall there, nothing stolen, just broken. The shopkeepers are less ' +
+      'angry at the vandal, oddly, than at the Senate that let the city get to a mood where this is ' +
+      'what a bad night looks like.',
+    imageKey: 'broken-shop-shutters',
+    conditions: [{ type: 'rome', key: 'plebs', op: 'lt', value: 20 }],
+    weight: 6,
+    choices: [
+      {
+        id: 'pay-repairs',
+        label: 'Pay for the repairs out of your own purse (−20 Denarii)',
+        successEffect: 'denarii-20|plebs+4',
+        failureEffect: '',
+        successText:
+          'The shutters are mended within two days, and the shopkeepers know exactly whose coin did it. ' +
+          'It buys goodwill on a street that badly needed some.',
+      },
+      {
+        id: 'blame-agitators',
+        label: 'Publicly blame outside agitators, not genuine grievance (Rhetoric check, difficulty 5)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 5 },
+        successEffect: 'fides+4',
+        failureEffect: 'fides-4|plebs-3',
+        successText:
+          'The explanation is convenient enough, and delivered smoothly enough, that most of the Curia ' +
+          'is happy to accept it without asking who the agitators actually were.',
+        failureText:
+          'Nobody on the Vicus believes a word of it, and several of them say so, loudly, within your ' +
+          'hearing. The explanation convinces exactly the people who did not need convincing.',
+      },
+      {
+        id: 'do-nothing',
+        label: 'Do nothing — shutters are not the Senate\'s business',
+        successEffect: 'plebs-4|crisis-unrest+2',
+        failureEffect: '',
+        successText:
+          'The shutters stay broken through the week. So, in a smaller way, does the street\'s patience ' +
+          'with everyone above it.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-rome-treasury-property-levy',
+    title: 'The Property Levy',
+    bodyText:
+      'The treasury is empty enough that the Senate is debating a levy on the property of its wealthiest ' +
+      'families — yours prominently included. Nobody disputes the need. Several people, quietly, are ' +
+      'already working out how to be somewhere else when the assessors come.',
+    imageKey: 'senate-property-levy',
+    conditions: [{ type: 'rome', key: 'treasury', op: 'lt', value: 10 }],
+    weight: 7,
+    choices: [
+      {
+        id: 'pay-patriotically',
+        label: 'Pay the full assessment without complaint (−40 Denarii)',
+        successEffect: 'denarii-40|fides+8',
+        failureEffect: '',
+        successText:
+          'You pay first and visibly, before the assessors have finished their list. It costs exactly ' +
+          'what it costs, and the Curia notices who did not need to be asked twice.',
+      },
+      {
+        id: 'lobby-reduction',
+        label: 'Lobby for a reduced assessment (Rhetoric check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'denarii-15|fides+2',
+        failureEffect: 'denarii-40|fides-3',
+        successText:
+          'A case built on hardship and precedent trims the figure considerably. Nobody calls it what ' +
+          'it is — favoritism dressed as prudence — but everyone recognizes the shape of it.',
+        failureText:
+          'The case does not land. You pay the full sum anyway, and the lobbying itself reads as the ' +
+          'complaint everyone else was too proud to voice out loud.',
+      },
+      {
+        id: 'evade-quietly',
+        label: 'Move assets quietly before the assessors call (Intrigus check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 6 },
+        successEffect: 'corruption+5',
+        failureEffect: 'denarii-40|fides-6',
+        successText:
+          'The assessors find rather less than they expected and rather less than exists. Nobody can ' +
+          'prove otherwise, which is not quite the same thing as nobody suspecting it.',
+        failureText:
+          'The assessors are not as easily managed as hoped, and find everything, plus a very clear ' +
+          'sense of why it was briefly somewhere else.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-rome-stability-high-complacency',
+    title: 'A Quiet Morning to Spend',
+    bodyText:
+      'Rome is, for once, at ease with itself — no crisis loud enough to command attention, no faction ' +
+      'sharp enough to need managing. Aulus Otacilius, an old acquaintance with a favor he has never ' +
+      'called in, mentions over wine that a quiet word from you, today, while nobody is watching ' +
+      'closely, could settle a small matter permanently in his favor.',
+    imageKey: 'quiet-forum-morning',
+    conditions: [{ type: 'rome', key: 'stability', op: 'gte', value: 85 }],
+    weight: 5,
+    choices: [
+      {
+        id: 'spend-quietly',
+        label: 'Spend the quiet morning settling his matter (−10 Denarii)',
+        successEffect: 'denarii-10|lifetimeDignitas+4',
+        failureEffect: '',
+        successText:
+          'It costs almost nothing and is noticed by almost no one, which is exactly the point of doing ' +
+          'a favor on a day like this one. Otacilius will remember it long after the day is forgotten.',
+      },
+      {
+        id: 'let-it-pass',
+        label: 'Let the quiet morning pass unused',
+        successEffect: '',
+        failureEffect: '',
+        successText:
+          'You decline, pleasantly. Otacilius does not press it. Some mornings are worth simply having, ' +
+          'without spending them on anyone.',
+      },
+    ],
+  },
+
+  // ── Office-gated ─────────────────────────────────────────────────────────
+
+  {
+    id: 'evt-off-quaestor-account-whisper',
+    title: 'The Ledger That Doesn\'t Balance',
+    bodyText:
+      'A column in the public accounts will not reconcile, and the discrepancy is small enough to be an ' +
+      'honest error and large enough to be worth asking about. Your fellow quaestor Titus Considius ' +
+      'oversaw that column last. He has not offered an explanation, and you have not yet asked him for one.',
+    imageKey: 'ledger-quaestor',
+    conditions: [{ type: 'office', held: 'quaestor' }],
+    weight: 8,
+    choices: [
+      {
+        id: 'investigate-quietly',
+        label: 'Trace the discrepancy yourself before saying anything (Intrigus check, difficulty 5)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 5 },
+        successEffect: 'lifetimeDignitas+5|fides+2',
+        failureEffect: 'fides-3',
+        successText:
+          'The trail leads exactly where the silence suggested it would. You correct the ledger ' +
+          'quietly and let Considius know, privately, that it was noticed — which is its own kind of mercy.',
+        failureText:
+          'The trail goes cold in a stack of receipts that all look equally plausible and equally ' +
+          'useless. Considius, if he did anything, has covered it well enough that you cannot prove otherwise.',
+      },
+      {
+        id: 'report-upward',
+        label: 'Report the discrepancy to the presiding consul immediately',
+        successEffect: 'lifetimeDignitas+3',
+        failureEffect: '',
+        successText:
+          'The matter is handed upward, properly, and out of your hands. It is the correct procedure, ' +
+          'and correct procedures rarely make anyone grateful to the man who followed them.',
+      },
+      {
+        id: 'file-it-away',
+        label: 'Note the discrepancy in your own records and say nothing yet',
+        successEffect: '',
+        failureEffect: '',
+        successText:
+          'You keep the observation to yourself, for now. Whatever it means, it will still mean it next ' +
+          'season, and you would rather have more than a suspicious column before you act on it.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-off-aedile-market-weights',
+    title: 'The Market-Weights Case',
+    bodyText:
+      'A grain merchant named Gaius Naevius has been caught with weights shaved a fraction light — not ' +
+      'enough to notice once, more than enough to matter across a season\'s sales. The market wants to ' +
+      'know what an aedile actually does about it, and half the stallholders are watching to see if the ' +
+      'answer is "something" or "nothing."',
+    imageKey: 'market-scales',
+    conditions: [{ type: 'office', held: 'aedile' }],
+    weight: 8,
+    choices: [
+      {
+        id: 'prosecute-openly',
+        label: 'Prosecute him publicly in the market itself (Rhetoric check, difficulty 5)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 5 },
+        successEffect: 'plebs+5|fides+3',
+        failureEffect: 'fides-3',
+        successText:
+          'The public accounting is thorough and, more importantly, visible. Every stallholder in ' +
+          'earshot goes home having watched the office actually work.',
+        failureText:
+          'Naevius has a lawyer sharper than the occasion called for, and the case unravels in front of ' +
+          'the very crowd you meant to reassure.',
+      },
+      {
+        id: 'fine-quietly',
+        label: 'Fine him quietly and correct the weights without a scene',
+        successEffect: 'denarii+15|fides+1',
+        failureEffect: '',
+        successText:
+          'The fine is paid, the weights corrected, and no one outside the guild hears a word of it. ' +
+          'Discreet, adequate, and entirely forgettable — which is not always the wrong outcome.',
+      },
+      {
+        id: 'look-away',
+        label: 'Accept his private apology and let the matter drop (+20 Denarii)',
+        successEffect: 'denarii+20|corruption+6',
+        failureEffect: '',
+        successText:
+          'Naevius is grateful in a manner that arrives, discreetly, at your door by evening. The ' +
+          'weights stay exactly as shaved as they were.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-off-praetor-impossible-docket',
+    title: 'The Docket That Cannot Be Cleared',
+    bodyText:
+      'Sextus Aufidius and Gaius Vibius have brought the same boundary dispute before your tribunal for ' +
+      'the third time, and eleven other cases are waiting behind them with equally little patience. The ' +
+      'court cannot possibly hear all of it properly before the day is out, and every litigant in the ' +
+      'hall believes their case is the one that deserves the time.',
+    imageKey: 'praetor-tribunal',
+    conditions: [{ type: 'office', held: 'praetor' }],
+    weight: 8,
+    choices: [
+      {
+        id: 'work-through-it',
+        label: 'Sit late and hear every case properly (Martial check, difficulty 4 — sheer endurance)',
+        skillCheck: { characterId: 'player', skill: 'martial', difficulty: 4 },
+        successEffect: 'lifetimeDignitas+5|fides+3',
+        failureEffect: 'fides-2',
+        successText:
+          'The tribunal sits until the lamps are lit, and every case leaves with a genuine ruling rather ' +
+          'than a rushed one. Word of a praetor who does not shortcut justice travels further than the docket did.',
+        failureText:
+          'You last until the ninth case before the rulings start coming faster and thinner than the ' +
+          'litigants deserve. Nobody says anything. Everybody notices.',
+      },
+      {
+        id: 'delegate-to-clerk',
+        label: 'Delegate the lesser cases to your clerk\'s recommendations',
+        successEffect: 'fides-2',
+        failureEffect: '',
+        successText:
+          'The docket clears by evening. Several rulings are perfectly adequate. None of them are ' +
+          'rulings anyone will remember you for, which was rather the point of delegating them.',
+      },
+      {
+        id: 'postpone-hard-cases',
+        label: 'Postpone the difficult cases to another session',
+        successEffect: 'plebs-3',
+        failureEffect: '',
+        successText:
+          'Aufidius and Vibius are told, for the third time, to come back. Neither of them believes, any ' +
+          'longer, that a fourth session will be different.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-off-tribune-doorstep-supplicants',
+    title: 'Supplicants at Dawn',
+    bodyText:
+      'A freedwoman named Statia is first in the line outside your door before the sun is properly up, ' +
+      'and behind her stand perhaps thirty more — evicted tenants, a man with a debt dispute, a mother ' +
+      'whose son was conscripted against the exemption she thought he held. A Tribune\'s door is ' +
+      'supposed to be open. It has never been open to this many people at once before.',
+    imageKey: 'tribune-doorstep',
+    conditions: [{ type: 'office', held: 'tribune' }],
+    weight: 8,
+    choices: [
+      {
+        id: 'hear-them-all',
+        label: 'Hear every petitioner yourself, however long it takes (−10 Denarii, small gifts as you go)',
+        successEffect: 'denarii-10|fides+6|plebs+5',
+        failureEffect: '',
+        successText:
+          'It takes the whole morning and most of your patience, but Statia and the rest leave having ' +
+          'been properly heard by the office that exists to hear them. That reputation does not fade quickly.',
+      },
+      {
+        id: 'delegate-to-freedman',
+        label: 'Have a trusted freedman hear the simpler petitions in your place',
+        successEffect: 'plebs+2',
+        failureEffect: '',
+        successText:
+          'Most of the line is handled competently, if without the weight of the office standing behind ' +
+          'it in person. Statia\'s case, at least, still reaches you directly.',
+      },
+      {
+        id: 'turn-them-away',
+        label: 'Have the line turned away — today is not a hearing day',
+        successEffect: 'plebs-5',
+        failureEffect: '',
+        successText:
+          'The line disperses, unheard, muttering about a Tribune\'s door that was open in name only. ' +
+          'Statia does not come back a second time.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-off-consul-levy-noshows',
+    title: 'The Levy\'s Empty Rolls',
+    bodyText:
+      'The centurion Marcus Popillius reports the muster rolls are running a third short — men listed ' +
+      'for the levy who simply did not appear, exemptions claimed on grounds that will not survive a ' +
+      'close look, and a growing sense among the legions already in the field that the ones who stayed ' +
+      'home are laughing at them.',
+    imageKey: 'levy-muster-field',
+    conditions: [{ type: 'office', held: 'consul' }],
+    weight: 8,
+    choices: [
+      {
+        id: 'enforce-harshly',
+        label: 'Enforce the levy without exception (Martial check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'martial', difficulty: 6 },
+        successEffect: 'stability+4|plebs-3',
+        failureEffect: 'stability-3|crisis-unrest+3',
+        successText:
+          'The rolls fill within the week once it is clear the exemptions will not hold. It is not a ' +
+          'popular consulship this season, but it is a functioning one.',
+        failureText:
+          'The enforcement is uneven and looks, from outside, like favoritism dressed up as discipline. ' +
+          'The rolls barely improve and the resentment noticeably does not.',
+      },
+      {
+        id: 'sell-exemptions',
+        label: 'Grant exemptions for a discreet consideration (+30 Denarii)',
+        successEffect: 'denarii+30|corruption+6',
+        failureEffect: '',
+        successText:
+          'The right households find the right sum, and the rolls stay short in a manner nobody in the ' +
+          'Curia looks at too closely. Popillius reports the shortfall and asks no further questions.',
+      },
+      {
+        id: 'let-it-slide',
+        label: 'Let this year\'s shortfall pass uncontested',
+        successEffect: 'crisis-war+3|fides-2',
+        failureEffect: '',
+        successText:
+          'The legions make do with fewer replacements than they were owed. Popillius\'s report goes ' +
+          'into the record without comment, which is its own kind of verdict.',
+      },
+    ],
+  },
+
+  // ── Standing-reactive ────────────────────────────────────────────────────
+
+  {
+    id: 'evt-rep-salutatio-parasites',
+    title: 'The Morning Salutatio',
+    bodyText:
+      'The atrium is fuller than usual this morning — half the city\'s minor poets and idle nephews seem ' +
+      'to have decided your favor is worth cultivating this season. Gaius Matius, a poet of modest talent ' +
+      'and immodest flattery, is already three compliments deep before you have finished your morning wine.',
+    imageKey: 'morning-salutatio',
+    conditions: [{ type: 'resource', key: 'lifetimeDignitas', op: 'gte', value: 180 }],
+    weight: 6,
+    choices: [
+      {
+        id: 'indulge-generously',
+        label: 'Indulge the whole crowd generously (−15 Denarii)',
+        successEffect: 'denarii-15|fides+4|plebs+2',
+        failureEffect: '',
+        successText:
+          'Matius leaves with a small gift and a large opinion of his own eloquence. The rest leave ' +
+          'satisfied enough to keep coming back, which was rather the transaction all along.',
+      },
+      {
+        id: 'limit-attention',
+        label: 'Greet them briskly and move on to real business',
+        successEffect: 'fides-2',
+        failureEffect: '',
+        successText:
+          'The salutatio is shorter and colder than the atrium expected. A few flatterers take the hint ' +
+          'and try a more generous patron\'s door next season.',
+      },
+      {
+        id: 'find-genuine',
+        label: 'Look past the flattery for one petitioner worth actually hearing (Intrigus check, difficulty 5)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 5 },
+        successEffect: 'addClient:votingSway:A Farmer\'s Word:Sextus Roscius',
+        failureEffect: 'fides-2',
+        successText:
+          'Behind the poets and nephews stands a farmer, Sextus Roscius, who has been waiting quietly ' +
+          'with an actual grievance and no idea how to phrase it fashionably. You hear him out properly.',
+        failureText:
+          'You come away having spent an hour distinguishing flatterers from each other and found ' +
+          'nothing behind any of them worth the time.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-rep-low-fides-social-creditor',
+    title: 'A Debt of an Older Kind',
+    bodyText:
+      'Lucius Opimius calls on you at a moment when your own name carries less weight in the Forum than ' +
+      'it has in years, which he has clearly noticed and clearly chosen deliberately. Years ago you asked ' +
+      'a favor of him. He has come to collect it now, precisely when you can least afford to be seen ' +
+      'refusing anyone anything.',
+    imageKey: 'creditor-at-the-door',
+    conditions: [{ type: 'resource', key: 'fides', op: 'lt', value: 15 }],
+    weight: 6,
+    choices: [
+      {
+        id: 'honor-fully',
+        label: 'Honor the debt in full, whatever it costs (−20 Denarii)',
+        successEffect: 'denarii-20|fides+5',
+        failureEffect: '',
+        successText:
+          'You pay what is owed without haggling over the terms. Opimius leaves satisfied, and satisfied ' +
+          'men talk about the patrons who paid their debts even when it cost them to do it.',
+      },
+      {
+        id: 'negotiate-partial',
+        label: 'Negotiate the terms down to something more manageable (Rhetoric check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'denarii-10|fides+2',
+        failureEffect: 'fides-4',
+        successText:
+          'A civil conversation trims the debt to something you can pay without noticing it. Opimius is ' +
+          'not delighted, but he is not owed anything further either.',
+        failureText:
+          'Opimius will not be talked down, and the negotiation itself — at a moment when you can least ' +
+          'afford to look like you are haggling — costs more standing than the debt would have.',
+      },
+      {
+        id: 'refuse-debt',
+        label: 'Decline — the debt was informal, and informal debts can lapse',
+        successEffect: 'fides-6',
+        failureEffect: '',
+        successText:
+          'You are, strictly, within your rights. Opimius says nothing further and remembers everything, ' +
+          'which at a moment like this is considerably worse than if he had argued.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-rep-new-man-sponsorship',
+    title: 'A New Man at Your Door',
+    bodyText:
+      'Quintus Pomponius has no ancestors worth naming and no shortage of ambition to make up for it. He ' +
+      'has come to ask, plainly and without the usual pretense of a social call, whether you would put ' +
+      'your name behind his first campaign for office. He is capable. He is also a stranger to every ' +
+      'clan that matters, and he knows exactly what he is asking you to risk.',
+    imageKey: 'novus-homo',
+    conditions: [],
+    weight: 5,
+    choices: [
+      {
+        id: 'sponsor-him',
+        label: 'Sponsor his campaign (−5 Fides)',
+        successEffect: 'fides-5|setFlag:rep-new-man-sponsored:true',
+        failureEffect: '',
+        successText:
+          'You lend him your name in the Forum, publicly enough that everyone knows exactly whose faith ' +
+          'is on the line if he disappoints you. Pomponius seems to understand the weight of that better than most.',
+      },
+      {
+        id: 'decline-him',
+        label: 'Decline politely — a stranger\'s ambition is not your risk to take',
+        successEffect: 'setFlag:rep-new-man-declined:true',
+        failureEffect: '',
+        successText:
+          'You wish him well and mean it, in the distant way one means it for a man whose fortunes no ' +
+          'longer concern you. He thanks you and looks for support elsewhere.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-rep-new-man-vindicated',
+    title: 'Pomponius Remembers',
+    bodyText:
+      'Quintus Pomponius, the new man you backed when no established name would, has won his office and ' +
+      'made rather a point in his victory speech of naming the patron who believed in him first. He asks ' +
+      'now, over a private dinner, how you would like the debt repaid — publicly, or in a manner only the ' +
+      'two of you will ever know about.',
+    imageKey: 'novus-homo',
+    conditions: [{ type: 'flag', key: 'rep-new-man-sponsored', equals: true }],
+    weight: 4,
+    choices: [
+      {
+        id: 'accept-public-credit',
+        label: 'Accept the credit publicly and graciously',
+        successEffect: 'fides+6|lifetimeDignitas+4|setFlag:rep-new-man-sponsored:false',
+        failureEffect: '',
+        successText:
+          'You let him say what he wants to say, in front of whom he wants to say it. A patron who is ' +
+          'seen picking winners is worth more, in the long run, than one favor quietly banked.',
+      },
+      {
+        id: 'ask-quiet-favor',
+        label: 'Ask instead for a quiet favor when the time comes (Intrigus check, difficulty 5)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 5 },
+        successEffect: 'denarii+25|setFlag:rep-new-man-sponsored:false',
+        failureEffect: 'fides-3|setFlag:rep-new-man-sponsored:false',
+        successText:
+          'Pomponius understands the request immediately and agrees without needing it spelled out ' +
+          'further. Some debts are worth more unspoken than announced.',
+        failureText:
+          'He hesitates in a way that tells you the debt was never as deep as his speech made it sound, ' +
+          'and the conversation ends more awkwardly than either of you intended.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-rep-new-man-embarrassment',
+    title: 'Pomponius, Risen Anyway',
+    bodyText:
+      'Quintus Pomponius, the new man whose ambition you declined to back, has won his office regardless ' +
+      '— under a rival clan\'s sponsorship, as it happens, and he is not shy in the Forum about mentioning ' +
+      'which house believed in him first. It costs you nothing material. It costs you, in the small ' +
+      'currency of who guessed right, rather more than you would like.',
+    imageKey: 'novus-homo',
+    conditions: [{ type: 'flag', key: 'rep-new-man-declined', equals: true }],
+    weight: 4,
+    choices: [
+      {
+        id: 'laugh-it-off',
+        label: 'Laugh it off graciously in public',
+        successEffect: 'fides-2|setFlag:rep-new-man-declined:false',
+        failureEffect: '',
+        successText:
+          'You congratulate him warmly enough that nobody can call you a poor loser, even though you ' +
+          'were never quite in the race. It is not much of a wound, but it is one.',
+      },
+      {
+        id: 'undercut-him',
+        label: 'Quietly needle his new patrons about his loyalty (Intrigus check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 6 },
+        successEffect: 'fides+3|setFlag:rep-new-man-declined:false',
+        failureEffect: 'fides-4|setFlag:rep-new-man-declined:false',
+        successText:
+          'A few carefully placed doubts about how portable Pomponius\'s gratitude really is reach the ' +
+          'clan that sponsored him. It costs him nothing today. It will cost him something eventually.',
+        failureText:
+          'The doubts are traced back to a man who declined to sponsor Pomponius himself, which makes ' +
+          'the whole effort look exactly like the sour grapes it was.',
+      },
+    ],
+  },
+
 ];

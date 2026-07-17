@@ -58,9 +58,11 @@ export function evalCondition(cond: EventCondition, state: GameState): boolean {
       return state.seasonIndex === cond.index;
     }
     case 'office': {
-      const player = state.family.find(c => c.isPlayer);
-      const held = (player as any)?.heldOffice ?? null;
-      return held === cond.held;
+      // Player office is tracked at state.currentOffice (the household-wide
+      // single office slot), never on the character object — Character has no
+      // 'heldOffice' field. Phase 5, Chunk P5-C: fixed a dead condition that
+      // read a nonexistent field and so could never match for the player.
+      return state.currentOffice === cond.held;
     }
     // ── Chunk 2B: four-track crisis conditions ────────────────────────────
     case 'crisisTrack': {
