@@ -710,6 +710,185 @@ describe('P5-C Batch II — schema and eligibility', () => {
   });
 });
 
+// ─── Phase 5, Chunk P5-D — Event Batch III: Consequences & the Long Game ────
+// D1's three trialEngine.ts flags and the two burn-flag sites are covered
+// directly in trialEngine.test.ts / p5d.test.ts, next to the functions that
+// write them. This block covers the content side: schema compliance and
+// eligibility from fabricated matching states for every new evt-aft-*/
+// evt-gen-*/evt-end-*/evt-shp-* entry, plus the two showpieces' flag chains.
+
+describe('P5-D Batch III — schema and eligibility', () => {
+  const P5D_IDS = [
+    'evt-aft-vindication-afterglow',
+    'evt-aft-prosecution-cold-shoulder',
+    'evt-aft-defense-lost-season',
+    'evt-aft-burn-collateral',
+    'evt-aft-burn-gossip',
+    'evt-gen-measured-against-old',
+    'evt-gen-materfamilias-counsel',
+    'evt-gen-materfamilias-echo',
+    'evt-gen-ancestor-masks',
+    'evt-end-veterans-every-corner',
+    'evt-end-senate-without-enemy',
+    'evt-end-hothead-new-adventures',
+    'evt-shp-sibyl-omen',
+    'evt-shp-sibyl-senate',
+    'evt-shp-sibyl-resolution',
+    'evt-shp-grain-shortage',
+    'evt-shp-grain-syndicate',
+    'evt-shp-grain-reckoning',
+  ];
+
+  test('every P5-D id exists exactly once in EVENT_DEFS with weight > 0', () => {
+    for (const id of P5D_IDS) {
+      const matches = EVENT_DEFS.filter(d => d.id === id);
+      expect(matches).toHaveLength(1);
+      expect(matches[0].weight).toBeGreaterThan(0);
+    }
+  });
+
+  test('every choice has successEffect/failureEffect strings and no invented skills', () => {
+    for (const id of P5D_IDS) {
+      const def = EVENT_DEFS.find(d => d.id === id)!;
+      for (const choice of def.choices) {
+        expect(typeof choice.successEffect).toBe('string');
+        expect(typeof choice.failureEffect).toBe('string');
+        if (choice.skillCheck) {
+          expect(['rhetoric', 'martial', 'intrigus']).toContain(choice.skillCheck.skill);
+        }
+        if (!choice.nextEventId && !choice.nextEventIdOnSuccess) {
+          expect(choice.successText).toBeTruthy();
+        }
+        if (choice.skillCheck && !choice.nextEventIdOnFailure) {
+          expect(choice.failureText).toBeTruthy();
+        }
+      }
+    }
+  });
+
+  test('the three trial-outcome-gated aftermath events fire only from their named flag', () => {
+    const cases: [string, string][] = [
+      ['evt-aft-vindication-afterglow', 'trial-resolved-defense-won'],
+      ['evt-aft-prosecution-cold-shoulder', 'trial-resolved-prosecution-won'],
+      ['evt-aft-defense-lost-season', 'trial-resolved-defense-lost'],
+    ];
+    for (const [id, flag] of cases) {
+      const def = EVENT_DEFS.find(d => d.id === id)!;
+      expect(isEventEligible(def, makeState({ flags: {} }) as any)).toBe(false);
+      expect(isEventEligible(def, makeState({ flags: { [flag]: true } }) as any)).toBe(true);
+      // every terminal choice clears the flag it consumed
+      for (const choice of def.choices) {
+        expect(choice.successEffect).toContain(`setFlag:${flag}:false`);
+        if (choice.skillCheck) expect(choice.failureEffect).toContain(`setFlag:${flag}:false`);
+      }
+    }
+  });
+
+  test('both burn-gated aftermath events share secret-burned-recently and both clear it', () => {
+    for (const id of ['evt-aft-burn-collateral', 'evt-aft-burn-gossip']) {
+      const def = EVENT_DEFS.find(d => d.id === id)!;
+      expect(isEventEligible(def, makeState({ flags: {} }) as any)).toBe(false);
+      expect(isEventEligible(def, makeState({ flags: { 'secret-burned-recently': true } }) as any)).toBe(true);
+      for (const choice of def.choices) {
+        expect(choice.successEffect).toContain('setFlag:secret-burned-recently:false');
+      }
+    }
+  });
+
+  test('generational events gate on lifetimeDignitas thresholds / season, per the Option-A reinterpretation', () => {
+    const measured = EVENT_DEFS.find(d => d.id === 'evt-gen-measured-against-old')!;
+    expect(isEventEligible(measured, makeState({ lifetimeDignitas: 100 }) as any)).toBe(false);
+    expect(isEventEligible(measured, makeState({ lifetimeDignitas: 300 }) as any)).toBe(true);
+
+    const masks = EVENT_DEFS.find(d => d.id === 'evt-gen-ancestor-masks')!;
+    expect(isEventEligible(masks, makeState({ seasonIndex: 3, lifetimeDignitas: 350 }) as any)).toBe(true);
+    expect(isEventEligible(masks, makeState({ seasonIndex: 0, lifetimeDignitas: 350 }) as any)).toBe(false);
+    expect(isEventEligible(masks, makeState({ seasonIndex: 3, lifetimeDignitas: 100 }) as any)).toBe(false);
+
+    // The materfamilias arc is deliberately unconditioned (Option A) — no
+    // spouse-existence check exists in this schema (matches the precedent
+    // already shipped in P5-B's evt-dom-sibling-friction).
+    const counsel = EVENT_DEFS.find(d => d.id === 'evt-gen-materfamilias-counsel')!;
+    expect(isEventEligible(counsel, makeState() as any)).toBe(true);
+  });
+
+  test('materfamilias-counsel sets one flag on either branch; the echo follow-up gates on it and clears it', () => {
+    const opening = EVENT_DEFS.find(d => d.id === 'evt-gen-materfamilias-counsel')!;
+    for (const choice of opening.choices) {
+      expect(choice.successEffect).toContain('setFlag:materfamilias-advised:true');
+    }
+    const echo = EVENT_DEFS.find(d => d.id === 'evt-gen-materfamilias-echo')!;
+    expect(isEventEligible(echo, makeState({ flags: {} }) as any)).toBe(false);
+    expect(isEventEligible(echo, makeState({ flags: { 'materfamilias-advised': true } }) as any)).toBe(true);
+    for (const choice of echo.choices) {
+      expect(choice.successEffect).toContain('setFlag:materfamilias-advised:false');
+      if (choice.skillCheck) expect(choice.failureEffect).toContain('setFlag:materfamilias-advised:false');
+    }
+  });
+
+  test('Endless-mode ambience events gate on endless-mode-active', () => {
+    for (const id of ['evt-end-veterans-every-corner', 'evt-end-senate-without-enemy', 'evt-end-hothead-new-adventures']) {
+      const def = EVENT_DEFS.find(d => d.id === id)!;
+      expect(isEventEligible(def, makeState({ flags: {} }) as any)).toBe(false);
+      expect(isEventEligible(def, makeState({ flags: { 'endless-mode-active': true } }) as any)).toBe(true);
+    }
+  });
+
+  test('The Sibyl\'s Price showpiece chains scene-to-scene via flags, each scene a real pool entry', () => {
+    const omen = EVENT_DEFS.find(d => d.id === 'evt-shp-sibyl-omen')!;
+    const senate = EVENT_DEFS.find(d => d.id === 'evt-shp-sibyl-senate')!;
+    const resolution = EVENT_DEFS.find(d => d.id === 'evt-shp-sibyl-resolution')!;
+
+    // Scene 1 is unconditioned (opening scene) and has a guaranteed exit
+    // (dismiss-haruspex) that sets no chain flag at all.
+    expect(isEventEligible(omen, makeState() as any)).toBe(true);
+    const dismiss = omen.choices.find(c => c.id === 'dismiss-haruspex')!;
+    expect(dismiss.successEffect).not.toContain('setFlag:sibyl-reported');
+
+    // Scene 2 gates on sibyl-reported; both its choices eventually clear it
+    // (one directly, one via the failure branch escalating to scene 3).
+    expect(isEventEligible(senate, makeState({ flags: {} }) as any)).toBe(false);
+    expect(isEventEligible(senate, makeState({ flags: { 'sibyl-reported': true } }) as any)).toBe(true);
+    const addressChoice = senate.choices.find(c => c.id === 'address-senate')!;
+    expect(addressChoice.successEffect).toContain('setFlag:sibyl-reported:false');
+    expect(addressChoice.failureEffect).toContain('setFlag:sibyl-reported:false');
+    expect(addressChoice.failureEffect).toContain('setFlag:sibyl-escalated:true');
+
+    // Scene 3 gates on sibyl-escalated (only reachable via scene 2's failure branch).
+    expect(isEventEligible(resolution, makeState({ flags: {} }) as any)).toBe(false);
+    expect(isEventEligible(resolution, makeState({ flags: { 'sibyl-escalated': true } }) as any)).toBe(true);
+    for (const choice of resolution.choices) {
+      expect(choice.successEffect).toContain('setFlag:sibyl-escalated:false');
+    }
+  });
+
+  test('The Grain Fleet showpiece chains autumn shortage -> syndicate offer -> spring reckoning', () => {
+    const shortage = EVENT_DEFS.find(d => d.id === 'evt-shp-grain-shortage')!;
+    const syndicate = EVENT_DEFS.find(d => d.id === 'evt-shp-grain-syndicate')!;
+    const reckoning = EVENT_DEFS.find(d => d.id === 'evt-shp-grain-reckoning')!;
+
+    expect(isEventEligible(shortage, makeState() as any)).toBe(true);
+    expect(shortage.seasons).toEqual([2]); // autumn, soft-weighted
+
+    expect(isEventEligible(syndicate, makeState({ flags: {} }) as any)).toBe(false);
+    expect(isEventEligible(syndicate, makeState({ flags: { 'grain-fleet-pressure': true } }) as any)).toBe(true);
+    for (const choice of syndicate.choices) {
+      expect(choice.successEffect).toContain('setFlag:grain-fleet-pressure:false');
+    }
+    // The syndicate deal is a real risk/reward choice per the guide's §6.2
+    // createLatentSecret allowance — accepting it plants a real Secret.
+    const acceptDeal = syndicate.choices.find(c => c.id === 'accept-syndicate')!;
+    expect(acceptDeal.successEffect).toContain('createLatentSecret:provincial_plunder:2');
+
+    expect(isEventEligible(reckoning, makeState({ flags: {} }) as any)).toBe(false);
+    expect(isEventEligible(reckoning, makeState({ flags: { 'grain-fleet-reckoning': true } }) as any)).toBe(true);
+    expect(reckoning.seasons).toEqual([0]); // spring, soft-weighted
+    for (const choice of reckoning.choices) {
+      expect(choice.successEffect).toContain('setFlag:grain-fleet-reckoning:false');
+    }
+  });
+});
+
 describe('evt-messana-appeal — Sicily/Mediterranean province flip trigger', () => {
   const def = getEventDef('evt-messana-appeal')!;
 

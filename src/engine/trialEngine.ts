@@ -482,6 +482,24 @@ export function resolveTrialOutcome(
     events.push(`Vindicated — the case against ${defendantName} collapses outright. +${BALANCE.trials.rewards.vindicatedDignitas} Dignitas.`);
   }
 
+  // ── Phase 5, Chunk P5-D — generic verdict-consumption flags ──────────────
+  // Fires for every trial resolution regardless of origin (random, scripted,
+  // Claudius arc, counter-suit) since this is the one function all of them
+  // funnel through (per Phase 4, Chunk P4-E's extraction). Feeds P5-D's
+  // aftermath events (evt-aft-*); each aftermath event's terminal choices
+  // clear the flag it consumed, per the guide's flag hygiene (§5.3).
+  // 'prosecution lost' (seat: prosecution, acquitted/dismissed) has no flag
+  // here — it is already the calumnia path above, which has its own
+  // consequences and doesn't need a duplicate aftermath beat.
+  const guiltyOutcome = outcome !== 'acquitted' && outcome !== 'dismissed';
+  if (trial.seat === 'defense' && !guiltyOutcome) {
+    s = { ...s, flags: { ...s.flags, 'trial-resolved-defense-won': true } };
+  } else if (trial.seat === 'defense' && guiltyOutcome) {
+    s = { ...s, flags: { ...s.flags, 'trial-resolved-defense-lost': true } };
+  } else if (trial.seat === 'prosecution' && guiltyOutcome) {
+    s = { ...s, flags: { ...s.flags, 'trial-resolved-prosecution-won': true } };
+  }
+
   const resolvedTrial: TrialState = {
     ...trial, status: 'resolved', outcome, session: null,
     ...(convictedSittingMagistrate ? { convictedSittingMagistrate: true } : {}),

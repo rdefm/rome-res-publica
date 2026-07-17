@@ -2932,4 +2932,777 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
+  // ─── Phase 5, Chunk P5-D — Event Batch III: Consequences & the Long Game ──
+  // Aftermath keyed to Phase 4's trial/secret dramas (gated on the three new
+  // trialEngine.ts verdict flags and the two burnSecret/turnSequencer burn
+  // flags — see trialEngine.ts's resolveTrialOutcome and gameStore.ts's
+  // burnSecret for where they're written), generational texture, Endless-
+  // mode ambience (gated on the endless-mode-active flag mirrored at
+  // gameStore.enterEndlessMode), and two multi-scene showpieces.
+  //
+  // Showpiece scenes chain via flags between scenes (Pattern D), per this
+  // plan's own explicit wording for these two examples — NOT weight-0
+  // nextEventId chaining. Each scene is therefore its own weight > 0
+  // random-draw-pool entry (a correction to a speculative note in this
+  // audit doc's P5-C section, which assumed showpieces would cost only one
+  // pool slot each — they cost one per scene).
+
+  // ── Aftermath ────────────────────────────────────────────────────────────
+
+  {
+    id: 'evt-aft-vindication-afterglow',
+    title: 'The Afterglow of Vindication',
+    bodyText:
+      'The atrium has been full of well-wishers since the verdict, more of them than you expected and ' +
+      'warmer than most of them mean it. One man, Lucius Petillius, holds your hand rather longer than ' +
+      'courtesy requires and says how glad he is this is "all behind you now" — in a tone that files the ' +
+      'debt away rather than closes it.',
+    imageKey: 'atrium-well-wishers',
+    conditions: [{ type: 'flag', key: 'trial-resolved-defense-won', equals: true }],
+    weight: 4,
+    choices: [
+      {
+        id: 'accept-warmly',
+        label: 'Accept the well-wishing at face value',
+        successEffect: 'fides+4|setFlag:trial-resolved-defense-won:false',
+        failureEffect: '',
+        successText:
+          'You let the atrium have its relief without complicating it. Petillius\'s particular warmth ' +
+          'is a problem for another day — today is for being, simply, acquitted.',
+      },
+      {
+        id: 'press-the-threat',
+        label: 'Answer Petillius\'s warmth pointedly, in private (Intrigus check, difficulty 5)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 5 },
+        successEffect: 'fides+2|lifetimeDignitas+2|setFlag:trial-resolved-defense-won:false',
+        failureEffect: 'fides-3|setFlag:trial-resolved-defense-won:false',
+        successText:
+          'A quiet word makes clear you understood exactly what he meant and are not available to be ' +
+          'owned by it. Petillius\'s smile does not change. His grip does, slightly.',
+        failureText:
+          'The private word lands as an accusation rather than a boundary, and Petillius leaves ' +
+          'wounded rather than warned — which, from a man like that, is worse.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-aft-prosecution-cold-shoulder',
+    title: 'A Test, Politely Delivered',
+    bodyText:
+      'Manius Popillius, an elder of a clan you never touched in the courtroom, calls to congratulate you ' +
+      'on the conviction — and stays rather longer than a congratulation requires, asking careful ' +
+      'questions about whether the Basilica has become, for your house, a preferred instrument of ' +
+      'politics rather than a last resort.',
+    imageKey: 'clan-elder-visit',
+    conditions: [{ type: 'flag', key: 'trial-resolved-prosecution-won', equals: true }],
+    weight: 4,
+    choices: [
+      {
+        id: 'reassure-restraint',
+        label: 'Assure him it was warranted, not a habit',
+        successEffect: 'optimatesRel+3|setFlag:trial-resolved-prosecution-won:false',
+        failureEffect: '',
+        successText:
+          'Popillius seems satisfied enough, or at least satisfied enough to stop asking. Restraint, ' +
+          'stated plainly, buys more quiet than any courtroom victory does on its own.',
+      },
+      {
+        id: 'let-them-wonder',
+        label: 'Decline to reassure him — let the question sit',
+        successEffect: 'popularesRel+3|fides-2|setFlag:trial-resolved-prosecution-won:false',
+        failureEffect: '',
+        successText:
+          'You give him nothing to carry away but the question itself. It is a colder answer than he ' +
+          'wanted, and a more useful one than the one he asked for.',
+      },
+      {
+        id: 'make-the-case',
+        label: 'Make the case for what justice actually required (Rhetoric check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'fides+5|setFlag:trial-resolved-prosecution-won:false',
+        failureEffect: 'fides-4|setFlag:trial-resolved-prosecution-won:false',
+        successText:
+          'The argument is thorough enough that Popillius leaves persuaded rather than merely quieted ' +
+          '— a rarer, better outcome than either reassurance or silence.',
+        failureText:
+          'The case overreaches, and Popillius leaves with exactly the impression you were trying to ' +
+          'talk him out of.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-aft-defense-lost-season',
+    title: 'A Harder Season',
+    bodyText:
+      'Since the verdict, doors that used to open for your household have been slower to open, and one ' +
+      'longstanding client has found, with visible discomfort, a reason to conduct his business through ' +
+      'an intermediary rather than in person. Nobody says the word "convicted" to your face. Everyone ' +
+      'is, in their way, saying it anyway.',
+    imageKey: 'closed-doors-forum',
+    conditions: [{ type: 'flag', key: 'trial-resolved-defense-lost', equals: true }],
+    weight: 4,
+    choices: [
+      {
+        id: 'carry-with-dignity',
+        label: 'Carry it publicly with quiet dignity, and let the season pass',
+        successEffect: 'fides+2|denarii-10|setFlag:trial-resolved-defense-lost:false',
+        failureEffect: '',
+        successText:
+          'Some business is genuinely lost. What remains is a household that did not flinch, which ' +
+          'Rome, in its slow way, tends to notice and eventually forgive.',
+      },
+      {
+        id: 'retreat-for-a-season',
+        label: 'Withdraw from public business until it passes',
+        successEffect: 'fides-3|setFlag:trial-resolved-defense-lost:false',
+        failureEffect: '',
+        successText:
+          'You give the Forum nothing new to discuss. The silence costs you standing you might have ' +
+          'defended, but it costs you nothing you cannot recover.',
+      },
+      {
+        id: 'confront-the-narrative',
+        label: 'Confront the narrative directly, in public (Rhetoric check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'fides+5|setFlag:trial-resolved-defense-lost:false',
+        failureEffect: 'fides-6|setFlag:trial-resolved-defense-lost:false',
+        successText:
+          'You meet the verdict head-on rather than let it be discussed only behind your back, and the ' +
+          'sheer nerve of it wins over more of the Forum than the argument\'s content does.',
+        failureText:
+          'Meeting it head-on only gives the story a second telling, and this one is not kinder to you ' +
+          'than the first.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-aft-burn-collateral',
+    title: 'Collateral',
+    bodyText:
+      'A freedman named Stichus, who owed everything to the leader your burned Secret just ruined, stands ' +
+      'at your gate with nowhere else obvious to go. He was never part of what his patron did. He is, ' +
+      'nonetheless, entirely a casualty of it, and he has come to ask — without quite managing to phrase ' +
+      'it as a question — whether the house that broke his patron owes him anything at all.',
+    imageKey: 'freedman-at-gate',
+    conditions: [{ type: 'flag', key: 'secret-burned-recently', equals: true }],
+    weight: 4,
+    choices: [
+      {
+        id: 'take-him-on',
+        label: 'Take Stichus on as a client (−15 Denarii)',
+        successEffect: 'denarii-15|addClient:publicSupport:Casualty of the Scandal:Stichus|setFlag:secret-burned-recently:false',
+        failureEffect: '',
+        successText:
+          'Stichus accepts patronage from the house that ruined his old one with a complicated, quiet ' +
+          'gratitude. He is a useful man. He is also a living reminder of what the burning cost.',
+      },
+      {
+        id: 'alms-and-part-ways',
+        label: 'Give him alms and send him on his way (−10 Denarii)',
+        successEffect: 'denarii-10|setFlag:secret-burned-recently:false',
+        failureEffect: '',
+        successText:
+          'He takes the coin, thanks you with more sincerity than the sum deserves, and goes to find his ' +
+          'own footing somewhere you will not have to watch.',
+      },
+      {
+        id: 'turn-him-away',
+        label: 'Turn him away — his patron\'s ruin is not your household\'s debt',
+        successEffect: 'fides-3|setFlag:secret-burned-recently:false',
+        failureEffect: '',
+        successText:
+          'You are, strictly, correct. He leaves without argument, which is somehow worse than if he ' +
+          'had made one.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-aft-burn-gossip',
+    title: 'The Forum\'s Appetite',
+    bodyText:
+      'The scandal your burned Secret set off has been good sport in the Forum for a full season now, ' +
+      'and idle appetite, having finished one course, has begun looking for a second. Someone has started ' +
+      'wondering aloud what kind of household produces a secret ruinous enough to end a man — and whether ' +
+      'that household might be hiding one of its own.',
+    imageKey: 'forum-idle-tongues',
+    conditions: [{ type: 'flag', key: 'secret-burned-recently', equals: true }],
+    weight: 4,
+    choices: [
+      {
+        id: 'ignore-it',
+        label: 'Ignore the talk and let it exhaust itself',
+        successEffect: 'fides-2|setFlag:secret-burned-recently:false',
+        failureEffect: '',
+        successText:
+          'You decline to feed it. It does not vanish, but it does, slowly, stop being the freshest ' +
+          'thing in the Forum to discuss.',
+      },
+      {
+        id: 'redirect-attention',
+        label: 'Redirect the Forum\'s appetite elsewhere (Intrigus check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 6 },
+        successEffect: 'fides+3|setFlag:secret-burned-recently:false',
+        failureEffect: 'fides-5|setFlag:secret-burned-recently:false',
+        successText:
+          'A more interesting rumor, seeded carefully elsewhere, does the work for you. The Forum is ' +
+          'fickle by trade; it goes where it is led without ever noticing the leading.',
+        failureText:
+          'The redirection is traced back to your door within days, and now the Forum has two stories ' +
+          'about your household instead of one.',
+      },
+      {
+        id: 'address-it-plainly',
+        label: 'Address the speculation plainly, in public (Rhetoric check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'fides+4|setFlag:secret-burned-recently:false',
+        failureEffect: 'fides-3|setFlag:secret-burned-recently:false',
+        successText:
+          'You meet the speculation directly and dare the Forum to find something real behind it. ' +
+          'Nobody does, which is its own kind of quiet victory.',
+        failureText:
+          'Addressing it directly only confirms, to a Forum that wanted confirming, that there was ' +
+          'something worth asking about.',
+      },
+    ],
+  },
+
+  // ── Generational ─────────────────────────────────────────────────────────
+
+  {
+    id: 'evt-gen-measured-against-old',
+    title: 'What This House Used to Be',
+    bodyText:
+      'A petitioner, mid-request, catches himself and says it anyway: "In your grandfather\'s day, a ' +
+      'thing like this would already be settled." He does not mean it unkindly. He means it exactly as ' +
+      'unkindly as it sounds, and now it is sitting in the room between you, unretractable.',
+    imageKey: 'petitioner-atrium',
+    conditions: [{ type: 'resource', key: 'lifetimeDignitas', op: 'gte', value: 300 }],
+    weight: 4,
+    choices: [
+      {
+        id: 'accept-humbly',
+        label: 'Accept the comparison without argument',
+        successEffect: 'fides+2',
+        failureEffect: '',
+        successText:
+          'You let the remark stand. There is a kind of strength in not needing to win every comparison ' +
+          'to the dead, and the petitioner, disarmed, gets down to his actual business.',
+      },
+      {
+        id: 'reframe-it',
+        label: 'Answer the comparison directly (Rhetoric check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'lifetimeDignitas+4',
+        failureEffect: 'fides-4',
+        successText:
+          'You make the case, without quite sounding defensive about it, for what this generation has ' +
+          'built that the last one never had the chance to. It lands.',
+        failureText:
+          'The defense sounds exactly as defensive as it is, and the petitioner leaves more convinced ' +
+          'of his opening remark than he was before you answered it.',
+      },
+      {
+        id: 'dismiss-him',
+        label: 'Dismiss the comparison and move the meeting along',
+        successEffect: 'fides-2',
+        failureEffect: '',
+        successText:
+          'You decline to engage with it at all. The petitioner takes the hint. The remark, unanswered, ' +
+          'has a way of being remembered anyway.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-gen-materfamilias-counsel',
+    title: 'Her Counsel',
+    bodyText:
+      'Your wife has watched this household\'s fortunes turn for longer than you have been the one ' +
+      'steering them, and tonight, over a meal neither of you has finished, she says plainly what she ' +
+      'thinks of the direction the family has taken this year. It is not quite approval. It is not quite ' +
+      'a warning either — but it is not nothing, and she clearly expects an answer.',
+    imageKey: 'domus-evening-meal',
+    conditions: [],
+    weight: 5,
+    choices: [
+      {
+        id: 'heed-her-counsel',
+        label: 'Take her assessment to heart',
+        successEffect: 'fides+2|setFlag:materfamilias-advised:true',
+        failureEffect: '',
+        successText:
+          'You do not promise to change course. You do let her see that you heard her, which — she ' +
+          'makes clear without saying so — was most of what she wanted.',
+      },
+      {
+        id: 'disregard-politely',
+        label: 'Thank her for her thoughts and continue as planned',
+        successEffect: 'setFlag:materfamilias-advised:true',
+        failureEffect: '',
+        successText:
+          'She does not press it further tonight. She also does not look like a woman who has forgotten ' +
+          'what she said, or who intends to.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-gen-materfamilias-echo',
+    title: 'What She Foresaw',
+    bodyText:
+      'Months ago, your wife offered her reading of the direction this household was taking — heeded or ' +
+      'set aside at the time, it hardly matters now, because the moment she was quietly warning about has ' +
+      'arrived exactly as she described it. She does not say "I told you so." She does not have to.',
+    imageKey: 'domus-evening-meal',
+    conditions: [{ type: 'flag', key: 'materfamilias-advised', equals: true }],
+    weight: 4,
+    choices: [
+      {
+        id: 'lean-into-foresight',
+        label: 'Act on her foresight now, openly',
+        successEffect: 'fides+3|lifetimeDignitas+3|setFlag:materfamilias-advised:false',
+        failureEffect: '',
+        successText:
+          'You move on her reading of the situation rather than your own instinct, and it holds. Whatever ' +
+          'else is true of this household, it is not one that ignores good counsel twice.',
+      },
+      {
+        id: 'improvise-instead',
+        label: 'Trust your own read of the moment instead (Rhetoric check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'lifetimeDignitas+5|setFlag:materfamilias-advised:false',
+        failureEffect: 'fides-5|setFlag:materfamilias-advised:false',
+        successText:
+          'Your own instinct, this time, reads the moment better than hers did — a rare enough outcome ' +
+          'that even she seems, briefly, impressed.',
+        failureText:
+          'Your own instinct fails where her foresight would have held, and the two of you both know ' +
+          'exactly whose reading should have carried the room.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-gen-ancestor-masks',
+    title: 'The Ancestor Masks',
+    bodyText:
+      'Midwinter, and the wax imagines come down from their cupboards as they do every year, worn by ' +
+      'household actors for the funeral procession\'s rehearsal of the dead. This year the display draws a ' +
+      'longer look than usual from the neighbours — a household with this many masks worth taking down ' +
+      'is no longer merely old. It is becoming something people mean a particular thing by mentioning.',
+    imageKey: 'wax-ancestor-masks',
+    conditions: [
+      { type: 'season', index: 3 },
+      { type: 'resource', key: 'lifetimeDignitas', op: 'gte', value: 350 },
+    ],
+    weight: 4,
+    choices: [
+      {
+        id: 'conduct-fully',
+        label: 'Conduct the full rite, masks and procession alike',
+        successEffect: 'lifetimeDignitas+5',
+        failureEffect: '',
+        successText:
+          'The household does right by its dead in full view of the street. It costs an afternoon and ' +
+          'buys the kind of quiet respect that no single season\'s politics can.',
+      },
+      {
+        id: 'private-observance',
+        label: 'Keep the observance private this year',
+        successEffect: 'fides+2',
+        failureEffect: '',
+        successText:
+          'The masks come down and go back up again without an audience. The ancestors, presumably, do ' +
+          'not mind either way. The neighbours notice the absence of a show more than they would have ' +
+          'noticed the show itself.',
+      },
+    ],
+  },
+
+  // ── Endless-mode ambience ────────────────────────────────────────────────
+
+  {
+    id: 'evt-end-veterans-every-corner',
+    title: 'Every Corner, a Veteran',
+    bodyText:
+      'The war Rome fought for a generation is over, and its men are everywhere now that they are no ' +
+      'longer at the front — some thriving in trades they learned under the standards, most simply ' +
+      'getting by. One begs by name at your gate this morning, an old campaigner named Vibius who swears ' +
+      'he served under an officer your household once knew.',
+    imageKey: 'veteran-at-gate',
+    conditions: [{ type: 'flag', key: 'endless-mode-active', equals: true }],
+    weight: 4,
+    choices: [
+      {
+        id: 'grant-pension',
+        label: 'Grant him a small pension from your own purse (−15 Denarii)',
+        successEffect: 'denarii-15|fides+3|plebs+2',
+        failureEffect: '',
+        successText:
+          'Vibius takes the coin with the particular dignity of a man who fought long enough to have ' +
+          'earned not needing to be grateful for it, and is anyway.',
+      },
+      {
+        id: 'public-charity',
+        label: 'Direct him toward the public veterans\' dole',
+        successEffect: '',
+        failureEffect: '',
+        successText:
+          'He thanks you and moves on toward the dole, one of a great many men Rome fought a war with and ' +
+          'has not quite finished deciding what it owes.',
+      },
+      {
+        id: 'hire-as-client',
+        label: 'Take him on as a client — a man like that has uses (−10 Denarii)',
+        successEffect: 'denarii-10|addClient:muscle:The Old Campaigner:Vibius',
+        failureEffect: '',
+        successText:
+          'Vibius accepts without hesitation. Whatever peace has done to the rest of Rome, it has not ' +
+          'made him any less useful in a tight corner.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-end-senate-without-enemy',
+    title: 'What Now?',
+    bodyText:
+      'With Carthage no longer a common enemy to unite behind, the Senate has rediscovered how much it ' +
+      'enjoys fighting itself. Sessions that once closed ranks against the war now splinter over ' +
+      'precedent, procedure, and old grudges nobody had time for while the fleet was at sea.',
+    imageKey: 'curia-factions',
+    conditions: [{ type: 'flag', key: 'endless-mode-active', equals: true }],
+    weight: 4,
+    choices: [
+      {
+        id: 'rally-agenda',
+        label: 'Rally the chamber toward a constructive agenda (Rhetoric check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'crisis-constitution-4|fides+3',
+        failureEffect: 'crisis-constitution+3|fides-2',
+        successText:
+          'The chamber finds, briefly, something better to do with itself than refight old arguments. ' +
+          'It will not last forever. It lasts today.',
+        failureText:
+          'The chamber is not in a mood to be rallied toward anything, and the attempt reads as one more ' +
+          'faction trying to seize the agenda rather than settle it.',
+      },
+      {
+        id: 'let-them-squabble',
+        label: 'Let the factions squabble themselves out',
+        successEffect: 'crisis-constitution+2',
+        failureEffect: '',
+        successText:
+          'You spend your own capital elsewhere and let the Senate exhaust itself on its own time. It ' +
+          'usually does, eventually.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-end-hothead-new-adventures',
+    title: 'Word of Further Glory',
+    bodyText:
+      'A junior senator named Marcus Fonteius, too young to have fought the war Rome just won, rises in ' +
+      'the Curia to argue that a Republic which has beaten Carthage once should not simply rest there — ' +
+      'there is more glory, he says, wherever Rome cares to look for it. Several older heads in the ' +
+      'chamber exchange the specific look of men who remember exactly how the last such argument started.',
+    imageKey: 'young-senator-curia',
+    conditions: [{ type: 'flag', key: 'endless-mode-active', equals: true }],
+    weight: 4,
+    choices: [
+      {
+        id: 'encourage-him',
+        label: 'Lend the young man your support',
+        successEffect: 'popularesRel+4',
+        failureEffect: '',
+        successText:
+          'Fonteius takes your backing gladly, and Rome\'s appetite for its next glory finds one more ' +
+          'voice willing to feed it. What it eventually costs is a question for another year.',
+      },
+      {
+        id: 'counsel-caution',
+        label: 'Counsel caution — one war\'s peace is worth guarding (Rhetoric check, difficulty 5)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 5 },
+        successEffect: 'fides+4|optimatesRel+2',
+        failureEffect: 'fides-2',
+        successText:
+          'The chamber, tired enough of war to want the argument for peace made well, listens more ' +
+          'closely than Fonteius expected. He is not silenced. He is, for now, outnumbered.',
+        failureText:
+          'The caution reads as timidity to a chamber that just won a twenty-year war, and Fonteius\'s ' +
+          'appetite for glory looks, by contrast, rather more like confidence.',
+      },
+    ],
+  },
+
+  // ── Showpiece I: The Sibyl's Price (3 scenes, flags between them) ────────
+
+  {
+    id: 'evt-shp-sibyl-omen',
+    title: 'An Omen in the Household',
+    bodyText:
+      'The household\'s sacred chickens would not eat this morning — refused the grain outright, three ' +
+      'times offered — and the haruspex you called in to read it, a nervous man named Aulus Caedicius, ' +
+      'insists this is not the kind of omen a family simply shrugs off. The Sibylline Books, he says, ' +
+      'were consulted for lesser signs than this. Someone should tell the priesthood before the household ' +
+      'looks like it is hiding something from the gods.',
+    imageKey: 'sacred-chickens-omen',
+    conditions: [],
+    weight: 5,
+    choices: [
+      {
+        id: 'report-properly',
+        label: 'Report the omen to the priesthood, as custom requires',
+        successEffect: 'setFlag:sibyl-reported:true',
+        failureEffect: '',
+        successText:
+          'Caedicius carries word to the duumviri sacris faciundis himself, relieved to have it out of ' +
+          'his own hands. What the priesthood makes of it is now, for better or worse, out of yours too.',
+      },
+      {
+        id: 'suppress-quietly',
+        label: 'Pay Caedicius to keep this contained (Intrigus check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 6 },
+        successEffect: 'denarii-15|fides+2',
+        failureEffect: 'setFlag:sibyl-reported:true|fides-3',
+        successText:
+          'A generous fee and a plausible cover story — a sick bird, nothing more — keeps the matter ' +
+          'inside your own walls entirely. Caedicius leaves satisfied on both counts.',
+        failureText:
+          'Caedicius takes the coin and talks anyway, whether from a guilty conscience or a loose tongue. ' +
+          'The omen reaches the priesthood regardless, now with the added flavor of a household that ' +
+          'tried to bury it.',
+      },
+      {
+        id: 'dismiss-haruspex',
+        label: 'Dismiss Caedicius as a fraud chasing a fee',
+        successEffect: 'fides-2',
+        failureEffect: '',
+        successText:
+          'You send him away unpaid and unconvinced. Whether the chickens meant anything at all is now a ' +
+          'question you have decided, unilaterally, not to ask again.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-shp-sibyl-senate',
+    title: 'The Question Reaches the Curia',
+    bodyText:
+      'The household omen you reported — or failed to fully contain — has travelled the distance from ' +
+      'gossip to genuine business: a senator has formally asked whether the Sibylline Books have ' +
+      'anything to say about the times, and whether the sign, having occurred under your roof, reflects ' +
+      'on your household specifically. The chamber is more interested than you would like.',
+    imageKey: 'curia-sibylline-debate',
+    conditions: [{ type: 'flag', key: 'sibyl-reported', equals: true }],
+    weight: 4,
+    choices: [
+      {
+        id: 'address-senate',
+        label: 'Address the Senate yourself, before the question runs ahead of you (Rhetoric check, difficulty 7)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 7 },
+        successEffect: 'fides+5|lifetimeDignitas+3|setFlag:sibyl-reported:false',
+        failureEffect: 'fides-4|setFlag:sibyl-reported:false|setFlag:sibyl-escalated:true',
+        successText:
+          'You frame the omen as exactly what it was — a household matter, properly reported, nothing ' +
+          'more — and the chamber, largely, accepts the framing. The question closes almost as quickly ' +
+          'as it opened.',
+        failureText:
+          'The framing does not hold, and the chamber\'s interest sharpens rather than settles. The ' +
+          'question is no longer whether the omen matters. It is what it means, and the priesthood is ' +
+          'now formally being asked to say.',
+      },
+      {
+        id: 'let-priests-handle',
+        label: 'Let the priesthood answer the Senate\'s question without your involvement',
+        successEffect: 'fides-2|setFlag:sibyl-reported:false',
+        failureEffect: '',
+        successText:
+          'You stay out of it entirely and let the duumviri speak for themselves. It is the safer choice ' +
+          'and the less memorable one, which in the Curia often amounts to the same thing.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-shp-sibyl-resolution',
+    title: 'What the Books Are Said to Mean',
+    bodyText:
+      'The priesthood\'s reading of the omen — garbled a little by a season of rumor, but a reading all ' +
+      'the same — has settled into something like established fact in the Forum\'s memory: your household ' +
+      'is now, permanently, the family the sign occurred under. Whether that is remembered as a mark of ' +
+      'favor or of warning is still, this once, genuinely undecided.',
+    imageKey: 'sibylline-books-reading',
+    conditions: [{ type: 'flag', key: 'sibyl-escalated', equals: true }],
+    weight: 4,
+    choices: [
+      {
+        id: 'embrace-association',
+        label: 'Embrace the association publicly — a household the gods take notice of',
+        successEffect: 'lifetimeDignitas+8|setFlag:sibyl-escalated:false',
+        failureEffect: '',
+        successText:
+          'You claim the reading as a mark of favor before anyone can settle on the other interpretation. ' +
+          'Rome, largely, decides to believe you — marked households make for a better story than ' +
+          'unremarkable ones.',
+      },
+      {
+        id: 'bury-the-memory',
+        label: 'Work quietly to let the whole affair be forgotten (Intrigus check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 6 },
+        successEffect: 'fides+3|setFlag:sibyl-escalated:false',
+        failureEffect: 'fides-4|setFlag:sibyl-escalated:false',
+        successText:
+          'A season of careful indifference does what argument could not — the story simply stops being ' +
+          'interesting, and the Forum moves on to its next omen.',
+        failureText:
+          'The effort to bury it becomes, itself, a small story — a household that seemed unusually ' +
+          'eager to stop people talking about its own omen.',
+      },
+    ],
+  },
+
+  // ── Showpiece II: The Grain Fleet (3 scenes, flags between them) ─────────
+
+  {
+    id: 'evt-shp-grain-shortage',
+    title: 'The Autumn Shortfall',
+    bodyText:
+      'The grain fleet out of Sicily is late again this autumn, and a report crossing your desk makes ' +
+      'clear it will not simply be late — a portion of the promised shipment is not coming at all this ' +
+      'year. The market in the city already knows something is wrong. It has not yet worked out how ' +
+      'wrong, which gives you a season, and only a season, to decide what to do about it.',
+    imageKey: 'grain-fleet-report',
+    conditions: [],
+    weight: 5,
+    seasons: [2],
+    choices: [
+      {
+        id: 'buy-personally',
+        label: 'Buy grain personally to ease the market (−25 Denarii)',
+        successEffect: 'denarii-25|plebs+4|setFlag:grain-fleet-pressure:true',
+        failureEffect: '',
+        successText:
+          'Your own purse absorbs what the fleet did not deliver. The market steadies for now, and word ' +
+          'of whose grain steadied it travels through the city almost as fast as the shortage did.',
+      },
+      {
+        id: 'petition-import',
+        label: 'Petition the Senate for an emergency import authorization (Rhetoric check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'rhetoric', difficulty: 6 },
+        successEffect: 'crisis-economy-3|setFlag:grain-fleet-pressure:true',
+        failureEffect: 'crisis-economy+3|setFlag:grain-fleet-pressure:true',
+        successText:
+          'The Senate authorizes emergency purchases from outside the usual channels, which buys the ' +
+          'market real relief — and buys you the attention of everyone who wonders how you knew to ask ' +
+          'for it so quickly.',
+        failureText:
+          'The petition stalls in procedure while the market keeps tightening, and the emergency you ' +
+          'warned about arrives before the Senate finishes debating whether it is real.',
+      },
+      {
+        id: 'let-market-correct',
+        label: 'Let the market correct itself — one bad autumn is not a crisis',
+        successEffect: 'plebs-4|crisis-economy+2',
+        failureEffect: '',
+        successText:
+          'You spend nothing and intervene nowhere. The market corrects itself, eventually, in the way ' +
+          'markets do — by making the people with the least cushion absorb the difference.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-shp-grain-syndicate',
+    title: 'The Syndicate\'s Offer',
+    bodyText:
+      'Gnaeus Atinius, who controls more merchant hulls out of Ostia than any three other men combined, ' +
+      'proposes privately to guarantee next year\'s grain supply through his ships alone — for a ' +
+      'considerable price, and for your household\'s political cover should anyone ask too closely where, ' +
+      'exactly, a wartime syndicate is sourcing grain that Carthaginian waters ought to make impossible ' +
+      'to move at all.',
+    imageKey: 'merchant-syndicate-offer',
+    conditions: [{ type: 'flag', key: 'grain-fleet-pressure', equals: true }],
+    weight: 4,
+    choices: [
+      {
+        id: 'accept-syndicate',
+        label: 'Accept Atinius\'s arrangement',
+        successEffect: 'crisis-economy-5|createLatentSecret:provincial_plunder:2|setFlag:grain-fleet-pressure:false|setFlag:grain-fleet-reckoning:true',
+        failureEffect: '',
+        successText:
+          'The grain arrives, reliably, all through the following year, and the market never learns how ' +
+          'narrowly it avoided a second bad autumn. Atinius is a careful man about where his hulls have ' +
+          'been. He is not the only one who will remember the arrangement.',
+      },
+      {
+        id: 'seek-honest-alternative',
+        label: 'Refuse Atinius and seek an honest alternative supply (Intrigus check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 6 },
+        successEffect: 'denarii-20|crisis-economy-3|setFlag:grain-fleet-pressure:false|setFlag:grain-fleet-reckoning:true',
+        failureEffect: 'crisis-economy+3|setFlag:grain-fleet-pressure:false|setFlag:grain-fleet-reckoning:true',
+        successText:
+          'A quieter search turns up smaller, cleaner suppliers willing to fill the gap without Atinius\'s ' +
+          'particular terms attached. It costs more in coin and effort than his offer would have, and ' +
+          'costs nothing else.',
+        failureText:
+          'The honest alternative does not materialize in time, and the market feels the gap Atinius\'s ' +
+          'ships would have filled. He notes, politely, that his offer still stands.',
+      },
+      {
+        id: 'decline-everything',
+        label: 'Decline the arrangement and leave the matter to the treasury',
+        successEffect: 'crisis-economy+2|setFlag:grain-fleet-pressure:false',
+        failureEffect: '',
+        successText:
+          'You take no part in solving it. The treasury manages, as it usually does, at a cost the ' +
+          'treasury and not your household absorbs.',
+      },
+    ],
+  },
+
+  {
+    id: 'evt-shp-grain-reckoning',
+    title: 'The Reckoning',
+    bodyText:
+      'Spring has arrived, and with it the question of whether last autumn\'s arrangement for the grain ' +
+      'supply holds up to daylight. Whatever was done to steady the market — a syndicate\'s discreet ' +
+      'ships, a quieter alternative, or nothing at all — is now a matter the Forum has started asking ' +
+      'pointed questions about, and the answers are no longer entirely yours to control.',
+    imageKey: 'spring-forum-questions',
+    conditions: [{ type: 'flag', key: 'grain-fleet-reckoning', equals: true }],
+    weight: 4,
+    seasons: [0],
+    choices: [
+      {
+        id: 'stand-behind-it',
+        label: 'Stand behind the arrangement publicly, whatever it was',
+        successEffect: 'lifetimeDignitas+5|setFlag:grain-fleet-reckoning:false',
+        failureEffect: '',
+        successText:
+          'You own the decision without flinching, and a Forum that respects nerve more than it respects ' +
+          'consistency largely lets the matter rest.',
+      },
+      {
+        id: 'distance-quietly',
+        label: 'Quietly distance yourself from how it was actually handled (Intrigus check, difficulty 6)',
+        skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 6 },
+        successEffect: 'fides+3|setFlag:grain-fleet-reckoning:false',
+        failureEffect: 'fides-5|setFlag:grain-fleet-reckoning:false',
+        successText:
+          'The details, such as they were, quietly stop being associated with your name by the time ' +
+          'anyone thinks to ask twice.',
+        failureText:
+          'The distancing itself becomes the story — a household that steadied the grain market and then ' +
+          'tried to pretend it hadn\'t, which the Forum finds considerably more interesting than the ' +
+          'original arrangement.',
+      },
+    ],
+  },
+
 ];

@@ -1442,11 +1442,19 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   returnToStartMenu: () => set({ gameStarted: false }),
 
-  enterEndlessMode: () => set({
-    endlessMode: true,
-    runFinished: false,
-    pendingEpilogue: null,
-  }),
+  enterEndlessMode: () => {
+    const s = get();
+    set({
+      endlessMode: true,
+      runFinished: false,
+      pendingEpilogue: null,
+      // Phase 5, Chunk P5-D — endlessMode is a top-level boolean, not in
+      // `flags`, so it isn't reachable by the `flag` EventCondition. Mirrored
+      // here (the one place Endless mode is ever entered) so evt-end-*
+      // ambience events can gate on it without a new condition type.
+      flags: { ...s.flags, 'endless-mode-active': true },
+    });
+  },
 
   // ─── Resources ───────────────────────────────────────────────────────────────
 
@@ -1995,6 +2003,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       familyReputations: { ...s.familyReputations, [clan.id]: Math.min(currentRep, BALANCE.secrets.burnClanRepFloor) },
       secrets: s.secrets.map(sec => sec.id === secretId ? { ...sec, status: 'spent' as const } : sec),
       log: [...s.log, mkLog(label, `Scandal breaks: ${secret.flavorText} ${leader.name} loses ${voteLoss} votes as the story spreads — ${clan.name} turns hostile.`, 'good')],
+      // Phase 5, Chunk P5-D — feeds evt-aft-burn-* aftermath events.
+      flags: { ...s.flags, 'secret-burned-recently': true },
       ...bumpActions(s),
     });
   },

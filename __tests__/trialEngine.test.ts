@@ -740,6 +740,69 @@ describe('resolveTrialOutcome', () => {
   });
 });
 
+// ─── Phase 5, Chunk P5-D — generic verdict-consumption flags ────────────────
+// Feeds evt-aft-* aftermath content (src/data/events.ts). Covers all four
+// seat/outcome combinations resolveTrialOutcome can produce, since only
+// three of them get a flag (a losing prosecution is the pre-existing
+// calumnia path, not a new aftermath beat).
+
+describe('resolveTrialOutcome — P5-D aftermath flags', () => {
+  test('defense win (acquitted) sets trial-resolved-defense-won and no other aftermath flag', () => {
+    const state = makeState({ flags: {} });
+    const trial = makeTrial({ seat: 'defense', playerPrep: makePrep({ logos: 100 }), npcStrength: 0 });
+    const { state: nextState } = resolveTrialOutcome(state, trial, null, 0, 0);
+    expect(nextState.flags['trial-resolved-defense-won']).toBe(true);
+    expect(nextState.flags['trial-resolved-defense-lost']).toBeUndefined();
+    expect(nextState.flags['trial-resolved-prosecution-won']).toBeUndefined();
+  });
+
+  test('defense loss (executed) sets trial-resolved-defense-lost, not defense-won', () => {
+    const state = makeState({
+      flags: {},
+      family: [makeCharacter({ id: 'pc-1', isPlayer: true }), makeCharacter({ id: 'son-1', isPlayer: false, role: 'son' })],
+    });
+    const trial = makeTrial({
+      seat: 'defense', defendant: { kind: 'family', characterId: 'son-1' },
+      playerPrep: makePrep({ logos: 0 }), npcStrength: 200,
+    });
+    const { trial: resolved, state: nextState } = resolveTrialOutcome(state, trial, null, 0, 0);
+    expect(resolved.outcome).toBe('executed');
+    expect(nextState.flags['trial-resolved-defense-lost']).toBe(true);
+    expect(nextState.flags['trial-resolved-defense-won']).toBeUndefined();
+  });
+
+  test('prosecution win sets trial-resolved-prosecution-won', () => {
+    const leader = makeLeader({ id: 'leader-1', name: 'Fabius', votes: 12, currentOffice: null });
+    const state = makeState({ flags: {}, clans: [makeClan({ id: 'fabii', leaders: [leader] })] });
+    const trial = makeTrial({
+      seat: 'prosecution', prosecutor: { kind: 'player', speakerId: 'pc-1' },
+      defendant: { kind: 'leader', leaderId: 'leader-1' },
+      playerPrep: makePrep({ logos: 100 }), npcStrength: 0,
+    });
+    const opponentFound = { clan: state.clans[0], leader };
+    const { state: nextState } = resolveTrialOutcome(state, trial, opponentFound, 0, 0);
+    expect(nextState.flags['trial-resolved-prosecution-won']).toBe(true);
+    expect(nextState.flags['trial-resolved-defense-won']).toBeUndefined();
+    expect(nextState.flags['trial-resolved-defense-lost']).toBeUndefined();
+  });
+
+  test('a losing prosecution (acquitted/dismissed) sets none of the three aftermath flags — calumnia already covers it', () => {
+    const leader = makeLeader({ id: 'leader-1', name: 'Fabius' });
+    const state = makeState({ flags: {}, clans: [makeClan({ id: 'fabii', leaders: [leader] })], lifetimeDignitas: 50 });
+    const trial = makeTrial({
+      seat: 'prosecution', prosecutor: { kind: 'player', speakerId: 'pc-1' },
+      defendant: { kind: 'leader', leaderId: 'leader-1' },
+      playerPrep: makePrep({ logos: 0 }), npcStrength: 100, // mirrors the calumnia test above: differential -70, defendantDifferential +70 -> acquitted
+    });
+    const opponentFound = { clan: state.clans[0], leader };
+    const { trial: resolved, state: nextState } = resolveTrialOutcome(state, trial, opponentFound, 0, 0, () => 0.99);
+    expect(['acquitted', 'dismissed']).toContain(resolved.outcome);
+    expect(nextState.flags['trial-resolved-prosecution-won']).toBeUndefined();
+    expect(nextState.flags['trial-resolved-defense-won']).toBeUndefined();
+    expect(nextState.flags['trial-resolved-defense-lost']).toBeUndefined();
+  });
+});
+
 // ─── Prosecution victory rewards & defense vindication (Phase 4, Chunk P4-F) ─
 
 describe('resolveTrialOutcome — P4-F rewards', () => {

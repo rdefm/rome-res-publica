@@ -1101,6 +1101,10 @@ export function processSeason(state: GameState): {
         } : c),
         familyReputations: { ...s.familyReputations, [clan.id]: Math.min(currentRep, BALANCE.secrets.burnClanRepFloor) },
         secrets: s.secrets.map(sec => sec.id === secret.id ? { ...sec, status: 'spent' as const, discovered: true } : sec),
+        // Phase 5, Chunk P5-D — same aftermath flag as gameStore.burnSecret's
+        // player-initiated path: either direction ends with a leader ruined
+        // by a burned secret, which is the aftermath content's actual trigger.
+        flags: { ...s.flags, 'secret-burned-recently': true },
       };
       events.push(`Scandal: ${leader.name} burns what they held rather than lose it quietly — ${secret.flavorText} ${clan.name} turns hostile.`);
     }
