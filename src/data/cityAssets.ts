@@ -1,11 +1,11 @@
-import type { ProvinceAssetDefinition } from '../models/province';
+import type { CityAssetDefinition } from '../models/city';
 
-// ─── Provincial Asset Definitions ────────────────────────────────────────────
+// ─── City Asset Definitions ──────────────────────────────────────────────────
 // 7 asset types, each with 2 tiers. Assets are cheaper than Roman assets
 // but contribute directly to Local Support — embedding the family in the
-// province over time.
+// city over time.
 
-export const PROVINCE_ASSET_DEFINITIONS: ProvinceAssetDefinition[] = [
+export const CITY_ASSET_DEFINITIONS: CityAssetDefinition[] = [
   {
     id: 'latifundium',
     name: 'Latifundium',
@@ -58,7 +58,7 @@ export const PROVINCE_ASSET_DEFINITIONS: ProvinceAssetDefinition[] = [
     name: 'Merchant Wharf',
     cost: 70,
     localSupportGain: 3,
-    flavorText: 'Control of a coastal or river trading post. Requires a water route — not available in highland provinces.',
+    flavorText: 'Control of a coastal or river trading post. Requires a water route — not available in highland cities.',
     tier1Bonus: {
       label: 'Trading Post',
       goldPerTurn: 8,
@@ -119,20 +119,20 @@ export const PROVINCE_ASSET_DEFINITIONS: ProvinceAssetDefinition[] = [
   },
 ];
 
-// Province-specific availability gates. Some assets only make sense in
+// City-specific availability gates. Some assets only make sense in
 // certain terrain types. If id is not in this map, it's available everywhere.
-export const ASSET_PROVINCE_RESTRICTIONS: Record<string, string[]> = {
+export const ASSET_CITY_RESTRICTIONS: Record<string, string[]> = {
   merchant_wharf: ['campania', 'etruria'],   // coastal/river only
   mining_rights:  ['samnium', 'cisalpine_gaul', 'etruria'], // highland/mineral-rich only
 };
 
-export function getProvinceAssetDefinition(id: string): ProvinceAssetDefinition | undefined {
-  return PROVINCE_ASSET_DEFINITIONS.find(a => a.id === id);
+export function getCityAssetDefinition(id: string): CityAssetDefinition | undefined {
+  return CITY_ASSET_DEFINITIONS.find(a => a.id === id);
 }
 
-export function getAvailableAssetsForProvince(provinceId: string): ProvinceAssetDefinition[] {
-  return PROVINCE_ASSET_DEFINITIONS.filter(asset => {
-    const restriction = ASSET_PROVINCE_RESTRICTIONS[asset.id];
-    return !restriction || restriction.includes(provinceId);
+export function getAvailableAssetsForCity(cityId: string): CityAssetDefinition[] {
+  return CITY_ASSET_DEFINITIONS.filter(asset => {
+    const restriction = ASSET_CITY_RESTRICTIONS[asset.id];
+    return !restriction || restriction.includes(cityId);
   });
 }

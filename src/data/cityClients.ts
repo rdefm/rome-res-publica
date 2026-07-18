@@ -1,10 +1,10 @@
-import type { ProvincialClientDefinition } from '../models/province';
+import type { CityClientDefinition } from '../models/city';
 
-// ─── Provincial Client Definitions ───────────────────────────────────────────
+// ─── City Client Definitions ─────────────────────────────────────────────────
 // Italy-relevant clients for the v1 Italy map.
 // All 12 are defined here (others will activate when their maps unlock).
 
-export const PROVINCIAL_CLIENT_DEFINITIONS: ProvincialClientDefinition[] = [
+export const CITY_CLIENT_DEFINITIONS: CityClientDefinition[] = [
   {
     id: 'samnite_gladiator_trainer',
     name: 'Vergilius the Samnite',
@@ -128,10 +128,10 @@ export const PROVINCIAL_CLIENT_DEFINITIONS: ProvincialClientDefinition[] = [
   },
 ];
 
-export function getProvincialClientDef(id: string): ProvincialClientDefinition | undefined {
-  return PROVINCIAL_CLIENT_DEFINITIONS.find(c => c.id === id);
+export function getCityClientDef(id: string): CityClientDefinition | undefined {
+  return CITY_CLIENT_DEFINITIONS.find(c => c.id === id);
 }
 
-export function getClientsForProvince(provinceId: string): ProvincialClientDefinition[] {
-  return PROVINCIAL_CLIENT_DEFINITIONS.filter(c => c.provinceId === provinceId);
+export function getClientsForCity(provinceId: string): CityClientDefinition[] {
+  return CITY_CLIENT_DEFINITIONS.filter(c => c.provinceId === provinceId);
 }

@@ -28,7 +28,7 @@ import {
   OUTCOME_CONSEQUENCES,
 } from '../src/engine/trialEngine';
 import { BALANCE } from '../src/data/balance';
-import { TAXATION_CORRUPTION_PER_TURN } from '../src/models/province';
+import { TAXATION_CORRUPTION_PER_TURN } from '../src/models/city';
 import type { Character } from '../src/models/character';
 import type { Clan, ClanLeader } from '../src/models/clan';
 import type { GameState } from '../src/state/gameStore';

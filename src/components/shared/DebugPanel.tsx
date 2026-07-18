@@ -26,6 +26,9 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import type { BattleUnit, UnitClass, Veterancy } from '../../models/battle';
 import { ENEMY_GENERAL_LIST } from '../../data/enemyGenerals';
 import { simulateBattles, type BattleSimConfig, type BattleSimAggregate } from '../../engine/battle/battleSim';
+// Campaign Map plan, Chunk C1 — theatre map debug listing.
+import { REGIONS } from '../../data/theatreMap';
+import { getAdjacent, getRegionRelationship } from '../../engine/theatreEngine';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -576,6 +579,51 @@ function WarSection() {
   );
 }
 
+// ─── Section: Theatre Map (Campaign Map plan, Chunk C1) ────────────────────
+// Read-only listing of the 8 launch regions — controller, live relationship
+// (averaged from the region's cities), and adjacency. Nothing here is
+// wired to gameplay yet (C1's own "Done when": zero gameplay change); this
+// exists purely so the data model is visibly inspectable before C2+ builds
+// armies/movement/AI on top of it.
+
+function TheatreSection() {
+  const cities = useGameStore(s => s.cities);
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>THEATRE MAP — REGIONS ({REGIONS.length})</Text>
+      <Text style={styles.eventId}>
+        Static data only (data/theatreMap.ts) — controllers/contested tracking lands in a
+        later chunk. Relationship is live-computed from each region's cities right now.
+      </Text>
+      {REGIONS.map(region => {
+        const relationship = getRegionRelationship(cities, region.id);
+        const adjacentLand = getAdjacent(region.id, 'land');
+        const adjacentStrait = getAdjacent(region.id, 'strait');
+        const adjacentSea = getAdjacent(region.id, 'sea');
+        return (
+          <View key={region.id} style={styles.eventRow}>
+            <View style={styles.eventRowInner}>
+              <Text style={styles.eventTitle}>
+                {region.name} ({region.startingController}) — rel {relationship.toFixed(1)}
+              </Text>
+              <Text style={styles.eventId}>
+                terrain: {region.terrainId} · coastal: {region.coastal ? 'yes' : 'no'} ·
+                manpower: {region.baseManpower} · cities: {region.cityIds.join(', ')}
+              </Text>
+              <Text style={styles.eventId}>
+                adjacent — land: {adjacentLand.join(', ') || 'none'} ·
+                strait: {adjacentStrait.join(', ') || 'none'} ·
+                sea: {adjacentSea.join(', ') || 'none'}
+              </Text>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 // ─── Section: Telemetry (P2-A) ─────────────────────────────────────────────
 // Dumps BALANCE and seasonStatsHistory for tuning reference. Chunk P2-E adds
 // a richer "Pace" view (rolling averages, band/time flags) on top of the same
@@ -882,7 +930,7 @@ const paceStyles = StyleSheet.create({
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function DebugPanel() {
-  const [tab, setTab] = useState<'resources' | 'characters' | 'events' | 'battle' | 'war' | 'secrets' | 'telemetry' | 'pace'>('resources');
+  const [tab, setTab] = useState<'resources' | 'characters' | 'events' | 'battle' | 'war' | 'theatre' | 'secrets' | 'telemetry' | 'pace'>('resources');
 
   return (
     <View style={styles.container}>
@@ -890,7 +938,7 @@ export default function DebugPanel() {
 
       {/* Tab switcher */}
       <View style={styles.tabs}>
-        {(['resources', 'characters', 'events', 'battle', 'war', 'secrets', 'telemetry', 'pace'] as const).map(t => (
+        {(['resources', 'characters', 'events', 'battle', 'war', 'theatre', 'secrets', 'telemetry', 'pace'] as const).map(t => (
           <TouchableOpacity
             key={t}
             style={[styles.tab, tab === t && styles.tabActive]}
@@ -909,6 +957,7 @@ export default function DebugPanel() {
         {tab === 'events'     && <EventsSection />}
         {tab === 'battle'     && <BattleSection />}
         {tab === 'war'        && <WarSection />}
+        {tab === 'theatre'    && <TheatreSection />}
         {tab === 'secrets'    && <SecretsSection />}
         {tab === 'telemetry'  && <TelemetrySection />}
         {tab === 'pace'       && <><AutoSeasonRunnerSection /><PaceSection /></>}

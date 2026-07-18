@@ -75,7 +75,7 @@ const makeState = (overrides: Record<string, any> = {}) => ({
   campaigning: null,
   campaignVotes: {},
   electionRivals: [],
-  provinces: [],
+  cities: [],
   pendingEvents: [],
   activeEvent: null,
   log: [],

@@ -504,7 +504,7 @@ export function applyBattleOutcome(
   let pendingSuccession = state.pendingSuccession;
   let cadetBranch = state.cadetBranch;
   let pendingEpilogue = state.pendingEpilogue;
-  let provinces = state.provinces;
+  let provinces = state.cities;
   let wars = state.wars;
 
   const playerId = family.find(c => c.isPlayer)?.id ?? ctx.troopOwnerCharacterId;
@@ -686,7 +686,7 @@ export function applyBattleOutcome(
   ledgerNotes.unshift(battleHeadline(outcome, commanderName));
 
   return {
-    state: { ...state, family, flags, familyReputations, lifetimeDignitas, denarii, fides, pendingEvents, provinces, wars, pendingSuccession, cadetBranch, pendingEpilogue },
+    state: { ...state, family, flags, familyReputations, lifetimeDignitas, denarii, fides, pendingEvents, cities: provinces, wars, pendingSuccession, cadetBranch, pendingEpilogue },
     ledgerNotes,
   };
 }

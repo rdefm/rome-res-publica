@@ -1,18 +1,18 @@
 import {
-  tickProvince,
-  calcProvinceGoldOutput,
+  tickCity,
+  calcCityGoldOutput,
   isGovernable,
-  applyProvinceFlips,
+  applyCityFlips,
   checkForeignWarDeclarations,
   getForeignWarTargetEnemyId,
   buildDeclareWarBill,
   getDeclareWarBillName,
   buildAmbassadorPostingBill,
   getAmbassadorPostingBillName,
-} from '../src/engine/provinceEngine';
+} from '../src/engine/cityEngine';
 import { applyEffectString } from '../src/engine/resourceEngine';
-import { buildInitialProvinceStates, getProvinceDefinition } from '../src/data/provinceDefinitions';
-import type { ProvinceState, AmbassadorState, GovernorPolicy } from '../src/models/province';
+import { buildInitialCityStates, getCityDefinition } from '../src/data/cityDefinitions';
+import type { CityState, AmbassadorState, GovernorPolicy } from '../src/models/city';
 import type { WarState } from '../src/models/war';
 import type { GameState } from '../src/state/gameStore';
 
@@ -55,14 +55,14 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
     pendingEvents: [], activeEvent: null, pendingBirthNaming: null,
     log: [], cursusLog: [],
     seasonOverlayVisible: false, seasonOverlayEvents: [],
-    provinces: [], senateResponse: null,
+    cities: [], senateResponse: null,
     activeCanvassingEvent: null, canvassingEventResult: null,
     pendingCanvassLeaderId: null, pendingCanvassRoll: 0, pendingCanvassThreshold: 0,
     npcConsul: null,
     tribuneHolder: null, tribuneImmunity: false, tribuneSeasonsServed: 0, tribuneHostilityDebt: {},
     lastOfficeActionResult: null,
     consulAuthorityActive: false, consulAuthoritySeasonsRemaining: 0, npcTribuneActive: false,
-    activeCampaignExists: false, familyHasTroops: false, anyProvinceHasRoads: false,
+    activeCampaignExists: false, familyHasTroops: false, anyCityHasRoads: false,
     triumphBillInQueue: false, npcConsulExists: false, consultatumUsedThisTerm: false,
     senatePacked: false, dictatorOverstaySeasons: 0,
     wars: [] as WarState[],
@@ -70,9 +70,9 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
   return { ...base, ...overrides } as unknown as GameState;
 }
 
-function findState(id: string): ProvinceState {
-  const found = buildInitialProvinceStates().find(p => p.id === id);
-  if (!found) throw new Error(`no province state for ${id}`);
+function findState(id: string): CityState {
+  const found = buildInitialCityStates().find(p => p.id === id);
+  if (!found) throw new Error(`no city state for ${id}`);
   return found;
 }
 
@@ -91,10 +91,10 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-// ─── Foreign province model basics (Mediterranean plan, chunk MP-G) ────────
+// ─── Foreign city model basics (Mediterranean plan, chunk MP-G) ────────────
 
-describe('provinceEngine — foreign province handling', () => {
-  test('foreign provinces start with owner set from their definition', () => {
+describe('cityEngine — foreign city handling', () => {
+  test('foreign cities start with owner set from their definition', () => {
     const carthage = findState('carthage');
     const messana = findState('messana');
     const numidia = findState('numidia');
@@ -102,34 +102,34 @@ describe('provinceEngine — foreign province handling', () => {
     expect(carthage.status).toBe('foreign');
     expect(messana.owner).toBe('independent');
     expect(numidia.owner).toBe('independent');
-    expect(getProvinceDefinition('numidia')?.clientOf).toBe('carthage');
+    expect(getCityDefinition('numidia')?.clientOf).toBe('carthage');
   });
 
-  test('isGovernable is false for foreign provinces and latium, true for a normal province', () => {
+  test('isGovernable is false for foreign cities and latium, true for a normal city', () => {
     expect(isGovernable(findState('carthage'))).toBe(false);
     expect(isGovernable(findState('lilybaeum'))).toBe(false);
     expect(isGovernable(findState('latium'))).toBe(false);
     expect(isGovernable(findState('campania'))).toBe(true);
   });
 
-  test('isGovernable reads live status — a flipped foreign province becomes governable', () => {
-    const flipped = applyProvinceFlips(buildInitialProvinceStates(), { messanaJoinsRome: true }).provinces;
+  test('isGovernable reads live status — a flipped foreign city becomes governable', () => {
+    const flipped = applyCityFlips(buildInitialCityStates(), { messanaJoinsRome: true }).cities;
     const messana = flipped.find(p => p.id === 'messana')!;
     expect(isGovernable(messana)).toBe(true);
   });
 
-  test('calcProvinceGoldOutput returns 0 for a foreign province regardless of policy', () => {
+  test('calcCityGoldOutput returns 0 for a foreign city regardless of policy', () => {
     const lilybaeum = findState('lilybaeum');
-    expect(calcProvinceGoldOutput(lilybaeum, STANDARD_POLICY, 5)).toBe(0);
+    expect(calcCityGoldOutput(lilybaeum, STANDARD_POLICY, 5)).toBe(0);
   });
 });
 
 // ─── Foreign relationship drift (chunk WD-A) ────────────────────────────────
 
-describe('tickProvince — foreign relationship drift', () => {
-  test('still produces zero economic deltas for a foreign province', () => {
+describe('tickCity — foreign relationship drift', () => {
+  test('still produces zero economic deltas for a foreign city', () => {
     const carthage = findState('carthage');
-    const result = tickProvince(carthage, 0, 0);
+    const result = tickCity(carthage, 0, 0);
     expect(result.goldDelta).toBe(0);
     expect(result.imperiumDelta).toBe(0);
     expect(result.corruptionDelta).toBe(0);
@@ -140,37 +140,37 @@ describe('tickProvince — foreign relationship drift', () => {
     jest.spyOn(Math, 'random').mockReturnValue(1); // pushes drift to its max (+2)
     const carthage = findState('carthage');
     const nearMax = { ...carthage, relationshipScore: 99 };
-    const result = tickProvince(nearMax, 0, 0);
-    expect(result.updatedProvince.relationshipScore).toBeLessThanOrEqual(100);
+    const result = tickCity(nearMax, 0, 0);
+    expect(result.updatedCity.relationshipScore).toBeLessThanOrEqual(100);
   });
 
   test('drift clamps at 0', () => {
     jest.spyOn(Math, 'random').mockReturnValue(0); // pushes drift to its min (−2)
     const carthage = findState('carthage');
     const nearMin = { ...carthage, relationshipScore: 1 };
-    const result = tickProvince(nearMin, 0, 0);
-    expect(result.updatedProvince.relationshipScore).toBeGreaterThanOrEqual(0);
+    const result = tickCity(nearMin, 0, 0);
+    expect(result.updatedCity.relationshipScore).toBeGreaterThanOrEqual(0);
   });
 
-  test('a foreign province with no playerAmbassador has none after ticking', () => {
+  test('a foreign city with no playerAmbassador has none after ticking', () => {
     const carthage = findState('carthage');
-    const result = tickProvince(carthage, 0, 0);
-    expect(result.updatedProvince.playerAmbassador).toBeNull();
+    const result = tickCity(carthage, 0, 0);
+    expect(result.updatedCity.playerAmbassador).toBeNull();
   });
 });
 
 // ─── AI war declaration (chunk WD-B) ────────────────────────────────────────
 
 describe('getForeignWarTargetEnemyId', () => {
-  test('Carthage-owned provinces all resolve to \'carthage\'', () => {
+  test('Carthage-owned cities all resolve to \'carthage\'', () => {
     for (const id of ['carthage', 'lilybaeum', 'alalia', 'olbia', 'sulci', 'tripolitania']) {
-      const def = getProvinceDefinition(id)!;
+      const def = getCityDefinition(id)!;
       expect(getForeignWarTargetEnemyId(def)).toBe('carthage');
     }
   });
 
-  test('an independent province resolves to its own id', () => {
-    const def = getProvinceDefinition('syracuse')!;
+  test('an independent city resolves to its own id', () => {
+    const def = getCityDefinition('syracuse')!;
     expect(getForeignWarTargetEnemyId(def)).toBe('syracuse');
   });
 });
@@ -179,7 +179,7 @@ describe('checkForeignWarDeclarations', () => {
   test('never fires against a client (Numidia), even if forced hostile', () => {
     jest.spyOn(Math, 'random').mockReturnValue(0); // would always "succeed" if rolled at all
     const numidia = { ...findState('numidia'), relationshipScore: 5 }; // hostile tier
-    const state = makeState({ provinces: [numidia] });
+    const state = makeState({ cities: [numidia] });
     const { newWars, events } = checkForeignWarDeclarations([numidia], state);
     expect(newWars).toEqual([]);
     expect(events).toEqual([]);
@@ -188,7 +188,7 @@ describe('checkForeignWarDeclarations', () => {
   test('does not fire when relations are not hostile', () => {
     jest.spyOn(Math, 'random').mockReturnValue(0);
     const carthage = { ...findState('carthage'), relationshipScore: 60 }; // cooperative, not hostile
-    const state = makeState({ provinces: [carthage] });
+    const state = makeState({ cities: [carthage] });
     const { newWars } = checkForeignWarDeclarations([carthage], state);
     expect(newWars).toEqual([]);
   });
@@ -203,30 +203,30 @@ describe('checkForeignWarDeclarations', () => {
       phase: 'opening', ignitedYear: -264, endedYear: null, terminalOutcome: null,
       peaceOffered: false, lastFundingOfferTurn: -100,
     };
-    const state = makeState({ provinces: [carthage], wars: [existingWar] });
+    const state = makeState({ cities: [carthage], wars: [existingWar] });
     const { newWars } = checkForeignWarDeclarations([carthage], state);
     expect(newWars).toEqual([]);
   });
 
-  test('de-dupes multiple Carthage-owned provinces to a single roll/power', () => {
+  test('de-dupes multiple Carthage-owned cities to a single roll/power', () => {
     jest.spyOn(Math, 'random').mockReturnValue(0.99); // always "fail" the chance roll
-    const provinces = [
+    const cities = [
       { ...findState('carthage'), relationshipScore: 5 },
       { ...findState('lilybaeum'), relationshipScore: 5 },
       { ...findState('alalia'), relationshipScore: 5 },
     ];
-    const state = makeState({ provinces });
+    const state = makeState({ cities });
     const randomSpy = jest.spyOn(Math, 'random');
-    checkForeignWarDeclarations(provinces, state);
+    checkForeignWarDeclarations(cities, state);
     // Only one roll should have been attempted for the shared 'carthage' enemyId,
-    // not one per province.
+    // not one per city.
     expect(randomSpy).toHaveBeenCalledTimes(1);
   });
 
   test('fires and constructs a valid major WarState when the roll succeeds', () => {
     jest.spyOn(Math, 'random').mockReturnValue(0); // always succeeds
     const syracuse = { ...findState('syracuse'), relationshipScore: 5 };
-    const state = makeState({ provinces: [syracuse], turnNumber: 42, year: -250 });
+    const state = makeState({ cities: [syracuse], turnNumber: 42, year: -250 });
     const { newWars, events } = checkForeignWarDeclarations([syracuse], state);
     expect(newWars).toHaveLength(1);
     expect(newWars[0].enemyId).toBe('syracuse');
@@ -241,18 +241,18 @@ describe('checkForeignWarDeclarations', () => {
 // ─── Player-initiated declare-war bill (chunk WD-C) ─────────────────────────
 
 describe('buildDeclareWarBill', () => {
-  test('targets \'carthage\' for a Carthage-owned province and reuses the startWar token', () => {
+  test('targets \'carthage\' for a Carthage-owned city and reuses the startWar token', () => {
     const lilybaeum = findState('lilybaeum');
-    const def = getProvinceDefinition('lilybaeum')!;
+    const def = getCityDefinition('lilybaeum')!;
     const bill = buildDeclareWarBill(lilybaeum, def);
     expect(bill.name).toBe(getDeclareWarBillName(def));
     expect(bill.passEffect).toContain('startWar:carthage:major:');
     expect(bill.playerSubmitted).toBe(true);
   });
 
-  test('targets its own id for an independent province', () => {
+  test('targets its own id for an independent city', () => {
     const syracuse = findState('syracuse');
-    const def = getProvinceDefinition('syracuse')!;
+    const def = getCityDefinition('syracuse')!;
     const bill = buildDeclareWarBill(syracuse, def);
     expect(bill.passEffect).toContain('startWar:syracuse:major:');
   });
@@ -261,19 +261,19 @@ describe('buildDeclareWarBill', () => {
 // ─── Ambassador posting bill + assignment token (chunk WD-D) ───────────────
 
 describe('buildAmbassadorPostingBill / assignAmbassador token', () => {
-  test('bill name embeds both character and province', () => {
+  test('bill name embeds both character and city', () => {
     const campania = findState('campania');
-    const def = getProvinceDefinition('campania')!;
+    const def = getCityDefinition('campania')!;
     const bill = buildAmbassadorPostingBill(campania, def, 'pc-1', 'Marcus');
     expect(bill.name).toBe(getAmbassadorPostingBillName(def, 'Marcus'));
     expect(bill.passEffect).toBe(`assignAmbassador:campania:pc-1`);
   });
 
-  test('applyEffectString assigns a fresh playerAmbassador on the matching province', () => {
+  test('applyEffectString assigns a fresh playerAmbassador on the matching city', () => {
     const campania = { ...findState('campania'), status: 'unincorporated' as const };
-    const state = makeState({ provinces: [campania] });
+    const state = makeState({ cities: [campania] });
     const patch = applyEffectString('assignAmbassador:campania:pc-1', state);
-    const updated = patch.provinces?.find(p => p.id === 'campania');
+    const updated = patch.cities?.find(p => p.id === 'campania');
     expect(updated?.playerAmbassador).toEqual({
       characterId: 'pc-1',
       personalRapport: 0,
@@ -283,32 +283,32 @@ describe('buildAmbassadorPostingBill / assignAmbassador token', () => {
     });
   });
 
-  test('works on a foreign province too (WD-D reverses the no-Ambassador-for-foreign invariant)', () => {
+  test('works on a foreign city too (WD-D reverses the no-Ambassador-for-foreign invariant)', () => {
     const lilybaeum = findState('lilybaeum');
-    const state = makeState({ provinces: [lilybaeum] });
+    const state = makeState({ cities: [lilybaeum] });
     const patch = applyEffectString('assignAmbassador:lilybaeum:pc-1', state);
-    const updated = patch.provinces?.find(p => p.id === 'lilybaeum');
+    const updated = patch.cities?.find(p => p.id === 'lilybaeum');
     expect(updated?.playerAmbassador?.characterId).toBe('pc-1');
   });
 });
 
 // ─── Ambassador term-limit ticking (chunk WD-D) ─────────────────────────────
 
-describe('tickProvince — playerAmbassador term limit', () => {
-  test('increments turnsServed each season on a Roman unincorporated province', () => {
+describe('tickCity — playerAmbassador term limit', () => {
+  test('increments turnsServed each season on a Roman unincorporated city', () => {
     const campania = {
       ...findState('campania'),
       status: 'unincorporated' as const,
       playerAmbassador: makeAmbassador({ turnsServed: 0 }),
     };
-    const result = tickProvince(campania, 0, 0);
-    expect(result.updatedProvince.playerAmbassador?.turnsServed).toBe(1);
+    const result = tickCity(campania, 0, 0);
+    expect(result.updatedCity.playerAmbassador?.turnsServed).toBe(1);
   });
 
-  test('increments turnsServed each season on a foreign province', () => {
+  test('increments turnsServed each season on a foreign city', () => {
     const lilybaeum = { ...findState('lilybaeum'), playerAmbassador: makeAmbassador({ turnsServed: 3 }) };
-    const result = tickProvince(lilybaeum, 0, 0);
-    expect(result.updatedProvince.playerAmbassador?.turnsServed).toBe(4);
+    const result = tickCity(lilybaeum, 0, 0);
+    expect(result.updatedCity.playerAmbassador?.turnsServed).toBe(4);
   });
 
   test('resets actionsUsedThisTurn and decays personalRapport by 1 each season', () => {
@@ -317,9 +317,9 @@ describe('tickProvince — playerAmbassador term limit', () => {
       status: 'unincorporated' as const,
       playerAmbassador: makeAmbassador({ turnsServed: 0, personalRapport: 10, actionsUsedThisTurn: ['grain_dole'] }),
     };
-    const result = tickProvince(campania, 0, 0);
-    expect(result.updatedProvince.playerAmbassador?.actionsUsedThisTurn).toEqual([]);
-    expect(result.updatedProvince.playerAmbassador?.personalRapport).toBe(9);
+    const result = tickCity(campania, 0, 0);
+    expect(result.updatedCity.playerAmbassador?.actionsUsedThisTurn).toEqual([]);
+    expect(result.updatedCity.playerAmbassador?.personalRapport).toBe(9);
   });
 
   test('warns at 7 seasons served but keeps the posting active', () => {
@@ -328,9 +328,9 @@ describe('tickProvince — playerAmbassador term limit', () => {
       status: 'unincorporated' as const,
       playerAmbassador: makeAmbassador({ turnsServed: 6 }),
     };
-    const result = tickProvince(campania, 0, 0);
-    expect(result.updatedProvince.playerAmbassador).not.toBeNull();
-    expect(result.updatedProvince.playerAmbassador?.turnsServed).toBe(7);
+    const result = tickCity(campania, 0, 0);
+    expect(result.updatedCity.playerAmbassador).not.toBeNull();
+    expect(result.updatedCity.playerAmbassador?.turnsServed).toBe(7);
     expect(result.events.some(e => e.includes('term ends this season'))).toBe(true);
   });
 
@@ -340,24 +340,24 @@ describe('tickProvince — playerAmbassador term limit', () => {
       status: 'unincorporated' as const,
       playerAmbassador: makeAmbassador({ turnsServed: 7 }),
     };
-    const result = tickProvince(campania, 0, 0);
-    expect(result.updatedProvince.playerAmbassador).toBeNull();
+    const result = tickCity(campania, 0, 0);
+    expect(result.updatedCity.playerAmbassador).toBeNull();
     expect(result.events.some(e => e.includes('term concluded'))).toBe(true);
   });
 
-  test('ends the posting at 8 seasons served on a foreign province too', () => {
+  test('ends the posting at 8 seasons served on a foreign city too', () => {
     const lilybaeum = { ...findState('lilybaeum'), playerAmbassador: makeAmbassador({ turnsServed: 7 }) };
-    const result = tickProvince(lilybaeum, 0, 0);
-    expect(result.updatedProvince.playerAmbassador).toBeNull();
+    const result = tickCity(lilybaeum, 0, 0);
+    expect(result.updatedCity.playerAmbassador).toBeNull();
   });
 });
 
-// ─── applyProvinceFlips — conquest/defection (Mediterranean plan, chunk MP-C/MP-G) ──
+// ─── applyCityFlips — conquest/defection (Mediterranean plan, chunk MP-C/MP-G) ──
 
-describe('provinceEngine — applyProvinceFlips (conquest/defection)', () => {
-  test('leaves provinces alone when their conquestFlag is not set', () => {
-    const provinces = buildInitialProvinceStates();
-    const { provinces: result, events } = applyProvinceFlips(provinces, {});
+describe('cityEngine — applyCityFlips (conquest/defection)', () => {
+  test('leaves cities alone when their conquestFlag is not set', () => {
+    const cities = buildInitialCityStates();
+    const { cities: result, events } = applyCityFlips(cities, {});
     expect(events).toEqual([]);
     const messana = result.find(p => p.id === 'messana')!;
     expect(messana.owner).toBe('independent');
@@ -365,8 +365,8 @@ describe('provinceEngine — applyProvinceFlips (conquest/defection)', () => {
   });
 
   test('flips Messana to Rome when messanaJoinsRome flag is truthy', () => {
-    const provinces = buildInitialProvinceStates();
-    const { provinces: result, events } = applyProvinceFlips(provinces, { messanaJoinsRome: true });
+    const cities = buildInitialCityStates();
+    const { cities: result, events } = applyCityFlips(cities, { messanaJoinsRome: true });
     const messana = result.find(p => p.id === 'messana')!;
     expect(messana.owner).toBe('rome');
     expect(messana.status).toBe('unincorporated');
@@ -378,20 +378,20 @@ describe('provinceEngine — applyProvinceFlips (conquest/defection)', () => {
     expect(carthage.status).toBe('foreign');
   });
 
-  test('is idempotent — a province already owned by Rome is left alone even if its flag is still set', () => {
-    const provinces = buildInitialProvinceStates();
-    const first = applyProvinceFlips(provinces, { messanaJoinsRome: true }).provinces;
-    const { provinces: second, events } = applyProvinceFlips(first, { messanaJoinsRome: true });
+  test('is idempotent — a city already owned by Rome is left alone even if its flag is still set', () => {
+    const cities = buildInitialCityStates();
+    const first = applyCityFlips(cities, { messanaJoinsRome: true }).cities;
+    const { cities: second, events } = applyCityFlips(first, { messanaJoinsRome: true });
     expect(events).toEqual([]);
     const messana = second.find(p => p.id === 'messana')!;
     expect(messana.status).toBe('unincorporated');
   });
 
-  test('a flipped province ticks normally afterward (falls into the unincorporated pathway)', () => {
-    const provinces = buildInitialProvinceStates();
-    const flipped = applyProvinceFlips(provinces, { messanaJoinsRome: true }).provinces;
+  test('a flipped city ticks normally afterward (falls into the unincorporated pathway)', () => {
+    const cities = buildInitialCityStates();
+    const flipped = applyCityFlips(cities, { messanaJoinsRome: true }).cities;
     const messana = flipped.find(p => p.id === 'messana')!;
-    const result = tickProvince(messana, 0, 0);
-    expect(result.updatedProvince.status).toBe('unincorporated');
+    const result = tickCity(messana, 0, 0);
+    expect(result.updatedCity.status).toBe('unincorporated');
   });
 });

@@ -461,7 +461,7 @@ function genGovernorIdle(state: GameState): AgendaItem[] {
 
   const items: AgendaItem[] = [];
 
-  for (const province of (state.provinces ?? [])) {
+  for (const province of (state.cities ?? [])) {
     if (province.status !== 'incorporated') continue;
     if (province.playerGovernor) continue;
 

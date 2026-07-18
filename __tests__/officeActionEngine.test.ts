@@ -66,7 +66,7 @@ function makeState(overrides: Record<string, any> = {}) {
     clans: [],
     clients: [],
     ownedAssets: [],
-    provinces: [],
+    cities: [],
     pendingEvents: [],
     tribuneHolder: null,
     npcConsul: null,

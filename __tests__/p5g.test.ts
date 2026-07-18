@@ -51,7 +51,7 @@ function makeIncomeState(difficulty: DifficultyId): GameState {
     rome: { stability: 50, plebs: 50, treasury: 50 },
     crisis: CRISIS_ALL_ZERO,
     clans: [],
-    provinces: [],
+    cities: [],
     ownedAssets: [],
     endowments: [],
     clients: [makeClient({ bonus: { fides: 20, gold: 20 } })],
@@ -66,7 +66,7 @@ function makeEscalationState(difficulty: DifficultyId): GameState {
     ...INITIAL_STATE,
     difficulty,
     rome: { stability: 50, plebs: 15, treasury: 50 },
-    provinces: [],
+    cities: [],
     clients: [],
     flags: {},
   } as unknown as GameState;
@@ -168,7 +168,7 @@ describe('12-season crisis drift ordering across presets', () => {
         difficulty,
         rome: { stability: 50, plebs: 15, treasury: 8 }, // sustained pressure on Unrest + Economy
         crisis: CRISIS_ALL_ZERO,
-        provinces: [],
+        cities: [],
         clients: [],
         flags: {},
       } as unknown as GameState;

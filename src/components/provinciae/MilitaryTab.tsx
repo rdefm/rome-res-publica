@@ -1,5 +1,5 @@
 // src/components/provinciae/MilitaryTab.tsx
-// Renders inside ProvinceSheet's MILITARY tab.
+// Renders inside CitySheet's MILITARY tab.
 // Shows: active campaign War Room, pending commander election, officer volunteer
 // option, revolt status, campaign history, and (Military Overhaul M8) the
 // set-piece battle system's army roster for units stationed here.
@@ -15,12 +15,12 @@ import {
 } from 'react-native';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import type {
-  ProvinceState,
+  CityState,
   CampaignState,
   CommanderElectionState,
   OfficerVolunteerState,
   GovernorCandidate,
-} from '../../models/province';
+} from '../../models/city';
 import type { Character } from '../../models/character';
 import type { TroopUnit } from '../../models/troop';
 import type { Veterancy } from '../../models/battle';
@@ -28,7 +28,7 @@ import { getCampaignEventDef } from '../../data/campaignEvents';
 import type { CampaignAllocation } from '../../engine/campaignEngine';
 import { getOfficerDecisions } from '../../engine/campaignEngine';
 // Military Overhaul M8 — pulled directly via useGameStore rather than
-// threaded through props (ProvinceSheet.tsx already does this for
+// threaded through props (CitySheet.tsx already does this for
 // musterVeterans; this is the smaller diff and matches that precedent).
 import { useGameStore } from '../../state/gameStore';
 import { BALANCE } from '../../data/balance';
@@ -37,7 +37,7 @@ import InfoTap from '../shared/InfoTap';
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface MilitaryTabProps {
-  province: ProvinceState;
+  province: CityState;
   family: Character[];
   playerFides: number;
   playerDenarii: number;

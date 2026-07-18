@@ -11,9 +11,9 @@ import {
   TextStyle,
 } from 'react-native';
 import { COLORS, FONTS } from '../../utils/theme';
-import type { ProvinceState, ProvinceDefinition } from '../../models/province';
-import { getRelationshipTier } from '../../models/province';
-import { ALL_PROVINCES } from '../../data/provinceDefinitions';
+import type { CityState, CityDefinition } from '../../models/city';
+import { getRelationshipTier } from '../../models/city';
+import { ALL_CITIES } from '../../data/cityDefinitions';
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 //
@@ -35,8 +35,8 @@ const NODE_SIZE = 28;
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getNodeColour(
-  province: ProvinceState,
-  def: ProvinceDefinition
+  province: CityState,
+  def: CityDefinition
 ): { fill: string; border: string } {
   if (def.status === 'heartland') return { fill: COLORS.gold,    border: '#a07828' };
   if (province.status === 'foreign') {
@@ -62,7 +62,7 @@ function getRelPillColour(score: number): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface MapViewProps {
-  provinces: ProvinceState[];
+  provinces: CityState[];
   onProvincePress: (provinceId: string) => void;
   selectedProvinceId: string | null;
 }
@@ -79,7 +79,7 @@ export default function MapView({ provinces, onProvincePress, selectedProvinceId
         resizeMode="stretch"
       />
 
-      {ALL_PROVINCES.map(def => {
+      {ALL_CITIES.map(def => {
         const province = provinces.find(p => p.id === def.id);
         if (!province) return null;
 

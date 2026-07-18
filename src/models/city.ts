@@ -1,17 +1,30 @@
-// ─── Province Models ─────────────────────────────────────────────────────────
-// All types for the Provinciae system.
+// ─── City Models ─────────────────────────────────────────────────────────────
+// All types for the Provinciae system's cities — renamed wholesale from the
+// former "province" vocabulary (Campaign Map plan, Chunk C1) so that a new
+// higher-level `Region` (src/models/theatre.ts) can group several cities
+// (e.g. Sicily groups Messana/Syracuse/Agrigentum/Lilybaeum) without the
+// word "province" describing two different granularities at once. This is a
+// rename only — every Governor/Ambassador/relationship/campaign mechanic
+// below is unchanged from its pre-rename behaviour.
+//
+// SCOPE NOTE: the `provinceId`-named foreign-key fields/params scattered
+// across other systems (bills, secrets, trials, agenda, office actions, the
+// old campaign/commander-election flow below) were deliberately NOT renamed
+// to `cityId` — they still validly reference a city id, renaming them is
+// unrelated churn across systems this chunk doesn't otherwise touch. Only
+// the entity's own type/data/engine/store-field layer was renamed.
 
-export type ProvinceMap = 'italy' | 'mediterranean' | 'east';
+export type CityMap = 'italy' | 'mediterranean' | 'east';
 
-export type ProvinceStatus =
+export type CityStatus =
   | 'incorporated'       // Full Roman province — Governor system applies
   | 'unincorporated'     // Foreign/frontier — Ambassador system applies
   | 'heartland'          // Latium + permanent Rome core — never governable
-  | 'foreign';           // Held by a rival power or independent — no Governor/Ambassador system until it flips to Rome (see ProvinceDefinition.conquestFlag)
+  | 'foreign';           // Held by a rival power or independent — no Governor/Ambassador system until it flips to Rome (see CityDefinition.conquestFlag)
 
-// Who currently holds a province. 'rome' covers incorporated/unincorporated/heartland;
+// Who currently holds a city. 'rome' covers incorporated/unincorporated/heartland;
 // 'carthage' and 'independent' are only meaningful for status: 'foreign'.
-export type ProvinceOwner = 'rome' | 'carthage' | 'independent';
+export type CityOwner = 'rome' | 'carthage' | 'independent';
 
 export type RelationshipTier =
   | 'hostile'       // 0–15
@@ -60,21 +73,21 @@ export interface CampaignState {
   activeEventId: string | null; // ID of a pending campaign event card, if any
 }
 
-export interface ProvinceAssetOwned {
+export interface CityAssetOwned {
   definitionId: string;
   tier: 1 | 2;
   turnAcquired: number;
 }
 
-export interface ProvinceState {
+export interface CityState {
   id: string;
-  map: ProvinceMap;
-  status: ProvinceStatus; // mirrors ProvinceDefinition.status, but is the mutable copy — this is
-                           // what engines should branch on, since it is the field that actually
-                           // changes at runtime (e.g. a 'foreign' province flipping to Rome)
-  owner: ProvinceOwner;    // mirrors ProvinceDefinition.owner at start; flips with status on conquest
+  map: CityMap;
+  status: CityStatus; // mirrors CityDefinition.status, but is the mutable copy — this is
+                       // what engines should branch on, since it is the field that actually
+                       // changes at runtime (e.g. a 'foreign' city flipping to Rome)
+  owner: CityOwner;    // mirrors CityDefinition.owner at start; flips with status on conquest
 
-  // Relationship with Rome (0–100). Heartland provinces always 100.
+  // Relationship with Rome (0–100). Heartland cities always 100.
   relationshipScore: number;
 
   // Internal stability — only meaningful post-incorporation
@@ -91,8 +104,8 @@ export interface ProvinceState {
   playerAmbassador: AmbassadorState | null;
   npcRoleHolder: NpcRoleHolder | null;
 
-  // Player-owned assets in this province
-  ownedAssets: ProvinceAssetOwned[];
+  // Player-owned assets in this city
+  ownedAssets: CityAssetOwned[];
 
   // Whether an incorporation bill has been triggered (unincorporated only)
   incorporationBillAvailable: boolean;
@@ -191,9 +204,9 @@ export interface OfficerVolunteerState {
   resolved: boolean;
 }
 
-// ─── Province Definition (static data) ───────────────────────────────────────
+// ─── City Definition (static data) ───────────────────────────────────────────
 
-export interface ProvinceAssetDefinition {
+export interface CityAssetDefinition {
   id: string;
   name: string;
   cost: number;
@@ -213,7 +226,7 @@ export interface AssetBonus {
   corruptionResistance?: number;
 }
 
-export interface ProvincialClientDefinition {
+export interface CityClientDefinition {
   id: string;
   name: string;
   provinceId: string;
@@ -225,7 +238,7 @@ export interface ProvincialClientDefinition {
   specialAbility?: string;
 }
 
-export interface ProvinceEventOption {
+export interface CityEventOption {
   id: string;
   label: string;
   cost?: { resource: string; amount: number };
@@ -236,7 +249,7 @@ export interface ProvinceEventOption {
   failureText?: string;
 }
 
-export interface ProvinceEventDefinition {
+export interface CityEventDefinition {
   id: string;
   title: string;
   description: string;
@@ -244,23 +257,23 @@ export interface ProvinceEventDefinition {
   minRelationship?: number;
   minLocalSupport?: number;
   region?: string;
-  options: ProvinceEventOption[];
+  options: CityEventOption[];
 }
 
-export interface ProvinceDefinition {
+export interface CityDefinition {
   id: string;
   name: string;
   latinName: string;
-  map: ProvinceMap;
-  status: ProvinceStatus;
-  owner: ProvinceOwner;
+  map: CityMap;
+  status: CityStatus;
+  owner: CityOwner;
   // Set only for status: 'foreign' independent states that are diplomatically bound to a
   // stronger power without being that power's own territory (e.g. Numidia is a Carthaginian
   // client, not Carthaginian soil). Purely descriptive — no engine reads it yet.
-  clientOf?: ProvinceOwner;
-  // Set only on status: 'foreign' provinces with a scripted path into Roman hands. When
-  // state.flags[conquestFlag] becomes truthy, provinceEngine.applyProvinceFlips flips this
-  // province's ProvinceState to owner: 'rome', status: 'unincorporated' at the next season tick.
+  clientOf?: CityOwner;
+  // Set only on status: 'foreign' cities with a scripted path into Roman hands. When
+  // state.flags[conquestFlag] becomes truthy, cityEngine.applyCityFlips flips this
+  // city's CityState to owner: 'rome', status: 'unincorporated' at the next season tick.
   conquestFlag?: string;
   profile: string;
   flavorDescription: string;
@@ -279,11 +292,11 @@ export interface ProvinceDefinition {
   npcRoleHolder: NpcRoleHolder;
 
   // ── Crisis track inputs ───────────────────────────────────────────────────
-  // Optional flavour name for this province's contribution to the War crisis string.
+  // Optional flavour name for this city's contribution to the War crisis string.
   // e.g. 'Sicilian War' for sicilia. If absent, the generic tier label is used.
   namedWar?: string;
-  // Multiplier for how much this province's hostile relationship contributes to
-  // the War track. Default 1.0. Strategically critical provinces (e.g. Sicily
+  // Multiplier for how much this city's hostile relationship contributes to
+  // the War track. Default 1.0. Strategically critical cities (e.g. Sicily
   // at the start of the Punic Wars) can be set higher.
   threatWeight?: number;
 }
@@ -357,7 +370,7 @@ export const TAXATION_CORRUPTION_PER_TURN: Record<TaxationNotch, number> = {
 };
 
 // Public/Senate treasury (rome.treasury) income per season from each currently
-// incorporated province, scaled by its live tax policy. Anchor points (standard
+// incorporated city, scaled by its live tax policy. Anchor points (standard
 // 0.5, extortionate 1, benevolent 0) are a first-pass/unverified balance call;
 // light/heavy are linearly interpolated between their neighbours.
 export const TAXATION_TREASURY_PER_TURN: Record<TaxationNotch, number> = {

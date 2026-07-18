@@ -28,13 +28,13 @@ function capitalize(s: string): string {
 }
 
 export default function NegotiationScreen({ warId, visible, onClose }: NegotiationScreenProps) {
-  const { wars, currentOffice, provinces, tableTreaty, acceptAiTreatyOffer, refuseAiTreatyOffer } = useGameStore();
+  const { wars, currentOffice, cities, tableTreaty, acceptAiTreatyOffer, refuseAiTreatyOffer } = useGameStore();
   const war = wars.find(w => w.id === warId);
   const [selected, setSelected] = useState<string[]>([]);
 
   const eligibleTerms = useMemo(
-    () => (war ? getEligibleTreatyTerms(TREATY_TERMS, war.enemyId, provinces) : []),
-    [war, provinces],
+    () => (war ? getEligibleTreatyTerms(TREATY_TERMS, war.enemyId, cities) : []),
+    [war, cities],
   );
 
   if (!war) return null;

@@ -1,11 +1,11 @@
-import type { ProvinceEventDefinition } from '../models/province';
+import type { CityEventDefinition } from '../models/city';
 
-// ─── Generic Province Event Definitions ──────────────────────────────────────
-// These fire across all provinces (Italy-focused for v1). Region-specific
+// ─── Generic City Event Definitions ──────────────────────────────────────────
+// These fire across all cities (Italy-focused for v1). Region-specific
 // events (Macedonia philosophy school, Hispania silver, etc.) are in
 // regionEvents.ts — to be added when those maps unlock.
 
-export const PROVINCE_EVENTS: ProvinceEventDefinition[] = [
+export const CITY_EVENTS: CityEventDefinition[] = [
   // ── Governor events ───────────────────────────────────────────────────────
   {
     id: 'corrupt_quartermaster',
@@ -18,7 +18,7 @@ export const PROVINCE_EVENTS: ProvinceEventDefinition[] = [
         id: 'punish',
         label: 'Punish publicly',
         successEffect: 'rel:+8,corruption:-5',
-        successText: 'The public dismissal sends a clear message. The province notices.',
+        successText: 'The public dismissal sends a clear message. The city notices.',
       },
       {
         id: 'cover_up',
@@ -188,7 +188,7 @@ export const PROVINCE_EVENTS: ProvinceEventDefinition[] = [
     id: 'rival_envoy_arrives',
     title: 'A Rival Envoy',
     description:
-      'A competitor from a rival Roman family has arrived in the province, seeking to undermine your diplomatic position.',
+      'A competitor from a rival Roman family has arrived in the city, seeking to undermine your diplomatic position.',
     triggerCondition: 'ambassador',
     options: [
       {
@@ -219,7 +219,7 @@ export const PROVINCE_EVENTS: ProvinceEventDefinition[] = [
     id: 'local_festival',
     title: 'Local Festival',
     description:
-      'The province holds its annual festival. As Roman Ambassador you are invited to participate. How do you represent Rome?',
+      'The city holds its annual festival. As Roman Ambassador you are invited to participate. How do you represent Rome?',
     triggerCondition: 'ambassador',
     options: [
       {
@@ -248,16 +248,16 @@ export const PROVINCE_EVENTS: ProvinceEventDefinition[] = [
   },
 ];
 
-export function getProvinceEventDef(id: string): ProvinceEventDefinition | undefined {
-  return PROVINCE_EVENTS.find(e => e.id === id);
+export function getCityEventDef(id: string): CityEventDefinition | undefined {
+  return CITY_EVENTS.find(e => e.id === id);
 }
 
 export function getEventsForContext(
   triggerCondition: 'governor' | 'ambassador',
-  provinceId?: string
-): ProvinceEventDefinition[] {
-  return PROVINCE_EVENTS.filter(
+  cityId?: string
+): CityEventDefinition[] {
+  return CITY_EVENTS.filter(
     e => (e.triggerCondition === 'any' || e.triggerCondition === triggerCondition)
-      && (!e.region || e.region === provinceId)
+      && (!e.region || e.region === cityId)
   );
 }

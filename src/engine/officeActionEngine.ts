@@ -276,9 +276,9 @@ function applyConsequences(
           }
           provinceId = targetContext.provinceId;
         } else if (targetId === TARGET_ACTIVE_CAMPAIGN_PROVINCE) {
-          provinceId = state.provinces.find(p => p.activeCampaign !== null)?.id;
+          provinceId = state.cities.find(p => p.activeCampaign !== null)?.id;
         } else if (targetId === TARGET_HIGHEST_INFRA_PROVINCE) {
-          provinceId = [...state.provinces].sort(
+          provinceId = [...state.cities].sort(
             (a, b) => ((b as any).infrastructureRating ?? 0) - ((a as any).infrastructureRating ?? 0),
           )[0]?.id;
         } else {
@@ -287,7 +287,7 @@ function applyConsequences(
         if (!provinceId) break;
         patch = {
           ...patch,
-          provinces: (patch.provinces ?? state.provinces).map(p =>
+          cities: (patch.cities ?? state.cities).map(p =>
             p.id !== provinceId ? p : {
               ...p,
               relationship: Math.min(100, Math.max(-100, ((p as any).relationship ?? 0) + delta)),
@@ -365,7 +365,7 @@ function applyConsequences(
 
         if (targetId === TARGET_CAMPAIGN_CLAN_LEADER) {
           // Find the province with an active campaign, then get its clan's first leader
-          const campaignProvince = state.provinces.find(p => p.activeCampaign !== null);
+          const campaignProvince = state.cities.find(p => p.activeCampaign !== null);
           const campaignClanId = (campaignProvince as any)?.activeCampaign?.clanId
             ?? (campaignProvince as any)?.dominantClanId;
           const campaignClan = state.clans.find(c => c.id === campaignClanId);

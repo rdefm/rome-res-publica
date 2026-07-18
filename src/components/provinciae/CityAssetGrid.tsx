@@ -1,28 +1,28 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
-import type { ProvinceState, ProvinceAssetOwned, ProvinceAssetDefinition } from '../../models/province';
+import type { CityState, CityAssetOwned, CityAssetDefinition } from '../../models/city';
 import {
-  getAvailableAssetsForProvince,
-  getProvinceAssetDefinition,
-} from '../../data/provinceAssets';
+  getAvailableAssetsForCity,
+  getCityAssetDefinition,
+} from '../../data/cityAssets';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-interface ProvinceAssetGridProps {
-  province: ProvinceState;
+interface CityAssetGridProps {
+  province: CityState;
   playerDenarii: number;
   onPurchase: (definitionId: string) => void;
   onUpgrade: (definitionId: string) => void;
 }
 
-export default function ProvinceAssetGrid({
+export default function CityAssetGrid({
   province,
   playerDenarii,
   onPurchase,
   onUpgrade,
-}: ProvinceAssetGridProps) {
-  const available = getAvailableAssetsForProvince(province.id);
+}: CityAssetGridProps) {
+  const available = getAvailableAssetsForCity(province.id);
   const owned = province.ownedAssets;
 
   const ownedIds = new Set(owned.map(a => a.definitionId));
@@ -35,7 +35,7 @@ export default function ProvinceAssetGrid({
           <Text style={styles.sectionTitle}>YOUR ASSETS</Text>
           <View style={styles.grid}>
             {owned.map(asset => {
-              const def = getProvinceAssetDefinition(asset.definitionId);
+              const def = getCityAssetDefinition(asset.definitionId);
               if (!def) return null;
               return (
                 <OwnedAssetCard
@@ -99,8 +99,8 @@ function OwnedAssetCard({
   playerDenarii,
   onUpgrade,
 }: {
-  asset: ProvinceAssetOwned;
-  def: ProvinceAssetDefinition;
+  asset: CityAssetOwned;
+  def: CityAssetDefinition;
   playerDenarii: number;
   onUpgrade: () => void;
 }) {
@@ -151,7 +151,7 @@ function AvailableAssetCard({
   playerDenarii,
   onPurchase,
 }: {
-  def: ProvinceAssetDefinition;
+  def: CityAssetDefinition;
   playerDenarii: number;
   onPurchase: () => void;
 }) {

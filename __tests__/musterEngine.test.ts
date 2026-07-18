@@ -72,7 +72,7 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
     pendingEvents: [], activeEvent: null, pendingBirthNaming: null,
     log: [], cursusLog: [],
     seasonOverlayVisible: false, seasonOverlayEvents: [],
-    provinces: [], senateResponse: null,
+    cities: [], senateResponse: null,
     activeCanvassingEvent: null, canvassingEventResult: null,
     pendingCanvassLeaderId: null, pendingCanvassRoll: 0, pendingCanvassThreshold: 0,
     npcConsul: null,
@@ -455,14 +455,14 @@ describe('applyBattleOutcome', () => {
       activeCampaign: { id: 'camp-1', provinceId: 'sicilia', type: 'conquest', commanderCharacterId: 'pc-1',
         campaignProgress: 80, enemyStrength: 40, turnsElapsed: 3, localSupportBonus: false, resolved: false, outcome: null, activeEventId: null },
     };
-    const state = makeState({ family: [makeCharacter()], provinces: [province] as any });
+    const state = makeState({ family: [makeCharacter()], cities: [province] as any });
     const rome = makeSideState({ commanderId: 'pc-1' });
     const battleState = makeBattleState({ attacker: rome });
     const outcome = makeOutcome({ victor: 'attacker', tier: 'crushing' });
     const ctx: BattleBridgeContext = { troopOwnerCharacterId: 'pc-1', legateRoster: {}, provinceId: 'sicilia', turnNumber: 10 };
 
     const { state: next } = applyBattleOutcome(state, battleState, 'attacker', outcome, ctx);
-    const updatedProvince = next.provinces.find(p => p.id === 'sicilia')!;
+    const updatedProvince = next.cities.find(p => p.id === 'sicilia')!;
     expect(updatedProvince.activeCampaign?.resolved).toBe(true);
     expect(updatedProvince.activeCampaign?.outcome).toBe('victory');
   });

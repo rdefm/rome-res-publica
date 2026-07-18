@@ -94,7 +94,7 @@ function makeState(overrides: Record<string, any> = {}) {
     clans: [],
     clients: [],
     ownedAssets: [],
-    provinces: [],
+    cities: [],
     pendingEvents: [],
     tribuneHolder: null,
     tribuneImmunity: false,
@@ -226,7 +226,7 @@ describe('Military Overhaul M8 — unit lifecycle loyalty season tick', () => {
     const campaign = { id: 'camp-1', provinceId: 'sicilia', type: 'conquest', commanderCharacterId: 'pc-1',
       campaignProgress: 10, enemyStrength: 40, turnsElapsed: 1, localSupportBonus: false,
       resolved: false, outcome: null, activeEventId: null };
-    const state = withRaisedLegions([troop], { provinces: [makeProvinceFixture(campaign)] });
+    const state = withRaisedLegions([troop], { cities: [makeProvinceFixture(campaign)] });
 
     const { nextState } = processSeason(state as any);
     expect(nextState.family[0].raisedLegions[0].bondToCommander).toBe(55);
@@ -237,14 +237,14 @@ describe('Military Overhaul M8 — unit lifecycle loyalty season tick', () => {
       campaignProgress: 100, enemyStrength: 0, turnsElapsed: 5, localSupportBonus: false,
       resolved: true, outcome: 'victory', activeEventId: null };
     const troopA = makeTroopFixture({ id: 't-resolved', bondToCommander: 50 });
-    const stateResolved = withRaisedLegions([troopA], { seasonIndex: 0, provinces: [makeProvinceFixture(resolvedCampaign)] });
+    const stateResolved = withRaisedLegions([troopA], { seasonIndex: 0, cities: [makeProvinceFixture(resolvedCampaign)] });
     expect(processSeason(stateResolved as any).nextState.family[0].raisedLegions[0].bondToCommander).toBe(50);
 
     const othersCampaign = { id: 'camp-2', provinceId: 'sicilia', type: 'conquest', commanderCharacterId: 'son-1',
       campaignProgress: 10, enemyStrength: 40, turnsElapsed: 1, localSupportBonus: false,
       resolved: false, outcome: null, activeEventId: null };
     const troopB = makeTroopFixture({ id: 't-other-commander', bondToCommander: 50 });
-    const stateOther = withRaisedLegions([troopB], { seasonIndex: 0, provinces: [makeProvinceFixture(othersCampaign)] });
+    const stateOther = withRaisedLegions([troopB], { seasonIndex: 0, cities: [makeProvinceFixture(othersCampaign)] });
     expect(processSeason(stateOther as any).nextState.family[0].raisedLegions[0].bondToCommander).toBe(50);
   });
 

@@ -12,7 +12,7 @@ import { BALANCE } from '../src/data/balance';
 import { WAR_SITES } from '../src/data/warSites';
 import { ENEMY_GENERAL_LIST } from '../src/data/enemyGenerals';
 import { TREATY_TERMS } from '../src/data/treatyTerms';
-import { buildInitialProvinceStates } from '../src/data/provinceDefinitions';
+import { buildInitialCityStates } from '../src/data/cityDefinitions';
 import { makeSeededRng } from '../src/utils/seededRng';
 import type { Character } from '../src/models/character';
 import type { TroopUnit } from '../src/models/troop';
@@ -116,7 +116,7 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
     pendingEvents: [], activeEvent: null, pendingBirthNaming: null,
     log: [], cursusLog: [],
     seasonOverlayVisible: false, seasonOverlayEvents: [],
-    provinces: [], senateResponse: null,
+    cities: [], senateResponse: null,
     activeCanvassingEvent: null, canvassingEventResult: null,
     pendingCanvassLeaderId: null, pendingCanvassRoll: 0, pendingCanvassThreshold: 0,
     npcConsul: null,
@@ -426,7 +426,7 @@ describe('calcFactionReactionModifier', () => {
 describe('composeAiOffer / composeAiTreaty', () => {
   const cautiousGeneral = ENEMY_GENERAL_LIST.find(g => g.aggression < 0.5)!;
   const aggressiveGeneral = ENEMY_GENERAL_LIST.find(g => g.aggression >= 0.5)!;
-  const carthageProvinces = buildInitialProvinceStates();
+  const carthageProvinces = buildInitialCityStates();
 
   test('composeAiOffer returns only valid, cheap term ids', () => {
     const offer = composeAiOffer(cautiousGeneral, 'carthage', carthageProvinces, makeSeededRng(1));
@@ -469,16 +469,16 @@ describe('composeAiOffer / composeAiTreaty', () => {
 });
 
 describe('applyTreatyEffects', () => {
-  test('winner=rome with lilybaeum adds the province to state.provinces', () => {
+  test('winner=rome with lilybaeum adds the province to state.cities', () => {
     const state = makeState();
     const patch = applyTreatyEffects(['lilybaeum'], state, 'rome');
-    expect(patch.provinces?.some(p => p.id === 'lilybaeum')).toBe(true);
+    expect(patch.cities?.some(p => p.id === 'lilybaeum')).toBe(true);
   });
 
   test('does not duplicate a province already present — flips it in place instead', () => {
-    const state = makeState({ provinces: [{ id: 'lilybaeum', owner: 'carthage', status: 'foreign' } as any] });
+    const state = makeState({ cities: [{ id: 'lilybaeum', owner: 'carthage', status: 'foreign' } as any] });
     const patch = applyTreatyEffects(['lilybaeum'], state, 'rome');
-    const result = patch.provinces ?? state.provinces;
+    const result = patch.cities ?? state.cities;
     const matches = result.filter(p => p.id === 'lilybaeum');
     expect(matches).toHaveLength(1);
     expect(matches[0].owner).toBe('rome');
@@ -486,9 +486,9 @@ describe('applyTreatyEffects', () => {
   });
 
   test('ceding a province already owned by Rome is a no-op', () => {
-    const state = makeState({ provinces: [{ id: 'lilybaeum', owner: 'rome', status: 'unincorporated' } as any] });
+    const state = makeState({ cities: [{ id: 'lilybaeum', owner: 'rome', status: 'unincorporated' } as any] });
     const patch = applyTreatyEffects(['lilybaeum'], state, 'rome');
-    const result = patch.provinces ?? state.provinces;
+    const result = patch.cities ?? state.cities;
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({ id: 'lilybaeum', owner: 'rome', status: 'unincorporated' });
   });
@@ -496,7 +496,7 @@ describe('applyTreatyEffects', () => {
   test('winner=enemy does not cede any province', () => {
     const state = makeState();
     const patch = applyTreatyEffects(['lilybaeum'], state, 'enemy');
-    expect(patch.provinces).toBeUndefined();
+    expect(patch.cities).toBeUndefined();
   });
 
   test('prisoner_return clears captivity on every captured family member', () => {
@@ -539,7 +539,7 @@ describe('processWarSeason — treaty resolution (Chunk M10)', () => {
     const result = processWarSeason(state, () => 0);
     expect(result.wars[0].active).toBe(false);
     expect(result.wars[0].treaty?.ratified).toBe(true);
-    expect(result.statePatch.provinces?.some(p => p.id === 'lilybaeum')).toBe(true);
+    expect(result.statePatch.cities?.some(p => p.id === 'lilybaeum')).toBe(true);
   });
 
   test('a passed ratification queues a Triumph petition for the player when Rome wins', () => {

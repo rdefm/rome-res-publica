@@ -8,7 +8,7 @@ import { parseEffect } from '../models/bill';
 import { generateClientName } from '../data/clientNames';
 import { computeTotalAssetBonuses } from './assetEngine';
 import { computeHouseBonuses } from './houseEngine';
-import { calcAssetGoldOutput, calcAssetFidesOutput } from './provinceEngine';
+import { calcAssetGoldOutput, calcAssetFidesOutput } from './cityEngine';
 import { buildClient, computeTotalClientBonuses } from './clientEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import {
@@ -182,8 +182,8 @@ export function calcResourceIncome(state: GameState): {
   // this Fides/Denarii income calc; turnSequencer applies those directly).
   const houseBonuses = computeHouseBonuses(state.house);
 
-  // Step 6b: Province asset Fides bonus (former Gratia/Dignitas asset bonuses, now Fides)
-  const provinceFidesBonus = state.provinces.reduce(
+  // Step 6b: City asset Fides bonus (former Gratia/Dignitas asset bonuses, now Fides)
+  const provinceFidesBonus = state.cities.reduce(
     (sum, p) => sum + calcAssetFidesOutput(p), 0
   );
 
@@ -229,8 +229,8 @@ export function calcResourceIncome(state: GameState): {
     ) * regencyMult
   ));
 
-  // Denarii income — assets + house + province gold output + client gold + treasury mod + crisis penalty
-  const provinceDenariiBonus = state.provinces.reduce(
+  // Denarii income — assets + house + city gold output + client gold + treasury mod + crisis penalty
+  const provinceDenariiBonus = state.cities.reduce(
     (sum, p) => sum + calcAssetGoldOutput(p), 0
   );
   const denariiIncome =
@@ -368,19 +368,19 @@ export function applyEffectString(
         continue;
       }
 
-      // ── incorporateProvince:<id> ─────────────────────────────────────────
-      // Fired by a passed incorporation bill (see provinceEngine.
+      // ── incorporateCity:<id> ──────────────────────────────────────────────
+      // Fired by a passed incorporation bill (see cityEngine.
       // buildIncorporationBill). Flips status: 'unincorporated' →
       // 'incorporated' and clears incorporationBillAvailable so the bill
       // can't be re-tabled. Also recalls any player Ambassador posted there
       // — the Ambassador system stops applying once incorporated (see
-      // ProvinceStatus's own type comments in models/province.ts); a
+      // CityStatus's own type comments in models/city.ts); a
       // Governor is later assigned by lot through the existing,
       // unrelated governor-assignment system.
-      if (key === 'incorporateProvince') {
+      if (key === 'incorporateCity') {
         const provinceId = parts[1];
-        const provinces = patch.provinces ?? state.provinces;
-        patch.provinces = provinces.map(p =>
+        const cities = patch.cities ?? state.cities;
+        patch.cities = cities.map(p =>
           p.id === provinceId
             ? { ...p, status: 'incorporated' as const, incorporationBillAvailable: false, playerAmbassador: null }
             : p
@@ -388,21 +388,21 @@ export function applyEffectString(
         continue;
       }
 
-      // ── assignAmbassador:<provinceId>:<characterId> ──────────────────────
-      // Fired by a passed ambassador-posting bill (see provinceEngine.
+      // ── assignAmbassador:<cityId>:<characterId> ───────────────────────────
+      // Fired by a passed ambassador-posting bill (see cityEngine.
       // buildAmbassadorPostingBill). Posts the named character as Ambassador
-      // on the matching province — works on both unincorporated Roman
-      // provinces and, per the foreign-relations plan's chunk WD-D, foreign
+      // on the matching city — works on both unincorporated Roman
+      // cities and, per the foreign-relations plan's chunk WD-D, foreign
       // ones too (a deliberate reversal of the Mediterranean plan's "no
       // Ambassador system for foreign provinces" invariant, for Ambassadors
-      // only). turnsServed starts at 0; provinceEngine.tickPlayerAmbassador
-      // (called from both of tickProvince's relevant branches) increments it
+      // only). turnsServed starts at 0; cityEngine.tickPlayerAmbassador
+      // (called from both of tickCity's relevant branches) increments it
       // each season and ends the posting at the 2-year (8-season) term limit.
       if (key === 'assignAmbassador') {
         const provinceId = parts[1];
         const characterId = parts[2];
-        const provinces = patch.provinces ?? state.provinces;
-        patch.provinces = provinces.map(p =>
+        const cities = patch.cities ?? state.cities;
+        patch.cities = cities.map(p =>
           p.id === provinceId
             ? {
                 ...p,

@@ -15,10 +15,10 @@ import SeasonOverlay from '../components/shared/SeasonOverlay';
 import { COLORS, FONTS, SPACING, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 import { useGameStore } from '../state/gameStore';
 import MapView from '../components/provinciae/MapView';
-import ProvinceSheet from '../components/provinciae/ProvinceSheet';
+import CitySheet from '../components/provinciae/CitySheet';
 import LatiumSheet from '../components/provinciae/LatiumSheet';
-import type { GovernorPolicy } from '../models/province';
-import type { AmbassadorActionId } from '../engine/provinceEngine';
+import type { GovernorPolicy } from '../models/city';
+import type { AmbassadorActionId } from '../engine/cityEngine';
 import { calcTotalImperium } from '../engine/troopEngine';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -30,7 +30,7 @@ export default function ProvinciaeScreen() {
   const sheetVisible = selectedProvinceId !== null;
 
   // ── Store state — only fields that exist in GameState ────────────────────────
-  const provinces                = useGameStore(s => s.provinces);
+  const provinces                = useGameStore(s => s.cities);
   const imperium                 = useGameStore(s => s.imperium);
   const fides                    = useGameStore(s => s.fides);
   const denarii                  = useGameStore(s => s.denarii);
@@ -41,14 +41,14 @@ export default function ProvinciaeScreen() {
   const bills                    = useGameStore(s => s.bills);
 
   // ── Store actions — only actions that exist in GameActions ───────────────────
-  const updateProvincePolicy     = useGameStore(s => s.updateProvincePolicy);
+  const updateProvincePolicy     = useGameStore(s => s.updateCityPolicy);
   const resolveAmbassadorAction  = useGameStore(s => s.resolveAmbassadorAction);
   const proposeIncorporationBill = useGameStore(s => s.proposeIncorporationBill);
   const proposeDeclareWarBill    = useGameStore(s => s.proposeDeclareWarBill);
   const seekAmbassadorPosting    = useGameStore(s => s.seekAmbassadorPosting);
-  const purchaseProvinceAsset    = useGameStore(s => s.purchaseProvinceAsset);
-  const upgradeProvinceAsset     = useGameStore(s => s.upgradeProvinceAsset);
-  const recruitProvincialClient  = useGameStore(s => s.recruitProvincialClient);
+  const purchaseProvinceAsset    = useGameStore(s => s.purchaseCityAsset);
+  const upgradeProvinceAsset     = useGameStore(s => s.upgradeCityAsset);
+  const recruitProvincialClient  = useGameStore(s => s.recruitCityClient);
   const startCampaign            = useGameStore(s => s.startCampaign);
   const volunteerOfficer         = useGameStore(s => s.volunteerOfficer);
   const resolveOfficerDecision   = useGameStore(s => s.resolveOfficerDecision);
@@ -219,7 +219,7 @@ export default function ProvinciaeScreen() {
             {selectedProvince.id === 'latium' ? (
               <LatiumSheet onClose={closeSheet} />
             ) : (
-            <ProvinceSheet
+            <CitySheet
               province={selectedProvince}
               family={family}
               playerFides={fides}

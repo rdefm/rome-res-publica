@@ -31,7 +31,7 @@ React Native / Expo mobile grand-strategy game. TypeScript throughout. Single Zu
 | New office action | `data/offices.ts` + `engine/officeActionEngine.ts` |
 | New bill | `data/billTemplates.ts` |
 | Crisis math | `engine/crisisEngine.ts` |
-| Province asset | `data/provinceAssets.ts` + `engine/assetEngine.ts` / `provinceEngine.ts` |
+| City asset | `data/cityAssets.ts` + `engine/assetEngine.ts` / `cityEngine.ts` |
 | Military/campaign resolution | `engine/campaignEngine.ts`, `engine/troopEngine.ts` |
 | New persisted field or store action | `state/gameStore.ts` (+ Zod schema in `state/saveLoad.ts`) |
 | Glossary term | `data/glossaryTerms.ts` |
@@ -43,7 +43,7 @@ React Native / Expo mobile grand-strategy game. TypeScript throughout. Single Zu
 
 These files are big; make targeted edits, never regenerate them wholesale:
 - `state/gameStore.ts` (~2000 lines)
-- `components/provinciae/ProvinceSheet.tsx` and `MilitaryTab.tsx` (1000+ lines each)
+- `components/provinciae/CitySheet.tsx` and `MilitaryTab.tsx` (1000+ lines each)
 - `data/offices.ts` (~1000 lines), `data/events.ts` (~1150 lines)
 
 ## Testing

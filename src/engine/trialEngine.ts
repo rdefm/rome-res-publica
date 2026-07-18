@@ -17,7 +17,7 @@ import type { GameState } from '../state/gameStore';
 import type { Clan, ClanLeader } from '../models/clan';
 import type { Secret } from '../models/secret';
 import { SECRET_CLASS_BY_TYPE } from '../data/secretDefinitions';
-import { TAXATION_CORRUPTION_PER_TURN, type TaxationNotch } from '../models/province';
+import { TAXATION_CORRUPTION_PER_TURN, type TaxationNotch } from '../models/city';
 import { getClanStanding } from './reputationEngine';
 import { detectPaterfamiliasDeath } from './inheritanceEngine';
 import { resolveDeathNotice } from '../data/cadetEvents';
@@ -594,16 +594,16 @@ export function tickCorruption(
 // ─── Leader corruption / "governorship" accrual (Phase 4, Chunk P4-C) ──────
 
 /**
- * No NPC-governorship simulation exists in this codebase (provinces only
+ * No NPC-governorship simulation exists in this codebase (cities only
  * track playerGovernor) — this is a leader-side abstraction feeding the
  * corruption-gated prosecution-filing path, not a simulation of who
- * economically controls which province. Eligibility: has held praetor or
+ * economically controls which city. Eligibility: has held praetor or
  * consul (historically provincial-command-granting offices, already
  * tracked via heldOffices). Each season, an eligible leader has
  * BALANCE.trials.governorship.activeChance odds of "actively governing"
  * this season; if so, a taxation notch is picked (weighted by
  * `relationship` — hostile leaders lean extortionate) and the REAL,
- * already-tuned province.TAXATION_CORRUPTION_PER_TURN[notch] is applied —
+ * already-tuned city.TAXATION_CORRUPTION_PER_TURN[notch] is applied —
  * reusing existing numbers rather than inventing new ones.
  */
 export function tickLeaderCorruption(leader: ClanLeader, rng: () => number = Math.random): number {

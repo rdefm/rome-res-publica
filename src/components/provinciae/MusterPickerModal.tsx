@@ -26,7 +26,7 @@ import ParchmentCard, { PARCHMENT_TEXT } from '../shared/ParchmentCard';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
 import { useGameStore } from '../../state/gameStore';
 import { calcLevyCost } from '../../engine/troopEngine';
-import type { ProvinceState } from '../../models/province';
+import type { CityState } from '../../models/city';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -94,7 +94,7 @@ const statBarStyles = StyleSheet.create({
 // ─── Internal: Province Row ───────────────────────────────────────────────────
 
 interface ProvinceRowProps {
-  province: ProvinceState;
+  province: CityState;
   isLatium: boolean;
   isEligible: boolean;
   onSelect: () => void;
@@ -158,7 +158,7 @@ export default function MusterPickerModal({
   onClose,
   characterId,
 }: MusterPickerModalProps) {
-  const provinces   = useGameStore(s => s.provinces);
+  const provinces   = useGameStore(s => s.cities);
   const family      = useGameStore(s => s.family);
   const crisisLevel = useGameStore(s => s.crisisLevel);
 
@@ -178,7 +178,7 @@ export default function MusterPickerModal({
     return new Set(character.raisedLegions.map(t => t.musterProvinceId));
   }, [character]);
 
-  function isEligible(province: ProvinceState): boolean {
+  function isEligible(province: CityState): boolean {
     if (province.id === 'latium') return false;
     if (province.playerGovernor?.characterId === characterId) return true;
     if (province.localSupport >= 20) return true;

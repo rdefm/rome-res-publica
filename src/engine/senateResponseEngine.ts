@@ -143,12 +143,12 @@ export function tickSenateResponse(
   // ── debate → censure ──────────────────────────────────────────────────────
   if (turnNumber === censureTurn && response.phase === 'debate') {
     const updatedProvinces = response.musterProvinceId
-      ? state.provinces.map(p =>
+      ? state.cities.map(p =>
           p.id === response.musterProvinceId
             ? { ...p, localSupport: Math.max(0, p.localSupport - 10) }
             : p
         )
-      : state.provinces;
+      : state.cities;
 
     const updatedFamily = state.family.map(c =>
       c.id === characterId
@@ -158,7 +158,7 @@ export function tickSenateResponse(
 
     return {
       senateResponse: { ...response, phase: 'censure' },
-      provinces:      updatedProvinces,
+      cities:         updatedProvinces,
       family:         updatedFamily,
     };
   }
@@ -210,7 +210,7 @@ export function tickSenateResponse(
       : [];
 
     const musterProvince = response.musterProvinceId
-      ? state.provinces.find(p => p.id === response.musterProvinceId)
+      ? state.cities.find(p => p.id === response.musterProvinceId)
       : null;
 
     const localSupport    = musterProvince?.localSupport ?? 0;

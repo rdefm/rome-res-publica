@@ -44,7 +44,7 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
     ambitions: [],
     // Senate/province
     senateResponse: null,
-    provinces: [],
+    cities: [],
     // Flags
     flags: {},
     // Housekeeping

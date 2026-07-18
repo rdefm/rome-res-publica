@@ -13,22 +13,22 @@ import {
 } from 'react-native';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
 import type {
-  ProvinceState,
+  CityState,
   GovernorPolicy,
   CampaignState,
   CommanderElectionState,
   OfficerVolunteerState,
-} from '../../models/province';
-import { getRelationshipLabel, getRelationshipTier } from '../../models/province';
-import { getProvinceDefinition } from '../../data/provinceDefinitions';
+} from '../../models/city';
+import { getRelationshipLabel, getRelationshipTier } from '../../models/city';
+import { getCityDefinition } from '../../data/cityDefinitions';
 import PolicyBoard from './PolicyBoard';
 import DiplomatDesk from './DiplomatDesk';
-import ProvinceAssetGrid from './ProvinceAssetGrid';
-import ProvincialClientCard from './ProvincialClientCard';
+import CityAssetGrid from './CityAssetGrid';
+import CityClientCard from './CityClientCard';
 import MilitaryTab from './MilitaryTab';
 import MusterPickerModal from './MusterPickerModal';
-import type { AmbassadorActionId } from '../../engine/provinceEngine';
-import { getIncorporationBillName, getDeclareWarBillName } from '../../engine/provinceEngine';
+import type { AmbassadorActionId } from '../../engine/cityEngine';
+import { getIncorporationBillName, getDeclareWarBillName } from '../../engine/cityEngine';
 import type { Character } from '../../models/character';
 import type { TroopUnit } from '../../models/troop';
 import type { Bill } from '../../models/bill';
@@ -43,8 +43,8 @@ const SHEET_HEIGHT = SCREEN_HEIGHT * 0.72;
 
 type SheetTab = 'overview' | 'policy' | 'assets' | 'clients' | 'military';
 
-interface ProvinceSheetProps {
-  province: ProvinceState;
+interface CitySheetProps {
+  province: CityState;
   family: Character[];
   playerFides: number;
   playerDenarii: number;
@@ -76,7 +76,7 @@ interface ProvinceSheetProps {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function ProvinceSheet({
+export default function CitySheet({
   province,
   family,
   playerFides,
@@ -105,10 +105,10 @@ export default function ProvinceSheet({
   onSpeechCommander,
   onVolunteerOfficer,
   onResolveOfficerDecision,
-}: ProvinceSheetProps) {
+}: CitySheetProps) {
   const [activeTab, setActiveTab] = useState<SheetTab>('overview');
   const [musterPickerVisible, setMusterPickerVisible] = useState(false);
-  const def = getProvinceDefinition(province.id);
+  const def = getCityDefinition(province.id);
   if (!def) return null;
 
   const isHeartland = def.status === 'heartland';
@@ -120,12 +120,12 @@ export default function ProvinceSheet({
   const declareWarEligible = isForeign && !def.clientOf && relationshipTier === 'hostile';
   const declareWarBillPending = bills.some(b => b.name === getDeclareWarBillName(def));
   // Fuzzy-matched rather than exact name (unlike the incorporation/declare-war bills) since
-  // the ambassador bill's name also embeds the requesting character, which ProvinceSheet
+  // the ambassador bill's name also embeds the requesting character, which CitySheet
   // doesn't otherwise resolve — this just checks "is any posting bill already pending for
-  // this province," regardless of which family member it's for.
+  // this city," regardless of which family member it's for.
   const ambassadorBillPending = bills.some(b => b.name.startsWith('Ambassador Posting:') && b.name.endsWith(` to ${def.name}`));
 
-  // Military section: find the relevant player character for this province.
+  // Military section: find the relevant player character for this city.
   // Prefer the active governor; fall back to any family member with troops here.
   // @ts-ignore — musterVeterans added in Chunk M
   const musterVeterans = useGameStore(s => s.musterVeterans);
@@ -251,7 +251,7 @@ export default function ProvinceSheet({
               />
             )}
             {activeTab === 'assets' && (
-              <ProvinceAssetGrid
+              <CityAssetGrid
                 province={province}
                 playerDenarii={playerDenarii}
                 onPurchase={(assetId) => onPurchaseAsset(province.id, assetId)}
@@ -259,7 +259,7 @@ export default function ProvinceSheet({
               />
             )}
             {activeTab === 'clients' && (
-              <ProvincialClientCard
+              <CityClientCard
                 province={province}
                 recruitedClientIds={recruitedClientIds}
                 onRecruit={(clientId) => onRecruitClient(province.id, clientId)}
@@ -314,7 +314,7 @@ export default function ProvinceSheet({
 // ─── Personal Military Section ─────────────────────────────────────────────────
 
 interface PersonalMilitarySectionProps {
-  province: ProvinceState;
+  province: CityState;
   character: Character;
   onRaiseLegion: () => void;
   onMusterVeterans: () => void;
@@ -520,7 +520,7 @@ const milStyles = StyleSheet.create({
 
 // ─── Sub-views ────────────────────────────────────────────────────────────────
 
-function HeartlandView({ def }: { def: ReturnType<typeof getProvinceDefinition> }) {
+function HeartlandView({ def }: { def: ReturnType<typeof getCityDefinition> }) {
   if (!def) return null;
   return (
     <View style={styles.heartlandView}>
@@ -540,8 +540,8 @@ function ForeignTerritoryView({
   onProposeDeclareWar,
   onSeekPosting,
 }: {
-  def: NonNullable<ReturnType<typeof getProvinceDefinition>>;
-  province: ProvinceState;
+  def: NonNullable<ReturnType<typeof getCityDefinition>>;
+  province: CityState;
   declareWarEligible: boolean;
   declareWarBillPending: boolean;
   ambassadorBillPending: boolean;
@@ -602,8 +602,8 @@ function OverviewTab({
   onSeekPosting,
   onProposeIncorporation,
 }: {
-  province: ProvinceState;
-  def: NonNullable<ReturnType<typeof getProvinceDefinition>>;
+  province: CityState;
+  def: NonNullable<ReturnType<typeof getCityDefinition>>;
   hasPlayerGovernor: boolean;
   hasPlayerAmbassador: boolean;
   playerFides: number;
@@ -764,8 +764,8 @@ function PolicyTab({
   onPolicyChange,
   onAmbassadorAction,
 }: {
-  province: ProvinceState;
-  def: NonNullable<ReturnType<typeof getProvinceDefinition>>;
+  province: CityState;
+  def: NonNullable<ReturnType<typeof getCityDefinition>>;
   hasPlayerGovernor: boolean;
   hasPlayerAmbassador: boolean;
   playerFides: number;
@@ -811,7 +811,7 @@ function PolicyTab({
   return (
     <View style={styles.noPostingView}>
       <Text style={styles.noPostingText}>
-        No player posting in this province. Seek an ambassador role to access policy controls.
+        No player posting in this city. Seek an ambassador role to access policy controls.
       </Text>
     </View>
   );
@@ -827,7 +827,7 @@ function getRelColour(score: number): string {
   return COLORS.laurel;
 }
 
-function getStatusColour(province: ProvinceState, status: string): string {
+function getStatusColour(province: CityState, status: string): string {
   if (status === 'heartland') return COLORS.gold;
   if (status === 'foreign') return province.owner === 'carthage' ? '#4a2a5a' : '#3a5a5a';
   if (province.revoltActive) return COLORS.crimson;
@@ -837,8 +837,8 @@ function getStatusColour(province: ProvinceState, status: string): string {
 }
 
 function getForeignLabel(
-  def: NonNullable<ReturnType<typeof getProvinceDefinition>>,
-  province: ProvinceState,
+  def: NonNullable<ReturnType<typeof getCityDefinition>>,
+  province: CityState,
 ): string {
   if (province.owner === 'carthage') return 'Carthaginian Territory';
   if (def.clientOf) return `Independent — Client of ${def.clientOf === 'carthage' ? 'Carthage' : def.clientOf}`;

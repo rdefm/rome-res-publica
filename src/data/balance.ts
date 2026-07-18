@@ -1289,6 +1289,19 @@ export const BALANCE = {
     aequus:  { incomeMult: 1.0,  crisisMult: 1.0 },
     ferox:   { incomeMult: 0.9,  crisisMult: 1.2 },
   },
+
+  /** Campaign Map plan ("The Consul's Map"), Chunk C1 — theatre-map data
+   *  model skeleton. Grows in later chunks (C2 muster/movement/combat
+   *  constants); only what C1's theatreEngine needs lives here for now. */
+  campaign: {
+    /** Fallback relationship theatreEngine.getRegionRelationship uses for a
+     *  region whose cityIds is empty (no real city data to average) —
+     *  none of the 8 launch regions hit this path today, but the plan's
+     *  design keeps it available for a future region added without cities
+     *  yet assigned. First-pass/unverified, matches province.ts's old
+     *  foreign-relationship starting-value ballpark. */
+    defaultForeignRelationship: 20,
+  },
 };
 
 // ─── Known un-extracted tunables ───────────────────────────────────────────
@@ -1302,11 +1315,11 @@ export const BALANCE = {
 //   - billTemplates.ts: per-bill voteGravitasCost/speechGravitasCost
 //     overrides (the *defaults* are BALANCE.senate.*; per-bill overrides are
 //     content, not registry tunables).
-//   - assetDefinitions.ts / provinceAssets.ts: asset costs and bonuses
+//   - assetDefinitions.ts / cityAssets.ts: asset costs and bonuses
 //     (content).
 //   - trialActions.ts, campaignEvents.ts, canvassingEvents.ts,
-//     provinceEvents.ts: content, not balance-registry tunables. Note:
-//     provinceEvents.ts's PROVINCE_EVENTS array is currently unwired to any
+//     cityEvents.ts: content, not balance-registry tunables. Note:
+//     cityEvents.ts's CITY_EVENTS array is currently unwired to any
 //     resolver (dead content, confirmed during P2-A) — its costs/effects
 //     were still corrected to valid resource names for consistency, but
 //     wiring it up is out of Phase 2's scope.

@@ -49,7 +49,7 @@ function makeState(overrides: Record<string, any> = {}) {
     campaigning: null, campaignVotes: {}, electionRivals: [],
     pendingEvents: [], activeEvent: null, log: [], cursusLog: [],
     seasonOverlayVisible: false, seasonOverlayEvents: [],
-    _expandedBill: null, _expandedType: null, provinces: [],
+    _expandedBill: null, _expandedType: null, cities: [],
     flags: {},
     npcConsul: null,
     ...overrides,

@@ -18,7 +18,7 @@
 // exactly this.
 //
 // Neither "declare war" nor the personal-commander War Room have a real
-// trigger anywhere in this codebase today (verified: provinceEngine.ts sets
+// trigger anywhere in this codebase today (verified: cityEngine.ts sets
 // `warDeclarationAvailable` but nothing consumes it; ProvinciaeScreen.tsx
 // wires the War Room's commit handler to a no-op). So — per the plan's own
 // explicit allowance — a war starts/ends via a debug action only
@@ -30,7 +30,7 @@
 
 import type { GameState } from '../state/gameStore';
 import type { WarState, SetPieceOffer, WarScale, TreatyState, TreatyTerm, WarPhase, WarTerminalOutcome } from '../models/war';
-import type { ProvinceState } from '../models/province';
+import type { CityState } from '../models/city';
 import type { EventInstance } from '../models/event';
 import type { BattleUnit, UnitClass } from '../models/battle';
 import type { Bill } from '../models/bill';
@@ -41,7 +41,7 @@ import { musterArmy } from './battle/musterEngine';
 import { injectNoticeEvent } from './eventEngine';
 import { applyEffectString } from './resourceEngine';
 import { TREATY_TERMS, getTreatyTerm } from '../data/treatyTerms';
-import { buildProvinceState, getProvinceDefinition } from '../data/provinceDefinitions';
+import { buildCityState, getCityDefinition } from '../data/cityDefinitions';
 
 // ─── Small helpers ───────────────────────────────────────────────────────────
 
@@ -415,12 +415,12 @@ export function calcFactionReactionModifier(termIds: string[], state: GameState)
 export function getEligibleTreatyTerms(
   terms: TreatyTerm[],
   enemyId: string,
-  provinces: ProvinceState[],
+  cities: CityState[],
 ): TreatyTerm[] {
   return terms.filter(t => {
     const provinceIds = t.warEndFlags?.provinceTransferToRome;
     if (!provinceIds || provinceIds.length === 0) return true;
-    return provinceIds.every(id => provinces.find(p => p.id === id)?.owner === enemyId);
+    return provinceIds.every(id => cities.find(p => p.id === id)?.owner === enemyId);
   });
 }
 
@@ -431,11 +431,11 @@ export function getEligibleTreatyTerms(
 export function composeAiOffer(
   general: GeneralProfile,
   enemyId: string,
-  provinces: ProvinceState[],
+  cities: CityState[],
   rng: () => number = Math.random,
 ): string[] {
   const count = BALANCE.war.treaty.aiOfferTermCount;
-  const affordable = getEligibleTreatyTerms(TREATY_TERMS, enemyId, provinces)
+  const affordable = getEligibleTreatyTerms(TREATY_TERMS, enemyId, cities)
     .filter(t => t.warScorePrice >= 0 && t.warScorePrice <= 6)
     .sort(() => rng() - 0.5);
   const take = general.aggression >= 0.5 ? Math.max(1, count - 1) : count;
@@ -450,10 +450,10 @@ export function composeAiTreaty(
   budget: number,
   general: GeneralProfile,
   enemyId: string,
-  provinces: ProvinceState[],
+  cities: CityState[],
   rng: () => number = Math.random,
 ): string[] {
-  const shuffled = getEligibleTreatyTerms(TREATY_TERMS, enemyId, provinces).sort(() => rng() - 0.5);
+  const shuffled = getEligibleTreatyTerms(TREATY_TERMS, enemyId, cities).sort(() => rng() - 0.5);
   const spendCap = general.aggression >= 0.5 ? budget : Math.round(budget * 0.7);
   const picked: string[] = [];
   let spent = 0;
@@ -501,31 +501,31 @@ export function applyTreatyEffects(
     }
   }
 
-  // Province cession — only when Rome is the winner. No mechanic exists for
-  // Rome losing a province it already holds, so the loser-side mirror of a
+  // City cession — only when Rome is the winner. No mechanic exists for
+  // Rome losing a city it already holds, so the loser-side mirror of a
   // cession term is dignity/imperium loss only (effectsAsLoser, above).
-  // Insert-or-update: MP-B's Mediterranean provinces are pre-populated in
-  // state.provinces from turn 1 as 'foreign', unlike M10's original
+  // Insert-or-update: MP-B's Mediterranean cities are pre-populated in
+  // state.cities from turn 1 as 'foreign', unlike M10's original
   // sicily_west/sicily_all placeholder which started absent from
-  // state.provinces until ceded — so the common case here is flipping an
-  // existing foreign ProvinceState in place, not inserting a new one. The
+  // state.cities until ceded — so the common case here is flipping an
+  // existing foreign CityState in place, not inserting a new one. The
   // flip semantics (owner: 'rome', status: 'unincorporated') exactly match
-  // provinceEngine.applyProvinceFlips, so Messana is idempotently reachable
+  // cityEngine.applyCityFlips, so Messana is idempotently reachable
   // via either the scripted event or a treaty.
   if (winner === 'rome') {
     const provinceIds = [...new Set(terms.flatMap(t => t.warEndFlags?.provinceTransferToRome ?? []))];
     if (provinceIds.length > 0) {
-      const basePatchProvinces = patch.provinces ?? working.provinces;
-      const flippedProvinces = basePatchProvinces.map(p => {
+      const basePatchCities = patch.cities ?? working.cities;
+      const flippedCities = basePatchCities.map(p => {
         if (!provinceIds.includes(p.id) || p.owner === 'rome') return p;
         return { ...p, owner: 'rome' as const, status: 'unincorporated' as const };
       });
-      const missingIds = provinceIds.filter(id => !basePatchProvinces.some(p => p.id === id));
-      const newProvinces = missingIds
-        .map(getProvinceDefinition)
+      const missingIds = provinceIds.filter(id => !basePatchCities.some(p => p.id === id));
+      const newCities = missingIds
+        .map(getCityDefinition)
         .filter((d): d is NonNullable<typeof d> => !!d)
-        .map(buildProvinceState);
-      patch.provinces = [...flippedProvinces, ...newProvinces];
+        .map(buildCityState);
+      patch.cities = [...flippedCities, ...newCities];
     }
   }
 
@@ -733,7 +733,7 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
       events.push(`War with ${next.enemyId}: ${crossing.headline}`);
 
       if (crossing.tier === 'sue' && crossing.winning && !next.treaty) {
-        const offerTermIds = composeAiOffer(general, next.enemyId, statePatch.provinces ?? state.provinces, rng);
+        const offerTermIds = composeAiOffer(general, next.enemyId, statePatch.cities ?? state.cities, rng);
         next = {
           ...next,
           treaty: {
@@ -845,7 +845,7 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
     // apply immediately. Only fires when no treaty is already in flight.
     if (!next.treaty && getDesperationTier(next.warScore) === 'dictate' && losingSide(next.warScore) === 'rome') {
       const budget = computeTreatyBudget(next.warScore);
-      const termIds = composeAiTreaty(budget, general, next.enemyId, statePatch.provinces ?? state.provinces, rng);
+      const termIds = composeAiTreaty(budget, general, next.enemyId, statePatch.cities ?? state.cities, rng);
       const effectPatch = applyTreatyEffects(termIds, { ...state, ...statePatch }, 'enemy');
       statePatch = {
         ...statePatch,

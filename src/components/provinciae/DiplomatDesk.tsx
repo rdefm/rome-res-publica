@@ -2,8 +2,8 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
 import InfoTap from '../shared/InfoTap';
-import type { ProvinceState, AmbassadorState } from '../../models/province';
-import type { AmbassadorActionId } from '../../engine/provinceEngine';
+import type { CityState, AmbassadorState } from '../../models/city';
+import type { AmbassadorActionId } from '../../engine/cityEngine';
 
 // ─── Action Definitions ───────────────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ const AMBASSADOR_ACTIONS: ActionDef[] = [
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface DiplomatDeskProps {
-  province: ProvinceState;
+  province: CityState;
   ambassador: AmbassadorState;
   playerFides: number;
   playerDenarii: number;

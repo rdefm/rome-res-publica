@@ -8,8 +8,8 @@ import {
 } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import type { ClientType, Client, ClientBonus } from '../../models/client';
-import { getProvincialClientDef } from '../../data/provincialClients';
-import { getProvinceDefinition } from '../../data/provinceDefinitions';
+import { getCityClientDef } from '../../data/cityClients';
+import { getCityDefinition } from '../../data/cityDefinitions';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 // ─── Asset map ───────────────────────────────────────────────────────────────
@@ -46,9 +46,9 @@ const PROVINCIAL_CONFIG = { emoji: '🏛️', label: 'PROVINCIAL', borderColor: 
 function getProvincialClientProvinceName(client: Client): string | null {
   const defId = (client as any).provincialClientDefId as string | undefined;
   if (!defId) return null;
-  const def = getProvincialClientDef(defId);
+  const def = getCityClientDef(defId);
   if (!def) return null;
-  return getProvinceDefinition(def.provinceId)?.name ?? def.provinceId;
+  return getCityDefinition(def.provinceId)?.name ?? def.provinceId;
 }
 
 // ─── Bonus pill labels ────────────────────────────────────────────────────────

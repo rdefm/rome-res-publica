@@ -1,24 +1,24 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
-import type { ProvincialClientDefinition } from '../../models/province';
-import type { ProvinceState } from '../../models/province';
-import { getClientsForProvince } from '../../data/provincialClients';
+import type { CityClientDefinition } from '../../models/city';
+import type { CityState } from '../../models/city';
+import { getClientsForCity } from '../../data/cityClients';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-interface ProvincialClientCardProps {
-  province: ProvinceState;
+interface CityClientCardProps {
+  province: CityState;
   recruitedClientIds: string[];
   onRecruit: (clientId: string) => void;
 }
 
-export default function ProvincialClientCard({
+export default function CityClientCard({
   province,
   recruitedClientIds,
   onRecruit,
-}: ProvincialClientCardProps) {
-  const clients = getClientsForProvince(province.id);
+}: CityClientCardProps) {
+  const clients = getClientsForCity(province.id);
 
   if (clients.length === 0) {
     return (
@@ -69,7 +69,7 @@ function ClientCard({
   currentRelationship,
   onRecruit,
 }: {
-  client: ProvincialClientDefinition;
+  client: CityClientDefinition;
   isRecruited: boolean;
   meetsSupport: boolean;
   meetsRelationship: boolean;

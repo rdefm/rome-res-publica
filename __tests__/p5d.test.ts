@@ -133,7 +133,7 @@ function makeSeasonState(overrides: Record<string, any> = {}) {
       inheritedTraits: [], ambitionIds: [], reputationScores: {},
       formalImperium: 0, militaryImperium: 0, raisedLegions: [], veterans: [],
     }],
-    bills: [], passedBills: [], clans: [], clients: [], ownedAssets: [], provinces: [],
+    bills: [], passedBills: [], clans: [], clients: [], ownedAssets: [], cities: [],
     pendingEvents: [], tribuneHolder: null, tribuneImmunity: false, tribuneSeasonsServed: 0,
     tribuneHostilityDebt: {}, consulAuthorityActive: false, consulAuthoritySeasonsRemaining: 0,
     npcTribuneActive: false, npcConsul: null, activeCampaignExists: false, familyHasTroops: false,

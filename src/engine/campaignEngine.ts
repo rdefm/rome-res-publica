@@ -2,7 +2,7 @@
 // Handles military campaign resolution for both the Medium (Commander) system
 // and the Light (Officer volunteer) system, plus commander election logic.
 
-import type { CampaignState, CommanderElectionState, GovernorCandidate } from '../models/province';
+import type { CampaignState, CommanderElectionState, GovernorCandidate } from '../models/city';
 import type { GameState } from '../state/gameStore';
 import type { Character } from '../models/character';
 import type { TroopUnit } from '../models/troop';

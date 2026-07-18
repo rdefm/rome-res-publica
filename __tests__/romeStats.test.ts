@@ -138,7 +138,7 @@ function makeMinimalState(overrides: Record<string, any> = {}): any {
   return {
     rome: { stability: 50, plebs: 50, treasury: 50 },
     crisis: makeCrisisState(),
-    provinces: [],
+    cities: [],
     clients: [],
     clans: [],
     flags: {},
@@ -384,7 +384,7 @@ describe('checkMilitaryBillPressure', () => {
 describe('calcIndividualEscalation — Economy track stagnation', () => {
   test('province with infraStagnationSeasons ≥ 12 adds +3 to Economy escalation', () => {
     const state = makeMinimalState({
-      provinces: [
+      cities: [
         {
           id: 'samnium', status: 'incorporated',
           infraStagnationSeasons: 12, lastInfraScore: 30,
@@ -401,7 +401,7 @@ describe('calcIndividualEscalation — Economy track stagnation', () => {
 
   test('province with infraStagnationSeasons < 12 does not trigger stagnation bonus', () => {
     const state = makeMinimalState({
-      provinces: [
+      cities: [
         {
           id: 'samnium', status: 'incorporated',
           infraStagnationSeasons: 8, lastInfraScore: 30,
@@ -418,7 +418,7 @@ describe('calcIndividualEscalation — Economy track stagnation', () => {
 
   test('multiple stagnant provinces stack additively', () => {
     const state = makeMinimalState({
-      provinces: [
+      cities: [
         { id: 'samnium',   status: 'incorporated', infraStagnationSeasons: 12, lastInfraScore: 30, relationshipScore: 50, playerGovernor: null, npcRoleHolder: null },
         { id: 'campania',  status: 'incorporated', infraStagnationSeasons: 15, lastInfraScore: 60, relationshipScore: 50, playerGovernor: null, npcRoleHolder: null },
       ],
@@ -431,7 +431,7 @@ describe('calcIndividualEscalation — Economy track stagnation', () => {
 
   test('heartland provinces never trigger stagnation', () => {
     const state = makeMinimalState({
-      provinces: [
+      cities: [
         { id: 'latium', status: 'heartland', infraStagnationSeasons: 20, lastInfraScore: 80, relationshipScore: 100, playerGovernor: null, npcRoleHolder: null },
       ],
       rome: { stability: 50, plebs: 50, treasury: 50 },
@@ -446,7 +446,7 @@ describe('calcIndividualEscalation — Economy track stagnation', () => {
 describe('calcIndividualEscalation — War track province pressure', () => {
   test('hostile province (rel < 15) adds +6 per season', () => {
     const state = makeMinimalState({
-      provinces: [
+      cities: [
         { id: 'samnium', status: 'incorporated', relationshipScore: 10, infraStagnationSeasons: 0, lastInfraScore: 30, playerGovernor: null, npcRoleHolder: null },
       ],
     });
@@ -456,7 +456,7 @@ describe('calcIndividualEscalation — War track province pressure', () => {
 
   test('restless province (rel 15–29) adds +3 per season', () => {
     const state = makeMinimalState({
-      provinces: [
+      cities: [
         { id: 'samnium', status: 'incorporated', relationshipScore: 20, infraStagnationSeasons: 0, lastInfraScore: 30, playerGovernor: null, npcRoleHolder: null },
       ],
     });
@@ -466,7 +466,7 @@ describe('calcIndividualEscalation — War track province pressure', () => {
 
   test('stable province (rel > 70) gives −2 per season', () => {
     const state = makeMinimalState({
-      provinces: [
+      cities: [
         { id: 'campania', status: 'incorporated', relationshipScore: 80, infraStagnationSeasons: 0, lastInfraScore: 60, playerGovernor: null, npcRoleHolder: null },
       ],
     });
@@ -476,7 +476,7 @@ describe('calcIndividualEscalation — War track province pressure', () => {
 
   test('heartland provinces do not contribute to war escalation', () => {
     const state = makeMinimalState({
-      provinces: [
+      cities: [
         { id: 'latium', status: 'heartland', relationshipScore: 0, infraStagnationSeasons: 0, lastInfraScore: 80, playerGovernor: null, npcRoleHolder: null },
       ],
     });
@@ -487,7 +487,7 @@ describe('calcIndividualEscalation — War track province pressure', () => {
   // Military Overhaul M9 — one term from warScore trajectory.
   test('a badly losing war (warScore < -20) adds +2', () => {
     const state = makeMinimalState({
-      provinces: [],
+      cities: [],
       wars: [{ id: 'w1', active: true, enemyId: 'carthage', scale: 'major', provinceId: null,
         warScore: -25, startedTurn: 1, lastSetPieceTurn: 1, weariness: 0, pendingSetPiece: null, treaty: null }],
     } as any);
@@ -496,7 +496,7 @@ describe('calcIndividualEscalation — War track province pressure', () => {
 
   test('a decisively winning war (warScore >= 20) subtracts 1', () => {
     const state = makeMinimalState({
-      provinces: [],
+      cities: [],
       wars: [{ id: 'w1', active: true, enemyId: 'carthage', scale: 'major', provinceId: null,
         warScore: 25, startedTurn: 1, lastSetPieceTurn: 1, weariness: 0, pendingSetPiece: null, treaty: null }],
     } as any);
@@ -505,7 +505,7 @@ describe('calcIndividualEscalation — War track province pressure', () => {
 
   test('an inactive war contributes nothing', () => {
     const state = makeMinimalState({
-      provinces: [],
+      cities: [],
       wars: [{ id: 'w1', active: false, enemyId: 'carthage', scale: 'major', provinceId: null,
         warScore: -90, startedTurn: 1, lastSetPieceTurn: 1, weariness: 0, pendingSetPiece: null, treaty: null }],
     } as any);
@@ -513,7 +513,7 @@ describe('calcIndividualEscalation — War track province pressure', () => {
   });
 
   test('a war fixture missing entirely (pre-M9 state) does not crash', () => {
-    const state = makeMinimalState({ provinces: [] });
+    const state = makeMinimalState({ cities: [] });
     expect(() => calcIndividualEscalation('war', state)).not.toThrow();
   });
 });

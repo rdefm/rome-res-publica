@@ -1,28 +1,38 @@
-import type { ProvinceDefinition } from '../models/province';
+import type { CityDefinition } from '../models/city';
 
-// ─── Italy Province Definitions ──────────────────────────────────────────────
+// ─── Italy City Definitions ───────────────────────────────────────────────────
 // Node positions (nodeX, nodeY) are expressed as fractions (0–1) of the map
 // image dimensions. These are tuned for the Italia pixel-art asset supplied
 // (portrait orientation, ~1000×1100px source).
 //
 // The image was inspected visually:
-//   Cisalpine Gaul  → top-centre (Po valley)
-//   Etruria         → west-centre coast
-//   Latium          → centre, near the Tiber label
-//   Samnium         → south-east of Latium
-//   Campania        → south, below Latium on Tyrrhenian side
-
-export const ITALY_PROVINCES: ProvinceDefinition[] = [
+//   Mediolanum (Cisalpine Gaul) → top-centre (Po valley)
+//   Veii (Etruria)              → west-centre coast
+//   Rome (Latium)                → centre, near the Tiber label
+//   Beneventum (Samnium)        → south-east of Latium
+//   Capua (Campania)             → south, below Latium on Tyrrhenian side
+//
+// NAMING NOTE (Campaign Map plan, Chunk C1): these five entries kept their
+// original `id`s (latium/etruria/samnium/campania/cisalpine_gaul) — every
+// cross-reference elsewhere (asset restrictions, provincial clients, muster
+// fallbacks, event region filters) keys off these ids as plain strings, not
+// through the type system, so renaming the ids themselves would be a silent,
+// uncatchable-by-tsc breakage risk across a dozen content files for a purely
+// cosmetic change. Only `name`/`latinName` (what the player actually sees)
+// were updated to name the specific city, now that a `Region` (see
+// src/models/theatre.ts) groups cities and needs its own place-name — Latium
+// the region contains Rome the city, Campania the region contains Capua, etc.
+export const ITALY_CITIES: CityDefinition[] = [
   {
     id: 'cisalpine_gaul',
-    name: 'Cisalpine Gaul',
-    latinName: 'Gallia Cisalpina',
+    name: 'Mediolanum',
+    latinName: 'Mediolanum',
     map: 'italy',
     status: 'incorporated',
     owner: 'rome',
     profile: 'Northern frontier. Strategically critical, volatile under neglect.',
     flavorDescription:
-      'The land beyond the Apennines — a vast plain watered by the Po, home to Gallic tribes only recently brought to heel. Enormous military potential, but loyalty is thin and the legions are essential to keep order here.',
+      'The chief town of the Insubres, seat of the land beyond the Apennines — a vast plain watered by the Po, home to Gallic tribes only recently brought to heel. Enormous military potential, but loyalty is thin and the legions are essential to keep order here.',
     startingRelationship: 45,
     startingInfrastructure: 20,
     startingLocalSupport: 0,
@@ -42,8 +52,8 @@ export const ITALY_PROVINCES: ProvinceDefinition[] = [
   },
   {
     id: 'etruria',
-    name: 'Etruria',
-    latinName: 'Etruria',
+    name: 'Veii',
+    latinName: 'Veii',
     map: 'italy',
     status: 'incorporated',
     owner: 'rome',
@@ -67,14 +77,14 @@ export const ITALY_PROVINCES: ProvinceDefinition[] = [
   },
   {
     id: 'latium',
-    name: 'Latium',
-    latinName: 'Latium',
+    name: 'Rome',
+    latinName: 'Roma',
     map: 'italy',
     status: 'heartland',
     owner: 'rome',
-    profile: "Rome's heartland. Cannot be governed — it is Rome.",
+    profile: "Rome herself. Cannot be governed — it is Rome.",
     flavorDescription:
-      "Latium is Rome's beating heart — the ancient Latin plain from which the Republic grew. It cannot revolt, cannot be taxed separately, and needs no governor. Its loyalty is eternal. What happens here is Rome itself.",
+      "Rome — the city at the heart of Latium's ancient plain, from which the Republic grew. It cannot revolt, cannot be taxed separately, and needs no governor. Its loyalty is eternal. What happens here is Rome itself.",
     startingRelationship: 100,
     startingInfrastructure: 80,
     startingLocalSupport: 0,
@@ -92,8 +102,8 @@ export const ITALY_PROVINCES: ProvinceDefinition[] = [
   },
   {
     id: 'samnium',
-    name: 'Samnium',
-    latinName: 'Samnium',
+    name: 'Beneventum',
+    latinName: 'Beneventum',
     map: 'italy',
     status: 'incorporated',
     owner: 'rome',
@@ -119,14 +129,14 @@ export const ITALY_PROVINCES: ProvinceDefinition[] = [
   },
   {
     id: 'campania',
-    name: 'Campania',
-    latinName: 'Campania',
+    name: 'Capua',
+    latinName: 'Capua',
     map: 'italy',
     status: 'incorporated',
     owner: 'rome',
     profile: 'Wealthy agricultural plain. High Gold output, sensitive to over-taxation.',
     flavorDescription:
-      'The richest farmland in Italy — volcanic soil, abundant harvests, and prosperous cities on the Tyrrhenian coast. Campanians are sophisticated, commercially minded, and quick to compare their treatment to that of their neighbours. A benevolent hand here fills the treasury with grain and Gold alike.',
+      'The richest farmland in Italy — volcanic soil, abundant harvests, and prosperous cities on the Tyrrhenian coast. Capua is sophisticated, commercially minded, and quick to compare its treatment to that of its neighbours. A benevolent hand here fills the treasury with grain and Gold alike.',
     startingRelationship: 68,
     startingInfrastructure: 60,
     startingLocalSupport: 0,
@@ -144,20 +154,20 @@ export const ITALY_PROVINCES: ProvinceDefinition[] = [
   },
 ];
 
-// ─── Mediterranean Province Definitions ──────────────────────────────────────
+// ─── Mediterranean City Definitions ───────────────────────────────────────────
 // First Punic War theatre: Sicily, Corsica, Sardinia, and the African coast.
 // All status: 'foreign' — held by Carthage, an independent Greek/Italic power,
 // or (Numidia) a Carthaginian client. None are governable; Rome has no
-// Governor/Ambassador presence until a province flips via conquestFlag.
+// Governor/Ambassador presence until a city flips via conquestFlag.
 //
 // Map art note: there is no dedicated Mediterranean map asset yet. These nodes
 // are rendered on the existing map_italia.png. Corsica, Sardinia, and the NE
 // tip of Sicily are actually drawn on that image, so those nodes sit on their
 // real landmasses. Agrigentum, Lilybaeum, Syracuse (the rest of Sicily) and
-// the three African provinces are off the drawn frame — their nodeX/nodeY
+// the three African cities are off the drawn frame — their nodeX/nodeY
 // place them in open sea/parchment margin in roughly the right compass
 // direction as a placeholder until a proper Mediterranean map ships.
-export const MEDITERRANEAN_PROVINCES: ProvinceDefinition[] = [
+export const MEDITERRANEAN_CITIES: CityDefinition[] = [
   {
     id: 'messana',
     name: 'Messana',
@@ -418,22 +428,22 @@ export const MEDITERRANEAN_PROVINCES: ProvinceDefinition[] = [
   },
 ];
 
-// All province definitions, across all maps.
-export const ALL_PROVINCES: ProvinceDefinition[] = [...ITALY_PROVINCES, ...MEDITERRANEAN_PROVINCES];
+// All city definitions, across all maps.
+export const ALL_CITIES: CityDefinition[] = [...ITALY_CITIES, ...MEDITERRANEAN_CITIES];
 
-export function getProvinceDefinition(id: string): ProvinceDefinition | undefined {
-  return ALL_PROVINCES.find(p => p.id === id);
+export function getCityDefinition(id: string): CityDefinition | undefined {
+  return ALL_CITIES.find(c => c.id === id);
 }
 
-// Build initial ProvinceState from definitions
-import type { ProvinceState } from '../models/province';
+// Build initial CityState from definitions
+import type { CityState } from '../models/city';
 
-/** Single-definition → ProvinceState builder, extracted in M10 so the treaty
+/** Single-definition → CityState builder, extracted in M10 so the treaty
  *  engine (warEngine.ts's applyTreatyEffects) can reuse it when a foreign
- *  province needs a ProvinceState built mid-game (the rare case a listed
- *  province is somehow absent from state.provinces), not just at
- *  buildInitialProvinceStates' game-start call site. */
-export function buildProvinceState(def: ProvinceDefinition): ProvinceState {
+ *  city needs a CityState built mid-game (the rare case a listed
+ *  city is somehow absent from state.cities), not just at
+ *  buildInitialCityStates' game-start call site. */
+export function buildCityState(def: CityDefinition): CityState {
   return {
     id: def.id,
     map: def.map,
@@ -458,9 +468,9 @@ export function buildProvinceState(def: ProvinceDefinition): ProvinceState {
   };
 }
 
-export function buildInitialProvinceStates(): ProvinceState[] {
-  // Every Mediterranean province — including ones Carthage or an independent
-  // power holds — is present in state.provinces from turn 1 (status: 'foreign'),
+export function buildInitialCityStates(): CityState[] {
+  // Every Mediterranean city — including ones Carthage or an independent
+  // power holds — is present in state.cities from turn 1 (status: 'foreign'),
   // unlike M10's old SICILY_PROVINCES stub which stayed absent until ceded.
-  return ALL_PROVINCES.map(buildProvinceState);
+  return ALL_CITIES.map(buildCityState);
 }

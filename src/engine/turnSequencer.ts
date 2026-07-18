@@ -53,7 +53,7 @@ import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import { BALANCE } from '../data/balance';
 import { computeTotalAssetBonuses } from './assetEngine';
 import { computeHouseBonuses } from './houseEngine';
-import { tickAllProvinces } from './provinceEngine';
+import { tickAllCities } from './cityEngine';
 import { applyTroopAttrition, calcMilitaryImperium } from './troopEngine';
 import { processWarSeason } from './warEngine';
 import { tickSenateResponse } from './senateResponseEngine';
@@ -75,7 +75,7 @@ import { CADET_EVENT_DEFS } from '../data/cadetEvents';
 import { COMPROMISING_EVENT_DEFS } from '../data/compromisingEvents';
 import { OFFICES } from '../data/offices';
 import { AUTO_BILL_TEMPLATES, BILL_TEMPLATES, HISTORICAL_BILL_TEMPLATES } from '../data/billTemplates';
-import { getProvinceDefinition } from '../data/provinceDefinitions';
+import { getCityDefinition } from '../data/cityDefinitions';
 
 // ─── Client helpers ──────────────────────────────────────────────────────────
 
@@ -664,21 +664,21 @@ export function processSeason(state: GameState): {
     }
   }
 
-  // 9c. Province tick
-  if (s.provinces && s.provinces.length > 0) {
+  // 9c. City tick
+  if (s.cities && s.cities.length > 0) {
 
     // ── 9c-i: Development mandate enforcement (Lex de Provinciarum Cultura) ──
     //
     // While this law is active, any player governor whose development policy is
-    // 'exploit' or 'neglect' is silently raised to 'maintain' before tickProvince
+    // 'exploit' or 'neglect' is silently raised to 'maintain' before tickCity
     // runs. This means the tick sees the corrected policy: the infrastructure
     // improvement (DEVELOPMENT_INFRA_DELTA['maintain'] = 0, vs -5 for exploit)
     // and the cost difference (DEVELOPMENT_GOLD_COST['maintain'] = 5) are both
-    // applied automatically inside calcProvinceGoldOutput — no extra deduction
+    // applied automatically inside calcCityGoldOutput — no extra deduction
     // needed here.
     //
     // Only player governors are compelled. NPC role-holders govern by their own
-    // trait and are outside the scope of this mandate. Unincorporated provinces
+    // trait and are outside the scope of this mandate. Unincorporated cities
     // have no governor system and are also skipped.
     {
       const mandateLawActive = (s.activeLaws ?? []).some(
@@ -693,29 +693,29 @@ export function processSeason(state: GameState): {
 
         s = {
           ...s,
-          provinces: s.provinces.map(province => {
-            // Only incorporated provinces have governors
-            if (province.status !== 'incorporated') return province;
+          cities: s.cities.map(city => {
+            // Only incorporated cities have governors
+            if (city.status !== 'incorporated') return city;
             // Only apply to player governors
-            if (!province.playerGovernor) return province;
+            if (!city.playerGovernor) return city;
 
-            const currentDev = province.playerGovernor.policy.development;
+            const currentDev = city.playerGovernor.policy.development;
             // Already meets or exceeds the mandate — no action needed
-            if (DEV_NOTCH_ORDER.indexOf(currentDev) >= mandateMinIdx) return province;
+            if (DEV_NOTCH_ORDER.indexOf(currentDev) >= mandateMinIdx) return city;
 
             // Force policy up to the mandate minimum
-            const def = getProvinceDefinition(province.id);
+            const def = getCityDefinition(city.id);
             events.push(
-              `⚖ Senate mandate: ${def?.name ?? province.id} — governor's development raised to Maintain` +
+              `⚖ Senate mandate: ${def?.name ?? city.id} — governor's development raised to Maintain` +
               ` (was ${currentDev === 'exploit' ? 'Exploit' : 'Neglect'}) by Lex de Provinciarum Cultura.`,
             );
 
             return {
-              ...province,
+              ...city,
               playerGovernor: {
-                ...province.playerGovernor,
+                ...city.playerGovernor,
                 policy: {
-                  ...province.playerGovernor.policy,
+                  ...city.playerGovernor.policy,
                   development: MANDATE_MIN,
                 },
               },
@@ -725,13 +725,13 @@ export function processSeason(state: GameState): {
       }
     }
 
-    // ── 9c-ii: Province tick ─────────────────────────────────────────────────
-    const { updatedProvinces, totalGoldDelta, totalImperiumDelta, totalTreasuryDelta, newWars, events: provinceEvents } =
-      tickAllProvinces(s.provinces, s);
+    // ── 9c-ii: City tick ─────────────────────────────────────────────────────
+    const { updatedCities, totalGoldDelta, totalImperiumDelta, totalTreasuryDelta, newWars, events: cityEvents } =
+      tickAllCities(s.cities, s);
 
     s = {
       ...s,
-      provinces: updatedProvinces,
+      cities: updatedCities,
       denarii:  s.denarii  + totalGoldDelta,
       imperium: s.imperium + totalImperiumDelta,
       lifetimeImperium: (s.lifetimeImperium ?? 0) + Math.max(0, totalImperiumDelta),
@@ -739,26 +739,26 @@ export function processSeason(state: GameState): {
       wars: newWars.length > 0 ? [...s.wars, ...newWars] : s.wars,
     };
 
-    for (const msg of provinceEvents) events.push(msg);
+    for (const msg of cityEvents) events.push(msg);
 
     if (totalGoldDelta > 0 || totalImperiumDelta > 0) {
       events.push(`Provincial income: +${totalGoldDelta} Gold, +${totalImperiumDelta} Imperium.`);
     }
 
-    // ── 9c-iii: Lex de Viis — province infrastructure boost ─────────────────
+    // ── 9c-iii: Lex de Viis — city infrastructure boost ──────────────────────
     //
-    // While the road maintenance law is active, all non-heartland provinces gain
+    // While the road maintenance law is active, all non-heartland cities gain
     // +1 infrastructure rating each season, on top of whatever their governor's
     // development policy already produced. This represents the Senate funding
     // direct road-building across the Republic.
     //
-    // The treasury cost is 3 points of rome.treasury per province. A larger
+    // The treasury cost is 3 points of rome.treasury per city. A larger
     // empire costs proportionally more to maintain — this is the design intent.
     // The cost drains the public treasury (rome.treasury), not the player's
     // personal denarii, since road maintenance is a senatorial expenditure.
     //
     // Note: The +1 infra here also resets the infraStagnationSeasons counter
-    // inside tickProvince for the *next* season (because currInfra > prevInfra
+    // inside tickCity for the *next* season (because currInfra > prevInfra
     // once this is applied). However, since the tick already ran this season
     // before this block executes, the stagnation counter effect is delayed by
     // one season — which is intentional and correct.
@@ -767,17 +767,17 @@ export function processSeason(state: GameState): {
 
       if (lexDeViisActive) {
         // Foreign (Carthaginian/independent) territory excluded — Rome doesn't
-        // build roads in provinces it doesn't hold. Mediterranean-provinces
+        // build roads in cities it doesn't hold. Mediterranean-provinces
         // plan, chunk MP-E.
-        const nonHeartlandProvinces = s.provinces.filter(p => p.status !== 'heartland' && p.status !== 'foreign');
-        const provCount = nonHeartlandProvinces.length;
+        const nonHeartlandCities = s.cities.filter(p => p.status !== 'heartland' && p.status !== 'foreign');
+        const provCount = nonHeartlandCities.length;
 
         if (provCount > 0) {
           const treasuryCost = provCount * 3;
 
           s = {
             ...s,
-            provinces: s.provinces.map(p =>
+            cities: s.cities.map(p =>
               p.status === 'heartland' || p.status === 'foreign'
                 ? p
                 : { ...p, infrastructureRating: Math.min(100, p.infrastructureRating + 1) },
@@ -790,7 +790,7 @@ export function processSeason(state: GameState): {
 
           events.push(
             `Via Romana: road upkeep advances infrastructure across ${provCount}` +
-            ` province${provCount !== 1 ? 's' : ''} (+1 each, −${treasuryCost} Treasury).`,
+            ` cit${provCount !== 1 ? 'ies' : 'y'} (+1 each, −${treasuryCost} Treasury).`,
           );
         }
       }
@@ -830,7 +830,7 @@ export function processSeason(state: GameState): {
   // raisedLegions and veterans, unlike 9d's attrition (veterans only).
   {
     const commandingCharacterIds = new Set(
-      s.provinces
+      s.cities
         .map(p => p.activeCampaign)
         .filter((c): c is NonNullable<typeof c> => !!c && !c.resolved && c.commanderCharacterId !== null)
         .map(c => c.commanderCharacterId as string),
@@ -912,11 +912,11 @@ export function processSeason(state: GameState): {
 
   // 9g. Resolve campaigns with completed officer volunteers
   {
-    const updatedProvinces = s.provinces.map(province => {
-      const volunteer = province.officerVolunteer;
-      const campaign  = province.activeCampaign;
+    const updatedCities = s.cities.map(city => {
+      const volunteer = city.officerVolunteer;
+      const campaign  = city.activeCampaign;
       if (!volunteer?.resolved || !campaign || campaign.resolved || campaign.commanderCharacterId !== null) {
-        return province;
+        return city;
       }
 
       const { successCount } = volunteer;
@@ -934,22 +934,22 @@ export function processSeason(state: GameState): {
         : -8;
 
       return {
-        ...province,
-        revoltActive:      revoltSuppressed ? false : province.revoltActive,
-        relationshipScore: Math.min(100, Math.max(0, province.relationshipScore + relationshipDelta)),
+        ...city,
+        revoltActive:      revoltSuppressed ? false : city.revoltActive,
+        relationshipScore: Math.min(100, Math.max(0, city.relationshipScore + relationshipDelta)),
         activeCampaign:    { ...campaign, resolved: true, outcome },
         officerVolunteer:  null,
       };
     });
-    s = { ...s, provinces: updatedProvinces };
+    s = { ...s, cities: updatedCities };
   }
 
   // 9h. Triumph bill trigger (Chunk 1C) ────────────────────────────────────────
-  // After campaign resolution: check each province for a completed victory.
+  // After campaign resolution: check each city for a completed victory.
   // If found and threshold conditions met, push a Triumph bill to the Senate queue.
   {
-    for (const province of s.provinces) {
-      const campaign = province.activeCampaign;
+    for (const city of s.cities) {
+      const campaign = city.activeCampaign;
       // Requires: resolved, non-defeat outcome, has a named commander
       if (!campaign?.resolved || !campaign.commanderCharacterId) continue;
       if (campaign.outcome === 'defeat' || campaign.outcome === 'stalemate') continue;

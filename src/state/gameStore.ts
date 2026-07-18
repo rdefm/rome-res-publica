@@ -12,8 +12,8 @@ import type { LegacyObjective } from '../models/legacyObjective';
 import type { PatronTier } from '../models/patronLadder';
 import type { TrialState, TrialApproach, ChargeId, ChargeSource } from '../models/trial';
 import type { Secret, PendingSecretDemand, LatentSecret } from '../models/secret';
-import type { ProvinceState, GovernorPolicy, CampaignState, OfficerVolunteerState } from '../models/province';
-import { getRelationshipTier } from '../models/province';
+import type { CityState, GovernorPolicy, CampaignState, OfficerVolunteerState } from '../models/city';
+import { getRelationshipTier } from '../models/city';
 import type { TroopUnit } from '../models/troop';
 import type { SenateResponseState } from '../engine/senateResponseEngine';
 import type { CrisisState, CrisisTrackId } from '../models/crisis';
@@ -40,7 +40,9 @@ import type { CanvassingEvent, CanvassingEventResult } from '../data/canvassingE
 import { STARTING_FAMILY } from '../data/startingFamily';
 import { STARTING_CLANS } from '../data/startingClans';
 import { STARTING_BILLS } from '../data/billTemplates';
-import { buildInitialProvinceStates, getProvinceDefinition } from '../data/provinceDefinitions';
+import { buildInitialCityStates, getCityDefinition } from '../data/cityDefinitions';
+import type { TheatreState } from '../models/theatre';
+import { REGIONS } from '../data/theatreMap';
 import { processSeason } from '../engine/turnSequencer';
 import { incrementLegacy, initLegacyObjectives } from '../engine/legacyEngine';
 import { LEGACY_DEFINITIONS } from '../data/legacyDefinitions';
@@ -91,10 +93,10 @@ import {
   buildDeclareWarBill,
   getForeignWarTargetEnemyId,
   buildAmbassadorPostingBill,
-} from '../engine/provinceEngine';
-import { getProvinceAssetDefinition } from '../data/provinceAssets';
+} from '../engine/cityEngine';
+import { getCityAssetDefinition } from '../data/cityAssets';
 import { getHouseLocationDefinition } from '../data/houseLocations';
-import { getProvincialClientDef } from '../data/provincialClients';
+import { getCityClientDef } from '../data/cityClients';
 import { BALANCE } from '../data/balance';
 import { calcTrainingCost } from '../engine/resourceEngine';
 import type { SeasonStats } from '../models/telemetry';
@@ -361,8 +363,13 @@ export interface GameState {
   seasonOverlayEvents: string[];
 
   // ── Provinciae ──────────────────────────────────────────────────────────
-  provinces: ProvinceState[];
+  cities: CityState[];
   lifetimeImperium: number;
+
+  // ── Campaign Map plan, Chunk C1 — theatre (controllers/contested only; ──
+  // the static Region/Edge data stays in data/theatreMap.ts). Unread by any
+  // engine yet — C2+ builds armies/movement/AI on top of this.
+  theatre: TheatreState;
 
   // ── Military (Chunk M) ──────────────────────────────────────────────────
   senateResponse: SenateResponseState | null;
@@ -447,12 +454,12 @@ export interface GameState {
   npcTribuneActive: boolean;
 
   // ── Computed flags — recomputed by recomputeComputedFlags after every action (Chunk 1B) ─
-  /** True if any province currently has an active CampaignState. */
+  /** True if any city currently has an active CampaignState. */
   activeCampaignExists: boolean;
   /** True if any family member has raisedLegions.length > 0 or veterans.length > 0. */
   familyHasTroops: boolean;
-  /** True if any province has infrastructureRating ≥ 30. */
-  anyProvinceHasRoads: boolean;
+  /** True if any city has infrastructureRating ≥ 30. */
+  anyCityHasRoads: boolean;
   /** True if any bill with id starting 'triumph-' is in state.bills. */
   triumphBillInQueue: boolean;
   /** True when npcConsul is non-null. */
@@ -703,15 +710,15 @@ export interface GameActions {
   addCursusLog: (text: string, type?: LogEntry['type']) => void;
 
   // ── Provinciae ────────────────────────────────────────────────────────
-  updateProvincePolicy: (provinceId: string, policy: GovernorPolicy) => void;
+  updateCityPolicy: (cityId: string, policy: GovernorPolicy) => void;
   resolveAmbassadorAction: (provinceId: string, actionId: AmbassadorActionId) => void;
   proposeIncorporationBill: (provinceId: string) => void;
   proposeDeclareWarBill: (provinceId: string) => void;
   seekAmbassadorPosting: (provinceId: string) => void;
-  purchaseProvinceAsset: (provinceId: string, assetId: string) => void;
-  upgradeProvinceAsset: (provinceId: string, assetId: string) => void;
-  recruitProvincialClient: (provinceId: string, clientId: string) => void;
-  updateProvinces: (provinces: ProvinceState[]) => void;
+  purchaseCityAsset: (cityId: string, assetId: string) => void;
+  upgradeCityAsset: (cityId: string, assetId: string) => void;
+  recruitCityClient: (cityId: string, clientId: string) => void;
+  updateCities: (cities: CityState[]) => void;
 
   // ── Military (Chunk M) ──────────────────────────────────────────────────
   raiseLevy: (characterId: string, musterProvinceId: string) => void;
@@ -870,6 +877,17 @@ function mkLog(turn: string, text: string, type: LogEntry['type'] = 'neutral'): 
   return { id: `log-${_logId++}`, turn, text, type };
 }
 
+// ─── Campaign Map plan, Chunk C1 — theatre init ────────────────────────────
+
+/** Seeds TheatreState.controllers from each Region's static startingController
+ *  (data/theatreMap.ts); `contested` starts empty — C7's turn-end resolution
+ *  is the only writer once that chunk lands. */
+function buildInitialTheatreState(): TheatreState {
+  const controllers = {} as TheatreState['controllers'];
+  for (const region of REGIONS) controllers[region.id] = region.startingController;
+  return { controllers, contested: {} as TheatreState['contested'] };
+}
+
 // ─── Military Overhaul M5 — sandbox battle helpers ───────────────────────────
 // Debug-only content (DebugPanel "Launch Sandbox Battle"). M11 replaces this
 // with a real army builder — kept intentionally minimal here.
@@ -1025,8 +1043,9 @@ export const INITIAL_STATE: GameState = {
   seasonOverlayEvents: [],
 
   // Provinciae
-  provinces: buildInitialProvinceStates(),
+  cities: buildInitialCityStates(),
   lifetimeImperium: 0,
+  theatre: buildInitialTheatreState(),
 
   // Military (Chunk M)
   senateResponse: null,
@@ -1062,7 +1081,7 @@ export const INITIAL_STATE: GameState = {
 
   activeCampaignExists: false,
   familyHasTroops: false,
-  anyProvinceHasRoads: false,
+  anyCityHasRoads: false,
   triumphBillInQueue: false,
   npcConsulExists: false,
 
@@ -1207,15 +1226,15 @@ function concludeTrialSession(s: GameState, trial: TrialState): Partial<GameStat
 /**
  * Recompute derived boolean flags that depend on live state slices.
  * Called at the end of takeOfficeAction and any other action that changes
- * provinces, family troops, bills, or npcConsul.
+ * cities, family troops, bills, or npcConsul.
  */
 function recomputeComputedFlags(s: GameState): Partial<GameState> {
   return {
-    activeCampaignExists: s.provinces.some(p => p.activeCampaign !== null),
+    activeCampaignExists: s.cities.some(p => p.activeCampaign !== null),
     familyHasTroops: s.family.some(
       c => (c.raisedLegions?.length ?? 0) > 0 || (c.veterans?.length ?? 0) > 0,
     ),
-    anyProvinceHasRoads: s.provinces.some(
+    anyCityHasRoads: s.cities.some(
       p => ((p as any).infrastructureRating ?? 0) >= 30,
     ),
     triumphBillInQueue: s.bills.some(b => b.id.startsWith('triumph-')),
@@ -3212,6 +3231,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   loadGame: (savedState) => set({
     ...INITIAL_STATE,
     ...savedState,
+    // Campaign Map plan, Chunk C1 — the `provinces` field was renamed to
+    // `cities`. A save written before this rename has a `provinces` key and
+    // no `cities` key at all, so the top-level `...savedState` spread above
+    // leaves `cities` at its INITIAL_STATE default (losing every city's
+    // relationship/governor/asset progress) unless backfilled here from the
+    // old key — same per-field migration pattern as every other backfill in
+    // this function.
+    cities: savedState.cities ?? (savedState as any).provinces ?? INITIAL_STATE.cities,
     // P3-A — a save written before phase/ignitedYear/endedYear/terminalOutcome
     // existed on WarState has wars entries missing them; the top-level
     // INITIAL_STATE spread above only backfills whole missing FIELDS, not
@@ -3318,10 +3345,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   // ─── Provinciae ─────────────────────────────────────────────────────────────
 
-  updateProvincePolicy: (provinceId, policy) => {
+  updateCityPolicy: (cityId, policy) => {
     set((s) => ({
-      provinces: s.provinces.map(p =>
-        p.id === provinceId && p.playerGovernor
+      cities: s.cities.map(p =>
+        p.id === cityId && p.playerGovernor
           ? { ...p, playerGovernor: { ...p.playerGovernor, policy } }
           : p
       ),
@@ -3331,51 +3358,51 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   proposeIncorporationBill: (provinceId) => {
     const s = get();
-    const province = s.provinces.find(p => p.id === provinceId);
-    if (!province || !province.incorporationBillAvailable) return;
-    const def = getProvinceDefinition(provinceId);
+    const city = s.cities.find(p => p.id === provinceId);
+    if (!city || !city.incorporationBillAvailable) return;
+    const def = getCityDefinition(provinceId);
     if (!def) return;
-    const bill = buildIncorporationBill(province, def);
+    const bill = buildIncorporationBill(city, def);
     if (s.bills.some(b => b.name === bill.name)) return;
     get().submitBill(bill);
   },
 
   proposeDeclareWarBill: (provinceId) => {
     const s = get();
-    const province = s.provinces.find(p => p.id === provinceId);
-    if (!province || province.status !== 'foreign') return;
-    const def = getProvinceDefinition(provinceId);
+    const city = s.cities.find(p => p.id === provinceId);
+    if (!city || city.status !== 'foreign') return;
+    const def = getCityDefinition(provinceId);
     if (!def || def.clientOf) return;
-    if (getRelationshipTier(province.relationshipScore) !== 'hostile') return;
+    if (getRelationshipTier(city.relationshipScore) !== 'hostile') return;
     const enemyId = getForeignWarTargetEnemyId(def);
     if (s.wars.some(w => w.active && w.enemyId === enemyId)) return;
-    const bill = buildDeclareWarBill(province, def);
+    const bill = buildDeclareWarBill(city, def);
     if (s.bills.some(b => b.name === bill.name)) return;
     get().submitBill(bill);
   },
 
   seekAmbassadorPosting: (provinceId) => {
     const s = get();
-    const province = s.provinces.find(p => p.id === provinceId);
-    if (!province || province.playerAmbassador) return;
-    if (province.status !== 'unincorporated' && province.status !== 'foreign') return;
-    const def = getProvinceDefinition(provinceId);
+    const city = s.cities.find(p => p.id === provinceId);
+    if (!city || city.playerAmbassador) return;
+    if (city.status !== 'unincorporated' && city.status !== 'foreign') return;
+    const def = getCityDefinition(provinceId);
     if (!def) return;
     const character = s.family.find(c => c.id === s.selectedCharacterId) ?? s.family.find(c => c.isPlayer);
     if (!character) return;
-    const bill = buildAmbassadorPostingBill(province, def, character.id, character.name);
+    const bill = buildAmbassadorPostingBill(city, def, character.id, character.name);
     if (s.bills.some(b => b.name === bill.name)) return;
     get().submitBill(bill);
   },
 
   resolveAmbassadorAction: (provinceId, actionId) => {
     const s = get();
-    const province = s.provinces.find(p => p.id === provinceId);
-    if (!province || !province.playerAmbassador) return;
+    const city = s.cities.find(p => p.id === provinceId);
+    if (!city || !city.playerAmbassador) return;
 
-    if (province.playerAmbassador.actionsUsedThisTurn.includes(actionId)) return;
+    if (city.playerAmbassador.actionsUsedThisTurn.includes(actionId)) return;
 
-    const result = engineResolveAmbassadorAction(actionId, province, 0);
+    const result = engineResolveAmbassadorAction(actionId, city, 0);
     if (!result.success) return;
 
     const label = turnLabel(s);
@@ -3384,15 +3411,15 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set({
       ...(rp.fides   !== undefined ? { fides:   Math.max(0, s.fides   + rp.fides)   } : {}),
       ...(rp.denarii !== undefined ? { denarii: Math.max(0, s.denarii + rp.denarii) } : {}),
-      provinces: s.provinces.map(p =>
+      cities: s.cities.map(p =>
         p.id === provinceId
           ? {
               ...p,
-              ...result.provincePatch,
+              ...result.cityPatch,
               playerAmbassador: p.playerAmbassador
                 ? {
                     ...p.playerAmbassador,
-                    ...result.provincePatch.playerAmbassador,
+                    ...result.cityPatch.playerAmbassador,
                     actionsUsedThisTurn: [
                       ...p.playerAmbassador.actionsUsedThisTurn,
                       actionId,
@@ -3411,14 +3438,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     });
   },
 
-  purchaseProvinceAsset: (provinceId, assetId) => {
+  purchaseCityAsset: (cityId, assetId) => {
     const s = get();
-    const province = s.provinces.find(p => p.id === provinceId);
-    if (!province) return;
+    const city = s.cities.find(p => p.id === cityId);
+    if (!city) return;
 
-    if (province.ownedAssets.some(a => a.definitionId === assetId)) return;
+    if (city.ownedAssets.some(a => a.definitionId === assetId)) return;
 
-    const def = getProvinceAssetDefinition(assetId);
+    const def = getCityAssetDefinition(assetId);
     if (!def) return;
 
     if (s.denarii < def.cost) return;
@@ -3426,8 +3453,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const label = turnLabel(s);
     set({
       denarii: s.denarii - def.cost,
-      provinces: s.provinces.map(p =>
-        p.id === provinceId
+      cities: s.cities.map(p =>
+        p.id === cityId
           ? {
               ...p,
               ownedAssets: [
@@ -3438,21 +3465,21 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
             }
           : p
       ),
-      log: [...s.log, mkLog(label, `${def.name} acquired in ${provinceId}. (+${def.localSupportGain} Local Support)`, 'good')],
+      log: [...s.log, mkLog(label, `${def.name} acquired in ${cityId}. (+${def.localSupportGain} Local Support)`, 'good')],
       ...bumpActions(s),
       ...bumpSpend(s, { denarii: def.cost }),
     });
   },
 
-  upgradeProvinceAsset: (provinceId, assetId) => {
+  upgradeCityAsset: (cityId, assetId) => {
     const s = get();
-    const province = s.provinces.find(p => p.id === provinceId);
-    if (!province) return;
+    const city = s.cities.find(p => p.id === cityId);
+    if (!city) return;
 
-    const owned = province.ownedAssets.find(a => a.definitionId === assetId);
+    const owned = city.ownedAssets.find(a => a.definitionId === assetId);
     if (!owned || owned.tier >= 2) return;
 
-    const def = getProvinceAssetDefinition(assetId);
+    const def = getCityAssetDefinition(assetId);
     if (!def) return;
 
     const upgradeCost = Math.round(def.cost * 0.6);
@@ -3461,8 +3488,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const label = turnLabel(s);
     set({
       denarii: s.denarii - upgradeCost,
-      provinces: s.provinces.map(p =>
-        p.id === provinceId
+      cities: s.cities.map(p =>
+        p.id === cityId
           ? {
               ...p,
               ownedAssets: p.ownedAssets.map(a =>
@@ -3471,22 +3498,22 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
             }
           : p
       ),
-      log: [...s.log, mkLog(label, `${def.name} upgraded in ${provinceId}.`, 'good')],
+      log: [...s.log, mkLog(label, `${def.name} upgraded in ${cityId}.`, 'good')],
       ...bumpActions(s),
       ...bumpSpend(s, { denarii: upgradeCost }),
     });
   },
 
-  recruitProvincialClient: (provinceId, clientId) => {
+  recruitCityClient: (cityId, clientId) => {
     const s = get();
-    const province = s.provinces.find(p => p.id === provinceId);
-    if (!province) return;
+    const city = s.cities.find(p => p.id === cityId);
+    if (!city) return;
 
-    const clientDef = getProvincialClientDef(clientId);
+    const clientDef = getCityClientDef(clientId);
     if (!clientDef) return;
 
-    if (province.localSupport < clientDef.supportRequired) return;
-    if (province.relationshipScore < clientDef.relationshipRequired) return;
+    if (city.localSupport < clientDef.supportRequired) return;
+    if (city.relationshipScore < clientDef.relationshipRequired) return;
 
     if (s.clients.some(c => (c as any).provincialClientDefId === clientId)) return;
 
@@ -3503,7 +3530,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       flavourTitle: 'Provincial Client',
       flavourText: clientDef.bonusDescription,
       // Provincial clients carry their bonuses via provincialClientDefId (resolved through
-      // getProvincialClientDef), not the generic ClientBonus pool — but computeTotalClientBonuses
+      // getCityClientDef), not the generic ClientBonus pool — but computeTotalClientBonuses
       // and the Clientela UI both assume every Client has a `bonus` object, so this must be
       // present (even empty) or those call sites crash on Object.entries(undefined).
       bonus: {},
@@ -3521,7 +3548,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     });
   },
 
-  updateProvinces: (provinces) => set({ provinces }),
+  updateCities: (cities) => set({ cities }),
 
   // ── Military Actions (Chunk M) ───────────────────────────────────────────────
 
@@ -3749,7 +3776,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         campaignsSurvived: 0,
         yearsInactive: 0,
         bondToCommander: 55,
-        musterProvinceId: s.provinces[0]?.id ?? 'sicilia',
+        musterProvinceId: s.cities[0]?.id ?? 'sicilia',
         unitClass,
         veterancy: 'trained',
       }));
@@ -4099,7 +4126,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   updateLocalSupportForPlayer: (provinceId, delta) => {
     set(s => ({
-      provinces: s.provinces.map(p =>
+      cities: s.cities.map(p =>
         p.id === provinceId
           ? { ...p, localSupport: Math.min(100, Math.max(0, p.localSupport + delta)) }
           : p
@@ -4109,11 +4136,11 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   startCampaign: (provinceId, type) => {
     const s = get();
-    const province = s.provinces.find(p => p.id === provinceId);
-    if (!province || province.activeCampaign) return;
+    const city = s.cities.find(p => p.id === provinceId);
+    if (!city || city.activeCampaign) return;
 
     // Commander: player family member who is currently governor, otherwise NPC (null)
-    const governorCharId = province.playerGovernor?.characterId ?? null;
+    const governorCharId = city.playerGovernor?.characterId ?? null;
     const commanderCharacterId = (governorCharId && s.family.some(c => c.id === governorCharId))
       ? governorCharId
       : null;
@@ -4126,7 +4153,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       campaignProgress:  0,
       enemyStrength:     50,
       turnsElapsed:      0,
-      localSupportBonus: province.localSupport >= 40,
+      localSupportBonus: city.localSupport >= 40,
       resolved:          false,
       outcome:           null,
       activeEventId:     null,
@@ -4134,7 +4161,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
     const label = turnLabel(s);
     set({
-      provinces: s.provinces.map(p =>
+      cities: s.cities.map(p =>
         p.id === provinceId ? { ...p, activeCampaign: newCampaign } : p
       ),
       log: [...s.log, mkLog(
@@ -4148,13 +4175,13 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   volunteerOfficer: (provinceId, characterId) => {
     const s = get();
-    const province = s.provinces.find(p => p.id === provinceId);
-    if (!province?.activeCampaign) return;
+    const city = s.cities.find(p => p.id === provinceId);
+    if (!city?.activeCampaign) return;
     const character = s.family.find(c => c.id === characterId);
     if (!character) return;
 
     const volunteer: OfficerVolunteerState = {
-      campaignId:        province.activeCampaign.id,
+      campaignId:        city.activeCampaign.id,
       provinceId,
       characterId,
       characterName:     character.name,
@@ -4166,7 +4193,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
     const label = turnLabel(s);
     set({
-      provinces: s.provinces.map(p =>
+      cities: s.cities.map(p =>
         p.id === provinceId ? { ...p, officerVolunteer: volunteer } : p
       ),
       log: [...s.log, mkLog(
@@ -4180,8 +4207,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   resolveOfficerDecision: (provinceId, decisionIndex, tookRisk) => {
     const s = get();
-    const province = s.provinces.find(p => p.id === provinceId);
-    const volunteer = province?.officerVolunteer;
+    const city = s.cities.find(p => p.id === provinceId);
+    const volunteer = city?.officerVolunteer;
     if (!volunteer || volunteer.resolved || volunteer.decisionsResolved !== decisionIndex) return;
 
     const character = s.family.find(c => c.id === volunteer.characterId);
@@ -4208,7 +4235,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
     const label = turnLabel(s);
     set({
-      provinces: s.provinces.map(p =>
+      cities: s.cities.map(p =>
         p.id === provinceId ? { ...p, officerVolunteer: updatedVolunteer } : p
       ),
       log: [...s.log, mkLog(

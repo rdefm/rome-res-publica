@@ -89,7 +89,7 @@ export function evalCondition(cond: EventCondition, state: GameState): boolean {
       return state.campaigning !== null;
     }
     case 'governing': {
-      return state.provinces.some(p => p.playerGovernor !== null);
+      return state.cities.some(p => p.playerGovernor !== null);
     }
   }
 }

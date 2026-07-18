@@ -1,13 +1,13 @@
 import type { GameState } from '../state/gameStore';
 import type {
-  ProvinceState,
-  ProvinceDefinition,
+  CityState,
+  CityDefinition,
   GovernorPolicy,
   TaxationNotch,
   SecurityNotch,
   DevelopmentNotch,
   AmbassadorState,
-} from '../models/province';
+} from '../models/city';
 import {
   TAXATION_REL_PER_YEAR,
   TAXATION_CORRUPTION_PER_TURN,
@@ -25,31 +25,31 @@ import {
   getInfrastructureMultiplier,
   getRelationshipOutputMultiplier,
   getRelationshipTier,
-} from '../models/province';
+} from '../models/city';
 import type { Bill } from '../models/bill';
 import type { WarState } from '../models/war';
-import { getProvinceDefinition } from '../data/provinceDefinitions';
-import { getProvinceAssetDefinition } from '../data/provinceAssets';
+import { getCityDefinition } from '../data/cityDefinitions';
+import { getCityAssetDefinition } from '../data/cityAssets';
 import { BALANCE } from '../data/balance';
 import { resetAmbassadorCooldowns, calcRapportDecay } from './ambassadorEngine';
 
-// ─── Province Engine ──────────────────────────────────────────────────────────
+// ─── City Engine (renamed from provinceEngine.ts, Campaign Map plan C1) ──────
 
 /**
- * Calculate gold output for a governed province this turn.
+ * Calculate gold output for a governed city this turn.
  */
-export function calcProvinceGoldOutput(
-  province: ProvinceState,
+export function calcCityGoldOutput(
+  city: CityState,
   policy: GovernorPolicy,
   governorMartial: number = 0
 ): number {
-  const def = getProvinceDefinition(province.id);
-  if (!def || province.status === 'heartland' || province.status === 'foreign') return 0;
+  const def = getCityDefinition(city.id);
+  if (!def || city.status === 'heartland' || city.status === 'foreign') return 0;
 
   const baseGold = def.baseGoldOutput;
   const taxMult = TAXATION_GOLD_MULT[policy.taxation];
-  const infraMult = getInfrastructureMultiplier(province.infrastructureRating);
-  const relMult = getRelationshipOutputMultiplier(province.relationshipScore);
+  const infraMult = getInfrastructureMultiplier(city.infrastructureRating);
+  const relMult = getRelationshipOutputMultiplier(city.relationshipScore);
   const developmentBonus = DEVELOPMENT_GOLD_BONUS[policy.development];
   const securityCost = SECURITY_GOLD_COST[policy.security];
   const devCost = DEVELOPMENT_GOLD_COST[policy.development];
@@ -62,12 +62,12 @@ export function calcProvinceGoldOutput(
  * Calculate Imperium output for a governor/officer this turn.
  * Formula: base × mult × (1 + Martial/100)
  */
-export function calcProvinceImperiumOutput(
-  province: ProvinceState,
+export function calcCityImperiumOutput(
+  city: CityState,
   policy: GovernorPolicy,
   governorMartial: number
 ): number {
-  if (province.id === 'latium') return 0;
+  if (city.id === 'latium') return 0;
   const base = SECURITY_IMPERIUM_BASE[policy.security];
   if (base === 0) return 0;
   const mult = SECURITY_IMPERIUM_MULT[policy.security];
@@ -101,14 +101,14 @@ export function calcInfrastructureDelta(policy: GovernorPolicy): number {
 }
 
 /**
- * Calculate revolt probability per turn for an incorporated province.
+ * Calculate revolt probability per turn for an incorporated city.
  * Base chance modified by relationship, security, and local support.
  */
 export function calcRevoltChance(
-  province: ProvinceState,
+  city: CityState,
   policy: GovernorPolicy
 ): number {
-  const tier = getRelationshipTier(province.relationshipScore);
+  const tier = getRelationshipTier(city.relationshipScore);
   if (tier === 'integrated' || tier === 'loyal') return 0;
 
   let baseChance = 0;
@@ -120,24 +120,24 @@ export function calcRevoltChance(
   }
 
   const securityModifier = SECURITY_REVOLT_DELTA[policy.security];
-  const supportBonus = province.localSupport >= 50 ? -0.05 : 0;
+  const supportBonus = city.localSupport >= 50 ? -0.05 : 0;
 
   return Math.max(0, baseChance + securityModifier + supportBonus);
 }
 
 /**
- * Latium (heartland) and any 'foreign' province (Carthaginian/independent
+ * Latium (heartland) and any 'foreign' city (Carthaginian/independent
  * territory, not yet Roman) are never governable. Takes the live
- * ProvinceState rather than a provinceId — moved here from
- * data/provinceDefinitions.ts (Mediterranean plan, chunk MP-G fix) because
- * the original id-only version read the static ProvinceDefinition.status,
- * which never changes, so a province that flipped to Rome mid-game (conquest
+ * CityState rather than an id — moved here from
+ * data/cityDefinitions.ts (Mediterranean plan, chunk MP-G fix) because
+ * the original id-only version read the static CityDefinition.status,
+ * which never changes, so a city that flipped to Rome mid-game (conquest
  * or treaty cession) would incorrectly stay ungovernable forever. Latium is
- * the only 'heartland'-status province today, so checking status directly
+ * the only 'heartland'-status city today, so checking status directly
  * subsumes the old explicit id check.
  */
-export function isGovernable(province: ProvinceState): boolean {
-  return province.status !== 'heartland' && province.status !== 'foreign';
+export function isGovernable(city: CityState): boolean {
+  return city.status !== 'heartland' && city.status !== 'foreign';
 }
 
 /**
@@ -149,22 +149,22 @@ export function isGovernable(province: ProvinceState): boolean {
  * DiplomatDesk.tsx's "Season X of 4" display always read "Season 1" as a
  * result. Foreign-relations plan, chunk WD-D.
  *
- * Shared between tickProvince's foreign short-circuit and its main Roman-
+ * Shared between tickCity's foreign short-circuit and its main Roman-
  * unincorporated branch below, since WD-D reverses the "no Ambassador
- * system for foreign provinces" invariant specifically for Ambassadors, and
- * both cases need identical handling. provinceName is passed rather than
+ * system for foreign cities" invariant specifically for Ambassadors, and
+ * both cases need identical handling. cityName is passed rather than
  * re-resolved since the foreign branch's caller doesn't always have `def`
  * on hand at that point.
  *
  * Does NOT handle expulsion (ambassadorEngine.checkExpulsion/
  * resolveExpulsion) — that needs a fides/lifetimeDignitas delta channel
- * tickProvince's return shape doesn't have (unlike treasuryDelta, which
+ * tickCity's return shape doesn't have (unlike treasuryDelta, which
  * fits because it's an unconditional flat number, not a conditional one-off
  * event). Left as a follow-up.
  */
 function tickPlayerAmbassador(
   ambassador: AmbassadorState,
-  provinceName: string,
+  cityName: string,
 ): { ambassador: AmbassadorState | null; events: string[] } {
   const events: string[] = [];
   let updated = resetAmbassadorCooldowns(ambassador);
@@ -175,18 +175,18 @@ function tickPlayerAmbassador(
   };
 
   if (updated.turnsServed >= 7) {
-    events.push(`✦ ${provinceName}: your ambassador's term ends this season. A new posting bill may be tabled after.`);
+    events.push(`✦ ${cityName}: your ambassador's term ends this season. A new posting bill may be tabled after.`);
   }
   if (updated.turnsServed >= 8) {
-    events.push(`Ambassador term concluded in ${provinceName}.`);
+    events.push(`Ambassador term concluded in ${cityName}.`);
     return { ambassador: null, events };
   }
   return { ambassador: updated, events };
 }
 
 /**
- * Tick one province forward one season.
- * Returns updated province state + resource deltas to apply to the game state.
+ * Tick one city forward one season.
+ * Returns updated city state + resource deltas to apply to the game state.
  *
  * Chunk 2B addition: stagnation tracking.
  * prevInfra is captured before any changes. After all infra updates,
@@ -194,12 +194,12 @@ function tickPlayerAmbassador(
  * lastInfraScore is updated to the current season's final value.
  * The stagnation counter is READ by crisisEngine.calcIndividualEscalation (Economy track).
  */
-export function tickProvince(
-  province: ProvinceState,
+export function tickCity(
+  city: CityState,
   governorMartial: number,
   assetRelBonus: number // bonus from owned assets (e.g. temple patronage)
 ): {
-  updatedProvince: ProvinceState;
+  updatedCity: CityState;
   goldDelta: number;
   imperiumDelta: number;
   corruptionDelta: number;
@@ -207,38 +207,38 @@ export function tickProvince(
   events: string[];
 } {
   const events: string[] = [];
-  let p = { ...province };
+  let p = { ...city };
 
   // Heartland (Latium) — no ticking needed
   if (p.id === 'latium') {
-    return { updatedProvince: p, goldDelta: 0, imperiumDelta: 0, corruptionDelta: 0, treasuryDelta: 0, events };
+    return { updatedCity: p, goldDelta: 0, imperiumDelta: 0, corruptionDelta: 0, treasuryDelta: 0, events };
   }
 
   // Foreign territory (Carthaginian/independent, not yet Roman) — no Governor
-  // system or income applies (see applyProvinceFlips for the conquest path), but relations
+  // system or income applies (see applyCityFlips for the conquest path), but relations
   // still drift: a small mean-zero random walk each season, first-pass/tunable, so a foreign
   // power's relationshipScore isn't frozen at its starting value forever. See
   // checkForeignWarDeclarations for what reading a 'hostile' drift outcome can lead to.
   // A playerAmbassador still ticks here too (foreign-relations plan, WD-D reverses the
-  // "no Ambassador for foreign provinces" invariant specifically for Ambassadors) — see
+  // "no Ambassador for foreign cities" invariant specifically for Ambassadors) — see
   // tickPlayerAmbassador. Nothing else (income, revolt, incorporation) ever applies.
   if (p.status === 'foreign') {
     const drift = Math.round((Math.random() - 0.5) * 4); // −2..+2
     p = { ...p, relationshipScore: Math.max(0, Math.min(100, p.relationshipScore + drift)) };
 
     if (p.playerAmbassador) {
-      const foreignDef = getProvinceDefinition(p.id);
+      const foreignDef = getCityDefinition(p.id);
       const { ambassador, events: ambEvents } = tickPlayerAmbassador(p.playerAmbassador, foreignDef?.name ?? p.id);
       p = { ...p, playerAmbassador: ambassador };
       events.push(...ambEvents);
     }
 
-    return { updatedProvince: p, goldDelta: 0, imperiumDelta: 0, corruptionDelta: 0, treasuryDelta: 0, events };
+    return { updatedCity: p, goldDelta: 0, imperiumDelta: 0, corruptionDelta: 0, treasuryDelta: 0, events };
   }
 
-  const def = getProvinceDefinition(p.id);
+  const def = getCityDefinition(p.id);
   if (!def) {
-    return { updatedProvince: p, goldDelta: 0, imperiumDelta: 0, corruptionDelta: 0, treasuryDelta: 0, events };
+    return { updatedCity: p, goldDelta: 0, imperiumDelta: 0, corruptionDelta: 0, treasuryDelta: 0, events };
   }
 
   let goldDelta = 0;
@@ -253,10 +253,10 @@ export function tickProvince(
     const policy = p.playerGovernor.policy;
 
     // Gold
-    goldDelta += calcProvinceGoldOutput(p, policy, governorMartial);
+    goldDelta += calcCityGoldOutput(p, policy, governorMartial);
 
     // Imperium
-    imperiumDelta += calcProvinceImperiumOutput(p, policy, governorMartial);
+    imperiumDelta += calcCityImperiumOutput(p, policy, governorMartial);
 
     // Corruption
     const corruptionAccrual = calcCorruptionAccrual(policy);
@@ -301,7 +301,7 @@ export function tickProvince(
           policy: { taxation: 'standard', security: 'standard_garrison', development: 'maintain' },
         },
       };
-      events.push(`Governor term concluded in ${def.name}. The province reverts to senatorial control.`);
+      events.push(`Governor term concluded in ${def.name}. The city reverts to senatorial control.`);
     }
   }
 
@@ -358,7 +358,7 @@ export function tickProvince(
     }
   }
 
-  // ── Revolt check (incorporated provinces only) ───────────────────────────
+  // ── Revolt check (incorporated cities only) ───────────────────────────
   if (p.status === 'incorporated' && !p.revoltActive) {
     const policy = p.playerGovernor?.policy ?? p.npcRoleHolder?.policy ?? {
       taxation: 'standard' as TaxationNotch,
@@ -368,7 +368,7 @@ export function tickProvince(
     const revoltChance = calcRevoltChance(p, policy);
     if (revoltChance > 0 && Math.random() < revoltChance) {
       p = { ...p, revoltActive: true };
-      events.push(`⚔ REVOLT in ${def.name}! The province has risen against Roman authority.`);
+      events.push(`⚔ REVOLT in ${def.name}! The city has risen against Roman authority.`);
     }
   }
 
@@ -395,9 +395,9 @@ export function tickProvince(
     };
   }
 
-  // ── Public treasury contribution (incorporated provinces only) ───────────
+  // ── Public treasury contribution (incorporated cities only) ───────────
   // Senate treasury (rome.treasury) income, separate from the player's personal
-  // Gold (calcProvinceGoldOutput). Live-recomputed off whichever tax policy
+  // Gold (calcCityGoldOutput). Live-recomputed off whichever tax policy
   // currently governs, same policy-fallback order used by the revolt check above.
   let treasuryDelta = 0;
   if (p.status === 'incorporated') {
@@ -409,41 +409,41 @@ export function tickProvince(
     treasuryDelta = TAXATION_TREASURY_PER_TURN[policy.taxation];
   }
 
-  return { updatedProvince: p, goldDelta, imperiumDelta, corruptionDelta, treasuryDelta, events };
+  return { updatedCity: p, goldDelta, imperiumDelta, corruptionDelta, treasuryDelta, events };
 }
 
 /**
- * Conquest/defection flips — a 'foreign' province joins Rome when the flag named by
- * its ProvinceDefinition.conquestFlag becomes truthy (set by an event's successEffect,
+ * Conquest/defection flips — a 'foreign' city joins Rome when the flag named by
+ * its CityDefinition.conquestFlag becomes truthy (set by an event's successEffect,
  * e.g. 'setFlag:messanaJoinsRome:true'). Flips owner to 'rome' and status to
  * 'unincorporated' — a freshly-won territory Rome has not yet incorporated, so it falls
  * straight into the existing unincorporated/Ambassador pathway from the next tick on.
- * Idempotent: re-checks province.owner so a province already flipped is left alone.
+ * Idempotent: re-checks city.owner so a city already flipped is left alone.
  */
-export function applyProvinceFlips(
-  provinces: ProvinceState[],
+export function applyCityFlips(
+  cities: CityState[],
   flags: GameState['flags']
-): { provinces: ProvinceState[]; events: string[] } {
+): { cities: CityState[]; events: string[] } {
   const events: string[] = [];
-  const updated = provinces.map(province => {
-    if (province.owner === 'rome') return province;
-    const def = getProvinceDefinition(province.id);
-    if (!def?.conquestFlag || !flags[def.conquestFlag]) return province;
+  const updated = cities.map(city => {
+    if (city.owner === 'rome') return city;
+    const def = getCityDefinition(city.id);
+    if (!def?.conquestFlag || !flags[def.conquestFlag]) return city;
     events.push(`${def.name} has joined Rome. It is now unincorporated territory, open to an Ambassador posting.`);
-    return { ...province, owner: 'rome' as const, status: 'unincorporated' as const };
+    return { ...city, owner: 'rome' as const, status: 'unincorporated' as const };
   });
-  return { provinces: updated, events };
+  return { cities: updated, events };
 }
 
 /**
- * Resolves which "power" a foreign province's owner represents for war
- * purposes. Carthage-owned provinces (Lilybaeum, Alalia, Olbia, Sulci,
+ * Resolves which "power" a foreign city's owner represents for war
+ * purposes. Carthage-owned cities (Lilybaeum, Alalia, Olbia, Sulci,
  * Tripolitania, Carthage itself) all collapse to the single 'carthage'
- * enemyId — they're territory, not separate powers. An independent province
+ * enemyId — they're territory, not separate powers. An independent city
  * (Messana, Syracuse, Agrigentum) is its own power, keyed by its own id.
  * Foreign-relations plan, chunk WD-B/WD-C.
  */
-export function getForeignWarTargetEnemyId(def: ProvinceDefinition): string {
+export function getForeignWarTargetEnemyId(def: CityDefinition): string {
   return def.owner === 'carthage' ? 'carthage' : def.id;
 }
 
@@ -453,22 +453,22 @@ export function getForeignWarTargetEnemyId(def: ProvinceDefinition): string {
  * first-pass/unverified chance, not a telegraphed certainty). Excludes
  * clients (def.clientOf set, i.e. Numidia) — fighting a client means
  * fighting its patron, which this doesn't model (see the Mediterranean
- * plan's design invariant #5). De-dupes multiple provinces sharing the same
+ * plan's design invariant #5). De-dupes multiple cities sharing the same
  * owner (Carthage's outposts) down to a single roll per power per season,
  * and skips any power already at active war with Rome — either from a
  * pre-existing WarState or one rolled earlier this same call.
  */
 export function checkForeignWarDeclarations(
-  provinces: ProvinceState[],
+  cities: CityState[],
   state: GameState,
 ): { newWars: WarState[]; events: string[] } {
   const events: string[] = [];
   const newWars: WarState[] = [];
   const rolledEnemyIds = new Set<string>();
 
-  for (const province of provinces) {
-    if (province.status !== 'foreign') continue;
-    const def = getProvinceDefinition(province.id);
+  for (const city of cities) {
+    if (city.status !== 'foreign') continue;
+    const def = getCityDefinition(city.id);
     if (!def || def.clientOf) continue;
 
     const enemyId = getForeignWarTargetEnemyId(def);
@@ -478,7 +478,7 @@ export function checkForeignWarDeclarations(
       || newWars.some(w => w.enemyId === enemyId);
     if (alreadyAtWar) continue;
 
-    if (getRelationshipTier(province.relationshipScore) !== 'hostile') continue;
+    if (getRelationshipTier(city.relationshipScore) !== 'hostile') continue;
 
     rolledEnemyIds.add(enemyId);
     const AI_DECLARE_WAR_CHANCE = 0.08; // first-pass/tunable, per power per season
@@ -510,68 +510,68 @@ export function checkForeignWarDeclarations(
 }
 
 /**
- * Tick all provinces. Returns updated array + aggregate resource deltas.
+ * Tick all cities. Returns updated array + aggregate resource deltas.
  */
-export function tickAllProvinces(
-  provinces: ProvinceState[],
+export function tickAllCities(
+  cities: CityState[],
   state: GameState
 ): {
-  updatedProvinces: ProvinceState[];
+  updatedCities: CityState[];
   totalGoldDelta: number;
   totalImperiumDelta: number;
   totalTreasuryDelta: number;
   newWars: WarState[];
   events: string[];
 } {
-  const { provinces: flippedProvinces, events: flipEvents } = applyProvinceFlips(provinces, state.flags);
+  const { cities: flippedCities, events: flipEvents } = applyCityFlips(cities, state.flags);
 
   const events: string[] = [...flipEvents];
   let totalGoldDelta = 0;
   let totalImperiumDelta = 0;
   let totalTreasuryDelta = 0;
 
-  const updatedProvinces = flippedProvinces.map(province => {
+  const updatedCities = flippedCities.map(city => {
     // Find governor martial skill
-    const governor = province.playerGovernor;
+    const governor = city.playerGovernor;
     let governorMartial = 0;
     if (governor) {
       const char = state.family.find(c => c.id === governor.characterId);
       governorMartial = char?.skills.martial ?? 0;
     }
 
-    // Calculate asset relationship and Imperium bonuses for this province
+    // Calculate asset relationship and Imperium bonuses for this city
     let assetRelBonus = 0;
     let assetImperiumBonus = 0;
-    for (const asset of province.ownedAssets) {
-      const def = getProvinceAssetDefinition(asset.definitionId);
+    for (const asset of city.ownedAssets) {
+      const def = getCityAssetDefinition(asset.definitionId);
       if (!def) continue;
       const bonus = asset.tier === 2 ? def.tier2Bonus : def.tier1Bonus;
       assetRelBonus += bonus.relationshipPerTurn ?? 0;
       assetImperiumBonus += bonus.imperiumPerTurn ?? 0;
     }
 
-    const { updatedProvince, goldDelta, imperiumDelta, treasuryDelta, events: pEvents } =
-      tickProvince(province, governorMartial, assetRelBonus);
+    const { updatedCity, goldDelta, imperiumDelta, treasuryDelta, events: pEvents } =
+      tickCity(city, governorMartial, assetRelBonus);
 
     totalGoldDelta += goldDelta;
     totalImperiumDelta += imperiumDelta + assetImperiumBonus;
     totalTreasuryDelta += treasuryDelta;
     events.push(...pEvents);
 
-    return updatedProvince;
+    return updatedCity;
   });
 
   // Checked after this season's drift has already been applied to
-  // updatedProvinces, so a power that just crossed into 'hostile' this
+  // updatedCities, so a power that just crossed into 'hostile' this
   // season is eligible immediately rather than one tick behind.
-  const { newWars, events: warDeclarationEvents } = checkForeignWarDeclarations(updatedProvinces, state);
+  const { newWars, events: warDeclarationEvents } = checkForeignWarDeclarations(updatedCities, state);
   events.push(...warDeclarationEvents);
 
-  return { updatedProvinces, totalGoldDelta, totalImperiumDelta, totalTreasuryDelta, newWars, events };
+  return { updatedCities, totalGoldDelta, totalImperiumDelta, totalTreasuryDelta, newWars, events };
 }
 
 /**
- * Apply an ambassador action and return province state delta.
+ * Apply an ambassador action and return city state delta.
  */
 export type AmbassadorActionId =
   | 'build_rapport'
@@ -583,7 +583,7 @@ export type AmbassadorActionId =
 
 export interface AmbassadorActionResult {
   success: boolean;
-  provincePatch: Partial<ProvinceState>;
+  cityPatch: Partial<CityState>;
   resourcePatch: {
     fides?: number;
     denarii?: number;
@@ -594,18 +594,18 @@ export interface AmbassadorActionResult {
 
 export function resolveAmbassadorAction(
   action: AmbassadorActionId,
-  province: ProvinceState,
+  city: CityState,
   _characterMartial: number
 ): AmbassadorActionResult {
   switch (action) {
     case 'build_rapport':
       return {
         success: true,
-        provincePatch: {
-          relationshipScore: Math.min(100, province.relationshipScore + 4),
-          localSupport: Math.min(100, province.localSupport + 5),
-          playerAmbassador: province.playerAmbassador
-            ? { ...province.playerAmbassador, personalRapport: Math.min(50, province.playerAmbassador.personalRapport + 4) }
+        cityPatch: {
+          relationshipScore: Math.min(100, city.relationshipScore + 4),
+          localSupport: Math.min(100, city.localSupport + 5),
+          playerAmbassador: city.playerAmbassador
+            ? { ...city.playerAmbassador, personalRapport: Math.min(50, city.playerAmbassador.personalRapport + 4) }
             : null,
         },
         resourcePatch: { fides: -15 },
@@ -615,9 +615,9 @@ export function resolveAmbassadorAction(
     case 'grain_dole':
       return {
         success: true,
-        provincePatch: {
-          relationshipScore: Math.min(100, province.relationshipScore + 6),
-          localSupport: Math.min(100, province.localSupport + 8),
+        cityPatch: {
+          relationshipScore: Math.min(100, city.relationshipScore + 6),
+          localSupport: Math.min(100, city.localSupport + 8),
         },
         resourcePatch: { denarii: -25 },
         logMessage: 'Grain distributed to the local poor. Warmth toward Rome increases.',
@@ -626,9 +626,9 @@ export function resolveAmbassadorAction(
     case 'intelligence_gathering':
       return {
         success: true,
-        provincePatch: {
-          playerAmbassador: province.playerAmbassador
-            ? { ...province.playerAmbassador, intelRevealed: Math.min(6, province.playerAmbassador.intelRevealed + 1) }
+        cityPatch: {
+          playerAmbassador: city.playerAmbassador
+            ? { ...city.playerAmbassador, intelRevealed: Math.min(6, city.playerAmbassador.intelRevealed + 1) }
             : null,
         },
         resourcePatch: { fides: -10 },
@@ -638,8 +638,8 @@ export function resolveAmbassadorAction(
     case 'corrupt_dealing':
       return {
         success: true,
-        provincePatch: {
-          relationshipScore: Math.max(0, province.relationshipScore - 8),
+        cityPatch: {
+          relationshipScore: Math.max(0, city.relationshipScore - 8),
         },
         resourcePatch: { denarii: 30, corruption: 5 },
         logMessage: 'Corrupt dealing enriches the family — at a cost to Rome\'s standing.',
@@ -648,8 +648,8 @@ export function resolveAmbassadorAction(
     case 'cultural_exchange':
       return {
         success: true,
-        provincePatch: {
-          localSupport: Math.min(100, province.localSupport + 6),
+        cityPatch: {
+          localSupport: Math.min(100, city.localSupport + 6),
         },
         resourcePatch: { fides: -15 },
         logMessage: 'Cultural exchange arranged. A region-specific event has been queued.',
@@ -658,7 +658,7 @@ export function resolveAmbassadorAction(
     default:
       return {
         success: false,
-        provincePatch: {},
+        cityPatch: {},
         resourcePatch: {},
         logMessage: 'Unknown action.',
       };
@@ -666,12 +666,12 @@ export function resolveAmbassadorAction(
 }
 
 /**
- * Calculate gold output from all player-owned assets in a province.
+ * Calculate gold output from all player-owned assets in a city.
  */
-export function calcAssetGoldOutput(province: ProvinceState): number {
+export function calcAssetGoldOutput(city: CityState): number {
   let total = 0;
-  for (const asset of province.ownedAssets) {
-    const def = getProvinceAssetDefinition(asset.definitionId);
+  for (const asset of city.ownedAssets) {
+    const def = getCityAssetDefinition(asset.definitionId);
     if (!def) continue;
     const bonus = asset.tier === 2 ? def.tier2Bonus : def.tier1Bonus;
     total += bonus.goldPerTurn ?? 0;
@@ -680,14 +680,14 @@ export function calcAssetGoldOutput(province: ProvinceState): number {
 }
 
 /**
- * Calculate Fides output from all player-owned assets in a province.
+ * Calculate Fides output from all player-owned assets in a city.
  * (Consolidates the former separate Dignitas/Gratia asset outputs — both
  * resources were removed and folded into Fides.)
  */
-export function calcAssetFidesOutput(province: ProvinceState): number {
+export function calcAssetFidesOutput(city: CityState): number {
   let total = 0;
-  for (const asset of province.ownedAssets) {
-    const def = getProvinceAssetDefinition(asset.definitionId);
+  for (const asset of city.ownedAssets) {
+    const def = getCityAssetDefinition(asset.definitionId);
     if (!def) continue;
     const bonus = asset.tier === 2 ? def.tier2Bonus : def.tier1Bonus;
     total += bonus.fidesPerTurn ?? 0;
@@ -696,21 +696,21 @@ export function calcAssetFidesOutput(province: ProvinceState): number {
 }
 
 /**
- * Deterministic bill name for a province's incorporation bill — the single
+ * Deterministic bill name for a city's incorporation bill — the single
  * source of truth both buildIncorporationBill (below) and any UI checking
  * for an already-pending bill (gameStore.proposeIncorporationBill's dedup
- * check; ProvinceSheet.tsx's button state) key off of, so the two can never
+ * check; CitySheet.tsx's button state) key off of, so the two can never
  * drift out of sync with each other.
  */
-export function getIncorporationBillName(def: ProvinceDefinition): string {
+export function getIncorporationBillName(def: CityDefinition): string {
   return `Incorporate ${def.name}`;
 }
 
 /**
  * Builds a one-off, player-submitted bill that formally incorporates an
- * unincorporated province — passed to gameStore.submitBill (which assigns
+ * unincorporated city — passed to gameStore.submitBill (which assigns
  * the id and deducts the standard Fides cost). Passing it fires
- * resourceEngine.applyEffectString's 'incorporateProvince' token, which
+ * resourceEngine.applyEffectString's 'incorporateCity' token, which
  * flips status to 'incorporated', clears incorporationBillAvailable, and
  * recalls any player Ambassador posted there (the Ambassador system stops
  * applying once incorporated — a Governor is later assigned by lot through
@@ -718,20 +718,20 @@ export function getIncorporationBillName(def: ProvinceDefinition): string {
  *
  * The numeric rewards (lifetimeDignitas/imperium) are a first-pass/unverified
  * balance call, in the same ballpark as the Mediterranean treaty cession
- * terms (data/treatyTerms.ts) for a comparably-sized province — revisit in a
+ * terms (data/treatyTerms.ts) for a comparably-sized city — revisit in a
  * future tuning pass. The ongoing per-season contribution to rome.treasury
- * this unlocks is a separate, general mechanic (see tickProvince's treasury
- * contribution block above) — it applies to every incorporated province, not
+ * this unlocks is a separate, general mechanic (see tickCity's treasury
+ * contribution block above) — it applies to every incorporated city, not
  * just ones incorporated through this bill, so it is not part of passEffect.
  */
-export function buildIncorporationBill(province: ProvinceState, def: ProvinceDefinition): Omit<Bill, 'id'> {
+export function buildIncorporationBill(city: CityState, def: CityDefinition): Omit<Bill, 'id'> {
   return {
     name: getIncorporationBillName(def),
     desc: `A motion to formally absorb ${def.name} into the Republic as a full province — ending its ambassadorial status and placing it under the Governor system permanently.`,
     type: 'constitutional',
     support: 15,
     turnsLeft: 4,
-    passEffect: `lifetimeDignitas+10|imperium+5|incorporateProvince:${province.id}`,
+    passEffect: `lifetimeDignitas+10|imperium+5|incorporateCity:${city.id}`,
     failEffect: 'fides-5',
     playerSubmitted: true,
     repealable: false,
@@ -741,12 +741,12 @@ export function buildIncorporationBill(province: ProvinceState, def: ProvinceDef
 /**
  * Deterministic bill name for a foreign power's declare-war bill — matches
  * getIncorporationBillName's role as the single dedup/UI-state source of
- * truth. Named by province (not by resolved enemyId) since that's what the
+ * truth. Named by city (not by resolved enemyId) since that's what the
  * player is looking at on the sheet; getForeignWarTargetEnemyId still
  * collapses Carthage's outposts to one actual war if more than one such
  * bill somehow gets tabled before the first resolves.
  */
-export function getDeclareWarBillName(def: ProvinceDefinition): string {
+export function getDeclareWarBillName(def: CityDefinition): string {
   return `Declare War on ${def.name}`;
 }
 
@@ -759,7 +759,7 @@ export function getDeclareWarBillName(def: ProvinceDefinition): string {
  * Numbers are first-pass/unverified, same convention as every other bill in
  * this codebase.
  */
-export function buildDeclareWarBill(province: ProvinceState, def: ProvinceDefinition): Omit<Bill, 'id'> {
+export function buildDeclareWarBill(city: CityState, def: CityDefinition): Omit<Bill, 'id'> {
   const enemyId = getForeignWarTargetEnemyId(def);
   return {
     name: getDeclareWarBillName(def),
@@ -776,29 +776,29 @@ export function buildDeclareWarBill(province: ProvinceState, def: ProvinceDefini
 
 /**
  * Deterministic bill name for an ambassador-posting request — keyed by
- * character too (not just province), since the same province could
+ * character too (not just city), since the same city could
  * plausibly have different family members petitioned for it across a
  * playthrough (though not at the same time — dedup still applies per name).
  */
-export function getAmbassadorPostingBillName(def: ProvinceDefinition, characterName: string): string {
+export function getAmbassadorPostingBillName(def: CityDefinition, characterName: string): string {
   return `Ambassador Posting: ${characterName} to ${def.name}`;
 }
 
 /**
  * Builds a one-off, player-submitted bill posting a character as Ambassador
- * — works on both status: 'unincorporated' Roman provinces (fixes the
+ * — works on both status: 'unincorporated' Roman cities (fixes the
  * previously-completely-unwired "Seek Ambassador Posting" button) and
  * status: 'foreign' ones (foreign-relations plan, WD-D — a deliberate
  * reversal of the Mediterranean plan's "no Ambassador system for foreign
  * provinces" invariant, for Ambassadors only). Passing it fires
  * resourceEngine.applyEffectString's 'assignAmbassador' token. The 2-year
  * (8-season) term this creates is enforced by tickPlayerAmbassador, called
- * from both of tickProvince's relevant branches. Numbers first-pass/
+ * from both of tickCity's relevant branches. Numbers first-pass/
  * unverified, same convention as every other bill in this codebase.
  */
 export function buildAmbassadorPostingBill(
-  province: ProvinceState,
-  def: ProvinceDefinition,
+  city: CityState,
+  def: CityDefinition,
   characterId: string,
   characterName: string,
 ): Omit<Bill, 'id'> {
@@ -808,7 +808,7 @@ export function buildAmbassadorPostingBill(
     type: 'constitutional',
     support: 10,
     turnsLeft: 3,
-    passEffect: `assignAmbassador:${province.id}:${characterId}`,
+    passEffect: `assignAmbassador:${city.id}:${characterId}`,
     failEffect: 'fides-3',
     playerSubmitted: true,
     repealable: false,
