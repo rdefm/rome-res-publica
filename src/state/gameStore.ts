@@ -43,6 +43,8 @@ import { STARTING_BILLS } from '../data/billTemplates';
 import { buildInitialCityStates, getCityDefinition } from '../data/cityDefinitions';
 import type { TheatreState } from '../models/theatre';
 import { REGIONS } from '../data/theatreMap';
+import type { Army } from '../models/army';
+import { combine as engineCombineArmies, divide as engineDivideArmy } from '../engine/armyEngine';
 import { processSeason } from '../engine/turnSequencer';
 import { incrementLegacy, initLegacyObjectives } from '../engine/legacyEngine';
 import { LEGACY_DEFINITIONS } from '../data/legacyDefinitions';
@@ -370,6 +372,13 @@ export interface GameState {
   // the static Region/Edge data stays in data/theatreMap.ts). Unread by any
   // engine yet — C2+ builds armies/movement/AI on top of this.
   theatre: TheatreState;
+
+  // ── Campaign Map plan, Chunk C2 — armies. A new, parallel model to the
+  // existing Character.raisedLegions/veterans (TroopUnit) personal-legion
+  // system — NOT a replacement (see models/army.ts's header comment for the
+  // full reasoning). No movement yet (C5); no muster (C3) — armies exist
+  // here only via debug spawn/combine/divide.
+  armies: Army[];
 
   // ── Military (Chunk M) ──────────────────────────────────────────────────
   senateResponse: SenateResponseState | null;
@@ -720,6 +729,19 @@ export interface GameActions {
   recruitCityClient: (cityId: string, clientId: string) => void;
   updateCities: (cities: CityState[]) => void;
 
+  // ── Campaign Map plan, Chunk C2 — armies ────────────────────────────────
+  /** Debug-only entry point (per C2's "creatable in debug" goal) — C3 adds
+   *  the real muster flow. Spawns a fresh Army with the given shape. */
+  spawnArmy: (army: Army) => void;
+  combineArmies: (armyIdA: string, armyIdB: string) => void;
+  divideArmy: (armyId: string, unitIds: string[], newCommanderId?: string | null) => void;
+  /** Character must exist in `family` (i.e. be alive — this codebase has no
+   *  other "is this character alive" signal); no location gate is enforced
+   *  since Character has no location field at all today — the plan's own
+   *  fallback allowance for exactly this case. */
+  assignArmyCommander: (armyId: string, characterId: string | null) => void;
+  setArmyStance: (armyId: string, stance: Army['stance']) => void;
+
   // ── Military (Chunk M) ──────────────────────────────────────────────────
   raiseLevy: (characterId: string, musterProvinceId: string) => void;
   musterVeterans: (characterId: string) => void;
@@ -1046,6 +1068,7 @@ export const INITIAL_STATE: GameState = {
   cities: buildInitialCityStates(),
   lifetimeImperium: 0,
   theatre: buildInitialTheatreState(),
+  armies: [],
 
   // Military (Chunk M)
   senateResponse: null,
@@ -3549,6 +3572,61 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   },
 
   updateCities: (cities) => set({ cities }),
+
+  // ── Campaign Map plan, Chunk C2 — armies ──────────────────────────────────
+
+  spawnArmy: (army) => {
+    set(s => ({ armies: [...s.armies, army] }));
+  },
+
+  combineArmies: (armyIdA, armyIdB) => {
+    const s = get();
+    const a = s.armies.find(ar => ar.id === armyIdA);
+    const b = s.armies.find(ar => ar.id === armyIdB);
+    if (!a || !b) return;
+
+    const martialOf = (commanderId: string | null) =>
+      commanderId ? (s.family.find(c => c.id === commanderId)?.skills.martial ?? 0) : 0;
+
+    const merged = engineCombineArmies(a, b, martialOf(a.commanderId), martialOf(b.commanderId), `army-${Date.now()}`);
+    if (!merged) return;
+
+    const label = turnLabel(s);
+    set({
+      armies: [...s.armies.filter(ar => ar.id !== armyIdA && ar.id !== armyIdB), merged],
+      log: [...s.log, mkLog(label, `${a.name} and ${b.name} combine into ${merged.name}.`, 'neutral')],
+    });
+  },
+
+  divideArmy: (armyId, unitIds, newCommanderId = null) => {
+    const s = get();
+    const army = s.armies.find(ar => ar.id === armyId);
+    if (!army) return;
+
+    const result = engineDivideArmy(army, unitIds, `army-${Date.now()}`, newCommanderId);
+    if (!result) return;
+    const [remaining, split] = result;
+
+    const label = turnLabel(s);
+    set({
+      armies: [...s.armies.filter(ar => ar.id !== armyId), remaining, split],
+      log: [...s.log, mkLog(label, `${army.name} divides — ${split.units.length} unit(s) form ${split.name}.`, 'neutral')],
+    });
+  },
+
+  assignArmyCommander: (armyId, characterId) => {
+    const s = get();
+    if (characterId && !s.family.some(c => c.id === characterId)) return; // must be alive (i.e. in family)
+    set({
+      armies: s.armies.map(ar => ar.id === armyId ? { ...ar, commanderId: characterId } : ar),
+    });
+  },
+
+  setArmyStance: (armyId, stance) => {
+    set(s => ({
+      armies: s.armies.map(ar => ar.id === armyId ? { ...ar, stance } : ar),
+    }));
+  },
 
   // ── Military Actions (Chunk M) ───────────────────────────────────────────────
 

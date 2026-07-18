@@ -2,15 +2,13 @@ import type { CityDefinition } from '../models/city';
 
 // ─── Italy City Definitions ───────────────────────────────────────────────────
 // Node positions (nodeX, nodeY) are expressed as fractions (0–1) of the map
-// image dimensions. These are tuned for the Italia pixel-art asset supplied
-// (portrait orientation, ~1000×1100px source).
-//
-// The image was inspected visually:
-//   Mediolanum (Cisalpine Gaul) → top-centre (Po valley)
-//   Veii (Etruria)              → west-centre coast
-//   Rome (Latium)                → centre, near the Tiber label
-//   Beneventum (Samnium)        → south-east of Latium
-//   Capua (Campania)             → south, below Latium on Tyrrhenian side
+// image dimensions. Campaign Map plan, Chunk C2: retuned for the
+// "italy-mosaic" map (1024×1536, replaces the earlier map_italia.png) using
+// an interactive drag-to-position tool, then pasted back verbatim — not
+// hand-guessed. That map draws Italy, Sicily, Sardinia/Corsica, and the
+// African coast all within frame, so every city below (including the three
+// African ones) now sits on real drawn geography rather than an undrawn
+// parchment margin.
 //
 // NAMING NOTE (Campaign Map plan, Chunk C1): these five entries kept their
 // original `id`s (latium/etruria/samnium/campania/cisalpine_gaul) — every
@@ -38,8 +36,8 @@ export const ITALY_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 6,
     baseImperiumOutput: 4,
-    nodeX: 0.520,
-    nodeY: 0.260,
+    nodeX: 0.292,
+    nodeY: 0.154,
     clientIds: ['gallic_chieftains_son'],
     npcRoleHolder: {
       name: 'C. Servilius',
@@ -65,8 +63,8 @@ export const ITALY_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 8,
     baseImperiumOutput: 1,
-    nodeX: 0.260,
-    nodeY: 0.460,
+    nodeX: 0.365,
+    nodeY: 0.313,
     clientIds: ['etruscan_augur'],
     npcRoleHolder: {
       name: 'M. Fulvius',
@@ -90,8 +88,8 @@ export const ITALY_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 0,
     baseImperiumOutput: 0,
-    nodeX: 0.440,
-    nodeY: 0.530,
+    nodeX: 0.455,
+    nodeY: 0.360,
     clientIds: [],
     npcRoleHolder: {
       name: '— Rome itself —',
@@ -115,8 +113,8 @@ export const ITALY_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 5,
     baseImperiumOutput: 5,
-    nodeX: 0.570,
-    nodeY: 0.570,
+    nodeX: 0.595,
+    nodeY: 0.391,
     clientIds: ['samnite_gladiator_trainer'],
     npcRoleHolder: {
       name: 'P. Papirius',
@@ -142,8 +140,8 @@ export const ITALY_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 12,
     baseImperiumOutput: 1,
-    nodeX: 0.400,
-    nodeY: 0.640,
+    nodeX: 0.532,
+    nodeY: 0.391,
     clientIds: ['campanian_grain_factor'],
     npcRoleHolder: {
       name: 'A. Atilius',
@@ -160,13 +158,10 @@ export const ITALY_CITIES: CityDefinition[] = [
 // or (Numidia) a Carthaginian client. None are governable; Rome has no
 // Governor/Ambassador presence until a city flips via conquestFlag.
 //
-// Map art note: there is no dedicated Mediterranean map asset yet. These nodes
-// are rendered on the existing map_italia.png. Corsica, Sardinia, and the NE
-// tip of Sicily are actually drawn on that image, so those nodes sit on their
-// real landmasses. Agrigentum, Lilybaeum, Syracuse (the rest of Sicily) and
-// the three African cities are off the drawn frame — their nodeX/nodeY
-// place them in open sea/parchment margin in roughly the right compass
-// direction as a placeholder until a proper Mediterranean map ships.
+// Map art note (Campaign Map plan, Chunk C2): the "italy-mosaic" map draws
+// Sicily, Sardinia/Corsica, AND the African coast within frame — every node
+// below sits on real drawn geography now, not an off-frame parchment-margin
+// placeholder (the old map_italia.png's limitation, now retired).
 export const MEDITERRANEAN_CITIES: CityDefinition[] = [
   {
     id: 'messana',
@@ -184,8 +179,8 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 0,
     baseImperiumOutput: 0,
-    nodeX: 0.559,
-    nodeY: 0.821,
+    nodeX: 0.562,
+    nodeY: 0.533,
     clientIds: [],
     npcRoleHolder: {
       name: 'Mamertine garrison council',
@@ -211,8 +206,8 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 0,
     baseImperiumOutput: 0,
-    nodeX: 0.615,
-    nodeY: 0.891,
+    nodeX: 0.532,
+    nodeY: 0.590,
     clientIds: [],
     npcRoleHolder: {
       name: 'Hiero II',
@@ -236,8 +231,8 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 0,
     baseImperiumOutput: 0,
-    nodeX: 0.484,
-    nodeY: 0.905,
+    nodeX: 0.449,
+    nodeY: 0.575,
     clientIds: [],
     npcRoleHolder: {
       name: 'Agrigentine assembly',
@@ -261,8 +256,8 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 0,
     baseImperiumOutput: 0,
-    nodeX: 0.353,
-    nodeY: 0.905,
+    nodeX: 0.360,
+    nodeY: 0.540,
     clientIds: [],
     npcRoleHolder: {
       name: 'Carthaginian garrison command',
@@ -288,8 +283,8 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 0,
     baseImperiumOutput: 0,
-    nodeX: 0.247,
-    nodeY: 0.476,
+    nodeX: 0.206,
+    nodeY: 0.271,
     clientIds: [],
     npcRoleHolder: {
       name: 'Carthaginian factor',
@@ -313,8 +308,8 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 0,
     baseImperiumOutput: 0,
-    nodeX: 0.237,
-    nodeY: 0.597,
+    nodeX: 0.196,
+    nodeY: 0.356,
     clientIds: [],
     npcRoleHolder: {
       name: 'Carthaginian factor',
@@ -338,8 +333,8 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 0,
     baseImperiumOutput: 0,
-    nodeX: 0.192,
-    nodeY: 0.718,
+    nodeX: 0.179,
+    nodeY: 0.448,
     clientIds: [],
     npcRoleHolder: {
       name: 'Carthaginian factor',
@@ -363,8 +358,8 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 0,
     baseImperiumOutput: 0,
-    nodeX: 0.565,
-    nodeY: 0.942,
+    nodeX: 0.248,
+    nodeY: 0.649,
     clientIds: [],
     npcRoleHolder: {
       name: 'The Carthaginian Senate',
@@ -391,8 +386,8 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 0,
     baseImperiumOutput: 0,
-    nodeX: 0.464,
-    nodeY: 0.956,
+    nodeX: 0.120,
+    nodeY: 0.636,
     clientIds: [],
     npcRoleHolder: {
       name: 'The Numidian court',
@@ -416,8 +411,8 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     startingLocalSupport: 0,
     baseGoldOutput: 0,
     baseImperiumOutput: 0,
-    nodeX: 0.665,
-    nodeY: 0.942,
+    nodeX: 0.432,
+    nodeY: 0.688,
     clientIds: [],
     npcRoleHolder: {
       name: 'Carthaginian factor',

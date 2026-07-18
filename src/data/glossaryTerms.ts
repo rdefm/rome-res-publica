@@ -491,4 +491,16 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     definition: 'Progress toward a Secret that persists across failed attempts, raising the odds of the next one — yours against a leader when Gather Intelligence comes up empty, or a hostile leader\'s against your family when their attempt fails.',
     relatedTab: 'Forum',
   },
+  {
+    id: 'army',
+    term: 'Army',
+    definition: 'A stack of whole units stationed in a theatre region — state-owned, a rival commander\'s, or Carthage\'s. Combine two armies in the same region into one, or divide whole units off into a new detachment. A leaderless army may garrison but never attack.',
+    relatedTab: 'Provinciae',
+  },
+  {
+    id: 'army-stance',
+    term: 'Stance',
+    definition: 'An army\'s standing order for the season: Give Battle accepts an engagement if one arises, Avoid Battle tries to withdraw instead. Set per army from its card.',
+    relatedTab: 'Provinciae',
+  },
 ];

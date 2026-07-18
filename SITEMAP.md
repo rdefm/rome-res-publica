@@ -113,11 +113,13 @@ Province map, governor policy, military campaigns, provincial clients, ambassado
 
 ## 4a. Campaign Map plan ("The Consul's Map") — Theatre Data Layer (Chunk C1, cross-cutting)
 
-The strategic military redesign's first chunk: a coarse **theatre map** of 8 `Region`s, each grouping one or more existing Cities (§4). Zero gameplay change this chunk — pure data model + a read-only DebugPanel listing. Later chunks (C2–C9, not yet built) add armies, muster, elections for a theatre command, movement, AI, turn-end campaign resolution/playback, the battle bridge, and war standing on top of this.
+The strategic military redesign's first chunk: a coarse **theatre map** of 8 `Region`s, each grouping one or more existing Cities (§4). Zero gameplay change this chunk — pure data model + a read-only DebugPanel listing. See §4b for Chunk C2 (Armies), which builds on this. Later chunks (C3–C9, not yet built) add muster, elections for a theatre command, movement, AI, turn-end campaign resolution/playback, the battle bridge, and war standing.
+
+**Map art (Chunk C2 addition):** `MapView.tsx` now renders `src/assets/images/italy-mosaic.png` (1024×1536; replaces `map_italia.png`, still on disk but unreferenced) — a mosaic-style map drawing Italy, Sicily, Sardinia/Corsica, AND the African coast in-frame. All 15 city `nodeX`/`nodeY` positions in `cityDefinitions.ts` and all 8 regions' `borderPoints` (see below) were hand-placed/traced against this map using two standalone tools kept at `tools/theatre-map/` (`city-node-positioning-tool.html`, `region-border-tracer-tool.html` — self-contained, drag-to-position / click-to-trace, export paste-ready coordinate blocks; see that folder's own README for how to regenerate them if the map art changes again).
 
 **Region ↔ City note:** the plan's original 14-region sketch invented regions (Picenum, Apulia, Bruttium, Panormus) with no backing city anywhere in the codebase. Rather than fabricate content, the region list was collapsed to match real data: Latium/Etruria/Samnium/Campania/Cisalpine Gaul each keep a single-city region (their existing city, unchanged id — only its display `name`/`latinName` changed, e.g. Campania's city is now shown as "Capua", Latium's as "Rome"; ids were deliberately left alone since they're referenced as plain strings — not through the type system — all over the codebase, and an id rename would be a silent, uncatchable-by-`tsc` breakage risk for a purely cosmetic change), while Sicily/Sardinia/Africa — where multiple existing cities already sit — each became one multi-city region.
 
-**Models:** `theatre.ts` (new) — `RegionId` (the 8-region union), `Controller` (`'rome' | 'carthage' | 'neutral'`, distinct from a City's own `CityOwner` since a region can contain cities under different owners), `Region` (id/name/terrainId/coastal/cityIds/baseManpower/startingController), `Edge` (land/strait/sea adjacency, sea lanes carry a `laneRisk`), `TheatreState` (persisted: `controllers`/`contested` — the static Region/Edge data itself lives in `data/`, not here).
+**Models:** `theatre.ts` (new) — `RegionId` (the 8-region union), `Controller` (`'rome' | 'carthage' | 'neutral'`, distinct from a City's own `CityOwner` since a region can contain cities under different owners), `Region` (id/name/terrainId/coastal/cityIds/baseManpower/startingController; **Chunk C2** added `borderPoints?: {x,y}[]` — a hand-traced outline for `MapView.tsx`'s rendering only, no engine reads it), `Edge` (land/strait/sea adjacency, sea lanes carry a `laneRisk`), `TheatreState` (persisted: `controllers`/`contested` — the static Region/Edge data itself lives in `data/`, not here).
 
 **Data:** `theatreMap.ts` (new) — `REGIONS` (the 8 launch regions) and `THEATRE_EDGES` (12 edges: 5 Italian land edges hubbed on Latium, one Campania↔Sicilia strait standing in for the historical Bruttium crossing point since that region doesn't exist here, and 6 sea lanes). `terrainId` values are constrained to the four ids the Legate's Line battle engine actually understands (`open_plain`/`rough_hills`/`river_crossing`/`coastal_plain` — `BALANCE.battle.terrains`), not the plan's informal "plains/hills/mountains" labels.
 
@@ -129,7 +131,37 @@ The strategic military redesign's first chunk: a coarse **theatre map** of 8 `Re
 
 **DebugPanel.tsx:** new "theatre" tab — read-only listing of all 8 regions (controller, live relationship, terrain, manpower, cities, adjacency by edge kind).
 
-**Baseline note for future chunks:** verify before building C2+ — Legate's Line (M1–M11, §5a) is already fully merged on this branch, including M9 ("War Score & provisional scheduler", which the plan marks superseded by C9's derived war standing) and M10 (peace negotiation, which the plan wants C9 to retarget). The plan's own baseline check ("verify `src/engine/battle/` absent") does not hold here — reconcile explicitly when a future chunk touches C4/C8/C9 rather than assuming a greenfield build.
+**Baseline note for future chunks:** verify before building C3+ — Legate's Line (M1–M11, §5a) is already fully merged on this branch, including M9 ("War Score & provisional scheduler", which the plan marks superseded by C9's derived war standing) and M10 (peace negotiation, which the plan wants C9 to retarget). The plan's own baseline check ("verify `src/engine/battle/` absent") does not hold here — reconcile explicitly when a future chunk touches C4/C8/C9 rather than assuming a greenfield build.
+
+---
+
+## 4b. Campaign Map plan — Armies: Model, Store & Combine/Divide (Chunk C2, cross-cutting)
+
+Armies exist as first-class state: creatable in debug, listed/managed per region on the real theatre map. **Not yet built:** movement (C5), muster (C3), a theatre command (C4) — this chunk is the data model, store wiring, and UI shell only.
+
+**Scope decision (deviation from the plan text, documented per the plan's own §0 instruction):** the plan's C2 draft says Army "replaces" the existing personal-legion system via a migration. `Character.raisedLegions`/`veterans` (`TroopUnit`, §4/§8) is the live, fully-built output of Legate's Line's M4/M8 chunks — 32 files touch it. Army is a **new, parallel** model for state-owned/rival-commander/Carthage armies; personal troops stay exactly as they are, unmigrated. Folding them together is deferred to whichever future chunk (C4 or C8) actually needs it.
+
+**Map UI (also this chunk, at the user's request):** cities stay tappable pins opening `CitySheet` exactly as before; tapping empty ground inside a region's traced border now opens a new `RegionSheet`; a region with ≥1 army shows a marker (⚔) at that army's stationed city, tapping it opens `RegionSheet` focused on that army. Region "ground" is a soft invisible touch target sized from the mean/spread of that region's traced `borderPoints` (§4a) — not precise polygon hit-testing, which the plain-View rendering approach (no `react-native-svg` — see §4a) doesn't easily support; good enough in practice since regions don't tightly abut each other on this map.
+
+**Models:** `army.ts` (new) — `ArmyUnit` (the Legate's Line `BattleUnit` shape — `id/unitClass/strength/veterancy/loyalty/elephantSteady/sourceRef` — plus `homeRegion/raisedBy/raisedSeason`), `ArmyOwner` (`'player' | 'rome_state' | 'rome_rival' | 'carthage'`), `MovementOrder` (placeholder, C5 defines the real shape), `Army` (id/name/owner/commanderId/location/`stationedCityId`/units/stance/ordersThisSeason/fatigued/unpaidSeasons). `stationedCityId` isn't in the plan's original sketch — added so a multi-city region (Sicilia/Sardinia/Africa) can anchor an army/marker at a specific city for flavor/siege framing without regions losing their C1-established role as the atomic unit for movement/adjacency/control-flip.
+
+**Engine:** `armyEngine.ts` (new, pure) — `combine(a, b, martialA, martialB, newId)` (same location+owner only, else `null`; commander = higher martial; name/stance/stationedCityId inherited from the larger army), `divide(army, unitIds, newArmyId, newCommanderId?)` (whole units only, non-empty proper subset, else `null`; split-off army defaults `commanderId: null`), `armyStrength(army)` (Σ `strength × classWeight × veterancyMult` — reuses Legate's Line's real `BALANCE.battle.unitStats`/`.veterancy` tables rather than a new parallel weight table the plan's text names), `upkeepFor(army, theatre, cities)` (territory multiplier from live `TheatreState.controllers` vs. the army's power, relationship discount via `theatreEngine.getRegionRelationship` — cost math only; charging it and shortfall consequences are C3's job). Fresh ids for `combine`/`divide` are caller-supplied (`gameStore.ts`), keeping the engine itself free of `Date.now()`/`Math.random()`.
+
+**Store (`gameStore.ts`):** `armies: Army[]` + `spawnArmy` (debug-only entry point), `combineArmies`, `divideArmy`, `assignArmyCommander` (no location gate — Character has no location field at all today, the plan's own documented fallback), `setArmyStance`.
+
+**Components** — `src/components/provinciae/`
+| File | Summary |
+|---|---|
+| `ArmyCard.tsx` | New. One army's full card — commander, unit rows (class/veterancy pips/strength+loyalty mini-bars, mirrors `MilitaryTab.tsx`'s `TroopRow`), upkeep, stance toggle, Combine/Divide/Assign-Commander. Divide and Assign-Commander are self-contained modals; Combine only signals intent upward (`onCombinePress`) since picking a partner needs cross-army visibility only the parent has. |
+| `RegionSheet.tsx` | New. Opened from the map (empty region ground, or an army marker with `focusArmyId` set). Region overview (controller, live relationship, terrain, cities inside it) + every `Army` there as an `ArmyCard`, plus the Combine partner-picker modal. |
+
+**Balance:** `BALANCE.campaign.upkeep` (`baseDenariiPerCohort`, `friendlyTerritoryMult`/`neutralTerritoryMult`/`hostileTerritoryMult`, `maxRelationshipDiscount`) — first-pass/unverified, C10 tunes.
+
+**DebugPanel.tsx:** the "theatre" tab (§4a) grew a per-region "+ owner" row spawning a 2-unit test army, and a read-only armies list.
+
+**Glossary:** `army`, `army-stance` added.
+
+**Tests:** `armyEngine.test.ts` (new, 23 tests) — combine/divide unit conservation, ownership/location guards, `armyStrength` monotonicity in strength/veterancy, `upkeepFor`'s territory/relationship/cohort-count math.
 
 ---
 

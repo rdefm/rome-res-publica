@@ -17,8 +17,10 @@ import { useGameStore } from '../state/gameStore';
 import MapView from '../components/provinciae/MapView';
 import CitySheet from '../components/provinciae/CitySheet';
 import LatiumSheet from '../components/provinciae/LatiumSheet';
+import RegionSheet from '../components/provinciae/RegionSheet';
 import type { GovernorPolicy } from '../models/city';
 import type { AmbassadorActionId } from '../engine/cityEngine';
+import type { RegionId } from '../models/theatre';
 import { calcTotalImperium } from '../engine/troopEngine';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -26,8 +28,13 @@ const SHEET_SNAP_HEIGHT = SCREEN_HEIGHT * 0.72;
 
 export default function ProvinciaeScreen() {
   const [selectedProvinceId, setSelectedProvinceId] = useState<string | null>(null);
+  // Campaign Map plan, Chunk C2 — a region and a city are different tap
+  // targets on the map now (Chunk C1); mutually exclusive with
+  // selectedProvinceId, sharing the same bottom-sheet animation/container.
+  const [selectedRegionId, setSelectedRegionId] = useState<RegionId | null>(null);
+  const [focusArmyId, setFocusArmyId] = useState<string | null>(null);
   const sheetAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-  const sheetVisible = selectedProvinceId !== null;
+  const sheetVisible = selectedProvinceId !== null || selectedRegionId !== null;
 
   // ── Store state — only fields that exist in GameState ────────────────────────
   const provinces                = useGameStore(s => s.cities);
@@ -39,6 +46,8 @@ export default function ProvinciaeScreen() {
   const campaignVotes            = useGameStore(s => s.campaignVotes);
   const selectedCharacterId      = useGameStore(s => s.selectedCharacterId);
   const bills                    = useGameStore(s => s.bills);
+  const armies                   = useGameStore(s => s.armies);
+  const theatre                  = useGameStore(s => s.theatre);
 
   // ── Store actions — only actions that exist in GameActions ───────────────────
   const updateProvincePolicy     = useGameStore(s => s.updateCityPolicy);
@@ -52,6 +61,10 @@ export default function ProvinciaeScreen() {
   const startCampaign            = useGameStore(s => s.startCampaign);
   const volunteerOfficer         = useGameStore(s => s.volunteerOfficer);
   const resolveOfficerDecision   = useGameStore(s => s.resolveOfficerDecision);
+  const combineArmies            = useGameStore(s => s.combineArmies);
+  const divideArmy               = useGameStore(s => s.divideArmy);
+  const assignArmyCommander      = useGameStore(s => s.assignArmyCommander);
+  const setArmyStance            = useGameStore(s => s.setArmyStance);
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const selectedProvince = provinces.find(p => p.id === selectedProvinceId);
@@ -83,7 +96,21 @@ export default function ProvinciaeScreen() {
   // ── Sheet animation ──────────────────────────────────────────────────────────
 
   function openSheet(provinceId: string) {
+    setSelectedRegionId(null);
+    setFocusArmyId(null);
     setSelectedProvinceId(provinceId);
+    Animated.spring(sheetAnim, {
+      toValue: SCREEN_HEIGHT - SHEET_SNAP_HEIGHT,
+      useNativeDriver: false,
+      tension: 65,
+      friction: 11,
+    }).start();
+  }
+
+  function openRegionSheet(regionId: RegionId, armyId?: string) {
+    setSelectedProvinceId(null);
+    setFocusArmyId(armyId ?? null);
+    setSelectedRegionId(regionId);
     Animated.spring(sheetAnim, {
       toValue: SCREEN_HEIGHT - SHEET_SNAP_HEIGHT,
       useNativeDriver: false,
@@ -97,7 +124,11 @@ export default function ProvinciaeScreen() {
       toValue: SCREEN_HEIGHT,
       duration: 240,
       useNativeDriver: false,
-    }).start(() => setSelectedProvinceId(null));
+    }).start(() => {
+      setSelectedProvinceId(null);
+      setSelectedRegionId(null);
+      setFocusArmyId(null);
+    });
   }
 
   const panResponder = useRef(
@@ -174,6 +205,8 @@ export default function ProvinciaeScreen() {
           provinces={provinces}
           onProvincePress={openSheet}
           selectedProvinceId={selectedProvinceId}
+          armies={armies}
+          onRegionPress={openRegionSheet}
         />
       </View>
 
@@ -195,7 +228,7 @@ export default function ProvinciaeScreen() {
       </View>
 
       {/* Bottom sheet overlay */}
-      {sheetVisible && selectedProvince && (
+      {sheetVisible && (selectedProvince || selectedRegionId) && (
         <>
           <Animated.View
             style={[
@@ -216,9 +249,23 @@ export default function ProvinciaeScreen() {
             style={[styles.sheetContainer, { top: sheetAnim }]}
             {...panResponder.panHandlers}
           >
-            {selectedProvince.id === 'latium' ? (
+            {selectedRegionId ? (
+              <RegionSheet
+                regionId={selectedRegionId}
+                armies={armies}
+                cities={provinces}
+                theatre={theatre}
+                family={family}
+                focusArmyId={focusArmyId}
+                onClose={closeSheet}
+                onCombineArmies={combineArmies}
+                onDivideArmy={divideArmy}
+                onAssignCommander={assignArmyCommander}
+                onSetStance={setArmyStance}
+              />
+            ) : selectedProvince?.id === 'latium' ? (
               <LatiumSheet onClose={closeSheet} />
-            ) : (
+            ) : selectedProvince ? (
             <CitySheet
               province={selectedProvince}
               family={family}
@@ -250,7 +297,7 @@ export default function ProvinciaeScreen() {
               onVolunteerOfficer={(provinceId, charId) => volunteerOfficer(provinceId, charId)}
               onResolveOfficerDecision={(provinceId, idx, risk) => resolveOfficerDecision(provinceId, idx, risk)}
             />
-            )}
+            ) : null}
           </Animated.View>
         </>
       )}

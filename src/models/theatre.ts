@@ -49,6 +49,14 @@ export interface Region {
    *  the data shape is settled. */
   baseManpower: number;
   startingController: Controller;
+  /** Rough hand-traced border, fractions (0–1) of the theatre map image —
+   *  same convention as CityDefinition's nodeX/nodeY. Chunk C2, map-visual
+   *  work: purely a rendering aid for MapView.tsx (a soft outline showing
+   *  where one region's territory reads as ending and the next beginning);
+   *  no engine reads this — adjacency/control/combat all key off RegionId,
+   *  never off geometry. Optional: a region without one falls back to no
+   *  outline (just its city pins), not an error. */
+  borderPoints?: { x: number; y: number }[];
 }
 
 export type EdgeKind = 'land' | 'strait' | 'sea';

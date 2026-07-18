@@ -29,6 +29,8 @@ import { simulateBattles, type BattleSimConfig, type BattleSimAggregate } from '
 // Campaign Map plan, Chunk C1 — theatre map debug listing.
 import { REGIONS } from '../../data/theatreMap';
 import { getAdjacent, getRegionRelationship } from '../../engine/theatreEngine';
+import type { Army } from '../../models/army';
+import type { RegionId } from '../../models/theatre';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -588,6 +590,53 @@ function WarSection() {
 
 function TheatreSection() {
   const cities = useGameStore(s => s.cities);
+  const armies = useGameStore(s => s.armies);
+  const spawnArmy = useGameStore(s => s.spawnArmy);
+
+  const owners: Army['owner'][] = ['player', 'rome_state', 'rome_rival', 'carthage'];
+
+  function spawnTestArmy(regionId: RegionId, owner: Army['owner']) {
+    const region = REGIONS.find(r => r.id === regionId);
+    const seatCityId = region?.cityIds[0] ?? null;
+    const n = armies.filter(a => a.location === regionId).length + 1;
+    const army: Army = {
+      id: `debug-army-${Date.now()}`,
+      name: `Legio ${n} (${region?.name ?? regionId})`,
+      owner,
+      commanderId: null,
+      location: regionId,
+      stationedCityId: seatCityId,
+      units: [
+        {
+          id: `unit-${Date.now()}-a`,
+          unitClass: 'legionary',
+          strength: 85,
+          veterancy: 'trained',
+          loyalty: 55,
+          elephantSteady: false,
+          homeRegion: regionId,
+          raisedBy: owner === 'player' ? 'player' : owner === 'carthage' ? 'npc' : 'state',
+          raisedSeason: 1,
+        },
+        {
+          id: `unit-${Date.now()}-b`,
+          unitClass: 'cavalry_light',
+          strength: 70,
+          veterancy: 'raw',
+          loyalty: 50,
+          elephantSteady: false,
+          homeRegion: regionId,
+          raisedBy: owner === 'player' ? 'player' : owner === 'carthage' ? 'npc' : 'state',
+          raisedSeason: 1,
+        },
+      ],
+      stance: 'give_battle',
+      ordersThisSeason: null,
+      fatigued: false,
+      unpaidSeasons: 0,
+    };
+    spawnArmy(army);
+  }
 
   return (
     <View style={styles.section}>
@@ -616,10 +665,40 @@ function TheatreSection() {
                 strait: {adjacentStrait.join(', ') || 'none'} ·
                 sea: {adjacentSea.join(', ') || 'none'}
               </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                {owners.map(owner => (
+                  <TouchableOpacity key={owner} onPress={() => spawnTestArmy(region.id, owner)}>
+                    <Text style={styles.flagNote}>+ {owner}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           </View>
         );
       })}
+
+      <Text style={[styles.sectionTitle, { marginTop: SPACING.md }]}>
+        ARMIES ({armies.length}) — Chunk C2
+      </Text>
+      <Text style={styles.eventId}>
+        Spawned here or via the real Provinciae map (tap a region's army marker, or empty
+        region ground). Combine/Divide/Assign Commander/Stance all live in the real UI
+        (RegionSheet/ArmyCard) — this list is read-only, for a quick sanity check.
+      </Text>
+      {armies.length === 0 && <Text style={styles.emptyText}>No armies yet — spawn one above.</Text>}
+      {armies.map(army => (
+        <View key={army.id} style={styles.eventRow}>
+          <View style={styles.eventRowInner}>
+            <Text style={styles.eventTitle}>
+              {army.name} — {army.owner} @ {army.location}
+              {army.stationedCityId ? ` (${army.stationedCityId})` : ''}
+            </Text>
+            <Text style={styles.eventId}>
+              {army.units.length} unit(s) · commander: {army.commanderId ?? 'none'} · stance: {army.stance}
+            </Text>
+          </View>
+        </View>
+      ))}
     </View>
   );
 }

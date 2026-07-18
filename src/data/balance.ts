@@ -1291,8 +1291,8 @@ export const BALANCE = {
   },
 
   /** Campaign Map plan ("The Consul's Map"), Chunk C1 — theatre-map data
-   *  model skeleton. Grows in later chunks (C2 muster/movement/combat
-   *  constants); only what C1's theatreEngine needs lives here for now. */
+   *  model skeleton. Grows in later chunks (C3 muster, C5 movement/combat
+   *  constants). */
   campaign: {
     /** Fallback relationship theatreEngine.getRegionRelationship uses for a
      *  region whose cityIds is empty (no real city data to average) —
@@ -1301,6 +1301,21 @@ export const BALANCE = {
      *  yet assigned. First-pass/unverified, matches province.ts's old
      *  foreign-relationship starting-value ballpark. */
     defaultForeignRelationship: 20,
+
+    /** Chunk C2 — armyEngine.upkeepFor's per-season cost math. Charging it
+     *  and applying shortfall consequences (loyalty loss, attrition,
+     *  disband-under-20) is C3's job; only the cost formula lives here.
+     *  First-pass/unverified seeds, C10 tunes. */
+    upkeep: {
+      baseDenariiPerCohort: 2,
+      /** Army sits in a region its own power (Rome vs Carthage) controls. */
+      friendlyTerritoryMult: 1.0,
+      neutralTerritoryMult: 1.5,
+      /** Behind enemy lines — the other power controls the region. */
+      hostileTerritoryMult: 2.0,
+      /** Up to this fraction off at region relationship 100 (linear). */
+      maxRelationshipDiscount: 0.30,
+    },
   },
 };
 
