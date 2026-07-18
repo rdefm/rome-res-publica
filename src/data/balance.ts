@@ -1315,6 +1315,36 @@ export const BALANCE = {
       hostileTerritoryMult: 2.0,
       /** Up to this fraction off at region relationship 100 (linear). */
       maxRelationshipDiscount: 0.30,
+      /** Chunk C3 — musterEngine.settleUpkeep's shortfall consequences.
+       *  Charging is C7's job; only the pure consequence math lives here. */
+      shortfallLoyaltyPenalty: 10,
+      shortfallAttritionPct: 0.03,
+      disbandLoyaltyThreshold: 20,
+    },
+
+    /** Chunk C3 — musterEngine.ts. Three discrete tier cards (P5-G picker
+     *  style), one cohort raised per action. First-pass/unverified seeds
+     *  from the plan's own spec table, C10 tunes. */
+    muster: {
+      tiers: {
+        emergency: { costPerCohort: 15, baseVeterancy: 'raw' as const, secondaryChance: 0, loyaltySeed: 30 },
+        standard:  { costPerCohort: 25, baseVeterancy: 'raw' as const, secondaryChance: 0.25, loyaltySeed: 40 },
+        picked:    { costPerCohort: 45, baseVeterancy: 'trained' as const, secondaryChance: 0.25, loyaltySeed: 50 },
+      },
+      /** cost × (1 − relationship × this) — up to −40% at relationship 100. */
+      relationshipCostDiscountFactor: 0.004,
+      /** "The good families send their sons" — relationship ≥ this unlocks
+       *  a second, independent veterancy-bump roll per cohort. */
+      relationshipQualityBumpThreshold: 70,
+      relationshipQualityBumpChance: 0.25,
+      /** Below this relationship (or non-Rome controller), muster is
+       *  unavailable entirely — v1 cuts mercenary flavour. */
+      minRelationshipToMuster: 25,
+      /** Invariant 7 — imperium gates unsanctioned player musters, never
+       *  spent. Scales with the player's OWN cohorts already in the field
+       *  (any region), not the region being mustered. */
+      imperiumThresholdBase: 10,
+      imperiumThresholdPerCohort: 2,
     },
   },
 };

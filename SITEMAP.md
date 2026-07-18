@@ -113,7 +113,7 @@ Province map, governor policy, military campaigns, provincial clients, ambassado
 
 ## 4a. Campaign Map plan ("The Consul's Map") — Theatre Data Layer (Chunk C1, cross-cutting)
 
-The strategic military redesign's first chunk: a coarse **theatre map** of 8 `Region`s, each grouping one or more existing Cities (§4). Zero gameplay change this chunk — pure data model + a read-only DebugPanel listing. See §4b for Chunk C2 (Armies), which builds on this. Later chunks (C3–C9, not yet built) add muster, elections for a theatre command, movement, AI, turn-end campaign resolution/playback, the battle bridge, and war standing.
+The strategic military redesign's first chunk: a coarse **theatre map** of 8 `Region`s, each grouping one or more existing Cities (§4). Zero gameplay change this chunk — pure data model + a read-only DebugPanel listing. See §4b for Chunk C2 (Armies) and §4c for Chunk C3 (Muster), both of which build on this. Later chunks (C4–C9, not yet built) add elections for a theatre command, movement, AI, turn-end campaign resolution/playback, the battle bridge, and war standing.
 
 **Map art (Chunk C2 addition):** `MapView.tsx` now renders `src/assets/images/italy-mosaic.png` (1024×1536; replaces `map_italia.png`, still on disk but unreferenced) — a mosaic-style map drawing Italy, Sicily, Sardinia/Corsica, AND the African coast in-frame. All 15 city `nodeX`/`nodeY` positions in `cityDefinitions.ts` and all 8 regions' `borderPoints` (see below) were hand-placed/traced against this map using two standalone tools kept at `tools/theatre-map/` (`city-node-positioning-tool.html`, `region-border-tracer-tool.html` — self-contained, drag-to-position / click-to-trace, export paste-ready coordinate blocks; see that folder's own README for how to regenerate them if the map art changes again).
 
@@ -125,7 +125,7 @@ The strategic military redesign's first chunk: a coarse **theatre map** of 8 `Re
 
 **Engine:** `theatreEngine.ts` (new, pure) — `getRegion`, `getAdjacent(regionId, kind?)`, `getRegionRelationship(cities, regionId)` (mean of a region's live cities' `relationshipScore`, falling back to `BALANCE.campaign.defaultForeignRelationship` for a ref-less region — no launch region hits that path today), `isFriendly`/`isHostile`, `landPath` (BFS over land+strait edges only, for future movement previews/AI — Sardinia and Africa are deliberately unreachable by this since they're sea-lane-only), `regionOf(cityId)`.
 
-**Store (`gameStore.ts`):** `theatre: TheatreState`, seeded by `buildInitialTheatreState()` from each Region's `startingController`. Unread by any engine yet.
+**Store (`gameStore.ts`):** `theatre: TheatreState`, seeded by `buildInitialTheatreState()` from each Region's `startingController`. **Chunk C3** added the `musteredThisYear` sub-field (see §4c) and started reading `theatre` in `raiseTroops`.
 
 **Balance:** `BALANCE.campaign.defaultForeignRelationship` (seed 20) — the only C1-relevant constant; later chunks grow this section.
 
@@ -162,6 +162,33 @@ Armies exist as first-class state: creatable in debug, listed/managed per region
 **Glossary:** `army`, `army-stance` added.
 
 **Tests:** `armyEngine.test.ts` (new, 23 tests) — combine/divide unit conservation, ownership/location guards, `armyStrength` monotonicity in strength/veterancy, `upkeepFor`'s territory/relationship/cohort-count math.
+
+---
+
+## 4c. Campaign Map plan — Muster: Raising Troops by Region (Chunk C3, cross-cutting)
+
+The player raises Army cohorts from any Rome-controlled, well-disposed region's panel — three discrete tier cards (Emergency/Standard/Picked), one cohort per tap, gated by a yearly per-region pool. Unsanctioned raising (no formal office held) feeds the SAME Senate response system the older personal-levy path (`gameStore.raiseLevy`, §8) already drives — not a parallel one. **Not yet built:** actually charging upkeep each season (`musterEngine.settleUpkeep` is written and tested but not called from `turnSequencer.ts` — the plan explicitly assigns that wiring to C7's turn-end resolution), the theatre command (C4, which will let sanctioned state muster draw on a war chest instead of personal denarii).
+
+**Scope decision — Senate response integration (a real design call, put to the user before building):** the existing unsanctioned-levy response (`senateResponseEngine.ts`) was hard-wired to a single character's `raisedLegions`/`veterans` at its terminal "consular army" combat step and its `capitulate` action. The chosen option was **full integration**: `SenateResponseState` gained an optional `sourceArmyId?: string | null` — when set, the combat step measures `armyStrength(army)` (mirroring `calcEffectiveForce`'s own shape: raw strength × commander-martial bonus × local-support modifier) instead of personal troops, and `capitulate` removes the Army from `state.armies` instead of clearing `raisedLegions`. The debate → censure → hostis-trial phases stay 100% shared/untouched (they're already character-agnostic — they target the player paterfamilias politically either way). If the offending Army was combined/divided/disbanded away before the consular army arrives, the case quietly evaporates (`senateResponse: null`, no penalty) rather than erroring.
+
+**Engine:** `musterEngine.ts` (new, pure; NOT the same file as `engine/battle/musterEngine.ts` — see its own header comment on why the two stay separate, same "Army is parallel to TroopUnit" reasoning as §4b) —
+- `checkMusterEligibility(regionId, theatre, cities)` — single source of truth: controller must be `rome` and relationship ≥ `BALANCE.campaign.muster.minRelationshipToMuster` (seed 25), and the region's yearly pool (`Region.baseManpower − TheatreState.musteredThisYear[regionId]`) must have room.
+- `quoteMuster(regionId, tier, theatre, cities, armies, playerImperium, playerHoldsOffice)` — cost after relationship discount (up to −40% at relationship 100), imperium-gate check (invariant 7: gates, never spent — threshold scales with the player's OWN fielded cohorts game-wide, `BALANCE.campaign.muster.imperiumThresholdBase/PerCohort`), `sanctioned` (mirrors `raiseLevy`'s `!!character.officeId` rule; C4 will add "or holds the theatre command").
+- `rollMusteredUnit(tier, regionId, relationship, turnNumber, unitId, rng?)` — two independent veterancy-bump rolls per cohort (the tier's own inherent quality mix, then, only at relationship ≥ 70, "the good families send their sons") — capped at `veteran`, since `legendary` is a battle-promotion-only tier elsewhere in this codebase.
+- `nextLegionName(existingArmies, regionDisplayNameLatin)` — "Legio N `<Region>`" auto-naming, ordinal counts existing player-owned `Legio ...` armies game-wide (fulfills a naming convention `models/army.ts` explicitly reserved for this chunk).
+- `settleUpkeep(army, paid)` — finalizes C2's `upkeepFor` declaration: unpaid seasons apply −10 loyalty / 3% strength attrition to every unit and disband the Army if average loyalty falls below 20; written and tested now, called by nothing yet (C7's job).
+
+**Store (`gameStore.ts`):** `raiseTroops(regionId, tier, targetArmyId?)` — validates via `quoteMuster`, rolls the cohort, either appends it to an existing player Army at that region or founds a new one (`nextLegionName`), increments `theatre.musteredThisYear[regionId]`, deducts denarii, and — if unsanctioned and no response is already active — opens the shared `senateResponse` tracker with `sourceArmyId` set. `turnSequencer.ts` gained one new step (2c) resetting every region's `musteredThisYear` to 0 at the Winter→Spring crossing.
+
+**Model:** `theatre.ts`'s `TheatreState` gained `musteredThisYear: Record<RegionId, number>` (persisted; per-field-migrated in `gameStore.loadGame` for saves written during C1/C2, which have a `theatre` object but lack this key).
+
+**Components** — `src/components/provinciae/MusterPanel.tsx` (new) — lives inside `RegionSheet`, between the cities row and the armies list. Three tier cards show cost/quality/a live warning (ineligible reason, imperium-too-low, can't-afford, or "Unsanctioned"); tapping one opens a confirm modal (surfaces the Senate warning BEFORE confirmation, per the plan) with a destination choice — found a new Legion, or add the cohort to a player Army already in the region.
+
+**Balance:** `BALANCE.campaign.muster` (three tiers' cost/base-veterancy/secondary-bump-chance/loyalty-seed, relationship cost-discount factor, relationship quality-bump threshold/chance, min relationship to muster, imperium threshold base/per-cohort) and three new `BALANCE.campaign.upkeep` fields (`shortfallLoyaltyPenalty`, `shortfallAttritionPct`, `disbandLoyaltyThreshold`) — first-pass/unverified seeds from the plan's own spec table, C10 tunes.
+
+**Glossary:** `muster` added.
+
+**Tests:** `campaignMusterEngine.test.ts` (new — named to avoid colliding with the pre-existing `musterEngine.test.ts`, which tests `battle/musterEngine.ts`) covers eligibility/quote/roll/naming/upkeep-settlement math. `militaryEngine.test.ts` gained a `tickSenateResponse / capitulate — Chunk C3` block covering the new `sourceArmyId` branch (wins/loses/vanished-army cases, `capitulate` disbanding the Army vs. the untouched personal-levy path).
 
 ---
 

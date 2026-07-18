@@ -76,6 +76,8 @@ import { COMPROMISING_EVENT_DEFS } from '../data/compromisingEvents';
 import { OFFICES } from '../data/offices';
 import { AUTO_BILL_TEMPLATES, BILL_TEMPLATES, HISTORICAL_BILL_TEMPLATES } from '../data/billTemplates';
 import { getCityDefinition } from '../data/cityDefinitions';
+import { REGIONS } from '../data/theatreMap';
+import type { RegionId } from '../models/theatre';
 
 // ─── Client helpers ──────────────────────────────────────────────────────────
 
@@ -219,6 +221,13 @@ export function processSeason(state: GameState): {
         `Defeated. Ranked #${result.playerRank} — only ${result.seats} seat${result.seats !== 1 ? 's' : ''} available. ${result.topRivalName} leads with ${result.topRivalVotes} votes.`
       );
     }
+  }
+
+  // 2c. Campaign Map plan, Chunk C3 — reset each region's yearly muster pool
+  // at the Winter→Spring crossing (same crossedNewYear gate used by every
+  // other annual reset in this file — see the aging/regency steps below).
+  if (crossedNewYear) {
+    s = { ...s, theatre: { ...s.theatre, musteredThisYear: Object.fromEntries(REGIONS.map(r => [r.id, 0])) as Record<RegionId, number> } };
   }
 
   // 3. Tick office term

@@ -3,8 +3,9 @@
 // Phase sequence: null → debate → censure → hostis → consular_army
 
 import type { GameState } from '../state/gameStore';
-import { calcEffectiveForce } from './troopEngine';
+import { calcEffectiveForce, getLocalSupportModifier } from './troopEngine';
 import { buildTrialState } from './trialEngine';
+import { armyStrength } from './armyEngine';
 
 // ─── Senate Response State ────────────────────────────────────────────────────
 
@@ -16,6 +17,14 @@ export interface SenateResponseState {
   consularArmyStrength: number;
   debateSuppressed: boolean;
   consularArmyArrivesOnTurn: number;   // accounts for distance delay
+  /** Campaign Map plan, Chunk C3 — set when this response was triggered by
+   *  an unsanctioned Army muster (musterEngine.ts) rather than the older
+   *  personal-levy path (gameStore.raiseLevy). Undefined/null = personal-
+   *  levy path, unchanged from before this field existed. Drives the
+   *  combat-resolution and capitulate branches below onto the Army
+   *  (state.armies) instead of the triggering character's
+   *  raisedLegions/veterans. */
+  sourceArmyId?: string | null;
 }
 
 export type SenateAwareState = GameState & {
@@ -204,27 +213,55 @@ export function tickSenateResponse(
     turnNumber >= response.consularArmyArrivesOnTurn &&
     (response.phase === 'hostis' || response.phase === 'consular_army')
   ) {
-    const character = state.family.find(c => c.id === characterId);
-    const allTroops = character
-      ? [...character.raisedLegions, ...character.veterans]
-      : [];
-
     const musterProvince = response.musterProvinceId
       ? state.cities.find(p => p.id === response.musterProvinceId)
       : null;
+    const localSupport = musterProvince?.localSupport ?? 0;
 
-    const localSupport    = musterProvince?.localSupport ?? 0;
-    const commanderMartial = character?.skills.martial ?? 0;
-    const effectiveForce  = calcEffectiveForce(allTroops, commanderMartial, localSupport);
+    // Chunk C3 — Army-sourced response: measure state.armies instead of the
+    // character's personal TroopUnit arrays. Mirrors calcEffectiveForce's
+    // own shape (raw strength × commander-martial bonus × local support)
+    // rather than inventing a divergent formula, so both paths are judged
+    // against the same consularArmyStrength threshold on equal footing.
+    if (response.sourceArmyId) {
+      const army = state.armies.find(a => a.id === response.sourceArmyId);
+      // The offending Army may have been combined/divided/disbanded away
+      // since detection — there is nothing left to move the consular army
+      // against, so the Senate's case quietly evaporates rather than
+      // punishing a force that no longer exists.
+      if (!army) {
+        return { senateResponse: null };
+      }
+      const commander = army.commanderId ? state.family.find(c => c.id === army.commanderId) : null;
+      const effectiveForce = Math.round(
+        armyStrength(army) * (1 + (commander?.skills.martial ?? 0) / 10) * getLocalSupportModifier(localSupport),
+      );
 
-    const playerWins = effectiveForce >= response.consularArmyStrength;
-
-    if (playerWins) {
-      return {
-        senateResponse:   null,
-        lifetimeDignitas: Math.max(0, state.lifetimeDignitas - 5),
-      };
+      if (effectiveForce >= response.consularArmyStrength) {
+        return {
+          senateResponse:   null,
+          lifetimeDignitas: Math.max(0, state.lifetimeDignitas - 5),
+        };
+      }
+      // Falls through to the shared "loses" branch below.
     } else {
+      const character = state.family.find(c => c.id === characterId);
+      const allTroops = character
+        ? [...character.raisedLegions, ...character.veterans]
+        : [];
+      const commanderMartial = character?.skills.martial ?? 0;
+      const effectiveForce = calcEffectiveForce(allTroops, commanderMartial, localSupport);
+
+      if (effectiveForce >= response.consularArmyStrength) {
+        return {
+          senateResponse:   null,
+          lifetimeDignitas: Math.max(0, state.lifetimeDignitas - 5),
+        };
+      }
+      // Falls through to the shared "loses" branch below.
+    }
+
+    {
       // Same P4-C fix as the treason-trial branch above — captured after
       // losing to the consular army is even more clearly a guaranteed loss.
       const mostInfluentialClan = [...state.clans].sort((a, b) => b.influence - a.influence)[0];
@@ -282,11 +319,19 @@ export function capitulate(
   const response = state.senateResponse;
   if (!response?.active) return {};
 
-  const updatedFamily = state.family.map(c =>
-    c.id === characterId
-      ? { ...c, raisedLegions: [] }
-      : c
-  );
+  // Chunk C3 — Army-sourced response: stand the Army down (remove it from
+  // play) instead of clearing a character's raisedLegions, which an
+  // Army-triggered response never touched in the first place.
+  const updatedFamily = response.sourceArmyId
+    ? state.family
+    : state.family.map(c =>
+        c.id === characterId
+          ? { ...c, raisedLegions: [] }
+          : c
+      );
+  const updatedArmies = response.sourceArmyId
+    ? state.armies.filter(a => a.id !== response.sourceArmyId)
+    : state.armies;
 
   const updatedTrials = response.phase === 'hostis'
     ? (state.trials ?? []).filter(t =>
@@ -298,6 +343,7 @@ export function capitulate(
     senateResponse:   null,
     lifetimeDignitas: Math.max(0, state.lifetimeDignitas - 15),
     family:           updatedFamily,
+    armies:           updatedArmies,
     trials:           updatedTrials,
   };
 }

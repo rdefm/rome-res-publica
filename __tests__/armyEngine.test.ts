@@ -39,9 +39,13 @@ function makeArmy(overrides: Partial<Army> = {}): Army {
 
 function makeTheatre(overrides: Partial<TheatreState['controllers']> = {}): TheatreState {
   const controllers = {} as TheatreState['controllers'];
-  for (const region of REGIONS) controllers[region.id] = region.startingController;
+  const musteredThisYear = {} as TheatreState['musteredThisYear'];
+  for (const region of REGIONS) {
+    controllers[region.id] = region.startingController;
+    musteredThisYear[region.id] = 0;
+  }
   Object.assign(controllers, overrides);
-  return { controllers, contested: {} as TheatreState['contested'] };
+  return { controllers, contested: {} as TheatreState['contested'], musteredThisYear };
 }
 
 // ─── combine ─────────────────────────────────────────────────────────────────

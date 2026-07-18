@@ -11,8 +11,15 @@ import {
   getMusterProvinceDistanceTier,
   calcConsularArmyStrength,
   calcConsularArmyArrivalTurn,
+  tickSenateResponse,
+  capitulate,
+  type SenateResponseState,
 } from '../src/engine/senateResponseEngine';
 import type { TroopUnit } from '../src/models/troop';
+import type { Army, ArmyUnit } from '../src/models/army';
+import type { Character } from '../src/models/character';
+import type { Clan } from '../src/models/clan';
+import type { GameState } from '../src/state/gameStore';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -515,3 +522,101 @@ describe('calcConsularArmyArrivalTurn', () => {
 //
 // What CAN be verified here is that the distance tier lookup does include latium
 // (it is 'near') — the prohibition is a separate policy layer above the distance calc.
+
+// ─── Campaign Map plan, Chunk C3 — Army-sourced Senate response ─────────────
+// tickSenateResponse's combat-resolution step and capitulate now branch on
+// SenateResponseState.sourceArmyId (Chunk C3) to measure/disband an Army
+// instead of a character's raisedLegions/veterans. These tests cover only
+// the NEW branch — the pre-existing personal-levy path (sourceArmyId unset)
+// already has coverage via calcEffectiveForce/getLocalSupportModifier above.
+
+describe('tickSenateResponse / capitulate — Chunk C3 Army-sourced branch', () => {
+  const makeCharacter = (overrides: Partial<Character> = {}): Character => ({
+    id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 44,
+    skills: { rhetoric: 6, martial: 4, intrigus: 5 },
+    traits: [], ambition: null, relationship: 100, familyTrust: 100,
+    officeId: null, heldOffices: [], corruptionScore: 0, inheritedTraits: [], ambitionIds: [], reputationScores: {},
+    formalImperium: 0, militaryImperium: 0,
+    raisedLegions: [], veterans: [],
+    ...overrides,
+  } as unknown as Character);
+
+  const makeUnit = (overrides: Partial<ArmyUnit> = {}): ArmyUnit => ({
+    id: `unit-${Math.random().toString(36).slice(2)}`,
+    unitClass: 'legionary', strength: 80, veterancy: 'trained', loyalty: 50,
+    elephantSteady: false, homeRegion: 'latium', raisedBy: 'player', raisedSeason: 1,
+    ...overrides,
+  });
+
+  const makeArmy = (overrides: Partial<Army> = {}): Army => ({
+    id: 'army-1', name: 'Legio I', owner: 'player', commanderId: null,
+    location: 'latium', stationedCityId: 'latium', units: [makeUnit()],
+    stance: 'give_battle', ordersThisSeason: null, fatigued: false, unpaidSeasons: 0,
+    ...overrides,
+  });
+
+  const makeClan = (overrides: Partial<Clan> = {}): Clan => ({
+    id: 'clan-1', name: 'Clan', gensName: 'Testia', sigil: '🏛', influence: 50,
+    desc: '', leaders: [{ id: 'leader-1' } as Clan['leaders'][0]],
+    ...overrides,
+  });
+
+  const armySourcedResponse: SenateResponseState = {
+    active: true, seasonDetected: 1, phase: 'hostis', musterProvinceId: 'latium',
+    consularArmyStrength: 0, debateSuppressed: false, consularArmyArrivesOnTurn: 5,
+    sourceArmyId: 'army-1',
+  };
+
+  function makeState(overrides: Partial<GameState> = {}): GameState {
+    const base = {
+      turnNumber: 5, lifetimeDignitas: 20,
+      family: [makeCharacter()], cities: [], clans: [makeClan()], trials: [],
+      armies: [makeArmy()],
+      senateResponse: armySourcedResponse,
+      consulAuthorityActive: false, consulAuthoritySeasonsRemaining: 0,
+      ...overrides,
+    };
+    return base as unknown as GameState;
+  }
+
+  test('army strong enough clears the response with the usual small dignitas cost', () => {
+    const state = makeState({ senateResponse: { ...armySourcedResponse, consularArmyStrength: 0 } });
+    const patch = tickSenateResponse(state as any, 'pc-1');
+    expect(patch.senateResponse).toBeNull();
+    expect(patch.lifetimeDignitas).toBe(15);
+  });
+
+  test('army too weak escalates to consular_army with a fresh capture trial', () => {
+    const state = makeState({
+      senateResponse: { ...armySourcedResponse, consularArmyStrength: 1_000_000 },
+      trials: [],
+    });
+    const patch = tickSenateResponse(state as any, 'pc-1');
+    expect((patch.senateResponse as SenateResponseState).phase).toBe('consular_army');
+    expect(patch.trials).toHaveLength(1);
+  });
+
+  test('the offending army having vanished (combined/disbanded away) quietly clears the response', () => {
+    const state = makeState({ armies: [] }); // sourceArmyId no longer resolves
+    const patch = tickSenateResponse(state as any, 'pc-1');
+    expect(patch.senateResponse).toBeNull();
+    expect(patch.lifetimeDignitas).toBeUndefined(); // no penalty either way — the case evaporates
+  });
+
+  test('capitulate removes the source Army, not the character\'s raisedLegions', () => {
+    const troopedCharacter = makeCharacter({ raisedLegions: [{ id: 't1' } as any] });
+    const state = makeState({ family: [troopedCharacter] });
+    const patch = capitulate(state as any, 'pc-1');
+    expect(patch.armies).toEqual([]);
+    expect((patch.family as Character[])[0].raisedLegions).toEqual([{ id: 't1' }]);
+  });
+
+  test('the pre-existing personal-levy path (no sourceArmyId) is unaffected', () => {
+    const troopedCharacter = makeCharacter({ raisedLegions: [{ id: 't1' } as any] });
+    const personalResponse: SenateResponseState = { ...armySourcedResponse, sourceArmyId: undefined };
+    const state = makeState({ family: [troopedCharacter], senateResponse: personalResponse });
+    const patch = capitulate(state as any, 'pc-1');
+    expect((patch.family as Character[])[0].raisedLegions).toEqual([]);
+    expect(patch.armies).toEqual(state.armies); // present but untouched
+  });
+});

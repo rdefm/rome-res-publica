@@ -18,7 +18,9 @@ import type { TheatreState, RegionId } from '../../models/theatre';
 import type { CityState } from '../../models/city';
 import { getRegion, getRegionRelationship } from '../../engine/theatreEngine';
 import { getCityDefinition } from '../../data/cityDefinitions';
+import type { MusterTier } from '../../engine/musterEngine';
 import ArmyCard from './ArmyCard';
+import MusterPanel from './MusterPanel';
 
 const CONTROLLER_LABEL: Record<'rome' | 'carthage' | 'neutral', string> = {
   rome: 'Roman',
@@ -39,11 +41,15 @@ interface RegionSheetProps {
   theatre: TheatreState;
   family: Character[];
   focusArmyId?: string | null;
+  playerImperium: number;
+  playerHoldsOffice: boolean;
+  denarii: number;
   onClose: () => void;
   onCombineArmies: (armyIdA: string, armyIdB: string) => void;
   onDivideArmy: (armyId: string, unitIds: string[]) => void;
   onAssignCommander: (armyId: string, characterId: string | null) => void;
   onSetStance: (armyId: string, stance: Army['stance']) => void;
+  onRaiseTroops: (tier: MusterTier, targetArmyId: string | null) => void;
 }
 
 export default function RegionSheet({
@@ -53,11 +59,15 @@ export default function RegionSheet({
   theatre,
   family,
   focusArmyId,
+  playerImperium,
+  playerHoldsOffice,
+  denarii,
   onClose,
   onCombineArmies,
   onDivideArmy,
   onAssignCommander,
   onSetStance,
+  onRaiseTroops,
 }: RegionSheetProps) {
   const [combiningArmyId, setCombiningArmyId] = useState<string | null>(null);
 
@@ -112,6 +122,19 @@ export default function RegionSheet({
             );
           })}
         </View>
+
+        <View style={styles.divider} />
+
+        <MusterPanel
+          regionId={regionId}
+          theatre={theatre}
+          cities={cities}
+          armies={armies}
+          playerImperium={playerImperium}
+          playerHoldsOffice={playerHoldsOffice}
+          denarii={denarii}
+          onRaise={onRaiseTroops}
+        />
 
         <View style={styles.divider} />
 

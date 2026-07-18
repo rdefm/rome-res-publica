@@ -79,4 +79,8 @@ export interface Edge {
 export interface TheatreState {
   controllers: Record<RegionId, Controller>;
   contested: Record<RegionId, number>;
+  /** Chunk C3 — cohorts mustered so far this game-year, per region, against
+   *  Region.baseManpower's annual cap. Reset to 0 for every region at the
+   *  Winter→Spring crossing (turnSequencer.ts). */
+  musteredThisYear: Record<RegionId, number>;
 }

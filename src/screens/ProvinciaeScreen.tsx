@@ -65,6 +65,7 @@ export default function ProvinciaeScreen() {
   const divideArmy               = useGameStore(s => s.divideArmy);
   const assignArmyCommander      = useGameStore(s => s.assignArmyCommander);
   const setArmyStance            = useGameStore(s => s.setArmyStance);
+  const raiseTroops              = useGameStore(s => s.raiseTroops);
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const selectedProvince = provinces.find(p => p.id === selectedProvinceId);
@@ -80,6 +81,11 @@ export default function ProvinciaeScreen() {
     2: 'Maius Imperium',
     3: 'Imperator',
   };
+
+  // Campaign Map plan, Chunk C3 — same "senateAuthorised = holds a formal
+  // office" rule gameStore.raiseLevy already uses for personal levies.
+  const paterfamilias = family.find(c => c.isPlayer);
+  const playerHoldsOffice = !!paterfamilias?.officeId;
 
   const governorCharacterId = selectedProvince?.playerGovernor?.characterId;
   const governorCharacter   = governorCharacterId
@@ -257,11 +263,17 @@ export default function ProvinciaeScreen() {
                 theatre={theatre}
                 family={family}
                 focusArmyId={focusArmyId}
+                playerImperium={imperium}
+                playerHoldsOffice={playerHoldsOffice}
+                denarii={denarii}
                 onClose={closeSheet}
                 onCombineArmies={combineArmies}
                 onDivideArmy={divideArmy}
                 onAssignCommander={assignArmyCommander}
                 onSetStance={setArmyStance}
+                onRaiseTroops={(tier, targetArmyId) =>
+                  selectedRegionId && raiseTroops(selectedRegionId, tier, targetArmyId)
+                }
               />
             ) : selectedProvince?.id === 'latium' ? (
               <LatiumSheet onClose={closeSheet} />

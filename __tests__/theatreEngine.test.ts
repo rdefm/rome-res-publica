@@ -92,8 +92,12 @@ describe('REGIONS — startingController', () => {
 describe('isFriendly / isHostile', () => {
   function makeTheatre(): TheatreState {
     const controllers = {} as TheatreState['controllers'];
-    for (const region of REGIONS) controllers[region.id] = region.startingController;
-    return { controllers, contested: {} as TheatreState['contested'] };
+    const musteredThisYear = {} as TheatreState['musteredThisYear'];
+    for (const region of REGIONS) {
+      controllers[region.id] = region.startingController;
+      musteredThisYear[region.id] = 0;
+    }
+    return { controllers, contested: {} as TheatreState['contested'], musteredThisYear };
   }
 
   test('isFriendly true when the controller matches the given owner', () => {

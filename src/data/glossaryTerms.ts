@@ -503,4 +503,10 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     definition: 'An army\'s standing order for the season: Give Battle accepts an engagement if one arises, Avoid Battle tries to withdraw instead. Set per army from its card.',
     relatedTab: 'Provinciae',
   },
+  {
+    id: 'muster',
+    term: 'Muster',
+    definition: 'Raise a cohort from a region — three tiers trade cost for quality, both improved by good relations with the region\'s cities. Each region has a yearly cohort cap. Raising without the Senate\'s sanction (holding a formal office) risks the same censure-and-consular-army response as an unsanctioned personal levy.',
+    relatedTab: 'Provinciae',
+  },
 ];

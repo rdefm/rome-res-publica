@@ -41,10 +41,13 @@ import { STARTING_FAMILY } from '../data/startingFamily';
 import { STARTING_CLANS } from '../data/startingClans';
 import { STARTING_BILLS } from '../data/billTemplates';
 import { buildInitialCityStates, getCityDefinition } from '../data/cityDefinitions';
-import type { TheatreState } from '../models/theatre';
+import type { TheatreState, RegionId } from '../models/theatre';
 import { REGIONS } from '../data/theatreMap';
 import type { Army } from '../models/army';
 import { combine as engineCombineArmies, divide as engineDivideArmy } from '../engine/armyEngine';
+import type { MusterTier } from '../engine/musterEngine';
+import { quoteMuster, rollMusteredUnit, nextLegionName } from '../engine/musterEngine';
+import { getRegion, getRegionRelationship } from '../engine/theatreEngine';
 import { processSeason } from '../engine/turnSequencer';
 import { incrementLegacy, initLegacyObjectives } from '../engine/legacyEngine';
 import { LEGACY_DEFINITIONS } from '../data/legacyDefinitions';
@@ -741,6 +744,13 @@ export interface GameActions {
    *  fallback allowance for exactly this case. */
   assignArmyCommander: (armyId: string, characterId: string | null) => void;
   setArmyStance: (armyId: string, stance: Army['stance']) => void;
+  /** Campaign Map plan, Chunk C3 — raises one cohort in `regionId` at the
+   *  given tier. `targetArmyId`, if given, must be a player-owned Army
+   *  already at `regionId` — the cohort joins it instead of forming a new
+   *  Army. No-ops silently if quoteMuster's eligibility/imperium/denarii
+   *  checks fail (mirrors this file's other guard-clause action convention
+   *  — the panel is expected to disable the button first). */
+  raiseTroops: (regionId: RegionId, tier: MusterTier, targetArmyId?: string | null) => void;
 
   // ── Military (Chunk M) ──────────────────────────────────────────────────
   raiseLevy: (characterId: string, musterProvinceId: string) => void;
@@ -906,8 +916,12 @@ function mkLog(turn: string, text: string, type: LogEntry['type'] = 'neutral'): 
  *  is the only writer once that chunk lands. */
 function buildInitialTheatreState(): TheatreState {
   const controllers = {} as TheatreState['controllers'];
-  for (const region of REGIONS) controllers[region.id] = region.startingController;
-  return { controllers, contested: {} as TheatreState['contested'] };
+  const musteredThisYear = {} as TheatreState['musteredThisYear'];
+  for (const region of REGIONS) {
+    controllers[region.id] = region.startingController;
+    musteredThisYear[region.id] = 0;
+  }
+  return { controllers, contested: {} as TheatreState['contested'], musteredThisYear };
 }
 
 // ─── Military Overhaul M5 — sandbox battle helpers ───────────────────────────
@@ -3262,6 +3276,15 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     // old key — same per-field migration pattern as every other backfill in
     // this function.
     cities: savedState.cities ?? (savedState as any).provinces ?? INITIAL_STATE.cities,
+    // Campaign Map plan, Chunk C3 — a save written during C1/C2 has a real
+    // `theatre` object (controllers/contested) but no `musteredThisYear` key
+    // at all; the top-level spread above only backfills a WHOLLY missing
+    // field, not a missing key inside one that's already present, so it's
+    // backfilled per-field here (same pattern as `wars` above).
+    theatre: {
+      ...savedState.theatre,
+      musteredThisYear: savedState.theatre?.musteredThisYear ?? buildInitialTheatreState().musteredThisYear,
+    },
     // P3-A — a save written before phase/ignitedYear/endedYear/terminalOutcome
     // existed on WarState has wars entries missing them; the top-level
     // INITIAL_STATE spread above only backfills whole missing FIELDS, not
@@ -3626,6 +3649,92 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set(s => ({
       armies: s.armies.map(ar => ar.id === armyId ? { ...ar, stance } : ar),
     }));
+  },
+
+  // ── Campaign Map plan, Chunk C3 — Muster ─────────────────────────────────
+  raiseTroops: (regionId, tier, targetArmyId) => {
+    const s = get();
+    const region = getRegion(regionId);
+    if (!region) return;
+
+    const paterfamilias = s.family.find(c => c.isPlayer);
+    const playerHoldsOffice = !!paterfamilias?.officeId;
+
+    const quote = quoteMuster(regionId, tier, s.theatre, s.cities, s.armies, s.imperium, playerHoldsOffice);
+    if (!quote.eligible || !quote.imperiumOk || s.denarii < quote.costDenarii) return;
+
+    let targetArmy: Army | null = null;
+    if (targetArmyId) {
+      const found = s.armies.find(a => a.id === targetArmyId);
+      if (found && found.owner === 'player' && found.location === regionId) targetArmy = found;
+    }
+
+    const relationship = getRegionRelationship(s.cities, regionId);
+    const unitId = `army-unit-${s.turnNumber}-${Date.now()}`;
+    const newUnit = rollMusteredUnit(tier, regionId, relationship, s.turnNumber, unitId);
+
+    let armies: Army[];
+    let armyLabel: string;
+    let resultArmyId: string;
+    if (targetArmy) {
+      const merged: Army = { ...targetArmy, units: [...targetArmy.units, newUnit] };
+      armies = s.armies.map(a => a.id === targetArmy!.id ? merged : a);
+      armyLabel = merged.name;
+      resultArmyId = merged.id;
+    } else {
+      const newArmy: Army = {
+        id: `army-${s.turnNumber}-${Date.now()}`,
+        name: nextLegionName(s.armies, region.displayNameLatin),
+        owner: 'player',
+        commanderId: null,
+        location: regionId,
+        stationedCityId: region.cityIds[0] ?? null,
+        units: [newUnit],
+        stance: 'avoid_battle',
+        ordersThisSeason: null,
+        fatigued: false,
+        unpaidSeasons: 0,
+      };
+      armies = [...s.armies, newArmy];
+      armyLabel = newArmy.name;
+      resultArmyId = newArmy.id;
+    }
+
+    const theatre: TheatreState = {
+      ...s.theatre,
+      musteredThisYear: {
+        ...s.theatre.musteredThisYear,
+        [regionId]: (s.theatre.musteredThisYear[regionId] ?? 0) + 1,
+      },
+    };
+
+    // Unsanctioned — feed the same Senate-response tracker raiseLevy drives
+    // for personal levies (see senateResponseEngine.ts's Chunk C3
+    // sourceArmyId branch). A response already in progress isn't restarted.
+    let senateResponse = s.senateResponse;
+    if (!quote.sanctioned && !senateResponse?.active) {
+      senateResponse = {
+        active: true,
+        seasonDetected: s.turnNumber,
+        phase: null,
+        musterProvinceId: region.cityIds[0] ?? null,
+        consularArmyStrength: calcConsularArmyStrength(s.crisisLevel, paterfamilias?.militaryImperium ?? 0),
+        debateSuppressed: false,
+        consularArmyArrivesOnTurn: calcConsularArmyArrivalTurn(s.turnNumber, regionId),
+        sourceArmyId: resultArmyId,
+      };
+    }
+
+    const label = turnLabel(s);
+    set({
+      denarii: s.denarii - quote.costDenarii,
+      armies,
+      theatre,
+      senateResponse,
+      log: [...s.log, mkLog(label, `${armyLabel} musters a cohort in ${region.name}. (−${quote.costDenarii} Denarii)`, 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { denarii: quote.costDenarii }),
+    });
   },
 
   // ── Military Actions (Chunk M) ───────────────────────────────────────────────
