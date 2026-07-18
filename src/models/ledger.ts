@@ -41,4 +41,10 @@ export interface SeasonLedger {
    * Derived from the log entries written during the same processSeason call.
    */
   headlines: string[];
+  /** Phase 5, Chunk P5-F — Laurel ids newly earned this season (empty unless
+   *  evaluateAchievements found one). Ids only, not display data — Laurels
+   *  speak in the system's own voice, one register above Philon's ledger
+   *  narration, so AchievementToast renders them itself by looking each id
+   *  up in ACHIEVEMENT_DEFINITIONS rather than this ledger carrying prose. */
+  earnedLaurels: string[];
 }

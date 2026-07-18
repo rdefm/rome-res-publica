@@ -9,7 +9,10 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { loadHall } from '../state/ancestorStore';
+import { loadEarnedAchievements, type EarnedAchievement } from '../state/achievementStore';
+import { ACHIEVEMENT_DEFINITIONS } from '../data/achievementDefinitions';
 import { officeName } from '../engine/epilogueEngine';
+import InfoTap from '../components/shared/InfoTap';
 import { COLORS, FONTS, SPACING, RADIUS } from '../utils/theme';
 import type { AncestorRecord, EpilogueOutcome } from '../models/epilogue';
 
@@ -32,9 +35,21 @@ const OUTCOME_COLOR: Record<EpilogueOutcome, string> = {
 export default function HallOfAncestorsScreen({ onBack }: { onBack: () => void }) {
   const [records, setRecords] = useState<AncestorRecord[] | null>(null);
   const [selected, setSelected] = useState<AncestorRecord | null>(null);
+  const [earned, setEarned] = useState<EarnedAchievement[] | null>(null);
 
   useEffect(() => {
     loadHall().then(setRecords);
+    // Phase 5, Chunk P5-F — a rare double-award (the achievementStore cache's
+    // startup-race note) would otherwise show two dated rows for the same
+    // Laurel; keep only the earliest earnedAt per id.
+    loadEarnedAchievements().then(list => {
+      const earliest = new Map<string, EarnedAchievement>();
+      for (const e of list) {
+        const existing = earliest.get(e.id);
+        if (!existing || e.earnedAt < existing.earnedAt) earliest.set(e.id, e);
+      }
+      setEarned([...earliest.values()]);
+    });
   }, []);
 
   if (selected) {
@@ -84,15 +99,17 @@ export default function HallOfAncestorsScreen({ onBack }: { onBack: () => void }
         </TouchableOpacity>
       </View>
 
-      {records === null ? (
-        <ActivityIndicator color={COLORS.gold} style={{ marginTop: SPACING.xl }} />
-      ) : records.length === 0 ? (
-        <View style={styles.emptyBlock}>
-          <Text style={styles.emptyText}>No runs have ended yet. History is still being written.</Text>
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.listScroll}>
-          {records.map(r => (
+      <ScrollView contentContainerStyle={styles.listScroll}>
+        <LaurelsSection earned={earned} />
+
+        {records === null ? (
+          <ActivityIndicator color={COLORS.gold} style={{ marginTop: SPACING.xl }} />
+        ) : records.length === 0 ? (
+          <View style={styles.emptyBlock}>
+            <Text style={styles.emptyText}>No runs have ended yet. History is still being written.</Text>
+          </View>
+        ) : (
+          records.map(r => (
             <TouchableOpacity key={r.id} style={styles.card} onPress={() => setSelected(r)} activeOpacity={0.8}>
               <View style={styles.cardHeader}>
                 <Text style={styles.cardGens}>Gens {r.gensName}</Text>
@@ -105,10 +122,46 @@ export default function HallOfAncestorsScreen({ onBack }: { onBack: () => void }
               </Text>
               <Text style={styles.cardExcerpt} numberOfLines={2}>{r.historianParagraph}</Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
+          ))
+        )}
+      </ScrollView>
     </SafeAreaView>
+  );
+}
+
+// ─── Laurels section ──────────────────────────────────────────────────────────
+// Phase 5, Chunk P5-F. Full grid: earned in gold with date, unearned greyed
+// with the condition text always shown (no hidden trophies). `earned: null`
+// while the achievement store's initial read is in flight — renders nothing
+// rather than a loading spinner, since this section sits above content that
+// already has its own loading state.
+
+function LaurelsSection({ earned }: { earned: EarnedAchievement[] | null }) {
+  if (earned === null) return null;
+  const earnedById = new Map(earned.map(e => [e.id, e]));
+
+  return (
+    <View style={styles.laurelsBlock}>
+      <InfoTap termId="laurels" style={styles.laurelsHeaderRow}>
+        <Text style={styles.sectionLabel}>LAURELS</Text>
+      </InfoTap>
+      <View style={styles.laurelsGrid}>
+        {ACHIEVEMENT_DEFINITIONS.map(def => {
+          const record = earnedById.get(def.id);
+          return (
+            <View key={def.id} style={[styles.laurelCard, !record && styles.laurelCardLocked]}>
+              <Text style={[styles.laurelIcon, !record && styles.laurelIconLocked]}>{def.icon}</Text>
+              <Text style={[styles.laurelName, !record && styles.laurelNameLocked]}>{def.name}</Text>
+              {record ? (
+                <Text style={styles.laurelDate}>{new Date(record.earnedAt).toLocaleDateString()}</Text>
+              ) : (
+                <Text style={styles.laurelCondition}>{def.description}</Text>
+              )}
+            </View>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -142,6 +195,33 @@ const styles = StyleSheet.create({
   emptyText: { fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 14, color: COLORS.dust, textAlign: 'center' },
 
   listScroll: { padding: SPACING.lg, gap: SPACING.sm },
+
+  // ── Laurels (P5-F) ────────────────────────────────────────────────────────
+  laurelsBlock: { marginBottom: SPACING.lg },
+  laurelsHeaderRow: { marginBottom: SPACING.sm, alignSelf: 'flex-start' },
+  laurelsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+  laurelCard: {
+    width: '31%',
+    backgroundColor: COLORS.panelSurface,
+    borderWidth: 1,
+    borderColor: COLORS.gold,
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    alignItems: 'center',
+  },
+  laurelCardLocked: { borderColor: COLORS.border },
+  laurelIcon: { fontSize: 22, marginBottom: 4 },
+  laurelIconLocked: { opacity: 0.35 },
+  laurelName: {
+    fontFamily: FONTS.display, fontSize: 11, color: COLORS.gold,
+    textAlign: 'center', marginBottom: 2,
+  },
+  laurelNameLocked: { color: COLORS.dust },
+  laurelDate: { fontFamily: FONTS.ui, fontSize: 9, color: COLORS.dust, textAlign: 'center' },
+  laurelCondition: {
+    fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 9, color: COLORS.dust,
+    textAlign: 'center', lineHeight: 12,
+  },
   card: {
     backgroundColor: COLORS.panelSurface,
     borderWidth: 1,

@@ -208,6 +208,11 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Domus',
   },
   {
+    id: 'laurels',
+    term: 'Laurels',
+    definition: 'Cross-run achievements, earned by any run (not just the one currently being played) and displayed in the Hall of Ancestors. Purely a trophy shelf — earning one grants nothing mechanical.',
+  },
+  {
     id: 'legatum',
     term: 'Legatum',
     definition: 'Four permanent legacy objectives tracking long-term achievements across generations. Reaching milestone thresholds unlocks permanent income bonuses and traits that persist between characters.',

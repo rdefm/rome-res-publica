@@ -20,11 +20,13 @@ import BattleScreen from './src/screens/BattleScreen';
 import EpilogueScreen from './src/screens/EpilogueScreen';
 import SetPieceOfferModal from './src/components/shared/SetPieceOfferModal';
 import TrialSessionModal from './src/components/cursus/TrialSessionModal';
+import AchievementToast from './src/components/shared/AchievementToast';
 import { generateAgenda } from './src/engine/agendaEngine';
 import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle } from './src/components/shared/TabBar';
 import StartMenuScreen from './src/screens/StartMenuScreen';
 import { COLORS } from './src/utils/theme';
 import { useGameStore } from './src/state/gameStore';
+import { loadEarnedAchievements } from './src/state/achievementStore';
 
 const Tab = createBottomTabNavigator();
 
@@ -101,6 +103,12 @@ function GameRoot() {
 
   // ── Welcome-back recap (local state — not in store) ────────────────────────
   const [showWelcomeBack, setShowWelcomeBack] = useState(false);
+
+  // ── Laurels — warm the cross-run earned-achievements cache once, well
+  //    before a player can realistically reach a season end (P5-F). ────────
+  useEffect(() => {
+    loadEarnedAchievements();
+  }, []);
 
   // ── AppState listener — autosave on background, welcome-back on foreground ──
   useEffect(() => {
@@ -244,6 +252,7 @@ function GameRoot() {
         <TrialSessionModal />
         <BattleScreen />
         <EpilogueScreen />
+        <AchievementToast />
       </View>
     </NavigationContainer>
   );

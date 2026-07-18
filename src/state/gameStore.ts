@@ -140,6 +140,13 @@ import type { WarState } from '../models/war';
 import type { AncestorRecord, EpilogueOutcome } from '../models/epilogue';
 import { scheduleSetPiece, applyTreatyEffects, buildTreatyBill, getDesperationTier, phaseForYear, type TreatySide } from '../engine/warEngine';
 import { generateCadet } from '../engine/inheritanceEngine';
+// Phase 5, Chunk P5-F — Achievements ("Laurels"). evaluateAchievements is
+// pure (no AsyncStorage), safe to import eagerly; achievementStore is
+// required lazily inside endSeason, same idiom as ancestorStore/saveLoad
+// just below it — a top-level import would pull in AsyncStorage's native
+// module at gameStore.ts load time, breaking every test file that imports
+// gameStore.ts without first mocking @react-native-async-storage/async-storage.
+import { evaluateAchievements } from '../engine/achievementEngine';
 
 export interface LogEntry {
   id: string;
@@ -1357,7 +1364,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     // ── P1-D: season ledger ──────────────────────────────────────────────────
     // Diff is computed against the pre-season snapshot `s` and the fully
     // post-processed `finalState` (after NPC consul, Tribune election, etc.).
-    const ledger: SeasonLedger = {
+    let ledger: SeasonLedger = {
       turnNumber:  s.turnNumber,
       seasonLabel: `${Math.abs(s.year)} BC · ${SEASON_NAMES[s.seasonIndex]}`,
       year:        s.year,
@@ -1379,6 +1386,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         treasury:  finalState.rome.treasury  - s.rome.treasury,
       },
       headlines: seasonEvents.slice(0, 5),
+      earnedLaurels: [], // patched below, after epilogue detection (P5-F)
     };
 
     // ── P2-A: season telemetry snapshot ─────────────────────────────────────
@@ -1410,6 +1418,26 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       finalState = { ...finalState, runFinished: true, currentEpilogueRecord: record };
       appendAncestorRecord(record).catch((e: Error) =>
         console.warn('[P3-E] Hall of Ancestors write failed:', e)
+      );
+    }
+
+    // ── Phase 5, Chunk P5-F — Laurel evaluation ──────────────────────────────
+    // One call covers both of the plan's logical call sites: state predicates
+    // are always checked, and outcome predicates (victoria-punica/pax-fessa/
+    // roma-humilis) additionally fire when this same endSeason call just
+    // wrote finalState.currentEpilogueRecord above. Nothing mechanical is
+    // granted (design invariant 3) — this only feeds the ledger line and the
+    // cross-run Laurels store.
+    const { getCachedEarnedIds, recordEarnedAchievements } = require('./achievementStore');
+    const newlyEarnedLaurels = evaluateAchievements(
+      finalState,
+      getCachedEarnedIds(),
+      finalState.currentEpilogueRecord ?? undefined
+    );
+    if (newlyEarnedLaurels.length > 0) {
+      ledger = { ...ledger, earnedLaurels: newlyEarnedLaurels };
+      recordEarnedAchievements(newlyEarnedLaurels).catch((e: Error) =>
+        console.warn('[P5-F] Laurel write failed:', e)
       );
     }
 
@@ -2051,8 +2079,16 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       familyReputations: { ...s.familyReputations, [clan.id]: Math.min(currentRep, BALANCE.secrets.burnClanRepFloor) },
       secrets: s.secrets.map(sec => sec.id === secretId ? { ...sec, status: 'spent' as const } : sec),
       log: [...s.log, mkLog(label, `Scandal breaks: ${secret.flavorText} ${leader.name} loses ${voteLoss} votes as the story spreads — ${clan.name} turns hostile.`, 'good')],
-      // Phase 5, Chunk P5-D — feeds evt-aft-burn-* aftermath events.
-      flags: { ...s.flags, 'secret-burned-recently': true },
+      flags: {
+        ...s.flags,
+        // Phase 5, Chunk P5-D — feeds evt-aft-burn-* aftermath events;
+        // cleared by that event's terminal choices (flag hygiene).
+        'secret-burned-recently': true,
+        // Phase 5, Chunk P5-F — the flamma Laurel's detection source. Never
+        // cleared (unlike the flag above), since a transient flag racing an
+        // aftermath event's resolution can't reliably signal "ever burned".
+        'secret-burned-ever': true,
+      },
       ...bumpActions(s),
     });
   },
