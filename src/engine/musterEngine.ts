@@ -70,7 +70,7 @@ export interface MusterQuote {
   loyaltySeed: number;
   /** Player paterfamilias holds a formal office — the same senateAuthorised
    *  rule gameStore.raiseLevy already uses. C4 will add "or holds the
-   *  theatre command" once that concept exists. */
+   *  theatre command — see below, wired in Chunk C4. */
   sanctioned: boolean;
   imperiumRequired: number;
   imperiumOk: boolean;
@@ -88,6 +88,11 @@ export function quoteMuster(
   armies: Army[],
   playerImperium: number,
   playerHoldsOffice: boolean,
+  /** Chunk C4 — holding the theatre command sanctions muster exactly like
+   *  holding a formal office does. Whether the WAR CHEST also covers the
+   *  cost is decided by the caller (gameStore.raiseTroops), not here —
+   *  this function only answers the eligibility/imperium-gate question. */
+  playerHoldsCommand: boolean = false,
 ): MusterQuote {
   const eligibility = checkMusterEligibility(regionId, theatre, cities);
   const region = REGIONS.find(r => r.id === regionId);
@@ -108,7 +113,7 @@ export function quoteMuster(
     .filter(a => a.owner === 'player')
     .reduce((sum, a) => sum + a.units.length, 0);
   const imperiumRequired = m.imperiumThresholdBase + m.imperiumThresholdPerCohort * personalCohortsInField;
-  const sanctioned = playerHoldsOffice;
+  const sanctioned = playerHoldsOffice || playerHoldsCommand;
 
   return {
     eligible: eligibility.allowed,

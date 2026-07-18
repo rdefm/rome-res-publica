@@ -31,6 +31,9 @@ interface MusterPanelProps {
   armies: Army[];
   playerImperium: number;
   playerHoldsOffice: boolean;
+  /** Chunk C4 — holding the theatre command sanctions muster the same way
+   *  a formal office does. */
+  playerHoldsCommand: boolean;
   denarii: number;
   onRaise: (tier: MusterTier, targetArmyId: string | null) => void;
 }
@@ -42,6 +45,7 @@ export default function MusterPanel({
   armies,
   playerImperium,
   playerHoldsOffice,
+  playerHoldsCommand,
   denarii,
   onRaise,
 }: MusterPanelProps) {
@@ -49,7 +53,7 @@ export default function MusterPanel({
 
   const quotes = TIERS.map(tier => ({
     tier,
-    quote: quoteMuster(regionId, tier, theatre, cities, armies, playerImperium, playerHoldsOffice),
+    quote: quoteMuster(regionId, tier, theatre, cities, armies, playerImperium, playerHoldsOffice, playerHoldsCommand),
   }));
   const playerArmiesHere = armies.filter(a => a.owner === 'player' && a.location === regionId);
   const pending = pendingTier ? quotes.find(q => q.tier === pendingTier) ?? null : null;

@@ -43,6 +43,7 @@ interface RegionSheetProps {
   focusArmyId?: string | null;
   playerImperium: number;
   playerHoldsOffice: boolean;
+  playerHoldsCommand: boolean;
   denarii: number;
   onClose: () => void;
   onCombineArmies: (armyIdA: string, armyIdB: string) => void;
@@ -61,6 +62,7 @@ export default function RegionSheet({
   focusArmyId,
   playerImperium,
   playerHoldsOffice,
+  playerHoldsCommand,
   denarii,
   onClose,
   onCombineArmies,
@@ -132,6 +134,7 @@ export default function RegionSheet({
           armies={armies}
           playerImperium={playerImperium}
           playerHoldsOffice={playerHoldsOffice}
+          playerHoldsCommand={playerHoldsCommand}
           denarii={denarii}
           onRaise={onRaiseTroops}
         />

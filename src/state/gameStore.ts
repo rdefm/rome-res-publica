@@ -48,6 +48,17 @@ import { combine as engineCombineArmies, divide as engineDivideArmy } from '../e
 import type { MusterTier } from '../engine/musterEngine';
 import { quoteMuster, rollMusteredUnit, nextLegionName } from '../engine/musterEngine';
 import { getRegion, getRegionRelationship } from '../engine/theatreEngine';
+import type { Command, CommandElectionState } from '../models/command';
+import {
+  isEligibleForCommand,
+  isWarActiveForCommand,
+  generateCommandRivals,
+  commandCanvassFidesCost,
+  commandCanvassThreshold,
+  rollCommandCanvass,
+  calcProrogationModifier,
+  COMMAND_CANVASS_MIN_RELATIONSHIP,
+} from '../engine/commandEngine';
 import { processSeason } from '../engine/turnSequencer';
 import { incrementLegacy, initLegacyObjectives } from '../engine/legacyEngine';
 import { LEGACY_DEFINITIONS } from '../data/legacyDefinitions';
@@ -382,6 +393,14 @@ export interface GameState {
   // full reasoning). No movement yet (C5); no muster (C3) — armies exist
   // here only via debug spawn/combine/divide.
   armies: Army[];
+
+  // ── Campaign Map plan, Chunk C4 — the theatre command. A NEW, PARALLEL
+  // election track to Cursus's Winter magistracy campaigns (campaigning/
+  // campaignVotes/electionRivals) — see models/command.ts's header comment
+  // for why they aren't shared. commandElection is null when no vote is
+  // open; activeCommand is null when no one currently holds the command.
+  activeCommand: Command | null;
+  commandElection: CommandElectionState | null;
 
   // ── Military (Chunk M) ──────────────────────────────────────────────────
   senateResponse: SenateResponseState | null;
@@ -752,6 +771,22 @@ export interface GameActions {
    *  — the panel is expected to disable the button first). */
   raiseTroops: (regionId: RegionId, tier: MusterTier, targetArmyId?: string | null) => void;
 
+  // ── Campaign Map plan, Chunk C4 — The Command ────────────────────────────
+  /** Opens a fresh extraordinary assembly. No-ops unless the war is active,
+   *  no command is currently held, and no vote is already open. `fides`
+   *  stake is spent regardless of whether a candidate is nominated.
+   *  `candidateCharacterId` may be null to call the vote without personally
+   *  contesting it (declareCommandCandidate can join in later, same as a
+   *  challenger joining a prorogation vote). */
+  callCommandVote: (candidateCharacterId: string | null) => void;
+  /** Joins an already-open assembly (fresh or prorogation) as the player's
+   *  family candidate. No-ops if no vote is open, a candidate is already
+   *  standing, or the character isn't age-eligible. */
+  declareCommandCandidate: (characterId: string) => void;
+  /** Same shape as canvassLeader, scoped to commandElection instead of
+   *  campaignVotes — see commandEngine.ts's header comment. */
+  canvassForCommand: (leaderId: string) => void;
+
   // ── Military (Chunk M) ──────────────────────────────────────────────────
   raiseLevy: (characterId: string, musterProvinceId: string) => void;
   musterVeterans: (characterId: string) => void;
@@ -1083,6 +1118,8 @@ export const INITIAL_STATE: GameState = {
   lifetimeImperium: 0,
   theatre: buildInitialTheatreState(),
   armies: [],
+  activeCommand: null,
+  commandElection: null,
 
   // Military (Chunk M)
   senateResponse: null,
@@ -3659,9 +3696,18 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
     const paterfamilias = s.family.find(c => c.isPlayer);
     const playerHoldsOffice = !!paterfamilias?.officeId;
+    const playerHoldsCommand = s.activeCommand?.holderOwner === 'player';
 
-    const quote = quoteMuster(regionId, tier, s.theatre, s.cities, s.armies, s.imperium, playerHoldsOffice);
-    if (!quote.eligible || !quote.imperiumOk || s.denarii < quote.costDenarii) return;
+    const quote = quoteMuster(regionId, tier, s.theatre, s.cities, s.armies, s.imperium, playerHoldsOffice, playerHoldsCommand);
+    if (!quote.eligible || !quote.imperiumOk) return;
+
+    // Chunk C4 — a sanctioning command's war chest pays first, personal
+    // denarii cover the rest (per the plan's own C3 forward-reference).
+    const warChestSpend = playerHoldsCommand && s.activeCommand
+      ? Math.min(s.activeCommand.warChest, quote.costDenarii)
+      : 0;
+    const denariiSpend = quote.costDenarii - warChestSpend;
+    if (s.denarii < denariiSpend) return;
 
     let targetArmy: Army | null = null;
     if (targetArmyId) {
@@ -3726,14 +3772,117 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     }
 
     const label = turnLabel(s);
+    const costNote = warChestSpend > 0
+      ? ` (−${warChestSpend} from the war chest${denariiSpend > 0 ? `, −${denariiSpend} Denarii` : ''})`
+      : ` (−${denariiSpend} Denarii)`;
     set({
-      denarii: s.denarii - quote.costDenarii,
+      denarii: s.denarii - denariiSpend,
+      activeCommand: warChestSpend > 0 && s.activeCommand
+        ? { ...s.activeCommand, warChest: s.activeCommand.warChest - warChestSpend }
+        : s.activeCommand,
       armies,
       theatre,
       senateResponse,
-      log: [...s.log, mkLog(label, `${armyLabel} musters a cohort in ${region.name}. (−${quote.costDenarii} Denarii)`, 'neutral')],
+      log: [...s.log, mkLog(label, `${armyLabel} musters a cohort in ${region.name}.${costNote}`, 'neutral')],
       ...bumpActions(s),
-      ...bumpSpend(s, { denarii: quote.costDenarii }),
+      ...bumpSpend(s, { denarii: denariiSpend }),
+    });
+  },
+
+  // ── Campaign Map plan, Chunk C4 — The Command ────────────────────────────
+
+  callCommandVote: (candidateCharacterId) => {
+    const s = get();
+    if (s.commandElection?.active) return;
+    if (s.activeCommand) return;
+    if (!isWarActiveForCommand(s.wars ?? [])) return;
+    const cost = BALANCE.campaign.command.callVoteFidesCost;
+    if (s.fides < cost) return;
+
+    let resolvedCandidateId: string | null = null;
+    if (candidateCharacterId) {
+      const character = s.family.find(c => c.id === candidateCharacterId);
+      if (character && isEligibleForCommand(character)) resolvedCandidateId = character.id;
+    }
+
+    const election: CommandElectionState = {
+      active: true,
+      calledSeason: s.turnNumber,
+      isProrogation: false,
+      incumbentWinLossModifier: 0,
+      incumbentIsPlayerCandidate: false,
+      incumbentRivalId: null,
+      candidateCharacterId: resolvedCandidateId,
+      rivals: generateCommandRivals(s.clans),
+      votes: {},
+    };
+
+    const label = turnLabel(s);
+    set({
+      fides: s.fides - cost,
+      commandElection: election,
+      log: [...s.log, mkLog(label, 'An extraordinary assembly is called to elect a theatre command.', 'neutral')],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: cost }),
+    });
+  },
+
+  declareCommandCandidate: (characterId) => {
+    const s = get();
+    const election = s.commandElection;
+    if (!election?.active || election.candidateCharacterId) return;
+    const character = s.family.find(c => c.id === characterId);
+    if (!character || !isEligibleForCommand(character)) return;
+
+    const label = turnLabel(s);
+    set({
+      commandElection: { ...election, candidateCharacterId: character.id },
+      log: [...s.log, mkLog(label, `${character.name} stands for the command.`, 'neutral')],
+      ...bumpActions(s),
+    });
+  },
+
+  canvassForCommand: (leaderId) => {
+    const s = get();
+    const election = s.commandElection;
+    if (!election?.active) return;
+    const cost = commandCanvassFidesCost();
+    if (s.fides < cost) return;
+    if (election.votes[leaderId] === 'for') return;
+
+    let foundLeader: (typeof s.clans[0]['leaders'][0]) | null = null;
+    let foundClanId: string | null = null;
+    for (const clan of s.clans) {
+      const l = clan.leaders.find(l => l.id === leaderId);
+      if (l) { foundLeader = l; foundClanId = clan.id; break; }
+    }
+    if (!foundLeader || !foundClanId) return;
+    if (foundLeader.relationship < COMMAND_CANVASS_MIN_RELATIONSHIP) return;
+
+    const clanHasRival = election.rivals.some(r => r.clanId === foundClanId);
+    const threshold = commandCanvassThreshold() * (clanHasRival ? 2 : 1);
+
+    const playerChar = s.family.find(c => c.isPlayer);
+    const rhetoric = playerChar?.skills.rhetoric ?? 0;
+    const roll = rollCommandCanvass(rhetoric, foundLeader.relationship);
+    const success = roll >= threshold;
+    const label = turnLabel(s);
+
+    set({
+      fides: s.fides - cost,
+      commandElection: {
+        ...election,
+        votes: success ? { ...election.votes, [leaderId]: 'for' as const } : election.votes,
+      },
+      log: [...s.log, mkLog(
+        label,
+        success
+          ? `${foundLeader.name} pledges support for the command.`
+          : `${foundLeader.name} was not persuaded.${clanHasRival ? ' Their gens backs a rival candidate.' : ''}`,
+        success ? 'good' : 'neutral',
+      )],
+      ...bumpActions(s),
+      ...bumpSpend(s, { fides: cost }),
     });
   },
 

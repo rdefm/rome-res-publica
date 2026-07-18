@@ -48,6 +48,7 @@ export default function ProvinciaeScreen() {
   const bills                    = useGameStore(s => s.bills);
   const armies                   = useGameStore(s => s.armies);
   const theatre                  = useGameStore(s => s.theatre);
+  const activeCommand            = useGameStore(s => s.activeCommand);
 
   // ── Store actions — only actions that exist in GameActions ───────────────────
   const updateProvincePolicy     = useGameStore(s => s.updateCityPolicy);
@@ -86,6 +87,8 @@ export default function ProvinciaeScreen() {
   // office" rule gameStore.raiseLevy already uses for personal levies.
   const paterfamilias = family.find(c => c.isPlayer);
   const playerHoldsOffice = !!paterfamilias?.officeId;
+  // Chunk C4 — holding the theatre command sanctions muster the same way.
+  const playerHoldsCommand = activeCommand?.holderOwner === 'player';
 
   const governorCharacterId = selectedProvince?.playerGovernor?.characterId;
   const governorCharacter   = governorCharacterId
@@ -265,6 +268,7 @@ export default function ProvinciaeScreen() {
                 focusArmyId={focusArmyId}
                 playerImperium={imperium}
                 playerHoldsOffice={playerHoldsOffice}
+                playerHoldsCommand={playerHoldsCommand}
                 denarii={denarii}
                 onClose={closeSheet}
                 onCombineArmies={combineArmies}

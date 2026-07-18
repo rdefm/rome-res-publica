@@ -1346,6 +1346,25 @@ export const BALANCE = {
       imperiumThresholdBase: 10,
       imperiumThresholdPerCohort: 2,
     },
+
+    /** Chunk C4 — commandEngine.ts / gameStore's callCommandVote/
+     *  resolveCommandElection. First-pass/unverified seeds from the plan's
+     *  own spec table, C10 tunes. minCandidateAge is deliberately NOT
+     *  duplicated here — commandEngine.commandMinAge() reads it live off
+     *  offices.ts's consul entry so the two never drift apart. */
+    command: {
+      callVoteFidesCost: 5,
+      canvassFidesCost: 3,        // matches electionEngine's base CANVASS_FIDES_COST — no per-office scaling exists for a Command
+      canvassThreshold: 60,
+      rivalCount: 2,
+      grantImperium: 15,
+      grantStateCohorts: 6,       // standard-levy quality, spawned at latium
+      grantWarChest: 300,
+      termSeasons: 4,
+      prorogationPerBattle: 8,
+      prorogationModifierClamp: 25,
+      prorogationWarChestTopUp: 100,
+    },
   },
 };
 

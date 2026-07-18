@@ -78,6 +78,16 @@ import { AUTO_BILL_TEMPLATES, BILL_TEMPLATES, HISTORICAL_BILL_TEMPLATES } from '
 import { getCityDefinition } from '../data/cityDefinitions';
 import { REGIONS } from '../data/theatreMap';
 import type { RegionId } from '../models/theatre';
+import { rollMusteredUnit } from './musterEngine';
+import { getRegionRelationship } from './theatreEngine';
+import type { Army } from '../models/army';
+import type { Command, CommandElectionState } from '../models/command';
+import {
+  resolveCommandElection,
+  generateCommandRivals,
+  buildRivalEntry,
+  calcProrogationModifier,
+} from './commandEngine';
 
 // ─── Client helpers ──────────────────────────────────────────────────────────
 
@@ -228,6 +238,193 @@ export function processSeason(state: GameState): {
   // other annual reset in this file — see the aging/regency steps below).
   if (crossedNewYear) {
     s = { ...s, theatre: { ...s.theatre, musteredThisYear: Object.fromEntries(REGIONS.map(r => [r.id, 0])) as Record<RegionId, number> } };
+  }
+
+  // 2d. Campaign Map plan, Chunk C4 — immediate lapse on the holder's death
+  // (per the plan's own invariant: "if the holder dies, the command lapses
+  // immediately"). Checked every season, before election resolution, so a
+  // death and a same-season election-open/resolve never race each other.
+  if (s.activeCommand) {
+    const holderStillExists = s.activeCommand.holderOwner === 'player'
+      ? s.family.some(c => c.id === s.activeCommand!.holderId)
+      : s.clans.some(c => c.leaders.some(l => l.id === s.activeCommand!.holderId));
+    if (!holderStillExists) {
+      const lapsedHolderId = s.activeCommand.holderId;
+      const player = s.family.find(c => c.isPlayer);
+      const deathLapseNotice = injectNoticeEvent('evt-command-lapsed-death', s.turnNumber, player?.id ?? 'pc-1', {
+        title: 'The Command Falls Vacant',
+        bodyText: 'With the general\'s death, the theatre command falls vacant. Its armies hold in place, leaderless, until a new command is won.',
+      });
+      s = {
+        ...s,
+        armies: s.armies.map(a => a.commanderId === lapsedHolderId ? { ...a, commanderId: null } : a),
+        activeCommand: null,
+        pendingEvents: [...s.pendingEvents, deathLapseNotice],
+      };
+      events.push('The theatre command falls vacant — its holder has died.');
+    }
+  }
+
+  // 2e. Campaign Map plan, Chunk C4 — resolve any open command-election.
+  // Every season, not just Winter, and BEFORE the province activeCampaign
+  // resolution steps later in this function (per the plan's "so a new
+  // general can matter immediately" instruction). Safe to resolve
+  // unconditionally here: a vote opened via a mid-season store action
+  // (callCommandVote/declareCommandCandidate) was always opened in an
+  // EARLIER processSeason call than this one (store actions run between
+  // seasons, not during this function), and a prorogation vote auto-opened
+  // by step 2f below always waits a full season before this check can see
+  // it active — see that step's own comment.
+  if (s.commandElection?.active) {
+    const election = s.commandElection;
+    const votingSwayBonus = s.clients
+      .filter(c => c.type === 'votingSway')
+      .reduce((sum, c) => sum + (c.bonus.votingSwayBonus ?? 1), 0);
+    const result = resolveCommandElection(election, s.clans, votingSwayBonus);
+
+    const buildGrantUnits = (count: number): Army['units'] => {
+      const relationship = getRegionRelationship(s.cities, 'latium');
+      return Array.from({ length: count }, (_, i) =>
+        rollMusteredUnit('standard', 'latium', relationship, s.turnNumber, `army-command-unit-${s.turnNumber}-${i}`)
+      );
+    };
+    const latiumCityId = REGIONS.find(r => r.id === 'latium')?.cityIds[0] ?? null;
+    const cmd = BALANCE.campaign.command;
+
+    if (election.isProrogation && result.retainedByIncumbent && s.activeCommand) {
+      // Incumbent (player or rival, whichever side it was) keeps the
+      // command — term extends, war chest tops up, no fresh grants.
+      const holderName = election.incumbentIsPlayerCandidate
+        ? (s.family.find(c => c.id === s.activeCommand!.holderId)?.name ?? 'its holder')
+        : result.topRivalName || 'its holder';
+      s = {
+        ...s,
+        activeCommand: {
+          ...s.activeCommand,
+          expiresSeason: s.turnNumber + cmd.termSeasons,
+          warChest: s.activeCommand.warChest + cmd.prorogationWarChestTopUp,
+        },
+        commandElection: null,
+      };
+      events.push(`Prorogation granted — the command continues under ${holderName}.`);
+    } else if (election.isProrogation) {
+      // Incumbent not retained (or nobody stood) — the command lapses.
+      // State-owned troops freeze in place as leaderless rome_state/
+      // rome_rival garrisons awaiting the next command.
+      const lapsedHolderId = s.activeCommand?.holderId ?? null;
+      const player = s.family.find(c => c.isPlayer);
+      const lapseNotice = injectNoticeEvent('evt-command-lapsed', s.turnNumber, player?.id ?? 'pc-1', {
+        title: 'The Command Lapses',
+        bodyText: 'No successor was confirmed in time. The theatre command lapses — its armies hold in place, leaderless, until a new general is named. Any personally-fielded army kept in the field without sanction risks the Senate\'s attention.',
+      });
+      s = {
+        ...s,
+        armies: lapsedHolderId
+          ? s.armies.map(a => a.commanderId === lapsedHolderId ? { ...a, commanderId: null } : a)
+          : s.armies,
+        activeCommand: null,
+        commandElection: null,
+        pendingEvents: [...s.pendingEvents, lapseNotice],
+      };
+      events.push('The theatre command lapses — its armies await a new general.');
+    } else if (result.won && result.winnerCharacterId) {
+      // Fresh grant to the player.
+      const newCommand: Command = {
+        id: `command-${s.turnNumber}`,
+        holderId: result.winnerCharacterId,
+        holderOwner: 'player',
+        grantedSeason: s.turnNumber,
+        expiresSeason: s.turnNumber + cmd.termSeasons,
+        battlesWon: 0,
+        battlesLost: 0,
+        warChest: cmd.grantWarChest,
+      };
+      const grantArmy: Army = {
+        id: `army-command-${s.turnNumber}`,
+        name: 'The Consular Legion',
+        owner: 'rome_state',
+        commanderId: result.winnerCharacterId,
+        location: 'latium',
+        stationedCityId: latiumCityId,
+        units: buildGrantUnits(cmd.grantStateCohorts),
+        stance: 'avoid_battle',
+        ordersThisSeason: null,
+        fatigued: false,
+        unpaidSeasons: 0,
+      };
+      s = {
+        ...s,
+        activeCommand: newCommand,
+        armies: [...s.armies, grantArmy],
+        imperium: s.imperium + cmd.grantImperium,
+        commandElection: null,
+      };
+      events.push(`${s.family.find(c => c.id === result.winnerCharacterId)?.name ?? 'A general'} is granted the theatre command! (+${cmd.grantImperium} Imperium, a state legion, and a ${cmd.grantWarChest}-denarii war chest)`);
+    } else if (result.winnerRivalId) {
+      // Fresh grant to a rival — this army becomes C6's NPC-Roman AI to command.
+      const newCommand: Command = {
+        id: `command-${s.turnNumber}`,
+        holderId: result.winnerRivalId,
+        holderOwner: 'rome_rival',
+        grantedSeason: s.turnNumber,
+        expiresSeason: s.turnNumber + cmd.termSeasons,
+        battlesWon: 0,
+        battlesLost: 0,
+        warChest: cmd.grantWarChest,
+      };
+      const grantArmy: Army = {
+        id: `army-command-${s.turnNumber}`,
+        name: `${result.winnerName}'s Legion`,
+        owner: 'rome_rival',
+        commanderId: result.winnerRivalId,
+        location: 'latium',
+        stationedCityId: latiumCityId,
+        units: buildGrantUnits(cmd.grantStateCohorts),
+        stance: 'give_battle',
+        ordersThisSeason: null,
+        fatigued: false,
+        unpaidSeasons: 0,
+      };
+      s = { ...s, activeCommand: newCommand, armies: [...s.armies, grantArmy], commandElection: null };
+      events.push(`${result.winnerName} is granted the theatre command.`);
+    } else {
+      // No valid candidate stood — the assembly disperses without a victor.
+      s = { ...s, commandElection: null };
+      events.push('The extraordinary assembly disperses without a victor.');
+    }
+  }
+
+  // 2f. Auto-call a prorogation vote in the command's final season. Guarded
+  // on "no election already active" so this only ever fires once per
+  // command — a vote opened THIS pass has calledSeason === s.turnNumber, so
+  // step 2e above (which already ran this pass) cannot have resolved it;
+  // the earliest it can resolve is next season's step 2e, giving the
+  // player a full season to canvass, same as a freshly-called vote.
+  if (s.activeCommand && !s.commandElection?.active && s.turnNumber === s.activeCommand.expiresSeason) {
+    const incumbent = s.activeCommand;
+    const modifier = calcProrogationModifier(incumbent.battlesWon, incumbent.battlesLost);
+    const isPlayerIncumbent = incumbent.holderOwner === 'player';
+
+    const challengers = generateCommandRivals(s.clans, isPlayerIncumbent ? undefined : incumbent.holderId);
+    const incumbentRival = isPlayerIncumbent ? null : buildRivalEntry(s.clans, incumbent.holderId);
+    const rivals = incumbentRival ? [incumbentRival, ...challengers] : challengers;
+
+    const election: CommandElectionState = {
+      active: true,
+      calledSeason: s.turnNumber,
+      isProrogation: true,
+      incumbentWinLossModifier: modifier,
+      incumbentIsPlayerCandidate: isPlayerIncumbent,
+      incumbentRivalId: incumbentRival?.id ?? null,
+      // A player incumbent auto-stands for their own prorogation; a rival
+      // incumbent doesn't block the player from declaring a challenger via
+      // declareCommandCandidate later this season.
+      candidateCharacterId: isPlayerIncumbent ? incumbent.holderId : null,
+      rivals,
+      votes: {},
+    };
+    s = { ...s, commandElection: election };
+    events.push('The command\'s term ends this season — a prorogation vote is called.');
   }
 
   // 3. Tick office term

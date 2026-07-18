@@ -509,4 +509,22 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     definition: 'Raise a cohort from a region — three tiers trade cost for quality, both improved by good relations with the region\'s cities. Each region has a yearly cohort cap. Raising without the Senate\'s sanction (holding a formal office) risks the same censure-and-consular-army response as an unsanctioned personal levy.',
     relatedTab: 'Provinciae',
   },
+  {
+    id: 'the-command',
+    term: 'The Command',
+    definition: 'A proconsular command, won in a same-season extraordinary assembly. Winning grants imperium, a state legion at Rome, and a war chest — spendable on muster/upkeep, never mixed with personal denarii. Sanctions musters exactly like a formal office. Rivals can win it too; if they do, their army joins the enemy AI. It coexists with magistracies and holding no office.',
+    relatedTab: 'Curia',
+  },
+  {
+    id: 'proconsul',
+    term: 'Proconsul',
+    definition: 'The title held by whoever wins the theatre command — military authority over the war effort, distinct from any elected magistracy. A sitting consul or praetor can hold it alongside their office; so can a private citizen.',
+    relatedTab: 'Curia',
+  },
+  {
+    id: 'prorogation',
+    term: 'Prorogation',
+    definition: 'The automatic re-election vote called in a command\'s final season. The incumbent\'s support is boosted or hurt by their battle record; winning extends the term and tops up the war chest with no new grants. Losing — or nobody standing — lapses the command: its armies hold in place, leaderless, until a new one is won.',
+    relatedTab: 'Curia',
+  },
 ];

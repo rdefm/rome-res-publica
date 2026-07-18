@@ -26,6 +26,8 @@ import {
 } from '../engine/munificenceEngine';
 import { getDesperationTier } from '../engine/warEngine';
 import NegotiationScreen from '../components/war/NegotiationScreen';
+import { BALANCE } from '../data/balance';
+import { isEligibleForCommand, isWarActiveForCommand, commandMinAge } from '../engine/commandEngine';
 
 // ─── Crisis track configuration ───────────────────────────────────────────────
 
@@ -734,22 +736,126 @@ const modal = StyleSheet.create({
   empty: { color: PARCHMENT.muted, fontFamily: FONTS.body, fontStyle: 'italic', textAlign: 'center', marginTop: SPACING.lg },
 });
 
+// ─── Command Assembly modal ──────────────────────────────────────────────────
+// Campaign Map plan, Chunk C4. Covers both a fresh vote and an auto-called
+// prorogation vote — see models/command.ts's CommandElectionState. Mirrors
+// SubmitBillModal's ScrollModal + item-row shape rather than inventing a
+// new visual language for "pick from a list, pay a cost, get a result."
+
+function CommandAssemblyModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const {
+    commandElection, family, fides, declareCommandCandidate, canvassForCommand,
+  } = useGameStore();
+  if (!commandElection?.active) return null;
+
+  const candidate = commandElection.candidateCharacterId
+    ? family.find(c => c.id === commandElection.candidateCharacterId)
+    : null;
+  const eligibleFamily = family.filter(c => !commandElection.candidateCharacterId && isEligibleForCommand(c));
+  const canvassCost = BALANCE.campaign.command.canvassFidesCost;
+
+  return (
+    <ScrollModal
+      visible={visible}
+      onClose={onClose}
+      title={commandElection.isProrogation ? 'Prorogation Vote' : 'Extraordinary Assembly'}
+      subtitle={`Resolves at End Season · Canvass cost: ${canvassCost} Fides`}
+    >
+      <Text style={modal.itemDesc}>
+        {commandElection.isProrogation
+          ? 'The command\'s term ends this season. The incumbent stands for re-election; a challenger may still declare.'
+          : 'Winning grants imperium, a state legion at Rome, and a war chest for the duration of the war.'}
+      </Text>
+
+      <Text style={commandStyles.sectionLabel}>YOUR CANDIDATE</Text>
+      {candidate ? (
+        <View style={modal.item}>
+          <Text style={modal.itemName}>{candidate.name}</Text>
+          <Text style={modal.itemDesc}>Rhetoric {candidate.skills.rhetoric}/10</Text>
+        </View>
+      ) : eligibleFamily.length === 0 ? (
+        <Text style={modal.empty}>No family member meets the age requirement (≥{commandMinAge()}).</Text>
+      ) : (
+        eligibleFamily.map(c => (
+          <TouchableOpacity key={c.id} style={modal.item} onPress={() => declareCommandCandidate(c.id)}>
+            <Text style={modal.itemName}>{c.name}</Text>
+            <Text style={modal.itemDesc}>Stand for the command — Rhetoric {c.skills.rhetoric}/10</Text>
+          </TouchableOpacity>
+        ))
+      )}
+
+      <Text style={commandStyles.sectionLabel}>RIVAL CANDIDATES</Text>
+      {commandElection.rivals.length === 0 && <Text style={modal.empty}>No rivals stand this season.</Text>}
+      {commandElection.rivals.map(rival => {
+        const pledged = commandElection.votes[rival.id] === 'for';
+        const isIncumbent = rival.id === commandElection.incumbentRivalId;
+        const disabled = pledged || fides < canvassCost;
+        return (
+          <View key={rival.id} style={modal.item}>
+            <View style={modal.itemHeader}>
+              <Text style={modal.itemName}>{rival.emoji} {rival.name}{isIncumbent ? ' (Incumbent)' : ''}</Text>
+              <Text style={modal.itemType}>{rival.clanName.toUpperCase()}</Text>
+            </View>
+            <Text style={modal.itemDesc}>
+              {rival.title}{rival.highestOffice ? ` · Ex-${rival.highestOffice}` : ''}
+            </Text>
+            <TouchableOpacity
+              style={[commandStyles.canvassBtn, disabled && modal.itemDisabled]}
+              disabled={disabled}
+              onPress={() => canvassForCommand(rival.id)}
+            >
+              <Text style={commandStyles.canvassBtnText}>
+                {pledged ? 'Pledged' : `Canvass (−${canvassCost} Fides)`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })}
+    </ScrollModal>
+  );
+}
+
+const commandStyles = StyleSheet.create({
+  sectionLabel: {
+    color: PARCHMENT.gold, fontFamily: FONTS.ui, fontSize: 10, letterSpacing: 1,
+    marginTop: SPACING.sm, marginBottom: SPACING.xs,
+  },
+  canvassBtn: {
+    alignSelf: 'flex-start', backgroundColor: 'rgba(122,90,26,0.25)', borderWidth: 1,
+    borderColor: PARCHMENT.gold, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.sm,
+    paddingVertical: 5, marginTop: SPACING.xs,
+  },
+  canvassBtnText: { color: PARCHMENT.heading, fontFamily: FONTS.ui, fontSize: 11, fontWeight: '600' },
+});
+
 // ─── CuriaScreen ──────────────────────────────────────────────────────────────
 
 export default function CuriaScreen() {
-  const { rome, crisis, bills, activeLaws, fides, turnNumber, grandGamesVoteBonus, wars } = useGameStore();
+  const {
+    rome, crisis, bills, activeLaws, fides, turnNumber, grandGamesVoteBonus, wars,
+    family, clans, activeCommand, commandElection, callCommandVote,
+  } = useGameStore();
   const [submitVisible, setSubmitVisible] = useState(false);
   const [activeLawsExpanded, setActiveLawsExpanded] = useState(true);
   const [munificenceExpanded, setMunificenceExpanded] = useState(true);
   const [romeStatModal, setRomeStatModal] = useState<RomeStat | null>(null);
   const [crisisModal, setCrisisModal] = useState<CrisisTrackId | null>(null);
   const [negotiationWarId, setNegotiationWarId] = useState<string | null>(null);
+  const [commandModalVisible, setCommandModalVisible] = useState(false);
   const romeMods = calcRomeStatModifiers(rome);
 
   // Military Overhaul M10 — any active war that's reached the sue threshold
   // unlocks the negotiation entry point (agendaEngine's generator #18 also
   // points here — see its target: { tab: 'Curia' }).
   const negotiableWars = (wars ?? []).filter(w => w.active && getDesperationTier(w.warScore) !== 'none');
+
+  // Campaign Map plan, Chunk C4 — The Command.
+  const commandVoteEligible = !activeCommand && !commandElection?.active && isWarActiveForCommand(wars ?? []);
+  const commandHolderName = activeCommand
+    ? (activeCommand.holderOwner === 'player'
+        ? family.find(c => c.id === activeCommand.holderId)?.name ?? 'Unknown'
+        : clans.flatMap(c => c.leaders).find(l => l.id === activeCommand.holderId)?.name ?? 'A rival commander')
+    : null;
 
   const TRACK_ORDER: CrisisTrackId[] = ['war', 'unrest', 'constitution', 'economy'];
 
@@ -832,6 +938,46 @@ export default function CuriaScreen() {
                 <Text style={styles.warRowArrow}>›</Text>
               </TouchableOpacity>
             ))}
+          </View>
+        )}
+
+        {/* Campaign Map plan, Chunk C4 — The Command */}
+        {(commandVoteEligible || activeCommand || commandElection?.active) && (
+          <View style={styles.panel}>
+            <InfoTap termId="the-command">
+              <Text style={styles.panelTitle}>THE COMMAND</Text>
+            </InfoTap>
+            {commandElection?.active ? (
+              <TouchableOpacity style={styles.warRow} onPress={() => setCommandModalVisible(true)}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.warRowLabel}>
+                    {commandElection.isProrogation ? 'Prorogation vote open' : 'Extraordinary assembly open'}
+                  </Text>
+                  <Text style={styles.warRowSub}>
+                    {commandElection.rivals.length} rival(s) standing — canvass before End Season.
+                  </Text>
+                </View>
+                <Text style={styles.warRowArrow}>›</Text>
+              </TouchableOpacity>
+            ) : activeCommand ? (
+              <View style={styles.warRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.warRowLabel}>{commandHolderName} holds the command</Text>
+                  <Text style={styles.warRowSub}>
+                    War chest {activeCommand.warChest} den · expires season {activeCommand.expiresSeason}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.submitBtn, fides < BALANCE.campaign.command.callVoteFidesCost && styles.submitBtnDisabled]}
+                onPress={() => callCommandVote(null)}
+                disabled={fides < BALANCE.campaign.command.callVoteFidesCost}
+              >
+                <Text style={styles.submitBtnLabel}>Propose a Command Vote</Text>
+                <Text style={styles.submitBtnCost}>−{BALANCE.campaign.command.callVoteFidesCost} 🤝</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -925,6 +1071,8 @@ export default function CuriaScreen() {
           onClose={() => setNegotiationWarId(null)}
         />
       )}
+
+      <CommandAssemblyModal visible={commandModalVisible} onClose={() => setCommandModalVisible(false)} />
     </SafeAreaView>
   );
 }
