@@ -519,6 +519,11 @@ export interface GameState {
   lastSeasonLedger: SeasonLedger | null;
   /** Epoch ms; updated on endSeason and app background. Used for the welcome-back 12-hour threshold (P1-D). */
   lastActiveAt: number;
+  /** Phase 5, Chunk P5-I — stamped by saveLoad.ts's save()/exportSave() with
+   *  CURRENT_SAVE_VERSION on every write; undefined on a fresh unsaved game
+   *  and on any save written before this chunk. Purely informational today
+   *  (see saveLoad.ts's own comment) — not read by any behavior branch. */
+  saveVersion?: number;
   /** One-shot deep-link request. Set by agenda item taps; consumed and cleared by the App.tsx navigator (P1-C). */
   uiNavRequest: AgendaTarget | null;
 

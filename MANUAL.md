@@ -14,14 +14,34 @@ The game is played in **seasons** (Spring, Summer, Autumn, Winter — four to a 
 
 ## 2. Starting Your Game
 
-When you begin, you choose between two paths:
+When you begin, you choose a path:
 
 - **The Guided Path** (recommended) — your household secretary, **Philon**, walks you through your first two years, introducing one system at a time. By the end, Philon hands you the full ledger — the **Agenda Tablet** — and you're on your own.
 - **Free Start** — no hand-holding. Every system is open to you from turn one.
+- **Gens Duilia** and **Gens Manlia** — two unlockable free-start families (see below).
 
-Both begin with the same family, the **Brutii**: Marcus Brutus (you, 42, a capable speaker), his wife Livia (a sharp intriguer), and two grown children, Gaius (aggressive, martially inclined) and Julia (cautious, quietly gifted). You begin with no offices, no provinces, four rival clans watching you, one clan leader already holding something over your family's head — and, within your first year or two, a war you never asked for.
+The Guided Path always begins with the same family, the **Brutii**: Marcus Brutus (you, 42, a capable speaker), his wife Livia (a sharp intriguer), and two grown children, Gaius (aggressive, martially inclined) and Julia (cautious, quietly gifted). You begin with no offices, no provinces, four rival clans watching you, one clan leader already holding something over your family's head — and, within your first year or two, a war you never asked for. Free Start can begin as the Brutii too, or as one of the unlocked alternate families below.
 
 From the start menu you can also visit the **Hall of Ancestors** — a read-only record of every run you've ever finished, regardless of how it ended.
+
+### Starting Families
+
+Two additional families are available on a Free Start once unlocked — sidegrades, not upgrades: a different flavour of the same challenge, never a mechanical head start or handicap.
+
+- **Gens Duilia** ("Nova Pecunia") — **unlocked by any completed run in your Hall of Ancestors, win or lose.** New-money plebeians: Gaius Duilius has coin enough to shame half the Senate and a name nobody recognises. You start considerably wealthier than the Brutii, but every clan begins cool toward you — nobody owes you anything, and money alone won't fix that.
+- **Gens Manlia** ("The Disgraced") — **unlocked by a Victory in your Hall of Ancestors.** Patricians living down a scandal: Titus Manlius is capable — strong in speech and in the field — but starts with elevated corruption baked into his record. That's not flavour text: it makes your family a more attractive blackmail target from turn one, converting the disgrace into real, ongoing pressure.
+
+A locked family's card shows exactly what unlocks it — nothing is hidden.
+
+### Difficulty
+
+After choosing a family (every start except the Guided Path, whose numbers are authored specifically for Aequus), you choose one of three difficulty presets — **fixed for the run**, shown with their literal numbers at selection, and recorded on your eventual Hall of Ancestors entry:
+
+- **Clemens** — the Fates are kind. Income ×1.15, crisis pressure ×0.85.
+- **Aequus** — Rome as she is. The default, unmodified experience.
+- **Ferox** — the Republic shows no mercy. Income ×0.9, crisis pressure ×1.2.
+
+Difficulty touches exactly two things: how generous your season income is, and how fast the four crisis tracks drift. It never hides, adds, or removes a mechanic, and it never inflates your final Legacy score — a Ferox run and a Clemens run are scored the same way. Clemens is not a lesser Rome; it's the same Republic, just less inclined to punish a mistake.
 
 ---
 
@@ -258,13 +278,16 @@ Every run of Res Publica ends, eventually — and unlike a normal defeat screen,
 Whichever ending arrives, a full accounting follows: the years your dynasty spanned, a scored "Legacy" total drawn from your Lifetime Dignitas (halved if a cadet branch had to save the line at some point), the highest office you ever reached, how many generations your family lasted, a snapshot of who (if anyone) survived, a list of the run's proudest and darkest moments — Triumphs celebrated, trials won and lost, a conviction that made your name — and a short, generated "historian's paragraph" summing up how Rome will remember you. A finished Victory offers one more choice: **continue in Endless Mode**, playing on past the war's end with everything else — crises, elections, courts, succession, even the risk of the line dying out — still very much live, only the concluded war itself retired for good.
 
 ### The Hall of Ancestors
-Every finished run, of every kind, is filed away permanently in the **Hall of Ancestors** — reachable from the epilogue itself or from the start menu before a new game even begins. It's a trophy shelf, not a save file: nothing carries over mechanically between runs, but the record of every gens you've ever run, and how its story ended, is there to look back on.
+Every finished run, of every kind, is filed away permanently in the **Hall of Ancestors** — reachable from the epilogue itself or from the start menu before a new game even begins. It's a trophy shelf, not a save file: nothing carries over mechanically between runs, but the record of every gens you've ever run, and how its story ended, is there to look back on. Each entry also shows the run's difficulty preset.
+
+### Laurels
+The Hall also holds your **Laurels** — around eighteen cross-run trophies, from winning your first election to weathering the Republic's darkest ending. Laurels persist across every run and every save you ever start or delete; a small banner announces one the moment it's earned, and the Hall itself lists every Laurel earned or not, with its exact condition always shown — nothing hidden, and nothing a Laurel grants ever touches the game itself. They're the game speaking in its own voice, not another mechanic to chase.
 
 ---
 
 ## 11. The Rhythm of a Season
 
-Each season, you act, then press **End Season**, and the Republic answers all at once: the calendar advances (and, once a year, everyone ages — and is quietly checked against mortality); any election resolves; office terms and bills move forward; the four crises escalate or ease; income arrives; the war, if one is underway, drifts, throws up events, or schedules a battle; provinces tick; secrets held against you may be acted on by their holders; trials move a step closer to their day in the Basilica; births are checked; ambitions are checked for completion or expiry; and one story event fires, scripted or drawn from a very large pool tailored to your circumstances and the season itself.
+Each season, you act, then press **End Season**, and the Republic answers all at once: the calendar advances (and, once a year, everyone ages — and is quietly checked against mortality); any election resolves; office terms and bills move forward; the four crises escalate or ease; income arrives; the war, if one is underway, drifts, throws up events, or schedules a battle; provinces tick; secrets held against you may be acted on by their holders; trials move a step closer to their day in the Basilica; births are checked; ambitions are checked for completion or expiry; and one story event fires — scripted, when something specific is unfolding, or otherwise drawn from a pool of well over eighty, weighted by the season, your standing, the Republic's mood, and what your family has and hasn't been through yet. No two runs read the same year the same way.
 
 Before you can end the season, **Philon's Agenda Tablet** flags anything urgent, and a summary overlay afterward lays out everything that changed. If you step away for a long stretch, the same summary greets you on your return.
 
@@ -274,6 +297,8 @@ Before you can end the season, **Philon's Agenda Tablet** flags anything urgent,
 
 ### Saving Your Game
 The game autosaves at the end of every season and whenever you leave the app. From **Settings**, you can also save on demand, export a save file, or import one.
+
+There's no account and no cloud sync of our own — two things cover you instead. First, your device's own backup: on iOS, AsyncStorage (where the game keeps its save) rides your regular iCloud or iTunes/Finder backup automatically; on Android, it's covered by the OS's own Auto Backup, which runs on its own schedule whenever your device is idle, charging, and signed into a Google account with backup turned on — not instant, and not something the game can trigger itself, but real. Second, **Export**: it hands you an actual file, yours to keep anywhere — a cloud drive, an email to yourself, wherever you trust. **Import** restores from one. Between the two, losing a run to a lost or reset device should be rare, but export is the one guarantee that's entirely in your own hands.
 
 ### The Tabularium
 Every game term you'll encounter — Fides, Imperium, the Basilica, Logos/Pathos/Ethos, Calumnia, War Score, Regency, the Cadet Branch, and dozens more — is explained in-app. Tap any underlined term, or open the full list from **Settings → Tabularium**.

@@ -356,6 +356,11 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Curia',
   },
   {
+    id: 'saves-and-backup',
+    term: 'Saves & Backup',
+    definition: 'The game autosaves every season and whenever you leave the app. Your device\'s own backup (iCloud/iTunes on iOS, Google device backup on Android) covers that save automatically. Export creates a file you own; Import restores from one. There is no account and no cloud sync of our own.',
+  },
+  {
     id: 'season',
     term: 'Season (Turn)',
     definition: 'The game\'s turn unit. Each season you take actions across all five tabs, then press End Season. Four seasons make one in-game year; elections resolve in Winter and aging occurs at year\'s end.',

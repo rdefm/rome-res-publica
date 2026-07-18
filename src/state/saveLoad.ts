@@ -7,8 +7,27 @@ import type { GameState } from './gameStore';
 
 const SAVE_KEY = 'rome_save_v1';
 
-// Minimal Zod schema — validates the shape is correct before loading
-const SaveSchema = z.object({
+// Phase 5, Chunk P5-I — saveVersion tracks which phase's shape a save was
+// last WRITTEN against (1-5, matching the phase-plan sequence: pre-P3 saves
+// predate this field entirely and read as `undefined`, not 1 — there was no
+// "version 1" concept before this chunk; 5 is current/Phase 5). Written on
+// every save() call; read (optionally) by loadGame/tests, never required —
+// the actual migration behavior is still the existing per-field `??`
+// fallback spread in gameStore.loadGame (unchanged, already tested), not a
+// version-dispatch table. This stamp exists so that logic has something to
+// key off in the future, and so the fixture/migration tests in
+// __tests__/saveLoad.test.ts can assert on it directly.
+export const CURRENT_SAVE_VERSION = 5;
+
+// Minimal Zod schema — validates the shape is correct before loading.
+// Exported (Phase 5, Chunk P5-I) so migration-fixture tests can validate
+// directly against it, catching schema drift precisely rather than only
+// indirectly through load()/importSave()'s try/catch.
+export const SaveSchema = z.object({
+  // Optional/no default: an absent value means "written before this chunk,"
+  // which is meaningfully different from "written at version 1" — there is
+  // no version 1. See CURRENT_SAVE_VERSION's comment above.
+  saveVersion: z.number().optional(),
   year: z.number(),
   turnNumber: z.number(),
   seasonIndex: z.number().min(0).max(3),
@@ -148,13 +167,19 @@ export interface SaveProvider {
 export class LocalSaveProvider implements SaveProvider {
   async save(state: GameState): Promise<void> {
     // Strip UI-only fields that should never persist across sessions.
-    // agendaVisible / uiNavRequest / activeEvent are transient modal state.
+    // agendaVisible / uiNavRequest are transient modal state.
     // Military Overhaul M5: a battle in progress does not survive an app
-    // restart — same treatment as activeEvent (re-enter/re-launch instead).
+    // restart (re-enter/re-launch instead) — activeEvent used to get the
+    // same treatment, but Phase 5, Chunk P5-I stopped stripping it: it's a
+    // real GameState field (EventModal renders off it directly), and unlike
+    // a battle, a single random event has no meaningful "session" to lose —
+    // keeping it means a background-save/app-kill while an event modal is
+    // showing no longer silently discards that event on restart (the gap
+    // this chunk's premium-hygiene audit found; pendingSuccession/in-session
+    // trials/pendingBirthNaming were already safe, being real fields too).
     const {
       agendaVisible: _av,
       uiNavRequest:  _unr,
-      activeEvent:   _ae,
       activeBattle:      _ab,
       activeBattleSetup: _abs,
       activeBattleBridgeCtx: _abbc,
@@ -162,7 +187,7 @@ export class LocalSaveProvider implements SaveProvider {
       basilicaReturnTab: _brt,
       ...persistedState
     } = state as any;
-    const json = JSON.stringify(persistedState);
+    const json = JSON.stringify({ ...persistedState, saveVersion: CURRENT_SAVE_VERSION });
     await AsyncStorage.setItem(SAVE_KEY, json);
   }
 
@@ -195,7 +220,7 @@ export async function hasSave(): Promise<boolean> {
 
 export async function exportSave(state: GameState): Promise<void> {
   try {
-    const json = JSON.stringify(state, null, 2);
+    const json = JSON.stringify({ ...state, saveVersion: CURRENT_SAVE_VERSION }, null, 2);
     const filename = `rome-save-${Date.now()}.json`;
     const uri = FileSystem.documentDirectory + filename;
     await FileSystem.writeAsStringAsync(uri, json, { encoding: FileSystem.EncodingType.UTF8 });

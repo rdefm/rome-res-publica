@@ -28,7 +28,8 @@
         "foregroundImage": "./src/assets/images/icon.png",
         "backgroundColor": "#1a1714"
       },
-      "package": "com.brutii.rome"
+      "package": "com.brutii.rome",
+      "allowBackup": true
     },
     "plugins": [
       [
