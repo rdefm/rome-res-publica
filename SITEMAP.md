@@ -113,7 +113,7 @@ Province map, governor policy, military campaigns, provincial clients, ambassado
 
 ## 4a. Campaign Map plan ("The Consul's Map") — Theatre Data Layer (Chunk C1, cross-cutting)
 
-The strategic military redesign's first chunk: a coarse **theatre map** of 8 `Region`s, each grouping one or more existing Cities (§4). Zero gameplay change this chunk — pure data model + a read-only DebugPanel listing. See §4b for Chunk C2 (Armies) and §4c for Chunk C3 (Muster), both of which build on this. Later chunks (C4–C9, not yet built) add elections for a theatre command, movement, AI, turn-end campaign resolution/playback, the battle bridge, and war standing.
+The strategic military redesign's first chunk: a coarse **theatre map** of 8 `Region`s, each grouping one or more existing Cities (§4). Zero gameplay change this chunk — pure data model + a read-only DebugPanel listing. See §4b for Chunk C2 (Armies), §4c for Chunk C3 (Muster), §4d for Chunk C4 (The Command), and §4e for Chunk C5 (Movement), all of which build on this. Later chunks (C6–C9, not yet built) add campaign AI, turn-end campaign resolution/playback, the battle bridge, and war standing.
 
 **Map art (Chunk C2 addition):** `MapView.tsx` now renders `src/assets/images/italy-mosaic.png` (1024×1536; replaces `map_italia.png`, still on disk but unreferenced) — a mosaic-style map drawing Italy, Sicily, Sardinia/Corsica, AND the African coast in-frame. All 15 city `nodeX`/`nodeY` positions in `cityDefinitions.ts` and all 8 regions' `borderPoints` (see below) were hand-placed/traced against this map using two standalone tools kept at `tools/theatre-map/` (`city-node-positioning-tool.html`, `region-border-tracer-tool.html` — self-contained, drag-to-position / click-to-trace, export paste-ready coordinate blocks; see that folder's own README for how to regenerate them if the map art changes again).
 
@@ -220,6 +220,38 @@ The theatre command: a same-season election granting imperium, a state army, and
 **Glossary:** `the-command`, `proconsul`, `prorogation` added.
 
 **Tests:** `commandElection.test.ts` (new, 27 tests, per the plan's own filename) — eligibility, rival generation/exclusion, prorogation modifier math incl. clamps, and `resolveCommandElection`'s win/lose/tie/retained/lapsed branches. `commandTurnSequencer.test.ts` (new, 9 tests) — the turnSequencer wiring itself (grants, army creation/ownership, war-chest top-up vs. fresh grant, leaderless conversion on lapse, death-triggered immediate lapse, auto-open timing) using the same `makeState`/dynamic-avoiding top-level-import pattern `warEngine.test.ts` already established (`officeAction.test.ts`'s dynamic-`import()` pattern is a known-broken pre-existing Jest config gap — not used here). No regression tests were needed for `resolveElection` itself since `electionEngine.ts` was never touched.
+
+---
+
+## 4e. Campaign Map plan — Movement: Orders, Rates, Sea Lanes, Forced March (Chunk C5, cross-cutting)
+
+Player (and player-manageable `rome_state`) armies take movement orders from the existing map — no separate schematic overlay was built (see the scope note below). Reachability previews are honest (the map renders exactly what `movementEngine.reachable()` returns, no separate approximation). **Nothing resolves yet** — orders are stored on `Army.ordersThisSeason` and sit there, editable, until C7 (turn-end resolution) exists to actually move armies, roll storms, and create engagements. `Army.fatigued` (declared unused since C2) gets its first real writer here (forced march sets it), but still has no reader — that's whichever future chunk bridges Army to a tactical battle.
+
+**Scope note — reused `MapView.tsx` directly, did not build the plan's named `TheatreMapView.tsx`:** the plan assumed a token layer didn't exist yet and asked for a new file combining it with order-mode UI. Chunk C2 already built army markers directly into `MapView.tsx` (not a separate layer) when it did the map visual redesign — creating a second, separate map component now would either duplicate rendering or need to wrap/duplicate the existing one. Order mode was added as new optional props on the existing `MapView` instead (`orderModeDestinations`/`onOrderRegionPress`), consistent with how C2 already resolved the same "where does map UI live" question.
+
+**Model:** `army.ts`'s `MovementOrder` finalized — `{ path: RegionId[]; forcedMarch: boolean; intent: 'move' | 'attack' }`. `path[0]` is always the army's current location; a sea-lane edge, if present, is always the final edge (`movementEngine.isValidPath` enforces this — "one lane per season").
+
+**Engine:** `movementEngine.ts` (new, pure) —
+- `calcMovementPoints(cohortCount, seasonIndex, forcedMarch)` — base 2 MP; modifiers (Winter −1, big-stack −1, forced march +1) are summed first, then the whole budget is floored at 1 once, not per-modifier.
+- `reachable(army, armies, theatre, seasonIndex, forcedMarch)` — the one source of truth the map preview renders verbatim. Land/strait reachability is a cost-relaxation search (small integer costs on an 8-node graph, not a real priority queue) up to the MP budget; sea lanes are added separately from every land-reached coastal stop (including the army's own region) that still has ≥`seaLaneMinMP` left over, consuming the FULL remaining budget — so a land-hop-then-embark combo route is only possible with forced march's extra MP at these seeds. A region reachable by both land and sea keeps its land route (computed first). Each destination is tagged `intent: 'attack'` iff a hostile-power army already holds it (design invariant 4), and `blockedReason: 'leaderless'` when the mover has no commander (design invariant 5) — shown, not hidden, so the UI can say why.
+- `isValidPath(path)` — structural-only validator (real edges, sea lane must be final) independent of any specific army's budget.
+- `buildMovementOrder(...)` — the ONLY supported way to build a `MovementOrder`: looks up the destination in that army's own `reachable()` set, so every issued order is guaranteed valid.
+- `applyForcedMarchAttrition` / `rollSeaLaneStorm` / `applyStormAttrition` — the resolution-time consequence functions the spec describes (4% strength loss + `fatigued: true`; a storm roll scaled ×`winterSeaMultiplier` in Winter; 10% storm strength loss). Declared and tested now, called by nothing yet — C7's job, same "pure math now, wiring later" precedent as C3's `settleUpkeep`.
+- `armyEngine.ts` gained an extracted `armyPowerOf(owner)` helper (Carthage vs. everyone-else-counts-as-Rome) — previously inlined only in `upkeepFor`, now shared with `movementEngine.reachable`'s hostile-occupation check.
+
+**Store (`gameStore.ts`):** `issueMovementOrder(armyId, destinationRegionId, forcedMarch)` (the only entry point — always routes through `buildMovementOrder`, so a no-op silently rejects an unreachable/blocked target rather than needing its own validation) and `clearOrder(armyId)`.
+
+**Components:**
+| File | Summary |
+|---|---|
+| `MapView.tsx` | Gained `orderModeDestinations`/`onOrderRegionPress` props; when set, replaces the normal region-tap-target layer with `OrderHighlight`s (gold move / crimson attack / dimmed-untappable blocked) sized and positioned off the same `regionCentroidPx` helper the border/label layers already use. |
+| `ArmyCard.tsx` | Gained `onOrderPress`/`onClearOrder`; a manageable army shows its queued order as a status line ("→ Etruria (forced march)") with a Clear action, plus a Move/Change Order button alongside Combine/Divide. |
+| `RegionSheet.tsx` | Threads `onOrderMode`/`onClearOrder` down to each `ArmyCard`. |
+| `ProvinciaeScreen.tsx` | Owns order-mode state (`orderModeArmyId`/`orderModeForcedMarch`), mutually exclusive with the bottom sheet — entering order mode always closes whichever sheet is open. A floating banner (army name, a Forced March toggle that live-recomputes `reachable()`, Cancel) sits above the map while active. |
+
+**Balance:** `BALANCE.campaign.movement` (`baseMP`, `landFriendlyCost`, `landContestedCost`, `straitCost`, `seaLaneMinMP`, `winterMPPenalty`, `bigStackCohorts`, `bigStackMPPenalty`, `forcedMarchMPBonus`, `forcedMarchAttritionPct`, `winterSeaMultiplier`, `stormAttritionPct`) — first-pass/unverified seeds from the plan's own spec table, C10 tunes.
+
+**Tests:** `movementEngine.test.ts` (new, 33 tests) — MP math across every modifier combination and combination-floor behavior; land/strait/sea cost and budget-exclusion cases against the REAL 8-region graph (no synthetic topology needed — Latium's real neighbors already cover friendly/contested/strait/sea-direct/land-then-sea-combo cases); attack/leaderless-block/friendly-occupied intent tagging; `isValidPath`'s three failure modes; `buildMovementOrder`'s reachable/blocked/out-of-budget branches; the forced-march and storm consequence functions.
 
 ---
 

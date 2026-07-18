@@ -94,6 +94,15 @@ export function divide(
   return [remainingArmy, newArmy];
 }
 
+/** Which theatre "side" an Army belongs to, for territory-control/hostility
+ *  checks — every non-Carthage ArmyOwner ('player'/'rome_state'/
+ *  'rome_rival') counts as 'rome'. Extracted (Chunk C5) from upkeepFor's own
+ *  inline version below, now that movementEngine.ts needs the identical
+ *  mapping for hostile-occupation checks. */
+export function armyPowerOf(owner: Army['owner']): Controller {
+  return owner === 'carthage' ? 'carthage' : 'rome';
+}
+
 /**
  * Aggregate effective power score — the future abstract battle resolver
  * (C8) and campaign AI (C6) both consume this. Reuses Legate's Line's real
@@ -137,7 +146,7 @@ export function upkeepFor(
   if (cohortCount === 0) return 0;
 
   const { upkeep } = BALANCE.campaign;
-  const armyPower: Controller = army.owner === 'carthage' ? 'carthage' : 'rome';
+  const armyPower = armyPowerOf(army.owner);
   const controller = theatre.controllers[army.location];
 
   const territoryMult =

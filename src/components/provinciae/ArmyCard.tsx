@@ -47,6 +47,11 @@ interface ArmyCardProps {
   onDivide: (unitIds: string[]) => void;
   onAssignCommander: (characterId: string | null) => void;
   onSetStance: (stance: Army['stance']) => void;
+  /** Chunk C5 — the map itself owns order-mode UI (reachability highlights,
+   *  destination taps), so this only signals "start ordering this army" up
+   *  to the parent, same shape as onCombinePress. */
+  onOrderPress: () => void;
+  onClearOrder: () => void;
 }
 
 export default function ArmyCard({
@@ -60,6 +65,8 @@ export default function ArmyCard({
   onDivide,
   onAssignCommander,
   onSetStance,
+  onOrderPress,
+  onClearOrder,
 }: ArmyCardProps) {
   const [dividePickerOpen, setDividePickerOpen] = useState(false);
   const [commanderPickerOpen, setCommanderPickerOpen] = useState(false);
@@ -143,9 +150,31 @@ export default function ArmyCard({
         </View>
       )}
 
+      {/* Orders — Chunk C5. A queued order is shown as a status line with a
+          Clear action; nothing here resolves it (C7 does, at End Season). */}
+      {canManage && army.ordersThisSeason && (
+        <View style={styles.orderRow}>
+          <Text style={styles.orderText}>
+            {army.ordersThisSeason.intent === 'attack' ? '⚔ Attack → ' : '→ '}
+            {army.ordersThisSeason.path[army.ordersThisSeason.path.length - 1]}
+            {army.ordersThisSeason.forcedMarch ? ' (forced march)' : ''}
+          </Text>
+          <TouchableOpacity onPress={onClearOrder} activeOpacity={0.7}>
+            <Text style={styles.orderClear}>Clear</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Actions */}
       {canManage && (
         <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={onOrderPress}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.actionBtnText}>{army.ordersThisSeason ? 'Change Order' : 'Move'}</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionBtn, !combineEligible && styles.actionBtnDisabled]}
             onPress={onCombinePress}
@@ -376,6 +405,13 @@ const styles = StyleSheet.create({
   stancePillActive: { backgroundColor: '#1a2818', borderColor: COLORS.laurel } as ViewStyle,
   stancePillText: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 9.5 } as TextStyle,
   stancePillTextActive: { color: '#8fc98f', fontWeight: '700' } as TextStyle,
+
+  orderRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border,
+  } as ViewStyle,
+  orderText: { color: COLORS.gold, fontFamily: FONTS.ui, fontSize: 11, fontWeight: '600', textTransform: 'capitalize' } as TextStyle,
+  orderClear: { color: COLORS.crimson, fontFamily: FONTS.ui, fontSize: 10 } as TextStyle,
 
   actionsRow: { flexDirection: 'row', gap: 8, marginTop: SPACING.sm } as ViewStyle,
   actionBtn: {

@@ -17,6 +17,7 @@ import { ALL_CITIES } from '../../data/cityDefinitions';
 import type { Controller, RegionId } from '../../models/theatre';
 import { REGIONS } from '../../data/theatreMap';
 import type { Army } from '../../models/army';
+import type { ReachableDestination } from '../../engine/movementEngine';
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 //
@@ -233,6 +234,41 @@ function ArmyMarker({ army, onPress }: { army: Army; onPress: () => void }) {
   );
 }
 
+/** Chunk C5 — one reachability highlight, replacing the normal region tap
+ *  target for the duration of order mode. Colour keys off intent (gold
+ *  move / crimson attack); a blocked destination (leaderless-attack) is
+ *  shown dimmed and untappable rather than hidden, so the player can see
+ *  WHY it's off-limits (ArmyCard/the order banner spells out the reason in
+ *  words — this is just the visual echo of the same reachable() result). */
+function OrderHighlight({
+  region,
+  destination,
+  onPress,
+}: {
+  region: (typeof REGIONS)[number];
+  destination: ReachableDestination;
+  onPress: () => void;
+}) {
+  const centroid = regionCentroidPx(region);
+  const blocked = !!destination.blockedReason;
+  const color = blocked ? COLORS.dust : destination.intent === 'attack' ? COLORS.crimson : COLORS.laurel;
+  return (
+    <TouchableOpacity
+      onPress={blocked ? undefined : onPress}
+      disabled={blocked}
+      activeOpacity={0.7}
+      style={[
+        styles.orderHighlight,
+        { left: centroid.x - 24, top: centroid.y - 24, borderColor: color, opacity: blocked ? 0.5 : 1 },
+      ]}
+    >
+      <Text style={[styles.orderHighlightText, { color }]}>
+        {destination.viaSeaLane ? '⛵' : destination.intent === 'attack' ? '⚔' : '→'}{destination.costSpent}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface MapViewProps {
@@ -241,9 +277,22 @@ interface MapViewProps {
   selectedProvinceId: string | null;
   armies: Army[];
   onRegionPress: (regionId: RegionId, focusArmyId?: string) => void;
+  /** Chunk C5 — when set, replaces the normal region-tap layer with
+   *  reachability highlights for the army being ordered; tapping one calls
+   *  onOrderRegionPress instead of onRegionPress. */
+  orderModeDestinations?: ReachableDestination[] | null;
+  onOrderRegionPress?: (regionId: RegionId) => void;
 }
 
-export default function MapView({ provinces, onProvincePress, selectedProvinceId, armies, onRegionPress }: MapViewProps) {
+export default function MapView({
+  provinces,
+  onProvincePress,
+  selectedProvinceId,
+  armies,
+  onRegionPress,
+  orderModeDestinations,
+  onOrderRegionPress,
+}: MapViewProps) {
   return (
     <View style={styles.container}>
       {/* Parchment background fills the transparent border areas in the PNG */}
@@ -259,9 +308,22 @@ export default function MapView({ provinces, onProvincePress, selectedProvinceId
         <RegionBorderOutline key={region.id} regionId={region.id} />
       ))}
 
-      {REGIONS.map(region => (
-        <RegionTapTarget key={region.id} region={region} onPress={() => onRegionPress(region.id)} />
-      ))}
+      {orderModeDestinations
+        ? orderModeDestinations.map(dest => {
+            const region = REGIONS.find(r => r.id === dest.regionId);
+            if (!region) return null;
+            return (
+              <OrderHighlight
+                key={dest.regionId}
+                region={region}
+                destination={dest}
+                onPress={() => onOrderRegionPress?.(dest.regionId)}
+              />
+            );
+          })
+        : REGIONS.map(region => (
+            <RegionTapTarget key={region.id} region={region} onPress={() => onRegionPress(region.id)} />
+          ))}
 
       {REGIONS.map(region => (
         <RegionLabel key={region.id} region={region} />
@@ -481,5 +543,21 @@ const styles = StyleSheet.create({
   armyMarkerIcon: {
     fontSize: 12,
     color: COLORS.gold,
+  } as TextStyle,
+
+  orderHighlight: {
+    position: 'absolute',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2.5,
+    backgroundColor: 'rgba(20,16,10,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  } as ViewStyle,
+  orderHighlightText: {
+    fontFamily: FONTS.ui,
+    fontSize: 12,
+    fontWeight: '700',
   } as TextStyle,
 });

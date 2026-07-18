@@ -22,6 +22,7 @@ import type { GovernorPolicy } from '../models/city';
 import type { AmbassadorActionId } from '../engine/cityEngine';
 import type { RegionId } from '../models/theatre';
 import { calcTotalImperium } from '../engine/troopEngine';
+import { reachable } from '../engine/movementEngine';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SHEET_SNAP_HEIGHT = SCREEN_HEIGHT * 0.72;
@@ -33,6 +34,11 @@ export default function ProvinciaeScreen() {
   // selectedProvinceId, sharing the same bottom-sheet animation/container.
   const [selectedRegionId, setSelectedRegionId] = useState<RegionId | null>(null);
   const [focusArmyId, setFocusArmyId] = useState<string | null>(null);
+  // Campaign Map plan, Chunk C5 — order mode is its own top-level UI state,
+  // mutually exclusive with the bottom sheet (entering it always closes
+  // whichever sheet is open — see enterOrderMode below).
+  const [orderModeArmyId, setOrderModeArmyId] = useState<string | null>(null);
+  const [orderModeForcedMarch, setOrderModeForcedMarch] = useState(false);
   const sheetAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const sheetVisible = selectedProvinceId !== null || selectedRegionId !== null;
 
@@ -49,6 +55,7 @@ export default function ProvinciaeScreen() {
   const armies                   = useGameStore(s => s.armies);
   const theatre                  = useGameStore(s => s.theatre);
   const activeCommand            = useGameStore(s => s.activeCommand);
+  const seasonIndex              = useGameStore(s => s.seasonIndex);
 
   // ── Store actions — only actions that exist in GameActions ───────────────────
   const updateProvincePolicy     = useGameStore(s => s.updateCityPolicy);
@@ -67,6 +74,8 @@ export default function ProvinciaeScreen() {
   const assignArmyCommander      = useGameStore(s => s.assignArmyCommander);
   const setArmyStance            = useGameStore(s => s.setArmyStance);
   const raiseTroops              = useGameStore(s => s.raiseTroops);
+  const issueMovementOrder       = useGameStore(s => s.issueMovementOrder);
+  const clearOrder               = useGameStore(s => s.clearOrder);
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const selectedProvince = provinces.find(p => p.id === selectedProvinceId);
@@ -139,6 +148,28 @@ export default function ProvinciaeScreen() {
       setFocusArmyId(null);
     });
   }
+
+  // Campaign Map plan, Chunk C5 — order mode.
+  function enterOrderMode(armyId: string) {
+    closeSheet();
+    setOrderModeForcedMarch(false);
+    setOrderModeArmyId(armyId);
+  }
+
+  function exitOrderMode() {
+    setOrderModeArmyId(null);
+  }
+
+  function handleOrderRegionPress(regionId: RegionId) {
+    if (!orderModeArmyId) return;
+    issueMovementOrder(orderModeArmyId, regionId, orderModeForcedMarch);
+    exitOrderMode();
+  }
+
+  const orderModeArmy = orderModeArmyId ? armies.find(a => a.id === orderModeArmyId) ?? null : null;
+  const orderModeDestinations = orderModeArmy
+    ? reachable(orderModeArmy, armies, theatre, seasonIndex, orderModeForcedMarch)
+    : null;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -216,8 +247,32 @@ export default function ProvinciaeScreen() {
           selectedProvinceId={selectedProvinceId}
           armies={armies}
           onRegionPress={openRegionSheet}
+          orderModeDestinations={orderModeDestinations}
+          onOrderRegionPress={handleOrderRegionPress}
         />
       </View>
+
+      {/* Campaign Map plan, Chunk C5 — order-mode banner */}
+      {orderModeArmy && (
+        <View style={styles.orderBanner}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.orderBannerTitle}>Ordering {orderModeArmy.name}</Text>
+            <Text style={styles.orderBannerSub}>Tap a highlighted region, or cancel.</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.orderBannerToggle, orderModeForcedMarch && styles.orderBannerToggleActive]}
+            onPress={() => setOrderModeForcedMarch(v => !v)}
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.orderBannerToggleText, orderModeForcedMarch && styles.orderBannerToggleTextActive]}>
+              Forced March
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.orderBannerCancel} onPress={exitOrderMode} activeOpacity={0.75}>
+            <Text style={styles.orderBannerCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Map legend */}
       <View style={styles.legend}>
@@ -278,6 +333,8 @@ export default function ProvinciaeScreen() {
                 onRaiseTroops={(tier, targetArmyId) =>
                   selectedRegionId && raiseTroops(selectedRegionId, tier, targetArmyId)
                 }
+                onOrderMode={enterOrderMode}
+                onClearOrder={clearOrder}
               />
             ) : selectedProvince?.id === 'latium' ? (
               <LatiumSheet onClose={closeSheet} />
@@ -329,6 +386,34 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
     paddingTop: RESOURCE_BAR_HEIGHT,
   } as ViewStyle,
+
+  // Campaign Map plan, Chunk C5 — order mode.
+  orderBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    padding: SPACING.sm,
+    backgroundColor: '#2e2a24',
+    borderWidth: 1,
+    borderColor: COLORS.gold,
+    borderRadius: 10,
+  } as ViewStyle,
+  orderBannerTitle: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 13, fontWeight: '700' } as TextStyle,
+  orderBannerSub: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 10, marginTop: 2 } as TextStyle,
+  orderBannerToggle: {
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: 14,
+    paddingHorizontal: 10, paddingVertical: 6,
+  } as ViewStyle,
+  orderBannerToggleActive: { backgroundColor: '#1a2818', borderColor: COLORS.laurel } as ViewStyle,
+  orderBannerToggleText: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 10 } as TextStyle,
+  orderBannerToggleTextActive: { color: '#8fc98f', fontWeight: '700' } as TextStyle,
+  orderBannerCancel: {
+    borderWidth: 1, borderColor: COLORS.crimson, borderRadius: 14,
+    paddingHorizontal: 10, paddingVertical: 6,
+  } as ViewStyle,
+  orderBannerCancelText: { color: COLORS.crimson, fontFamily: FONTS.ui, fontSize: 10, fontWeight: '700' } as TextStyle,
 
   header: {
     flexDirection: 'row',

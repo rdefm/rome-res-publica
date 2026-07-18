@@ -51,6 +51,10 @@ interface RegionSheetProps {
   onAssignCommander: (armyId: string, characterId: string | null) => void;
   onSetStance: (armyId: string, stance: Army['stance']) => void;
   onRaiseTroops: (tier: MusterTier, targetArmyId: string | null) => void;
+  /** Chunk C5 — signals the parent (ProvinciaeScreen) to close this sheet
+   *  and put the map into order mode for `armyId`. */
+  onOrderMode: (armyId: string) => void;
+  onClearOrder: (armyId: string) => void;
 }
 
 export default function RegionSheet({
@@ -70,6 +74,8 @@ export default function RegionSheet({
   onAssignCommander,
   onSetStance,
   onRaiseTroops,
+  onOrderMode,
+  onClearOrder,
 }: RegionSheetProps) {
   const [combiningArmyId, setCombiningArmyId] = useState<string | null>(null);
 
@@ -158,6 +164,8 @@ export default function RegionSheet({
               onDivide={unitIds => onDivideArmy(army.id, unitIds)}
               onAssignCommander={characterId => onAssignCommander(army.id, characterId)}
               onSetStance={stance => onSetStance(army.id, stance)}
+              onOrderPress={() => onOrderMode(army.id)}
+              onClearOrder={() => onClearOrder(army.id)}
             />
           ))
         )}

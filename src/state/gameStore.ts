@@ -48,6 +48,7 @@ import { combine as engineCombineArmies, divide as engineDivideArmy } from '../e
 import type { MusterTier } from '../engine/musterEngine';
 import { quoteMuster, rollMusteredUnit, nextLegionName } from '../engine/musterEngine';
 import { getRegion, getRegionRelationship } from '../engine/theatreEngine';
+import { buildMovementOrder } from '../engine/movementEngine';
 import type { Command, CommandElectionState } from '../models/command';
 import {
   isEligibleForCommand,
@@ -786,6 +787,17 @@ export interface GameActions {
   /** Same shape as canvassLeader, scoped to commandElection instead of
    *  campaignVotes — see commandEngine.ts's header comment. */
   canvassForCommand: (leaderId: string) => void;
+
+  // ── Campaign Map plan, Chunk C5 — Movement ───────────────────────────────
+  /** Issues (or replaces) `armyId`'s order for this season — the ONLY entry
+   *  point, so every stored order is guaranteed to have come from that
+   *  army's own `movementEngine.reachable()` set (valid, in-budget,
+   *  correctly intent-labelled). No-ops for an unmanageable army (not
+   *  'player'/'rome_state' — mirrors ArmyCard's own canManage gate) or an
+   *  unreachable/blocked destination. Nothing resolves the order yet — C7
+   *  does, and clears `ordersThisSeason` afterward. */
+  issueMovementOrder: (armyId: string, destinationRegionId: RegionId, forcedMarch: boolean) => void;
+  clearOrder: (armyId: string) => void;
 
   // ── Military (Chunk M) ──────────────────────────────────────────────────
   raiseLevy: (characterId: string, musterProvinceId: string) => void;
@@ -3884,6 +3896,30 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       ...bumpActions(s),
       ...bumpSpend(s, { fides: cost }),
     });
+  },
+
+  // ── Campaign Map plan, Chunk C5 — Movement ───────────────────────────────
+
+  issueMovementOrder: (armyId, destinationRegionId, forcedMarch) => {
+    const s = get();
+    const army = s.armies.find(a => a.id === armyId);
+    if (!army || (army.owner !== 'player' && army.owner !== 'rome_state')) return;
+
+    const order = buildMovementOrder(army, s.armies, s.theatre, s.seasonIndex, destinationRegionId, forcedMarch);
+    if (!order) return;
+
+    const label = turnLabel(s);
+    const verb = order.intent === 'attack' ? 'marches to attack' : 'marches for';
+    set({
+      armies: s.armies.map(a => a.id === armyId ? { ...a, ordersThisSeason: order } : a),
+      log: [...s.log, mkLog(label, `${army.name} ${verb} ${destinationRegionId}.${forcedMarch ? ' (forced march)' : ''}`, 'neutral')],
+    });
+  },
+
+  clearOrder: (armyId) => {
+    set(s => ({
+      armies: s.armies.map(a => a.id === armyId ? { ...a, ordersThisSeason: null } : a),
+    }));
   },
 
   // ── Military Actions (Chunk M) ───────────────────────────────────────────────

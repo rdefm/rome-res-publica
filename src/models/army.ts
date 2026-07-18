@@ -56,11 +56,19 @@ export interface ArmyUnit {
 
 export type ArmyOwner = 'player' | 'rome_state' | 'rome_rival' | 'carthage';
 
-/** Placeholder — Chunk C5 (Movement) defines the real shape (forced march,
- *  intent, sea-lane orders, etc.). Declared now only so Army.ordersThisSeason
- *  has a type to point at. */
+/** Campaign Map plan, Chunk C5 — a validated movement order. `path` always
+ *  starts with the army's CURRENT location (path[0] === army.location) and
+ *  ends at the destination; a sea-lane hop, if present, is always the FINAL
+ *  edge (movementEngine.isValidPath enforces this — "one lane per season").
+ *  `intent` is 'attack' iff the final region is occupied by a hostile army
+ *  at order-issue time (movementEngine.reachable computes this) — the move
+ *  order into an occupied region IS the attack (design invariant 4).
+ *  Nothing resolves this order yet; C7 owns resolution (movement, storms,
+ *  engagements) and clears it afterward. */
 export interface MovementOrder {
   path: RegionId[];
+  forcedMarch: boolean;
+  intent: 'move' | 'attack';
 }
 
 export interface Army {

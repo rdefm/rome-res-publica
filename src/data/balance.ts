@@ -1365,6 +1365,32 @@ export const BALANCE = {
       prorogationModifierClamp: 25,
       prorogationWarChestTopUp: 100,
     },
+
+    /** Chunk C5 — movementEngine.ts. First-pass/unverified seeds from the
+     *  plan's own spec table, C10 tunes. */
+    movement: {
+      baseMP: 2,
+      /** Step cost entering a region the mover's own power controls. */
+      landFriendlyCost: 1,
+      /** Step cost entering a neutral- or enemy-controlled region. */
+      landContestedCost: 2,
+      straitCost: 1,
+      /** A sea lane always consumes ALL remaining MP, but only if at least
+       *  this much remains when the army reaches a coastal jumping-off
+       *  point — "one lane per season". */
+      seaLaneMinMP: 2,
+      winterMPPenalty: 1,
+      /** Cohort count strictly above this triggers the big-stack penalty. */
+      bigStackCohorts: 8,
+      bigStackMPPenalty: 1,
+      forcedMarchMPBonus: 1,
+      forcedMarchAttritionPct: 0.04,
+      /** Multiplies an Edge's laneRisk when the storm roll happens in
+       *  Winter (seasonIndex 3) — resolved at C7's order-resolution time,
+       *  not issue time. */
+      winterSeaMultiplier: 2.0,
+      stormAttritionPct: 0.10,
+    },
   },
 };
 
