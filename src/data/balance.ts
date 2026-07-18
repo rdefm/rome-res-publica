@@ -961,19 +961,33 @@ export const BALANCE = {
     // npcAi scan (turnSequencer.ts step 9b) so it never auto-fires the
     // generic demand/burn events — his own relationship (-30, startingClans.ts)
     // is already below npcBurnStandingMax, which would otherwise burn the
-    // arc's own Secret in year 1. FIRST-PASS/SOFT-TUNED, more than usually
-    // approximate: Claudius's own stats (intrigus 9, clan influence 75) drive
-    // an unusually steep computeOpponentPrepGrowth rate, so trialSeed is
-    // deliberately low to compensate — needs a playtesting pass, not just a
-    // fixture-math check, before calling these numbers final.
+    // arc's own Secret in year 1. Claudius's own stats (intrigus 9, clan
+    // influence 75) drive an unusually steep computeOpponentPrepGrowth rate
+    // (~18.75/season) — steep enough that trialSeed alone can't compensate
+    // for it (it's a ~10-point knob against a ~19-point-per-season term).
+    //
+    // Phase 5, Chunk P5-H — retuned against real evidence, not just fixture
+    // math: simulated the trial directly (4 representative prep actions —
+    // 2x Gather Evidence at intrigus 5, 2x Prepare an Oration at rhetoric 6,
+    // Brutii's own starting stats) against the OLD numbers (trialSeed 10,
+    // the shared 3-season npcInitiatedDelay) and got a differential of -15.4
+    // — Exiled, nowhere near the "3-4 actions -> comfortably Acquitted+"
+    // target. Growth over the prep window (56+ points) dominated the seed's
+    // 10 almost completely, so the fix touches both: trialSeed down to 0,
+    // and a new Claudius-specific (not the shared, every-trial-affecting
+    // npcInitiatedDelay) startsDelaySeasons down to 1 — one fewer season for
+    // that steep growth rate to compound before trial day. Re-simulated
+    // after: differential +17.8, landing solidly in Dismissed with real
+    // margin above the threshold (10) — see __tests__/p5h.test.ts's
+    // "Claudius trial" test, which asserts this exact result.
     claudius: {
-      /** resolveClaudiusDefiance's initialNpcStrength — deliberately far
-       *  below the general NPC-initiated seed (leader.intrigus×2 +
-       *  accused.corruption/2, typically 18-25) precisely because this
-       *  trial still accrues the standard per-season opponent growth for
-       *  BALANCE.trials.npcInitiatedDelay seasons before trial day, and
-       *  Claudius's growth rate is unusually steep. */
-      trialSeed: 10,
+      /** resolveClaudiusDefiance's initialNpcStrength. */
+      trialSeed: 0,
+      /** resolveClaudiusDefiance's own prep-window override — NOT
+       *  BALANCE.trials.npcInitiatedDelay (that constant is shared by every
+       *  other NPC-initiated trial; changing it to fix this one arc would
+       *  have rippled everywhere). */
+      startsDelaySeasons: 1,
       /** "Play for time": exactly one season of silence, then automatic
        *  defiance if the player hasn't otherwise resolved the Secret
        *  (complied, paid off, discredited, or reached deterrence). */

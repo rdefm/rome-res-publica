@@ -1180,6 +1180,21 @@ export function processSeason(state: GameState): {
     // around year 2-3 depending on pacing; capping the window risks the arc
     // never firing at all for a slower run), cooldown respected between
     // firings, and a live bill to name.
+    //
+    // Phase 5, Chunk P5-H — the `tutorialDone` gate this condition used to
+    // also require is removed. It made the demand wait for the entire
+    // guided tutorialQueue to drain (realistically ~8-9 seasons), which
+    // directly conflicted with the "first oh-no within 8 seasons" target;
+    // confirmed via 3 auto-driven guided runs never reaching a trial/
+    // demand/election-loss oh-no by season 8 under the old gate. Dropping
+    // it still isn't reckless: `yearsSinceStart >= 1` alone means the
+    // earliest possible firing is turn 5 (Spring, Year 2) — after
+    // tut-01..tut-04 (Year 1's script, including tut-04's own "The Claudian
+    // Smile," the tutorial's existing narrative setup for this exact arc)
+    // have already had their season to fire. The demand queues onto
+    // pendingEvents rather than interrupting anything active, so it can
+    // never collide with a tutorial event mid-display — it just takes its
+    // turn in the same queue.
     if (
       !s.pendingSecretDemand &&
       s.claudiusPatience === null &&
@@ -1188,7 +1203,6 @@ export function processSeason(state: GameState): {
     ) {
       const claudiusSecret = s.secrets.find(sec => sec.id === CLAUDIUS_ARC_SECRET_ID && sec.status === 'held');
       const yearsSinceStart = s.year - s.gensFoundedYear;
-      const tutorialDone = (s.tutorialQueue ?? []).length === 0;
       const cooldownElapsed = claudiusSecret
         ? (s.turnNumber - (claudiusSecret.lastActedSeason ?? -Infinity)) >= BALANCE.secrets.npcAi.npcUseCooldownSeasons
         : false;
@@ -1196,7 +1210,6 @@ export function processSeason(state: GameState): {
       if (
         claudiusSecret &&
         cooldownElapsed &&
-        tutorialDone &&
         yearsSinceStart >= 1 &&
         !isDeterred(CLAUDIUS_LEADER_ID, s.secrets)
       ) {

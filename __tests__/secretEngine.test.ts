@@ -830,7 +830,10 @@ describe('resolveClaudiusDefiance', () => {
     expect(trial.defendant).toEqual({ kind: 'family', characterId: 'pc-1' });
     expect(trial.prosecutor).toEqual({ kind: 'leader', leaderId: CLAUDIUS_LEADER_ID });
     expect(trial.npcStrength).toBe(BALANCE.secrets.claudius.trialSeed);
-    expect(trial.startsSeason).toBe(12 + BALANCE.trials.npcInitiatedDelay);
+    // Phase 5, Chunk P5-H — Claudius's own delay, not the shared
+    // npcInitiatedDelay every other NPC-initiated trial uses (see
+    // BALANCE.secrets.claudius's comment).
+    expect(trial.startsSeason).toBe(12 + BALANCE.secrets.claudius.startsDelaySeasons);
     expect(trial.consumedSecretIds).toEqual([CLAUDIUS_ARC_SECRET_ID]);
 
     const updatedSecret = (patch.secrets as Secret[]).find(s => s.id === CLAUDIUS_ARC_SECRET_ID)!;

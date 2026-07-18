@@ -864,7 +864,12 @@ export function resolveClaudiusDefiance(state: GameState): ResolveClaudiusDefian
     prosecutor: { kind: 'leader', leaderId: leader.id },
     defendant: { kind: 'family', characterId: subjectCharacterId },
     filedSeason: state.turnNumber,
-    startsSeason: state.turnNumber + BALANCE.trials.npcInitiatedDelay,
+    // Phase 5, Chunk P5-H — Claudius's own delay, not the shared
+    // BALANCE.trials.npcInitiatedDelay (every other NPC-initiated trial
+    // still uses that one). See BALANCE.secrets.claudius's own comment for
+    // why: his steep growth rate needed less time to compound, not just a
+    // lower starting seed.
+    startsSeason: state.turnNumber + BALANCE.secrets.claudius.startsDelaySeasons,
     initialNpcStrength: BALANCE.secrets.claudius.trialSeed,
     consumedSecretIds: [secret.id],
     speakerId: state.family.find(c => c.isPlayer)?.id ?? subjectCharacterId,
