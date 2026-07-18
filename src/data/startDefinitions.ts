@@ -1,4 +1,4 @@
-import type { StartDefinition } from '../models/gameStart';
+import type { StartDefinition, DifficultyId } from '../models/gameStart';
 import { ALT_FAMILIES } from './altFamilies';
 
 // ─── Start definitions ────────────────────────────────────────────────────────
@@ -85,6 +85,30 @@ export const START_DEFINITIONS: StartDefinition[] = [
     unlockCondition: ALT_FAMILIES.manlia.unlockCondition,
     isUnlocked: ALT_FAMILIES.manlia.isUnlocked,
   },
+];
+
+// ─── Difficulty presets (Phase 5, Chunk P5-G) ────────────────────────────────
+//
+// Display copy only — the multiplier values themselves live in
+// BALANCE.difficulty (single source of truth, so the picker's "literal
+// numbers" requirement is always read live, never duplicated as copy text).
+// A step in the new-game flow after family selection, for every start
+// except 'guided' (its tutorial numbers are authored against Aequus, so
+// StartMenuScreen never routes it through the picker — always resolves to
+// 'aequus', enforced again in gameStore.startGame as a belt-and-braces
+// guarantee).
+
+export interface DifficultyDefinition {
+  id: DifficultyId;
+  name: string;
+  /** One-line fiction shown under the name, e.g. "the Fates are kind". */
+  tagline: string;
+}
+
+export const DIFFICULTY_DEFINITIONS: DifficultyDefinition[] = [
+  { id: 'clemens', name: 'Clemens', tagline: 'the Fates are kind' },
+  { id: 'aequus',  name: 'Aequus',  tagline: 'Rome as she is' },
+  { id: 'ferox',   name: 'Ferox',   tagline: 'the Republic shows no mercy' },
 ];
 
 // ─── Tutorial script registry ─────────────────────────────────────────────────

@@ -13,8 +13,16 @@ import { loadEarnedAchievements, type EarnedAchievement } from '../state/achieve
 import { ACHIEVEMENT_DEFINITIONS } from '../data/achievementDefinitions';
 import { officeName } from '../engine/epilogueEngine';
 import InfoTap from '../components/shared/InfoTap';
+import { DIFFICULTY_DEFINITIONS } from '../data/startDefinitions';
 import { COLORS, FONTS, SPACING, RADIUS } from '../utils/theme';
 import type { AncestorRecord, EpilogueOutcome } from '../models/epilogue';
+
+// Phase 5, Chunk P5-G — badge label. `difficulty` is optional/undefined on
+// any pre-P5-G Hall record; default-spread as 'aequus' at this display site
+// (same discipline as gensId elsewhere in this file/P5-E).
+function difficultyName(id: AncestorRecord['difficulty']): string {
+  return DIFFICULTY_DEFINITIONS.find(d => d.id === (id ?? 'aequus'))!.name;
+}
 
 const OUTCOME_LABEL: Record<EpilogueOutcome, string> = {
   victory: 'Victory',
@@ -71,6 +79,7 @@ export default function HallOfAncestorsScreen({ onBack }: { onBack: () => void }
             <ScoreRow label="Legacy" value={selected.legacyPenaltyApplied ? `${selected.finalLegacy} (halved)` : String(selected.finalLegacy)} />
             <ScoreRow label="Highest Office" value={officeName(selected.highestOffice) ?? 'None held'} />
             <ScoreRow label="Generations" value={String(selected.generations)} />
+            <ScoreRow label="Difficulty" value={difficultyName(selected.difficulty)} />
           </View>
 
           <View style={styles.treeBlock}>
@@ -118,7 +127,7 @@ export default function HallOfAncestorsScreen({ onBack }: { onBack: () => void }
                 </Text>
               </View>
               <Text style={styles.cardYears}>
-                {Math.abs(r.foundedYear)} BC — {Math.abs(r.endedYear)} BC · Legacy {r.finalLegacy}
+                {Math.abs(r.foundedYear)} BC — {Math.abs(r.endedYear)} BC · Legacy {r.finalLegacy} · {difficultyName(r.difficulty)}
               </Text>
               <Text style={styles.cardExcerpt} numberOfLines={2}>{r.historianParagraph}</Text>
             </TouchableOpacity>

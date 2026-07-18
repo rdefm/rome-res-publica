@@ -21,6 +21,18 @@ export type StartId = 'guided' | 'standard' | 'duilia' | 'manlia';
  */
 export type GensId = 'brutii' | 'duilia' | 'manlia';
 
+// ─── Difficulty ID (Phase 5, Chunk P5-G) ─────────────────────────────────────
+
+/**
+ * Chosen at new game (a picker step after family selection), fixed for the
+ * run, recorded on GameState and AncestorRecord. Applies at exactly two
+ * seams — resourceEngine.calcResourceIncome's incomeMult and
+ * crisisEngine.calcIndividualEscalation's crisisMult — see data/balance.ts's
+ * BALANCE.difficulty for the multiplier values and
+ * data/startDefinitions.ts's DIFFICULTY_DEFINITIONS for display copy.
+ */
+export type DifficultyId = 'clemens' | 'aequus' | 'ferox';
+
 // ─── Start definition ─────────────────────────────────────────────────────────
 
 export interface StartDefinition {

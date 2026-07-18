@@ -142,6 +142,11 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Cursus',
   },
   {
+    id: 'difficulty',
+    term: 'Difficulty',
+    definition: 'Clemens, Aequus, or Ferox — chosen at new game and fixed for the run. Changes exactly two things: season income margins and how fast the four crisis tracks drift. It never hides, adds, or removes a mechanic.',
+  },
+  {
     id: 'donative',
     term: 'Donative',
     definition: "A cash payment to an army's own troops, once per year, that raises their loyalty. Costs Denarii per unit and applies to every unit a commander fields, wherever they're stationed.",

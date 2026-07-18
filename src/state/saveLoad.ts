@@ -132,6 +132,12 @@ const SaveSchema = z.object({
   gensSurname: z.string().default('Brutus'),
   gensName: z.string().default('Brutia'),
   gensPlural: z.string().default('Brutii'),
+  // Phase 5, Chunk P5-G — .default() ensures pre-P5-G saves load cleanly.
+  // Same discipline as gensId above: parse()'s result is discarded (see
+  // load()/importSave() below), so this default only matters for
+  // validation — gameStore.startGame/loadGame's own INITIAL_STATE spread
+  // already backfills a missing key for an actual in-progress save.
+  difficulty: z.enum(['clemens', 'aequus', 'ferox']).default('aequus'),
 });
 
 export interface SaveProvider {

@@ -19,7 +19,7 @@ import type { SenateResponseState } from '../engine/senateResponseEngine';
 import type { CrisisState, CrisisTrackId } from '../models/crisis';
 import type { OfficeActionTargetContext } from '../engine/officeActionEngine';
 // ── Phase 1 (P1-A) ────────────────────────────────────────────────────────────
-import type { StartId, GensId } from '../models/gameStart';
+import type { StartId, GensId, DifficultyId } from '../models/gameStart';
 import type { AgendaTarget, TabName } from '../models/agenda';
 import type { SeasonLedger } from '../models/ledger';
 import { calcLevyCost } from '../engine/troopEngine';
@@ -501,6 +501,14 @@ export interface GameState {
   /** Collective plural, e.g. 'Brutii' — used in "the {gensPlural}" idioms
    *  (log messages, birth/adoption/client-join notices). */
   gensPlural: string;
+
+  // ── Phase 5, Chunk P5-G — Difficulty preset ─────────────────────────────
+  /** Chosen at new game (picker step after family selection), fixed for the
+   *  run. Applied at exactly two seams — resourceEngine.calcResourceIncome's
+   *  incomeMult and crisisEngine.calcIndividualEscalation's crisisMult (see
+   *  BALANCE.difficulty). Recorded on AncestorRecord at epilogue time. */
+  difficulty: DifficultyId;
+
   /** Ordered defIds remaining in the guided tutorial script. Empty = no active script or standard start. */
   tutorialQueue: string[];
   /** turnNumber of the last season the tablet auto-opened. −1 = never opened. Prevents re-open within same season. */
@@ -683,7 +691,7 @@ export interface GameActions {
 
   // App flow
   /** Start a new game with the chosen start configuration. Default is standard (no tutorial). */
-  startGame: (startId?: StartId, mode?: 'senator' | 'debug') => void;
+  startGame: (startId?: StartId, mode?: 'senator' | 'debug', difficulty?: DifficultyId) => void;
 
   // Log
   addLog: (text: string, type?: LogEntry['type']) => void;
@@ -1069,6 +1077,9 @@ export const INITIAL_STATE: GameState = {
   gensName: 'Brutia',
   gensPlural: 'Brutii',
 
+  // ── Phase 5, Chunk P5-G — Difficulty preset ────────────────────────────────
+  difficulty: 'aequus' as DifficultyId,
+
   tutorialQueue: [],
   agendaViewedTurn: -1,
   agendaVisible: false,
@@ -1237,7 +1248,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     }));
   },
 
-  startGame: (startId = 'standard', mode = 'senator') => {
+  startGame: (startId = 'standard', mode = 'senator', difficulty = 'aequus') => {
+    // Phase 5, Chunk P5-G — the guided start's tutorial numbers are authored
+    // against Aequus; StartMenuScreen never routes 'guided' through the
+    // difficulty picker, but this is the belt-and-braces guarantee (same
+    // idiom as guided always being Brutii regardless of a stateOverrides
+    // attempt — P5-E, this same function, a few lines below).
+    const resolvedDifficulty: DifficultyId = startId === 'guided' ? 'aequus' : difficulty;
+
     // P1-G: resolve tutorial script for the chosen start
     const { START_DEFINITIONS, TUTORIAL_SCRIPTS } = require('../data/startDefinitions');
     const startDef = (START_DEFINITIONS as any[]).find((d: any) => d.id === startId);
@@ -1283,6 +1301,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set({
       ...INITIAL_STATE,
       ...stateOverrides,
+      difficulty: resolvedDifficulty,
       gameStarted: true,
       debugMode: mode === 'debug',
       startId: startId as StartId,

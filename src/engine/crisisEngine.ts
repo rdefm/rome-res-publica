@@ -13,6 +13,7 @@ import type {
 } from '../models/crisis';
 import { getTierFromLevel } from '../models/crisis';
 import { getProvinceDefinition } from '../data/provinceDefinitions';
+import { BALANCE } from '../data/balance';
 
 // ─── Apply delta to a single track ───────────────────────────────────────────
 
@@ -43,12 +44,26 @@ export function applyTrackDelta(track: CrisisTrack, delta: number): CrisisTrack 
  * only per-season passive escalation that reads current state.
  */
 export function calcIndividualEscalation(trackId: CrisisTrackId, state: GameState): number {
-  switch (trackId) {
-    case 'war':          return calcWarEscalation(state);
-    case 'unrest':       return calcUnrestEscalation(state);
-    case 'constitution': return calcConstitutionEscalation(state);
-    case 'economy':      return calcEconomyEscalation(state);
-  }
+  const raw = (() => {
+    switch (trackId) {
+      case 'war':          return calcWarEscalation(state);
+      case 'unrest':       return calcUnrestEscalation(state);
+      case 'constitution': return calcConstitutionEscalation(state);
+      case 'economy':      return calcEconomyEscalation(state);
+    }
+  })();
+
+  // Phase 5, Chunk P5-G — the crisis seam (design invariant 4). Deliberately
+  // narrow: only this per-track passive delta is scaled. calcCascadeDeltas'
+  // flat +2 compounding bumps and checkMilitaryBillPressure's bill-
+  // consequence penalty stay at authored magnitude — Ferox still drifts
+  // hotter overall because a faster individual-escalation climb crosses
+  // cascade thresholds sooner, not because cascade itself is scaled.
+  // `?? 'aequus'` covers any fixture/legacy state without a difficulty
+  // field — Aequus's crisisMult is 1.0, so this is a no-op for every state
+  // that predates this chunk.
+  const crisisMult = BALANCE.difficulty[state.difficulty ?? 'aequus'].crisisMult;
+  return Math.round(raw * crisisMult);
 }
 
 function calcWarEscalation(state: GameState): number {

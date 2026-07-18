@@ -25,6 +25,11 @@ export interface AncestorRecord {
    *  undefined on any pre-P5-E Hall record (default-spread as 'brutii' at
    *  read time — every historical record before this chunk was Brutii). */
   gensId?: import('./gameStart').GensId;
+  /** Phase 5, Chunk P5-G — the run's difficulty preset. Optional/undefined
+   *  on any pre-P5-G Hall record (default-spread as 'aequus' at read time,
+   *  same discipline as gensId above). No score multiplier — this
+   *  contextualizes the record, it does not inflate finalLegacy. */
+  difficulty?: import('./gameStart').DifficultyId;
   /** GameState.year at run start — always -264 today (no alternate starts
    *  exist yet), stored rather than hardcoded so a future start variant
    *  doesn't need this file touched. */

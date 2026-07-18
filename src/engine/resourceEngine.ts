@@ -241,7 +241,19 @@ export function calcResourceIncome(state: GameState): {
     + romeMods.denariDelta
     + crisisDenariiDelta;  // negative at higher War/Economy tiers
 
-  return { fidesIncome, denariiIncome, plebsDelta };
+  // Phase 5, Chunk P5-G — the income seam (design invariant 4). Applied to
+  // the fully-computed season totals, not to any individual term above —
+  // margins, not prices (action costs/event effects/one-off grants are
+  // untouched, computed elsewhere). `?? 'aequus'` covers any fixture/legacy
+  // state without a difficulty field — Aequus's incomeMult is 1.0, so this
+  // is a no-op for every state that predates this chunk.
+  const incomeMult = BALANCE.difficulty[state.difficulty ?? 'aequus'].incomeMult;
+
+  return {
+    fidesIncome: Math.max(0, Math.round(fidesIncome * incomeMult)),
+    denariiIncome: Math.round(denariiIncome * incomeMult),
+    plebsDelta,
+  };
 }
 
 // ─── Training cost (P2-C) ─────────────────────────────────────────────────────

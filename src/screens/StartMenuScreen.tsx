@@ -26,11 +26,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
 import { saveProvider, hasSave, importSave } from '../state/saveLoad';
-import { START_DEFINITIONS } from '../data/startDefinitions';
+import { START_DEFINITIONS, DIFFICULTY_DEFINITIONS } from '../data/startDefinitions';
 import { loadHall } from '../state/ancestorStore';
+import { BALANCE } from '../data/balance';
 import type { AncestorRecord } from '../models/epilogue';
+import type { DifficultyId } from '../models/gameStart';
 import { COLORS, FONTS, SPACING, RADIUS } from '../utils/theme';
 import HallOfAncestorsScreen from './HallOfAncestorsScreen';
+import InfoTap from '../components/shared/InfoTap';
 
 const BG = (() => {
   try { return require('../assets/images/menu-bg.png'); } catch { return null; }
@@ -46,6 +49,9 @@ export default function StartMenuScreen() {
   // from the Hall (no separate unlock flag to migrate or lose, per E2).
   const [hallRecords, setHallRecords] = useState<AncestorRecord[]>([]);
   const [debugUnlockAll, setDebugUnlockAll] = useState(false);
+  // Phase 5, Chunk P5-G — the difficulty-picker step. Set once a non-guided
+  // family card is tapped; startGame doesn't fire until the picker confirms.
+  const [pendingStart, setPendingStart] = useState<{ def: typeof START_DEFINITIONS[number]; mode: 'senator' | 'debug' } | null>(null);
 
   useEffect(() => {
     hasSave().then(setSaveExists).catch(() => setSaveExists(false));
@@ -54,6 +60,19 @@ export default function StartMenuScreen() {
 
   if (showHall) {
     return <HallOfAncestorsScreen onBack={() => setShowHall(false)} />;
+  }
+
+  if (pendingStart) {
+    return (
+      <DifficultyPickerScreen
+        familyName={pendingStart.def.name}
+        onBack={() => setPendingStart(null)}
+        onConfirm={(difficulty) => {
+          startGame(pendingStart.def.id, pendingStart.mode, difficulty);
+          setPendingStart(null);
+        }}
+      />
+    );
   }
 
   async function handleLoad() {
@@ -86,7 +105,15 @@ export default function StartMenuScreen() {
 
   function handleStartPress(def: typeof START_DEFINITIONS[number], unlocked: boolean) {
     if (!unlocked) return; // locked cards are inert without the debug toggle
-    startGame(def.id, debugUnlockAll ? 'debug' : 'senator');
+    const mode = debugUnlockAll ? 'debug' : 'senator';
+    // Phase 5, Chunk P5-G — guided skips the picker entirely (its tutorial
+    // numbers are authored against Aequus; startGame enforces this too).
+    // Every other start routes through the difficulty picker first.
+    if (def.id === 'guided') {
+      startGame(def.id, mode);
+    } else {
+      setPendingStart({ def, mode });
+    }
   }
 
   return (
@@ -180,6 +207,80 @@ export default function StartMenuScreen() {
           </TouchableOpacity>
         </View>
 
+      </SafeAreaView>
+    </ImageBackground>
+  );
+}
+
+// ─── Difficulty picker (Phase 5, Chunk P5-G) ─────────────────────────────────
+// A step in the new-game flow after family selection (every start except
+// 'guided' — see handleStartPress above). Three cards, each showing the
+// preset's name, one-line fiction, and its literal multipliers read live
+// from BALANCE.difficulty. Aequus is pre-selected/highlighted by default;
+// fixed for the run once confirmed (design invariant — no mid-run switch
+// outside the DebugPanel dev override).
+function DifficultyPickerScreen({
+  familyName,
+  onBack,
+  onConfirm,
+}: {
+  familyName: string;
+  onBack: () => void;
+  onConfirm: (difficulty: DifficultyId) => void;
+}) {
+  const [selected, setSelected] = useState<DifficultyId>('aequus');
+
+  return (
+    <ImageBackground
+      source={BG ?? undefined}
+      style={styles.bg}
+      resizeMode="cover"
+      imageStyle={{ backgroundColor: COLORS.terracotta }}
+    >
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.titleBlock}>
+          <Text style={styles.title}>DIFFICULTY</Text>
+          <Text style={styles.subtitle}>{familyName.toUpperCase()}</Text>
+          <View style={styles.titleRule} />
+        </View>
+
+        <ScrollView style={styles.cardsScroll} contentContainerStyle={styles.cardsBlock}>
+          <InfoTap termId="difficulty" style={{ alignSelf: 'flex-start' }}>
+            <Text style={styles.sectionLabel}>CHOOSE — FIXED FOR THE RUN</Text>
+          </InfoTap>
+
+          {DIFFICULTY_DEFINITIONS.map(diff => {
+            const mult = BALANCE.difficulty[diff.id];
+            const isSelected = selected === diff.id;
+            return (
+              <TouchableOpacity
+                key={diff.id}
+                style={[styles.startCard, isSelected && styles.startCardRecommended]}
+                onPress={() => setSelected(diff.id)}
+                activeOpacity={0.82}
+              >
+                <Text style={styles.cardName}>{diff.name}</Text>
+                <Text style={styles.cardSubtitle}>{diff.tagline}</Text>
+                <Text style={styles.cardDesc}>
+                  Income ×{mult.incomeMult} · Crisis pressure ×{mult.crisisMult}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        <View style={styles.loadBlock}>
+          <TouchableOpacity
+            style={[styles.loadBtn, styles.loadBtnActive]}
+            onPress={() => onConfirm(selected)}
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.loadLabel, styles.loadLabelActive]}>Begin</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.loadBtn} onPress={onBack} activeOpacity={0.75}>
+            <Text style={styles.loadLabel}>‹ Back</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     </ImageBackground>
   );

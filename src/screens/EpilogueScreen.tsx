@@ -17,6 +17,7 @@ import { officeName } from '../engine/epilogueEngine';
 import type { EpilogueOutcome } from '../models/epilogue';
 import HallOfAncestorsScreen from './HallOfAncestorsScreen';
 import InfoTap from '../components/shared/InfoTap';
+import { DIFFICULTY_DEFINITIONS } from '../data/startDefinitions';
 
 // Phase 5, Chunk P5-E — 'victory'/'gens_ends' tones were hardcoded 'Gens
 // Brutia'/'Brutia', found during the gens-neutrality sweep. `{gensName}` is
@@ -76,6 +77,13 @@ export default function EpilogueScreen() {
             <ScoreRow
               label="Generations"
               value={record!.generations === 1 ? '1 (the founding generation)' : String(record!.generations)}
+            />
+            <ScoreRow
+              label="Difficulty"
+              // Phase 5, Chunk P5-G — undefined only possible for a pre-P5-G
+              // in-progress save whose run finishes post-upgrade; default to
+              // Aequus, same discipline as the Hall's own badge.
+              value={DIFFICULTY_DEFINITIONS.find(d => d.id === (record!.difficulty ?? 'aequus'))!.name}
             />
           </View>
 

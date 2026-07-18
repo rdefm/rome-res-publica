@@ -114,6 +114,7 @@ export function buildAncestorRecordWithoutParagraph(
     // this until now (found during the gens-neutrality sweep).
     gensName: state.gensName,
     gensId: state.gensId,
+    difficulty: state.difficulty,
     foundedYear: state.gensFoundedYear,
     endedYear: state.year,
     outcome,

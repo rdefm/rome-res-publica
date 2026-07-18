@@ -1259,6 +1259,22 @@ export const BALANCE = {
       sympatheticClanReputation: 35,
     },
   },
+
+  // ─── Difficulty presets (Phase 5, Chunk P5-G) ─────────────────────────────
+  // Exactly two seams read these (design invariant 4): incomeMult scales
+  // resourceEngine.calcResourceIncome's final computed Fides/Denarii season
+  // income (not action costs, event effects, or one-off grants — margins,
+  // not prices); crisisMult scales crisisEngine.calcIndividualEscalation's
+  // per-track passive delta only (not calcCascadeDeltas' flat +2 compounding
+  // bumps or checkMilitaryBillPressure's bill-consequence penalty — both
+  // stay at authored magnitude; Ferox still drifts hotter overall because
+  // faster individual escalation crosses cascade thresholds sooner, not
+  // because cascade itself is scaled). Seeds — P5-H tunes.
+  difficulty: {
+    clemens: { incomeMult: 1.15, crisisMult: 0.85 },
+    aequus:  { incomeMult: 1.0,  crisisMult: 1.0 },
+    ferox:   { incomeMult: 0.9,  crisisMult: 1.2 },
+  },
 };
 
 // ─── Known un-extracted tunables ───────────────────────────────────────────

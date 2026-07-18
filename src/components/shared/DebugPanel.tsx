@@ -19,6 +19,7 @@ import { TUTORIAL_EVENT_DEFS } from '../../data/tutorialEvents';
 import { CLAUDIUS_ARC_EVENT_DEFS } from '../../data/claudiusArc';
 import { COMPROMISING_EVENT_DEFS } from '../../data/compromisingEvents';
 import { BALANCE } from '../../data/balance';
+import { DIFFICULTY_DEFINITIONS } from '../../data/startDefinitions';
 import { computeAllStagePace, type ActionEconomyStage, type StagePaceSummary } from '../../engine/actionEconomyEngine';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 // Military Overhaul M11 — sandbox army builder + headless harness runner.
@@ -64,6 +65,33 @@ function setCharacterField(char: any, key: string, value: number): any {
   return { ...char, [key]: value };
 }
 
+// ─── Difficulty dev override (Phase 5, Chunk P5-G) ──────────────────────────
+// Mid-run switching is otherwise deliberately impossible (design call — the
+// picker's choice is fixed for the run, so Hall records stay honest); this
+// exists for testing only, reading BALANCE.difficulty live off state.difficulty
+// same as calcResourceIncome/calcIndividualEscalation, so a tap here changes
+// next season's numbers immediately.
+
+function DifficultyOverrideRow() {
+  const difficulty = useGameStore(s => s.difficulty);
+
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>Difficulty (dev)</Text>
+      <View style={{ flexDirection: 'row', gap: 4 }}>
+        {DIFFICULTY_DEFINITIONS.map(d => (
+          <Chip
+            key={d.id}
+            label={d.name}
+            selected={difficulty === d.id}
+            onPress={() => useGameStore.setState({ difficulty: d.id })}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
 // ─── Section: Resources ───────────────────────────────────────────────────────
 
 function ResourceSection() {
@@ -84,6 +112,7 @@ function ResourceSection() {
 
   return (
     <View style={styles.section}>
+      <DifficultyOverrideRow />
       <Text style={styles.sectionTitle}>RESOURCES</Text>
       {RESOURCES.map(({ key, label, color }) => (
         <View key={key} style={styles.row}>
