@@ -69,6 +69,12 @@ export interface MovementOrder {
   path: RegionId[];
   forcedMarch: boolean;
   intent: 'move' | 'attack';
+  /** Chunk C6 — set by the campaign AI's RAID behavior only (never by a
+   *  player order). A raid doesn't seek control; C7's resolution applies an
+   *  economy/relationship sting to the destination and sends the army home
+   *  next season instead of leaving it there. Undefined for every
+   *  non-raiding order — treated as false. */
+  raiding?: boolean;
 }
 
 export interface Army {

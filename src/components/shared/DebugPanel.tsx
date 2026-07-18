@@ -30,7 +30,10 @@ import { simulateBattles, type BattleSimConfig, type BattleSimAggregate } from '
 import { REGIONS } from '../../data/theatreMap';
 import { getAdjacent, getRegionRelationship } from '../../engine/theatreEngine';
 import type { Army } from '../../models/army';
-import type { RegionId } from '../../models/theatre';
+import type { RegionId, TheatreState } from '../../models/theatre';
+import type { CityState } from '../../models/city';
+import type { Clan } from '../../models/clan';
+import { assignCarthaginianOrders, assignNpcRomanOrders } from '../../engine/campaignAi';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -588,10 +591,59 @@ function WarSection() {
 // exists purely so the data model is visibly inspectable before C2+ builds
 // armies/movement/AI on top of it.
 
+// Chunk C6 — headless campaign AI sim ("Simulate campaign, no player").
+// Pure debug-only preview: never touches real gameStore state. Since C7
+// doesn't resolve orders yet, this applies a debug-only approximation
+// (move each army straight to its order's destination) purely so the
+// printed log shows both sides actually maneuvering over the run, not just
+// repeating the same first-season decision N times.
+function simulateCampaign(
+  armies: Army[],
+  theatre: TheatreState,
+  cities: CityState[],
+  clans: Clan[],
+  seasons: number,
+): string[] {
+  const SEASON_NAMES = ['Spring', 'Summer', 'Autumn', 'Winter'];
+  const log: string[] = [];
+  let simArmies = armies;
+
+  for (let i = 0; i < seasons; i++) {
+    const seasonIndex = i % 4;
+    const carthageOrders = assignCarthaginianOrders(simArmies, theatre, cities, seasonIndex);
+    const rivalOrders = assignNpcRomanOrders(simArmies, clans, theatre, cities, seasonIndex);
+    log.push(`— Season ${i + 1} (${SEASON_NAMES[seasonIndex]}) —`);
+
+    for (const army of simArmies) {
+      const order = carthageOrders.has(army.id) ? carthageOrders.get(army.id) : rivalOrders.get(army.id);
+      if (order === undefined) continue; // not an AI-controlled army (player/rome_state)
+      if (!order) {
+        log.push(`  ${army.name} (${army.owner}) holds at ${army.location}`);
+        continue;
+      }
+      const dest = order.path[order.path.length - 1];
+      const verb = order.raiding ? 'raids toward' : order.intent === 'attack' ? 'attacks' : 'advances toward';
+      log.push(`  ${army.name} (${army.owner}) ${verb} ${dest}${order.forcedMarch ? ' (forced march)' : ''}`);
+    }
+
+    simArmies = simArmies.map(army => {
+      const order = carthageOrders.has(army.id) ? carthageOrders.get(army.id) : rivalOrders.get(army.id);
+      if (order === undefined) return army;
+      if (!order) return { ...army, ordersThisSeason: null };
+      return { ...army, location: order.path[order.path.length - 1], ordersThisSeason: order };
+    });
+  }
+
+  return log;
+}
+
 function TheatreSection() {
   const cities = useGameStore(s => s.cities);
   const armies = useGameStore(s => s.armies);
+  const theatre = useGameStore(s => s.theatre);
+  const clans = useGameStore(s => s.clans);
   const spawnArmy = useGameStore(s => s.spawnArmy);
+  const [simLog, setSimLog] = useState<string[] | null>(null);
 
   const owners: Army['owner'][] = ['player', 'rome_state', 'rome_rival', 'carthage'];
 
@@ -699,6 +751,25 @@ function TheatreSection() {
           </View>
         </View>
       ))}
+
+      <Text style={[styles.sectionTitle, { marginTop: SPACING.md }]}>
+        CAMPAIGN AI — Chunk C6
+      </Text>
+      <Text style={styles.eventId}>
+        Headless preview only — never touches the real game state. Approximates order
+        resolution locally (C7 doesn't exist yet) purely so the log shows both sides
+        actually maneuvering over the run.
+      </Text>
+      <TouchableOpacity
+        onPress={() => setSimLog(simulateCampaign(armies, theatre, cities, clans, 20))}
+      >
+        <Text style={styles.flagNote}>▶ Simulate campaign, no player (20 seasons)</Text>
+      </TouchableOpacity>
+      {simLog && (
+        <Text style={styles.dump} selectable>
+          {simLog.join('\n')}
+        </Text>
+      )}
     </View>
   );
 }

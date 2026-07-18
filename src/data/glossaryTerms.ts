@@ -527,4 +527,10 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     definition: 'The automatic re-election vote called in a command\'s final season. The incumbent\'s support is boosted or hurt by their battle record; winning extends the term and tops up the war chest with no new grants. Losing — or nobody standing — lapses the command: its armies hold in place, leaderless, until a new one is won.',
     relatedTab: 'Curia',
   },
+  {
+    id: 'campaign-intent',
+    term: 'Campaign Intent',
+    definition: 'An enemy or rival army\'s telegraphed plan for the season: Entrenched (holding), Advancing, or Raiding. Each general has their own honesty — a schemer may show a false intent now and then, so treat it as a strong hint, not a guarantee.',
+    relatedTab: 'Provinciae',
+  },
 ];

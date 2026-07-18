@@ -88,6 +88,12 @@ import {
   buildRivalEntry,
   calcProrogationModifier,
 } from './commandEngine';
+import {
+  assignCarthaginianOrders,
+  assignNpcRomanOrders,
+  shouldReinforceCarthage,
+  applyCarthageReinforcement,
+} from './campaignAi';
 
 // ─── Client helpers ──────────────────────────────────────────────────────────
 
@@ -425,6 +431,36 @@ export function processSeason(state: GameState): {
     };
     s = { ...s, commandElection: election };
     events.push('The command\'s term ends this season — a prorogation vote is called.');
+  }
+
+  // 2g. Campaign Map plan, Chunk C6 — campaign AI orders. Every season,
+  // every carthage/rome_rival army gets a fresh order from the campaign AI
+  // (overwriting whatever a previous season left — the AI has no "already
+  // planned this season" concept the way a player does). Nothing resolves
+  // these orders yet — C7's job, same as player orders since Chunk C5.
+  // Guarded on armies existing at all: many fixtures/older saves predate
+  // Chunk C2 and have no armies field (or an empty one) — nothing to do.
+  if (s.armies && s.armies.length > 0) {
+    const carthageOrders = assignCarthaginianOrders(s.armies, s.theatre, s.cities, s.seasonIndex);
+    const rivalOrders = assignNpcRomanOrders(s.armies, s.clans, s.theatre, s.cities, s.seasonIndex);
+    s = {
+      ...s,
+      armies: s.armies.map(a => {
+        if (carthageOrders.has(a.id)) return { ...a, ordersThisSeason: carthageOrders.get(a.id) ?? null };
+        if (rivalOrders.has(a.id)) return { ...a, ordersThisSeason: rivalOrders.get(a.id) ?? null };
+        return a;
+      }),
+    };
+  }
+
+  // 2h. Campaign Map plan, Chunk C6 — Carthaginian reinforcements. Flat
+  // batch every reinforcementInterval seasons (stateless — derived from
+  // turnNumber alone, no extra persisted counter); C9's war-standing
+  // scaling hook is noted but not built (see campaignAi.ts). Guarded on
+  // theatre existing for the same pre-C1-fixture reason as step 2g.
+  if (s.theatre && shouldReinforceCarthage(s.turnNumber)) {
+    s = { ...s, armies: applyCarthageReinforcement(s.armies ?? [], s.turnNumber, `army-carthage-reinforce-${s.turnNumber}`) };
+    events.push('Carthage lands fresh cohorts at Africa.');
   }
 
   // 3. Tick office term

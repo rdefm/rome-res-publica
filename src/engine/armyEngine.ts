@@ -99,7 +99,7 @@ export function divide(
  *  'rome_rival') counts as 'rome'. Extracted (Chunk C5) from upkeepFor's own
  *  inline version below, now that movementEngine.ts needs the identical
  *  mapping for hostile-occupation checks. */
-export function armyPowerOf(owner: Army['owner']): Controller {
+export function armyPowerOf(owner: Army['owner']): 'rome' | 'carthage' {
   return owner === 'carthage' ? 'carthage' : 'rome';
 }
 

@@ -1391,6 +1391,38 @@ export const BALANCE = {
       winterSeaMultiplier: 2.0,
       stormAttritionPct: 0.10,
     },
+
+    /** Chunk C6 — campaignAi.ts. First-pass/unverified seeds from the
+     *  plan's own spec table (plus a few this chunk had to invent — noted
+     *  below — where the plan named a concept without a formula), C10
+     *  tunes. */
+    ai: {
+      /** ADVANCE only attack-moves when armyStrength ratio (mover ÷
+       *  defender) clears this, scaled DOWN by the mover's own aggression —
+       *  see attackRatioAggressionScale. */
+      attackRatioThreshold: 1.2,
+      /** The plan names "scaled down by aggression" without a formula —
+       *  invented here: effectiveThreshold = attackRatioThreshold × (1 −
+       *  aggression × this). 0.5 halves the threshold at aggression 1.0. */
+      attackRatioAggressionScale: 0.5,
+      /** Softmax temperature over the three behaviors' (score × weight)
+       *  products — one shared constant, not per-profile (per the plan's
+       *  own "temperature in BALANCE" phrasing). */
+      softmaxTemperature: 1.0,
+      reinforcementCohorts: 3,
+      reinforcementInterval: 3,
+      /** Invented (not named by the plan): NPC-Roman commanders with the
+       *  'conqueror' or 'soldier_born' trait (data/traits.ts — the only
+       *  martial-flavoured traits that exist; no defensive/cautious trait
+       *  exists in that catalog to symmetrically bonus 'hold' with) get
+       *  this added to their derived advance weight. */
+      traitAdvanceBonus: 0.5,
+      /** NPC-Roman commanders' objectiveWeights baseline before the trait
+       *  bonus above — the plan's own "else default" fallback, since no
+       *  richer hold/advance personality signal exists on ClanLeader. */
+      defaultObjectiveWeights: { hold: 1, advance: 1, raid: 1 },
+      defaultDeceptionChance: 0.1,
+    },
   },
 };
 

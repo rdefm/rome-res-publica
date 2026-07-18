@@ -16,9 +16,17 @@ import type { Character } from '../../models/character';
 import type { TheatreState } from '../../models/theatre';
 import type { CityState } from '../../models/city';
 import { armyStrength, upkeepFor } from '../../engine/armyEngine';
+import { trueIntentFor, type CampaignIntent } from '../../engine/campaignAi';
 import InfoTap from '../shared/InfoTap';
 
 const VET_TIER_INDEX: Record<ArmyUnit['veterancy'], number> = { raw: 1, trained: 2, veteran: 3, legendary: 4 };
+
+// Chunk C6 — enemy/rival army cards show the AI's intent for the season.
+// This is the TRUE intent (see trueIntentFor's own comment on why: the
+// telegraphed, sometimes-lying version is meant to be computed once by
+// C7's resolution for the FOLLOWING season, which doesn't exist yet).
+const INTENT_ICON: Record<CampaignIntent, string> = { entrenched: '🛡', advancing: '➔', raiding: '🔥' };
+const INTENT_LABEL: Record<CampaignIntent, string> = { entrenched: 'Entrenched', advancing: 'Advancing', raiding: 'Raiding' };
 
 const OWNER_LABEL: Record<Army['owner'], string> = {
   player: 'Your Command',
@@ -77,6 +85,7 @@ export default function ArmyCard({
   const strength = Math.round(armyStrength(army));
   const upkeep = upkeepFor(army, theatre, cities);
   const canManage = army.owner === 'player' || army.owner === 'rome_state';
+  const intent = trueIntentFor(army.ordersThisSeason);
 
   function toggleUnit(unitId: string) {
     setPickedUnitIds(ids => ids.includes(unitId) ? ids.filter(id => id !== unitId) : [...ids, unitId]);
@@ -104,6 +113,16 @@ export default function ArmyCard({
           <Text style={styles.strengthLabel}>POWER</Text>
         </View>
       </View>
+
+      {/* Chunk C6 — campaign AI intent, enemy/rival armies only. */}
+      {!canManage && (
+        <InfoTap termId="campaign-intent" style={{ alignSelf: 'flex-start', marginBottom: SPACING.sm }}>
+          <View style={styles.intentRow}>
+            <Text style={styles.intentIcon}>{INTENT_ICON[intent]}</Text>
+            <Text style={styles.intentLabel}>{INTENT_LABEL[intent]}</Text>
+          </View>
+        </InfoTap>
+      )}
 
       {/* Commander */}
       <TouchableOpacity
@@ -342,6 +361,13 @@ const styles = StyleSheet.create({
   strengthBadge: { alignItems: 'center' } as ViewStyle,
   strengthValue: { color: COLORS.gold, fontFamily: FONTS.ui, fontSize: 16, fontWeight: '700' } as TextStyle,
   strengthLabel: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 7, letterSpacing: 0.6 } as TextStyle,
+
+  intentRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: '#1a1410', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4,
+  } as ViewStyle,
+  intentIcon: { fontSize: 11 } as TextStyle,
+  intentLabel: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 10, letterSpacing: 0.5 } as TextStyle,
 
   commanderRow: {
     flexDirection: 'row',
