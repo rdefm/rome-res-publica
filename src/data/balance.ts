@@ -1423,6 +1423,70 @@ export const BALANCE = {
       defaultObjectiveWeights: { hold: 1, advance: 1, raid: 1 },
       defaultDeceptionChance: 0.1,
     },
+
+    /** Chunk C7 — campaignResolver.ts. First-pass/unverified seeds from the
+     *  plan's own spec table (plus a few invented where the plan named a
+     *  concept without a formula — noted below), C10 tunes. */
+    resolution: {
+      /** Design invariant/plan text — player armies get +2 initiative so
+       *  their plans read as reliable. */
+      playerInitiativeBonus: 2,
+      withdrawal: {
+        base: 30,
+        martialMult: 3,
+        /** Bonus if the DEFENDER's cavalry share of total units exceeds the
+         *  attacker's. */
+        avoidCavBonus: 10,
+        /** Strength lost by a successfully-withdrawing army. */
+        attritionPct: 0.02,
+      },
+      /** Consecutive uncontested seasons a hostile occupier needs before a
+       *  region's TheatreState controller flips (the "2nd consecutive
+       *  season" the plan's step 6 names literally). */
+      controlFlipThresholdSeasons: 2,
+      /** Post-battle loser retreat / failed-withdrawal retreat: strength
+       *  lost is folded into the abstract battle's own casualty seeds
+       *  below, not a separate number — this constant intentionally absent.
+       *  A shattered army's commander fate (captured vs escaped) — M4's
+       *  real character-fate hooks aren't wired at the campaign layer yet
+       *  (C8's job), so this only drives flavor-text branching for now. */
+      shatterCaptureChance: 0.25,
+      raid: {
+        /** Region relationship hit to every live city inside the raided
+         *  region — the plan's own literal seed. */
+        relationshipSting: -10,
+        /** NOT named by the plan ("a small denarii loss") — invented here.
+         *  Only ever fires against Rome's treasury (state.denarii): no NPC
+         *  economy/Carthage denarii pool exists in this codebase for a
+         *  symmetric Roman-raids-Carthage sting to draw from. */
+        denariiSting: 20,
+      },
+      /** The abstract battle resolver — a pure strength-ratio + seeded-
+       *  variance PLACEHOLDER (per the plan's own framing for this chunk),
+       *  clearly superseded by C8's real `abstractResolver.ts` (which adds
+       *  terrain fit and a calibration test against the tactical harness).
+       *  `tier` reuses M1's real BattleOutcome enum ('marginal'|'clear'|
+       *  'crushing') rather than C8's spec-text "narrow" — same concept,
+       *  existing vocabulary preferred over inventing a second one.
+       *  Casualty seeds ARE C8's own spec-table numbers (crushing 25/8,
+       *  clear 15/10, narrow 12/12) — reused now rather than invented twice. */
+      abstractBattle: {
+        /** Power-ratio margin (|winProb − 0.5| × 2, 0..1) above which a
+         *  result reads as this tier. Invented — the plan gives casualty
+         *  numbers per tier but no margin bands to pick a tier from. */
+        crushingMarginThreshold: 0.5,
+        clearMarginThreshold: 0.2,
+        /** Multiplies (attacker martial) into the attacker/defender power
+         *  score alongside armyStrength — same "×(1 + martial × factor)"
+         *  shape C8's own spec text uses for the real resolver. */
+        martialFactor: 0.05,
+        casualtiesByTier: {
+          crushing: { winnerPct: 0.08, loserPct: 0.25 },
+          clear:    { winnerPct: 0.10, loserPct: 0.15 },
+          marginal: { winnerPct: 0.12, loserPct: 0.12 },
+        },
+      },
+    },
   },
 };
 

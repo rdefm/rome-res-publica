@@ -592,11 +592,11 @@ function WarSection() {
 // armies/movement/AI on top of it.
 
 // Chunk C6 — headless campaign AI sim ("Simulate campaign, no player").
-// Pure debug-only preview: never touches real gameStore state. Since C7
-// doesn't resolve orders yet, this applies a debug-only approximation
-// (move each army straight to its order's destination) purely so the
-// printed log shows both sides actually maneuvering over the run, not just
-// repeating the same first-season decision N times.
+// Pure debug-only preview: never touches real gameStore state. Kept as a
+// lightweight AI-only approximation (move each army straight to its order's
+// destination — no engagements/storms/upkeep) even now that Chunk C7's real
+// campaignResolver exists for real seasons; this tool's job is previewing AI
+// maneuvering over many seasons quickly, not replaying full resolution.
 function simulateCampaign(
   armies: Army[],
   theatre: TheatreState,
@@ -756,9 +756,10 @@ function TheatreSection() {
         CAMPAIGN AI — Chunk C6
       </Text>
       <Text style={styles.eventId}>
-        Headless preview only — never touches the real game state. Approximates order
-        resolution locally (C7 doesn't exist yet) purely so the log shows both sides
-        actually maneuvering over the run.
+        Headless preview only — never touches the real game state. Still approximates order
+        resolution locally (move-straight-to-destination, no engagements/storms/upkeep) rather
+        than calling the real campaignResolver (Chunk C7) — kept as a lightweight AI-only
+        preview; the real resolver runs for real every season via End Season regardless.
       </Text>
       <TouchableOpacity
         onPress={() => setSimLog(simulateCampaign(armies, theatre, cities, clans, 20))}

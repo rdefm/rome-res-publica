@@ -49,6 +49,8 @@ import type { MusterTier } from '../engine/musterEngine';
 import { quoteMuster, rollMusteredUnit, nextLegionName } from '../engine/musterEngine';
 import { getRegion, getRegionRelationship } from '../engine/theatreEngine';
 import { buildMovementOrder } from '../engine/movementEngine';
+import type { CampaignLog, Engagement } from '../models/campaignLog';
+import { resolveEngagement } from '../engine/campaignResolver';
 import type { Command, CommandElectionState } from '../models/command';
 import {
   isEligibleForCommand,
@@ -402,6 +404,17 @@ export interface GameState {
   // open; activeCommand is null when no one currently holds the command.
   activeCommand: Command | null;
   commandElection: CommandElectionState | null;
+
+  // ── Campaign Map plan, Chunk C7 — turn-end campaign resolution. Written
+  // by turnSequencer's new step (6c) every season; campaignLog is the
+  // Provinciae tab's playback source (MapView's playback mode replays it,
+  // never recomputes). pendingEngagements accumulates any battle involving
+  // a player-manageable army that the resolver deferred (see
+  // campaignResolver.ts's header comment on why C7 exposes a temporary
+  // abstract-only resolution path rather than leaving these genuinely
+  // stuck until C8's tactical battle bridge exists).
+  campaignLog: CampaignLog | null;
+  pendingEngagements: Engagement[];
 
   // ── Military (Chunk M) ──────────────────────────────────────────────────
   senateResponse: SenateResponseState | null;
@@ -799,6 +812,20 @@ export interface GameActions {
   issueMovementOrder: (armyId: string, destinationRegionId: RegionId, forcedMarch: boolean) => void;
   clearOrder: (armyId: string) => void;
 
+  // ── Campaign Map plan, Chunk C7 — Turn-end resolution ────────────────────
+  /** Dismisses the playback (MapView's playback mode) once the player has
+   *  watched or skipped it — clears campaignLog only, never pendingEngagements
+   *  (a pending battle keeps its own agenda/interstitial alive independently
+   *  of whether the map animation has been seen). */
+  dismissCampaignLog: () => void;
+  /** TEMPORARY — see campaignResolver.ts's header comment. Resolves one
+   *  pending engagement via the same abstract-battle stub NPC-vs-NPC fights
+   *  already use, and removes it from pendingEngagements. C8 replaces this
+   *  with a real interstitial offering a tactical option alongside it; this
+   *  action's shape (an engagement id in, nothing out but the state update)
+   *  does not need to change when that lands. */
+  resolveEngagementAbstract: (engagementId: string) => void;
+
   // ── Military (Chunk M) ──────────────────────────────────────────────────
   raiseLevy: (characterId: string, musterProvinceId: string) => void;
   musterVeterans: (characterId: string) => void;
@@ -1132,6 +1159,8 @@ export const INITIAL_STATE: GameState = {
   armies: [],
   activeCommand: null,
   commandElection: null,
+  campaignLog: null,
+  pendingEngagements: [],
 
   // Military (Chunk M)
   senateResponse: null,
@@ -1637,8 +1666,21 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       const pendingBirth = get().pendingBirthNaming;
       if (pendingBirth) get().confirmBirthNaming(pendingBirth.suggestedName);
 
+      // Campaign Map plan, Chunk C7 — a pending engagement (EngagementInterstitial's
+      // full-screen Modal in the real app) needs its own driver here too, same
+      // reasoning as the trial-session loop above: it isn't an EventChoice and
+      // would otherwise leave this runner stuck. Resolves via the same
+      // abstract-battle stub the interstitial's one button calls.
+      let guardEngagements = 0;
+      while (get().pendingEngagements.length > 0 && guardEngagements < 20) {
+        guardEngagements++;
+        get().resolveEngagementAbstract(get().pendingEngagements[0].id);
+      }
+      if (guardEngagements >= 20) notes.push(`season ${i + 1}: pendingEngagements didn't drain within ${guardEngagements} steps`);
+
       // Keep the loop's state clean for the next iteration (and for
       // whatever screen is open once the runner finishes).
+      get().dismissCampaignLog();
       get().dismissSeasonOverlay();
     }
 
@@ -3920,6 +3962,24 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set(s => ({
       armies: s.armies.map(a => a.id === armyId ? { ...a, ordersThisSeason: null } : a),
     }));
+  },
+
+  // ── Campaign Map plan, Chunk C7 — Turn-end resolution ────────────────────
+
+  dismissCampaignLog: () => set({ campaignLog: null }),
+
+  resolveEngagementAbstract: (engagementId) => {
+    const s = get();
+    const engagement = s.pendingEngagements.find(e => e.id === engagementId);
+    if (!engagement) return;
+
+    const result = resolveEngagement(engagement, s.armies, s.theatre, s.family, s.clans);
+    const label = turnLabel(s);
+    set({
+      armies: result.armies,
+      pendingEngagements: s.pendingEngagements.filter(e => e.id !== engagementId),
+      log: [...s.log, ...result.logEntries.map(e => mkLog(label, e.text, 'neutral'))],
+    });
   },
 
   // ── Military Actions (Chunk M) ───────────────────────────────────────────────

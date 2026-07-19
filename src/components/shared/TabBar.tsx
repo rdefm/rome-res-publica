@@ -27,18 +27,26 @@ export function TabBarBackground({ height }: { height: number }): JSX.Element {
   );
 }
 
-export function renderTabIcon(label: string, focused: boolean): JSX.Element {
+/** Campaign Map plan, Chunk C7 — `badge` is a small dot on the icon corner,
+ *  used by Provinciae to flag unseen campaign activity (a season's log the
+ *  player hasn't watched/skipped yet). No other tab uses this yet — first
+ *  per-tab badge in this codebase, so kept generic rather than Provinciae-
+ *  specific in case a future tab wants the same treatment. */
+export function renderTabIcon(label: string, focused: boolean, badge?: boolean): JSX.Element {
   const icon = TAB_ICONS[label];
   const tint = focused ? COLORS.crimson : '#9a8060';
 
   return (
     <View style={styles.tabItem}>
       {focused && <View style={styles.focusBar} />}
-      {icon ? (
-        <Image source={icon} style={[styles.tabIcon, { tintColor: tint }]} />
-      ) : (
-        <Text style={{ color: tint, fontSize: 18 }}>●</Text>
-      )}
+      <View>
+        {icon ? (
+          <Image source={icon} style={[styles.tabIcon, { tintColor: tint }]} />
+        ) : (
+          <Text style={{ color: tint, fontSize: 18 }}>●</Text>
+        )}
+        {badge && <View style={styles.badgeDot} />}
+      </View>
       <Text style={[styles.tabLabel, { color: tint }]}>
         {label.toUpperCase()}
       </Text>
@@ -90,6 +98,17 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     marginBottom: 3,
+  },
+  badgeDot: {
+    position: 'absolute',
+    top: -1,
+    right: -1,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.crimson,
+    borderWidth: 1,
+    borderColor: '#1a1714',
   },
   tabLabel: {
     fontFamily: FONTS.display,

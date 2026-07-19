@@ -55,7 +55,10 @@ export default function ProvinciaeScreen() {
   const armies                   = useGameStore(s => s.armies);
   const theatre                  = useGameStore(s => s.theatre);
   const activeCommand            = useGameStore(s => s.activeCommand);
-  const seasonIndex              = useGameStore(s => s.seasonIndex);
+  const seasonIndex               = useGameStore(s => s.seasonIndex);
+  // Campaign Map plan, Chunk C7 — turn-end playback.
+  const campaignLog              = useGameStore(s => s.campaignLog);
+  const dismissCampaignLog        = useGameStore(s => s.dismissCampaignLog);
 
   // ── Store actions — only actions that exist in GameActions ───────────────────
   const updateProvincePolicy     = useGameStore(s => s.updateCityPolicy);
@@ -249,6 +252,8 @@ export default function ProvinciaeScreen() {
           onRegionPress={openRegionSheet}
           orderModeDestinations={orderModeDestinations}
           onOrderRegionPress={handleOrderRegionPress}
+          playbackLog={campaignLog}
+          onPlaybackComplete={dismissCampaignLog}
         />
       </View>
 

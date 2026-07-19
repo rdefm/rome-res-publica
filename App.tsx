@@ -20,6 +20,7 @@ import BattleScreen from './src/screens/BattleScreen';
 import EpilogueScreen from './src/screens/EpilogueScreen';
 import SetPieceOfferModal from './src/components/shared/SetPieceOfferModal';
 import TrialSessionModal from './src/components/cursus/TrialSessionModal';
+import EngagementInterstitial from './src/components/provinciae/EngagementInterstitial';
 import AchievementToast from './src/components/shared/AchievementToast';
 import { generateAgenda } from './src/engine/agendaEngine';
 import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle } from './src/components/shared/TabBar';
@@ -59,6 +60,14 @@ const eb = StyleSheet.create({
 
 // ─── Tab navigator ────────────────────────────────────────────────────────────
 
+// Campaign Map plan, Chunk C7 — Provinciae's tab-icon badge (unseen campaign
+// activity) needs a live store subscription; the plain renderTabIcon
+// function screenOptions otherwise calls has no React context to read from.
+function ProvinciaeTabIcon({ focused }: { focused: boolean }) {
+  const hasCampaignActivity = useGameStore(s => s.campaignLog !== null);
+  return renderTabIcon('Provinciae', focused, hasCampaignActivity);
+}
+
 function AppNavigator() {
   const insets = useSafeAreaInsets();
   const barHeight = tabBarStyle.height + insets.bottom;
@@ -67,7 +76,8 @@ function AppNavigator() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarIcon: ({ focused }) => renderTabIcon(route.name, focused),
+        tabBarIcon: ({ focused }) =>
+          route.name === 'Provinciae' ? <ProvinciaeTabIcon focused={focused} /> : renderTabIcon(route.name, focused),
         tabBarLabel: () => null,
         // Single Image covers the full bar — no per-item background needed
         tabBarBackground: () => <TabBarBackground height={barHeight} />,
@@ -239,7 +249,11 @@ function GameRoot() {
             tolerates elsewhere). SetPieceOfferModal (M9) self-gates OFF whenever a battle is in
             progress, so it never stacks with BattleScreen. EpilogueScreen (Phase 3, P3-E)
             self-gates on runFinished — takes over the whole screen once a run ends, same idiom,
-            outranking everything else here since nothing is actionable once a run is finished. */}
+            outranking everything else here since nothing is actionable once a run is finished.
+            EngagementInterstitial (Campaign Map plan, Chunk C7) is the same full-screen-Modal
+            idiom, self-gated on pendingEngagements[0] — TEMPORARY (see that component's own
+            header comment): C8 replaces its single "Trust the Legate" button with a real
+            tactical-vs-abstract choice, not this component's mounting or gating. */}
         <EventModal />
         <AmbitionSelectionModal />
         <BirthNamingModal />
@@ -250,6 +264,7 @@ function GameRoot() {
         />
         <SetPieceOfferModal />
         <TrialSessionModal />
+        <EngagementInterstitial />
         <BattleScreen />
         <EpilogueScreen />
         <AchievementToast />

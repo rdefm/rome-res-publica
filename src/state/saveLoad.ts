@@ -120,6 +120,10 @@ export const SaveSchema = z.object({
   pendingEpilogue: z.enum(['victory', 'exhaustion', 'humbled', 'republic_falls', 'gens_ends']).nullable().default(null),
   // Phase 3, Chunk P3-C — .default(null) ensures pre-P3-C saves load cleanly.
   pendingSuccession: z.any().nullable().default(null),
+  // Campaign Map plan, Chunk C7 — .default()s ensure pre-C7 saves (every one
+  // with no campaignLog/pendingEngagements key at all) load cleanly.
+  campaignLog: z.any().nullable().default(null),
+  pendingEngagements: z.array(z.any()).default([]),
   regency: z.any().nullable().default(null),
   // Phase 3, Chunk P3-D — .default()s ensure pre-P3-D saves load cleanly;
   // loadGame's normalisation (gameStore.ts) backfills a real cadetBranch

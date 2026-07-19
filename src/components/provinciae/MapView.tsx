@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Image,
   TouchableOpacity,
   Text,
   StyleSheet,
+  Animated,
   Dimensions,
   ViewStyle,
   ImageStyle,
@@ -18,6 +19,7 @@ import type { Controller, RegionId } from '../../models/theatre';
 import { REGIONS } from '../../data/theatreMap';
 import type { Army } from '../../models/army';
 import type { ReachableDestination } from '../../engine/movementEngine';
+import type { CampaignLog, CampaignLogEntry } from '../../models/campaignLog';
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 //
@@ -282,6 +284,158 @@ interface MapViewProps {
    *  onOrderRegionPress instead of onRegionPress. */
   orderModeDestinations?: ReachableDestination[] | null;
   onOrderRegionPress?: (regionId: RegionId) => void;
+  /** Chunk C7 — when set, takes over the whole component as its own render
+   *  branch (not interleaved with the interactive tap/order-mode layers
+   *  above): replays the season's CampaignLog as an animated sequence over
+   *  the same region/city base layers. `armies` is still the FINAL
+   *  (post-resolution) list — playback derives each army's start-of-season
+   *  position from the log itself (see computePlaybackStartPositions) and
+   *  animates toward the positions `armies` already reflects. */
+  playbackLog?: CampaignLog | null;
+  onPlaybackComplete?: () => void;
+}
+
+/** Every army's position before this season's moves — derived from the log
+ *  rather than passed in, since campaignResolver only returns the FINAL
+ *  armies array. An army with no move/withdrawal entry this season (never
+ *  ordered, or its order bounced on the first step) just sits at its
+ *  current (== starting) location the whole time. A shattered army (no
+ *  longer in `armies` at all) has no entry here — its loss is narrated by
+ *  its own log entry's banner text, not a fading token (v1 scope cut). */
+function computePlaybackStartPositions(entries: CampaignLogEntry[], armies: Army[]): Record<string, RegionId> {
+  const positions: Record<string, RegionId> = {};
+  for (const army of armies) {
+    const firstMove = entries.find(
+      (e): e is Extract<CampaignLogEntry, { type: 'move' | 'withdrawal' }> =>
+        (e.type === 'move' || e.type === 'withdrawal') && e.armyId === army.id
+    );
+    positions[army.id] = firstMove ? firstMove.from : army.location;
+  }
+  return positions;
+}
+
+const PLAYBACK_STEP_MS = 600;
+const PLAYBACK_BANNER_MS = 900;
+
+/** One moving token, one banner line at a time — "staggered, not
+ *  simultaneous" (the plan's own wording). Tap anywhere to skip straight to
+ *  final positions (non-negotiable per the plan). */
+function PlaybackLayer({
+  log,
+  armies,
+  onComplete,
+}: {
+  log: CampaignLog;
+  armies: Army[];
+  onComplete: () => void;
+}) {
+  const [entryIndex, setEntryIndex] = useState(0);
+  const [positions, setPositions] = useState<Record<string, RegionId>>(() =>
+    computePlaybackStartPositions(log.entries, armies)
+  );
+  const [movingArmyId, setMovingArmyId] = useState<string | null>(null);
+  const [bannerText, setBannerText] = useState<string | null>(null);
+  const [skipped, setSkipped] = useState(false);
+  const slideAnim = useRef(new Animated.ValueXY()).current;
+  // A ref alongside the `skipped` state: async animation/timer callbacks
+  // check this synchronously (state updates aren't visible inside a
+  // callback closed over before the update) to avoid acting after a skip.
+  const skippedRef = useRef(false);
+
+  useEffect(() => {
+    if (skippedRef.current) return;
+    if (entryIndex >= log.entries.length) {
+      onComplete();
+      return;
+    }
+    const entry = log.entries[entryIndex];
+
+    if (entry.type === 'move' || entry.type === 'withdrawal') {
+      const fromRegion = REGIONS.find(r => r.id === entry.from);
+      const toRegion = REGIONS.find(r => r.id === entry.to);
+      if (fromRegion && toRegion) {
+        const fromPos = regionCentroidPx(fromRegion);
+        const toPos = regionCentroidPx(toRegion);
+        setMovingArmyId(entry.armyId);
+        slideAnim.setValue(fromPos);
+        const anim = Animated.timing(slideAnim, {
+          toValue: toPos,
+          duration: PLAYBACK_STEP_MS,
+          useNativeDriver: false,
+        });
+        anim.start(({ finished }) => {
+          if (!finished || skippedRef.current) return;
+          setPositions(p => ({ ...p, [entry.armyId]: entry.to }));
+          setMovingArmyId(null);
+          setEntryIndex(i => i + 1);
+        });
+        return () => anim.stop();
+      }
+    }
+
+    setBannerText(entry.text);
+    const t = setTimeout(() => {
+      if (skippedRef.current) return;
+      setBannerText(null);
+      setEntryIndex(i => i + 1);
+    }, PLAYBACK_BANNER_MS);
+    return () => clearTimeout(t);
+  }, [entryIndex]);
+
+  function skipToEnd() {
+    skippedRef.current = true;
+    setSkipped(true);
+    setMovingArmyId(null);
+    setBannerText(null);
+    onComplete();
+  }
+
+  const finalPositions: Record<string, RegionId> = {};
+  for (const a of armies) finalPositions[a.id] = a.location;
+  const displayPositions = skipped ? finalPositions : positions;
+
+  return (
+    <TouchableOpacity
+      style={StyleSheet.absoluteFill}
+      activeOpacity={1}
+      onPress={skipToEnd}
+    >
+      {REGIONS.map(region => {
+        const armiesHere = armies.filter(a => displayPositions[a.id] === region.id && a.id !== movingArmyId);
+        if (armiesHere.length === 0) return null;
+        const pos = regionCentroidPx(region);
+        return (
+          <View key={region.id} pointerEvents="none" style={[styles.armyMarker, { left: pos.x - 12, top: pos.y - 34 }]}>
+            <Text style={styles.armyMarkerIcon}>⚔</Text>
+          </View>
+        );
+      })}
+
+      {movingArmyId && !skipped && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.armyMarker,
+            { left: Animated.subtract(slideAnim.x, 12), top: Animated.subtract(slideAnim.y, 34) },
+          ]}
+        >
+          <Text style={styles.armyMarkerIcon}>⚔</Text>
+        </Animated.View>
+      )}
+
+      {bannerText && !skipped && (
+        <View style={styles.playbackBanner} pointerEvents="none">
+          <Text style={styles.playbackBannerText}>{bannerText}</Text>
+        </View>
+      )}
+
+      {!skipped && (
+        <View style={styles.playbackSkipHint} pointerEvents="none">
+          <Text style={styles.playbackSkipHintText}>Tap to skip</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
 }
 
 export default function MapView({
@@ -292,6 +446,8 @@ export default function MapView({
   onRegionPress,
   orderModeDestinations,
   onOrderRegionPress,
+  playbackLog,
+  onPlaybackComplete,
 }: MapViewProps) {
   return (
     <View style={styles.container}>
@@ -308,7 +464,9 @@ export default function MapView({
         <RegionBorderOutline key={region.id} regionId={region.id} />
       ))}
 
-      {orderModeDestinations
+      {playbackLog ? (
+        <PlaybackLayer log={playbackLog} armies={armies} onComplete={() => onPlaybackComplete?.()} />
+      ) : orderModeDestinations
         ? orderModeDestinations.map(dest => {
             const region = REGIONS.find(r => r.id === dest.regionId);
             if (!region) return null;
@@ -395,8 +553,10 @@ export default function MapView({
       })}
 
       {/* One marker per region that has ≥1 army — RegionSheet lists every
-          army there regardless of which one the marker happens to focus. */}
-      {REGIONS.map(region => {
+          army there regardless of which one the marker happens to focus.
+          Suppressed during playback: PlaybackLayer renders its own markers
+          off mid-season positions, not the final ones this base layer reads. */}
+      {!playbackLog && REGIONS.map(region => {
         const first = armies.find(a => a.location === region.id);
         if (!first) return null;
         return (
@@ -559,5 +719,39 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.ui,
     fontSize: 12,
     fontWeight: '700',
+  } as TextStyle,
+
+  playbackBanner: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    top: 16,
+    backgroundColor: 'rgba(20,16,10,0.9)',
+    borderWidth: 1,
+    borderColor: COLORS.gold,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  } as ViewStyle,
+  playbackBannerText: {
+    color: COLORS.gold,
+    fontFamily: FONTS.ui,
+    fontSize: 12,
+    textAlign: 'center',
+  } as TextStyle,
+
+  playbackSkipHint: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    backgroundColor: 'rgba(20,16,10,0.75)',
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  } as ViewStyle,
+  playbackSkipHintText: {
+    color: COLORS.dust,
+    fontFamily: FONTS.ui,
+    fontSize: 9,
   } as TextStyle,
 });

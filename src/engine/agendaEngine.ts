@@ -15,6 +15,7 @@ import { getMunificenceAct } from '../data/munificence';
 import { isSlotUsedThisYear, getMunificenceCost } from './munificenceEngine';
 import { isDeterred } from './secretEngine';
 import { BALANCE } from '../data/balance';
+import { REGIONS } from '../data/theatreMap';
 
 // ─── Crisis tier copy ─────────────────────────────────────────────────────────
 // Labels and penalty strings sourced directly from the tier tables in
@@ -840,15 +841,90 @@ function genFiledProsecutionPending(state: GameState): AgendaItem[] {
     });
 }
 
+// ─── Generator 27 — Campaign Map plan, Chunk C7 — pending engagement ────────
+// One item per unresolved Engagement (campaignResolver deferred it because a
+// player-manageable army was a side) — critical, since the season already
+// paused (EngagementInterstitial's full-screen Modal) waiting on it.
+
+function genPendingEngagement(state: GameState): AgendaItem[] {
+  return (state.pendingEngagements ?? []).map(engagement => {
+    const region = REGIONS.find(r => r.id === engagement.regionId);
+    return {
+      id: `agenda-critical-engagement-${engagement.id}`,
+      category: 'military' as const,
+      severity: 'critical' as const,
+      title: `The enemy is met at ${region?.name ?? engagement.regionId}`,
+      detail: 'The season cannot close until this is resolved.',
+      target: { tab: 'Provinciae' as const },
+      sortWeight: 0,
+    };
+  });
+}
+
+// ─── Generator 28 — Campaign Map plan, Chunk C4/C7 — the command's assembly
+// open, or its term nearing an end. The assembly panel lives in Curia. ─────
+
+function genCommandAssemblyOrExpiring(state: GameState): AgendaItem[] {
+  if (state.commandElection?.active) {
+    return [{
+      id: 'agenda-critical-command-assembly',
+      category: 'military' as const,
+      severity: 'critical' as const,
+      title: state.commandElection.isProrogation
+        ? 'The command\'s prorogation is being decided'
+        : 'The theatre command is being decided',
+      detail: 'Canvass for your candidate before the assembly resolves at season\'s end.',
+      target: { tab: 'Curia' as const },
+      sortWeight: 0,
+    }];
+  }
+  const command = state.activeCommand;
+  if (command && command.expiresSeason - state.turnNumber <= 1) {
+    return [{
+      id: `agenda-warning-command-expiring-${command.id}`,
+      category: 'military' as const,
+      severity: 'warning' as const,
+      title: 'The theatre command nears its end',
+      detail: 'A prorogation vote will open shortly — win record so far will shape it.',
+      target: { tab: 'Curia' as const },
+      sortWeight: 10,
+    }];
+  }
+  return [];
+}
+
+// ─── Generator 29 — Campaign Map plan, Chunk C3/C7 — army unpaid ────────────
+// Only 'player'/'rome_state' armies ever accrue unpaidSeasons (no NPC economy
+// tracks it for 'rome_rival'/'carthage' — see turnSequencer's upkeep step).
+
+function genArmyUnpaid(state: GameState): AgendaItem[] {
+  return (state.armies ?? [])
+    .filter(a => (a.owner === 'player' || a.owner === 'rome_state') && a.unpaidSeasons > 0)
+    .map(army => ({
+      id: `agenda-critical-army-unpaid-${army.id}`,
+      category: 'military' as const,
+      severity: 'critical' as const,
+      title: `${army.name} goes unpaid`,
+      detail: `${plural(army.unpaidSeasons, 'season')} owed — loyalty and strength are failing.`,
+      target: { tab: 'Provinciae' as const },
+      sortWeight: 5,
+    }));
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Runs all 26 generators against the current state and returns a sorted list
+ * Runs all 29 generators against the current state and returns a sorted list
  * of agenda items. Sort order: severity (critical first) → sortWeight →
  * category (alpha tiebreak for stable ordering).
  *
  * The UI is responsible for truncating the list (show top 6, expand for more).
  * The engine returns the full list — never truncates.
+ *
+ * Campaign Map plan: #27-29 (genPendingEngagement, genCommandAssemblyOrExpiring,
+ * genArmyUnpaid) added in Chunk C7 — #28 covers work C4 (the command/assembly)
+ * left unbuilt and #29 covers work C3 (upkeep) left unbuilt; all three landed
+ * together here per the plan's own cross-chunk numbering note.
  */
 export function generateAgenda(state: GameState): AgendaItem[] {
   const items: AgendaItem[] = [
@@ -878,6 +954,9 @@ export function generateAgenda(state: GameState): AgendaItem[] {
     ...genSecretHeldAgainstFamily(state),
     ...genExtortionActive(state),
     ...genFiledProsecutionPending(state),
+    ...genPendingEngagement(state),
+    ...genCommandAssemblyOrExpiring(state),
+    ...genArmyUnpaid(state),
   ];
 
   return items.sort((a, b) => {

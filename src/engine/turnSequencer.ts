@@ -78,8 +78,9 @@ import { AUTO_BILL_TEMPLATES, BILL_TEMPLATES, HISTORICAL_BILL_TEMPLATES } from '
 import { getCityDefinition } from '../data/cityDefinitions';
 import { REGIONS } from '../data/theatreMap';
 import type { RegionId } from '../models/theatre';
-import { rollMusteredUnit } from './musterEngine';
+import { rollMusteredUnit, settleUpkeep } from './musterEngine';
 import { getRegionRelationship } from './theatreEngine';
+import { upkeepFor } from './armyEngine';
 import type { Army } from '../models/army';
 import type { Command, CommandElectionState } from '../models/command';
 import {
@@ -94,6 +95,7 @@ import {
   shouldReinforceCarthage,
   applyCarthageReinforcement,
 } from './campaignAi';
+import { resolveCampaignSeason } from './campaignResolver';
 
 // ─── Client helpers ──────────────────────────────────────────────────────────
 
@@ -747,6 +749,92 @@ export function processSeason(state: GameState): {
         bills: [...s.bills, ...renewalBills],
       };
     }
+  }
+
+  // 6c. Campaign Map plan, Chunk C7 — turn-end campaign resolution. Placed
+  // after bills/elections resolve (step 4/2e) and before income (step 7) —
+  // per the plan's own instruction — so this season's upkeep charge below
+  // reads armies at their POST-movement locations/territory-control state,
+  // not where they started the season. Guarded on `s.theatre?.controllers`
+  // specifically, not just `s.theatre` truthy — step 2c's own
+  // `{ ...s.theatre, musteredThisYear: ... }` unconditionally turns an
+  // undefined theatre into a truthy-but-controllers-less object on any
+  // fixture that crosses a year boundary, a pre-existing (harmless until
+  // now) looseness in that step's guard that this step is the first to
+  // actually dereference `.controllers` against — found via a real test
+  // failure (munificenceEngine.test.ts's minimal fixture, which never sets
+  // armies/theatre at all, still picks up a Carthage reinforcement army from
+  // step 2h's OWN `if (s.theatre && ...)` guard being fooled the same way).
+  if (s.armies && s.theatre?.controllers) {
+    const resolution = resolveCampaignSeason({
+      armies: s.armies,
+      theatre: s.theatre,
+      cities: s.cities,
+      family: s.family,
+      clans: s.clans,
+      denarii: s.denarii,
+      seasonIndex: s.seasonIndex,
+      turnNumber: s.turnNumber,
+    });
+    s = {
+      ...s,
+      armies: resolution.armies,
+      theatre: resolution.theatre,
+      cities: resolution.cities,
+      denarii: resolution.denarii,
+      campaignLog: resolution.log,
+      pendingEngagements: [...(s.pendingEngagements ?? []), ...resolution.pendingEngagements],
+    };
+    events.push(...resolution.headlines);
+
+    // Upkeep settlement (finalizes C2's declaration / C3's settleUpkeep,
+    // wired here per that function's own "C7's job" comment). Only
+    // 'player' and 'rome_state' armies draw on tracked denarii/war-chest —
+    // no NPC economy exists for 'rome_rival'/'carthage' armies yet (same
+    // scope musterEngine.settleUpkeep's header comment already notes), so
+    // their unpaidSeasons is left untouched rather than guessing a source.
+    // 'player' mirrors raiseTroops' existing war-chest-first-then-personal
+    // pattern when the player holds the command; 'rome_state' ALWAYS draws
+    // the war chest only, never personal denarii (Command.warChest's own
+    // "never mixed into personal denarii" invariant).
+    let warChest = s.activeCommand?.warChest ?? 0;
+    let denariiAfterUpkeep = s.denarii;
+    const settledArmies: Army[] = [];
+    for (const army of s.armies) {
+      if (army.owner !== 'player' && army.owner !== 'rome_state') {
+        settledArmies.push(army);
+        continue;
+      }
+      const cost = upkeepFor(army, s.theatre, s.cities);
+      let paid: boolean;
+      if (army.owner === 'rome_state') {
+        paid = warChest >= cost;
+        if (paid) warChest -= cost;
+      } else if (s.activeCommand?.holderOwner === 'player') {
+        const fromChest = Math.min(warChest, cost);
+        const remainder = cost - fromChest;
+        paid = fromChest + Math.min(remainder, denariiAfterUpkeep) >= cost;
+        if (paid) {
+          warChest -= fromChest;
+          denariiAfterUpkeep -= remainder;
+        }
+      } else {
+        paid = denariiAfterUpkeep >= cost;
+        if (paid) denariiAfterUpkeep -= cost;
+      }
+      const settlement = settleUpkeep(army, paid);
+      if (settlement.disbanded) {
+        events.push(`${army.name} disbands, unpaid and mutinous.`);
+      } else if (settlement.army) {
+        settledArmies.push(settlement.army);
+      }
+    }
+    s = {
+      ...s,
+      armies: settledArmies,
+      denarii: denariiAfterUpkeep,
+      activeCommand: s.activeCommand ? { ...s.activeCommand, warChest } : s.activeCommand,
+    };
   }
 
   // 7. Resource income
