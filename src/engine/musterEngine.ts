@@ -171,6 +171,8 @@ export function rollMusteredUnit(
     elephantSteady: false,
     homeRegion: regionId,
     raisedBy: 'player',
+    campaignsSurvived: 0,
+    wonCrushingVictory: false,
     raisedSeason: turnNumber,
   };
 }

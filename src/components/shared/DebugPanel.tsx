@@ -668,6 +668,8 @@ function TheatreSection() {
           elephantSteady: false,
           homeRegion: regionId,
           raisedBy: owner === 'player' ? 'player' : owner === 'carthage' ? 'npc' : 'state',
+          campaignsSurvived: 0,
+          wonCrushingVictory: false,
           raisedSeason: 1,
         },
         {
@@ -679,6 +681,8 @@ function TheatreSection() {
           elephantSteady: false,
           homeRegion: regionId,
           raisedBy: owner === 'player' ? 'player' : owner === 'carthage' ? 'npc' : 'state',
+          campaignsSurvived: 0,
+          wonCrushingVictory: false,
           raisedSeason: 1,
         },
       ],

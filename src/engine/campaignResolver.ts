@@ -31,10 +31,11 @@ import type { Clan } from '../models/clan';
 import type { CampaignLog, CampaignLogEntry, Engagement } from '../models/campaignLog';
 import { BALANCE } from '../data/balance';
 import { REGIONS, THEATRE_EDGES } from '../data/theatreMap';
-import { getAdjacent } from './theatreEngine';
+import { getAdjacent, getRegion } from './theatreEngine';
 import { armyStrength, armyPowerOf } from './armyEngine';
 import { applyForcedMarchAttrition, rollSeaLaneStorm, applyStormAttrition } from './movementEngine';
 import { ENEMY_GENERALS } from '../data/enemyGenerals';
+import { abstractResolver, type AbstractCommanderFateResult } from './battle/abstractResolver';
 
 // ─── Small shared lookups (local copies — matches this codebase's existing
 // per-file "garrisonStrengthAt" convention, e.g. campaignAi.ts, rather than
@@ -122,35 +123,6 @@ function pickRetreatDestination(
   return ranked[0].r;
 }
 
-// ─── Abstract battle stub (C7 placeholder — see this file's header comment;
-// C8 replaces the math, not the shape) ──────────────────────────────────────
-
-export interface AbstractBattleResult {
-  winner: 'attacker' | 'defender';
-  tier: 'marginal' | 'clear' | 'crushing';
-  casualtyPctWinner: number;
-  casualtyPctLoser: number;
-}
-
-function computeAbstractBattle(
-  attackerPower: number,
-  defenderPower: number,
-  attackerMartial: number,
-  defenderMartial: number,
-  rng: () => number,
-): AbstractBattleResult {
-  const ab = BALANCE.campaign.resolution.abstractBattle;
-  const effectiveAttacker = attackerPower * (1 + attackerMartial * ab.martialFactor);
-  const effectiveDefender = defenderPower * (1 + defenderMartial * ab.martialFactor);
-  const ratio = effectiveAttacker / Math.max(1, effectiveDefender);
-  const attackerWinProb = ratio / (ratio + 1);
-  const winner: 'attacker' | 'defender' = rng() < attackerWinProb ? 'attacker' : 'defender';
-  const margin = Math.abs(attackerWinProb - 0.5) * 2;
-  const tier: AbstractBattleResult['tier'] =
-    margin >= ab.crushingMarginThreshold ? 'crushing' : margin >= ab.clearMarginThreshold ? 'clear' : 'marginal';
-  const casualties = ab.casualtiesByTier[tier];
-  return { winner, tier, casualtyPctWinner: casualties.winnerPct, casualtyPctLoser: casualties.loserPct };
-}
 
 // ─── Engagement resolution (shared: inline NPC-vs-NPC here, and reused
 // standalone later by gameStore's deferred player-engagement action) ───────
@@ -163,11 +135,26 @@ export interface EngagementResolution {
    *  replace its own array wholesale. */
   armies: Army[];
   logEntries: CampaignLogEntry[];
+  /** Chunk C8 — a real battle's loser risks their commander's fate (the
+   *  abstract resolver's own commanderFateRolls, filtered down to entries
+   *  whose commanderId resolves to a REAL family-member Character — the
+   *  only kind this codebase can mechanically wound/capture/kill; a
+   *  Carthage general or rome_rival ClanLeader silently has no fate applied,
+   *  same "not found, skip" precedent the old musterEngine.applyBattleOutcome
+   *  already used for non-Character captains). Callers with full GameState
+   *  access (resolveCampaignSeason inline, or gameStore.resolveEngagementAbstract)
+   *  apply these via engine/battle/armyBattleBridge.ts's applyCommanderFate —
+   *  this function only surfaces WHO is at risk and WHAT was rolled, since it
+   *  has no family/flags/pendingEvents to write into itself. Empty for the
+   *  withdrawal-succeeds-but-shatters edge case (flavor-only, unchanged from
+   *  C7 — no real battle was fought there to risk a commander over). */
+  commanderFateRolls: { characterId: string; result: AbstractCommanderFateResult }[];
 }
 
 /**
  * Resolves one engagement to completion — defender-stance withdrawal roll,
- * else the abstract battle stub; loser retreats (same priority rule) or
+ * else a real battle via engine/battle/abstractResolver.ts (Chunk C8 —
+ * supersedes C7's flat stub); loser retreats (same priority rule) or
  * shatters; the winner occupies the region if it was the attacker (a
  * winning defender was already there). `theatre` is only read (retreat
  * destinations), never returned — control flips are the season-level
@@ -184,7 +171,7 @@ export function resolveEngagement(
   const logEntries: CampaignLogEntry[] = [];
   const attacker = armies.find(a => a.id === engagement.attackerArmyId);
   const defender = armies.find(a => a.id === engagement.defenderArmyId);
-  if (!attacker || !defender) return { armies, logEntries };
+  if (!attacker || !defender) return { armies, logEntries, commanderFateRolls: [] };
 
   const w = BALANCE.campaign.resolution.withdrawal;
   const defenderPower = armyPowerOf(defender.owner);
@@ -218,25 +205,34 @@ export function resolveEngagement(
         from: attacker.location, to: engagement.regionId,
         text: `${attacker.name} occupies ${engagement.regionId} unopposed.`,
       });
-      return { armies: mergeSurvivors(armies, attacker.id, finalAttacker, defender.id, finalDefender), logEntries };
+      // No real battle was fought here (a successful-withdrawal-but-nowhere-
+      // to-go shatter) — commanderFateRolls stays empty, same as C7; only a
+      // genuine battle below risks a real Character's commander.
+      return { armies: mergeSurvivors(armies, attacker.id, finalAttacker, defender.id, finalDefender), logEntries, commanderFateRolls: [] };
     }
     // Failed withdrawal falls through to a real battle below.
   }
 
-  const result = computeAbstractBattle(
-    armyStrength(attacker),
-    armyStrength(defender),
-    commanderMartial(attacker.commanderId, family, clans),
-    commanderMartial(defender.commanderId, family, clans),
+  const region = getRegion(engagement.regionId);
+  const terrain = BALANCE.battle.terrains[region?.terrainId ?? 'open_plain'] ?? BALANCE.battle.terrains.open_plain;
+  const result = abstractResolver(
+    attacker,
+    defender,
+    {
+      terrain,
+      generalMartialA: commanderMartial(attacker.commanderId, family, clans),
+      generalMartialB: commanderMartial(defender.commanderId, family, clans),
+      fatigueA: attacker.fatigued,
+      fatigueB: defender.fatigued,
+    },
     rng,
   );
-  const winnerIsAttacker = result.winner === 'attacker';
+  const winnerIsAttacker = result.winner === 'A';
   const winnerArmy = winnerIsAttacker ? attacker : defender;
   const loserArmy = winnerIsAttacker ? defender : attacker;
-  const loserPower = armyPowerOf(loserArmy.owner);
 
-  const winnerAfterCasualties = applyCasualtyPct(winnerArmy, result.casualtyPctWinner);
-  const loserAfterCasualties = applyCasualtyPct(loserArmy, result.casualtyPctLoser);
+  const winnerAfterCasualties = applyCasualtyPct(winnerArmy, winnerIsAttacker ? result.casualtyPctA : result.casualtyPctB);
+  const loserAfterCasualties = applyCasualtyPct(loserArmy, winnerIsAttacker ? result.casualtyPctB : result.casualtyPctA);
 
   logEntries.push({
     type: 'battle',
@@ -249,31 +245,103 @@ export function resolveEngagement(
     text: `${winnerArmy.name} wins a ${result.tier} victory over ${loserArmy.name} at ${engagement.regionId}.`,
   });
 
-  const dest = pickRetreatDestination(engagement.regionId, loserPower, armies, theatre);
-  let loserFinal: Army | null;
-  if (dest) {
-    loserFinal = clearSpentOrder({ ...loserAfterCasualties, location: dest });
-    logEntries.push({
-      type: 'withdrawal', armyId: loserArmy.id, armyName: loserArmy.name,
-      from: engagement.regionId, to: dest,
-      text: `${loserArmy.name} falls back to ${dest}.`,
-    });
-  } else {
-    const captured = rng() < BALANCE.campaign.resolution.shatterCaptureChance;
-    loserFinal = null;
-    logEntries.push({
-      type: 'shatter', armyId: loserArmy.id, armyName: loserArmy.name, at: engagement.regionId, captured,
-      text: `${loserArmy.name} is shattered, with no line of retreat. ${captured ? 'Its commander is taken.' : 'Its commander escapes.'}`,
-    });
+  // Commander fate: abstractResolver only ever rolls for the LOSING side
+  // ('A' = attacker, 'B' = defender); resolve that back to a real Character
+  // id, dropping the roll if it's a Carthage general/rome_rival ClanLeader/
+  // no commander at all — nothing this codebase can mechanically wound/
+  // capture/kill (same "not a Character, skip" precedent the old
+  // musterEngine.applyBattleOutcome already used for non-Character legates).
+  const commanderFateRolls: { characterId: string; result: AbstractCommanderFateResult }[] = [];
+  for (const roll of result.commanderFateRolls) {
+    const commanderId = roll.side === 'A' ? attacker.commanderId : defender.commanderId;
+    if (commanderId && family.some(c => c.id === commanderId)) {
+      commanderFateRolls.push({ characterId: commanderId, result: roll.result });
+    }
   }
 
-  const winnerFinal: Army = winnerIsAttacker
-    ? clearSpentOrder({ ...winnerAfterCasualties, location: engagement.regionId })
-    : clearSpentOrder(winnerAfterCasualties);
+  const continuation = applyPostBattleContinuation(
+    engagement, armies, theatre, winnerIsAttacker, winnerAfterCasualties, loserAfterCasualties,
+    { id: loserArmy.id, name: loserArmy.name, owner: loserArmy.owner },
+    commanderFateRolls.some(r => r.result === 'captured'), rng,
+  );
+  logEntries.push(...continuation.logEntries);
+  return { armies: continuation.armies, logEntries, commanderFateRolls };
+}
+
+export interface PostBattleContinuationResult {
+  armies: Army[];
+  logEntries: CampaignLogEntry[];
+}
+
+/**
+ * The part of "resolve one engagement" that's identical whether the battle
+ * was fought abstractly or tactically (Chunk C8's own instruction: "one
+ * pathway for tactical and abstract results") — given an ALREADY-resolved
+ * winner/loser (casualties already applied), handles the loser's retreat-or-
+ * shatter and the winner's occupation. Exported so gameStore's tactical
+ * write-back (a REAL battleEngine.BattleOutcome, translated into this same
+ * winner/loser-army shape by engine/battle/armyBattleBridge.ts) can call the
+ * exact same continuation `resolveEngagement`'s own abstract-battle branch
+ * uses above, rather than a second, drifting copy of this logic.
+ */
+export function applyPostBattleContinuation(
+  engagement: { regionId: RegionId; attackerArmyId: string; defenderArmyId: string },
+  armies: Army[],
+  theatre: TheatreState,
+  winnerIsAttacker: boolean,
+  /** Already casualty-adjusted. `null` = every unit on that side was wiped
+   *  out — only reachable from a REAL tactical battle (the abstract path's
+   *  flat casualty percentages, capped well under 100%, can never actually
+   *  zero an army out; see engine/battle/armyBattleBridge.ts's write-back,
+   *  which returns null for exactly this case). A null winner just means
+   *  no one is left to occupy the region; a null loser means it was already
+   *  destroyed outright — no separate retreat-or-shatter roll needed. */
+  winnerAfterCasualties: Army | null,
+  loserAfterCasualties: Army | null,
+  loserArmyMeta: { id: string; name: string; owner: Army['owner'] },
+  commanderCaptured: boolean,
+  rng: () => number = Math.random,
+): PostBattleContinuationResult {
+  const logEntries: CampaignLogEntry[] = [];
+
+  let loserFinal: Army | null;
+  if (!loserAfterCasualties) {
+    loserFinal = null;
+    logEntries.push({
+      type: 'shatter', armyId: loserArmyMeta.id, armyName: loserArmyMeta.name, at: engagement.regionId,
+      captured: commanderCaptured,
+      text: `${loserArmyMeta.name} is annihilated on the field.`,
+    });
+  } else {
+    const loserPower = armyPowerOf(loserArmyMeta.owner);
+    const dest = pickRetreatDestination(engagement.regionId, loserPower, armies, theatre);
+    if (dest) {
+      loserFinal = clearSpentOrder({ ...loserAfterCasualties, location: dest });
+      logEntries.push({
+        type: 'withdrawal', armyId: loserAfterCasualties.id, armyName: loserAfterCasualties.name,
+        from: engagement.regionId, to: dest,
+        text: `${loserAfterCasualties.name} falls back to ${dest}.`,
+      });
+    } else {
+      loserFinal = null;
+      logEntries.push({
+        type: 'shatter', armyId: loserAfterCasualties.id, armyName: loserAfterCasualties.name, at: engagement.regionId,
+        captured: commanderCaptured,
+        text: `${loserAfterCasualties.name} is shattered, with no line of retreat.`,
+      });
+    }
+  }
+
+  const winnerFinal: Army | null = winnerAfterCasualties
+    ? (winnerIsAttacker ? clearSpentOrder({ ...winnerAfterCasualties, location: engagement.regionId }) : clearSpentOrder(winnerAfterCasualties))
+    : null;
 
   const finalAttacker = winnerIsAttacker ? winnerFinal : loserFinal;
   const finalDefender = winnerIsAttacker ? loserFinal : winnerFinal;
-  return { armies: mergeSurvivors(armies, attacker.id, finalAttacker, defender.id, finalDefender), logEntries };
+  return {
+    armies: mergeSurvivors(armies, engagement.attackerArmyId, finalAttacker, engagement.defenderArmyId, finalDefender),
+    logEntries,
+  };
 }
 
 function mergeSurvivors(
@@ -468,6 +536,12 @@ export function resolveCampaignSeason(
       continue;
     }
 
+    // NPC-vs-NPC only reaches here (a player/rome_state-owned side always
+    // routes to pendingEngagements above) — Carthage generals and rome_rival
+    // ClanLeaders are never state.family Characters, so
+    // resolution.commanderFateRolls is always empty in practice here; no
+    // family/flags/pendingEvents surface exists at this layer to apply it to
+    // even if it weren't (see resolveEngagement's own doc comment).
     const resolution = resolveEngagement(eng, [...armyMap.values()], theatre, family, clans, rng);
     const survivingIds = new Set(resolution.armies.map(a => a.id));
     if (!survivingIds.has(eng.attackerArmyId)) armyMap.delete(eng.attackerArmyId);

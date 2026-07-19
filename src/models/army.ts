@@ -52,6 +52,15 @@ export interface ArmyUnit {
   homeRegion: RegionId;
   raisedBy: 'state' | 'player' | 'npc';
   raisedSeason: number;
+  /** Chunk C8 — full parity with TroopUnit's own M8 lifecycle fields
+   *  (musterEngine.ts/troop.ts), so a theatre battle promotes an Army's
+   *  veterancy the same way a personal legion's already does
+   *  (engine/battle/armyBattleBridge.ts's promotedArmyVeterancy/
+   *  applyArmyLifecycleUpdates). A unit built before this chunk (older
+   *  saves) has neither field — every reader defaults campaignsSurvived
+   *  to 0 and wonCrushingVictory to false, never throws on their absence. */
+  campaignsSurvived: number;
+  wonCrushingVictory: boolean;
 }
 
 export type ArmyOwner = 'player' | 'rome_state' | 'rome_rival' | 'carthage';

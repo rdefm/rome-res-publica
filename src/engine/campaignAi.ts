@@ -354,6 +354,8 @@ function buildCarthageReinforcementUnits(turnNumber: number): ArmyUnit[] {
     elephantSteady: false,
     homeRegion: 'africa' as RegionId,
     raisedBy: 'npc' as const,
+    campaignsSurvived: 0,
+    wonCrushingVictory: false,
     raisedSeason: turnNumber,
   }));
 }

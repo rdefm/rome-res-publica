@@ -22,6 +22,8 @@ function makeUnit(overrides: Partial<ArmyUnit> = {}): ArmyUnit {
     homeRegion: 'latium',
     raisedBy: 'state',
     raisedSeason: 1,
+    campaignsSurvived: 0,
+    wonCrushingVictory: false,
     ...overrides,
   };
 }

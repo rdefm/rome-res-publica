@@ -1446,10 +1446,12 @@ export const BALANCE = {
       controlFlipThresholdSeasons: 2,
       /** Post-battle loser retreat / failed-withdrawal retreat: strength
        *  lost is folded into the abstract battle's own casualty seeds
-       *  below, not a separate number — this constant intentionally absent.
-       *  A shattered army's commander fate (captured vs escaped) — M4's
-       *  real character-fate hooks aren't wired at the campaign layer yet
-       *  (C8's job), so this only drives flavor-text branching for now. */
+       *  (BALANCE.campaign.abstract), not a separate number here. A
+       *  shattered army's commander fate (captured vs escaped) below is a
+       *  flavor-only roll for the NPC-vs-NPC/pre-C8 code path — a REAL
+       *  commander (a family-member Character) shattering now goes through
+       *  engine/battle/armyBattleBridge.ts's real capture/death write-back
+       *  instead (Chunk C8), which this constant has no bearing on. */
       shatterCaptureChance: 0.25,
       raid: {
         /** Region relationship hit to every live city inside the raided
@@ -1461,30 +1463,46 @@ export const BALANCE = {
          *  symmetric Roman-raids-Carthage sting to draw from. */
         denariiSting: 20,
       },
-      /** The abstract battle resolver — a pure strength-ratio + seeded-
-       *  variance PLACEHOLDER (per the plan's own framing for this chunk),
-       *  clearly superseded by C8's real `abstractResolver.ts` (which adds
-       *  terrain fit and a calibration test against the tactical harness).
-       *  `tier` reuses M1's real BattleOutcome enum ('marginal'|'clear'|
-       *  'crushing') rather than C8's spec-text "narrow" — same concept,
-       *  existing vocabulary preferred over inventing a second one.
-       *  Casualty seeds ARE C8's own spec-table numbers (crushing 25/8,
-       *  clear 15/10, narrow 12/12) — reused now rather than invented twice. */
-      abstractBattle: {
-        /** Power-ratio margin (|winProb − 0.5| × 2, 0..1) above which a
-         *  result reads as this tier. Invented — the plan gives casualty
-         *  numbers per tier but no margin bands to pick a tier from. */
-        crushingMarginThreshold: 0.5,
-        clearMarginThreshold: 0.2,
-        /** Multiplies (attacker martial) into the attacker/defender power
-         *  score alongside armyStrength — same "×(1 + martial × factor)"
-         *  shape C8's own spec text uses for the real resolver. */
-        martialFactor: 0.05,
-        casualtiesByTier: {
-          crushing: { winnerPct: 0.08, loserPct: 0.25 },
-          clear:    { winnerPct: 0.10, loserPct: 0.15 },
-          marginal: { winnerPct: 0.12, loserPct: 0.12 },
-        },
+    },
+
+    /** Chunk C8 — engine/battle/abstractResolver.ts. Supersedes C7's
+     *  campaign.resolution.abstractBattle placeholder (removed) — this is
+     *  the REAL abstract resolver, used both for "Trust the Legate" and
+     *  every NPC-vs-NPC campaign battle. `tier` reuses M1's real
+     *  BattleOutcome enum ('marginal'|'clear'|'crushing') rather than the
+     *  plan's spec-text "narrow" — same concept, existing vocabulary
+     *  preferred over inventing a second one. Casualty seeds ARE the plan's
+     *  own spec-table numbers (crushing 25/8, clear 15/10, narrow 12/12),
+     *  carried over unchanged from the C7 placeholder that first used them.
+     *  Calibration (±10% of M11's tactical harness win rate for the same
+     *  armies, per the plan's own test) tunes `logisticSteepness` —
+     *  everything else is a first-pass/unverified seed, C10 tunes further. */
+    abstract: {
+      /** Multiplies (commander martial) into each side's power score
+       *  alongside armyStrength × terrain fit — the plan's own
+       *  "×(1 + martial × factor)" shape. */
+      martialFactor: 0.05,
+      /** Applied to a fatigued army's power (Army.fatigued — set by a
+       *  forced march the same season, C5). */
+      fatiguePenaltyMult: 0.9,
+      /** Steepness of the logistic win-probability curve over the two
+       *  sides' power-ratio log — calibrated against battleSim.ts's real
+       *  tactical harness (abstractResolver.test.ts's calibration suite),
+       *  not an independent first guess. A moderate steepness (~1.3) badly
+       *  underestimates how decisive even a modest armyStrength edge is
+       *  tactically — attrition compounds round over round, so a ~20%
+       *  stat-ratio edge already resolves to an ~85% tactical win rate;
+       *  8.5 is what that measured relationship actually needs. */
+      logisticSteepness: 8.5,
+      /** Power-ratio margin (|winProb − 0.5| × 2, 0..1) above which a
+       *  result reads as this tier. Invented — the plan gives casualty
+       *  numbers per tier but no margin bands to pick a tier from. */
+      crushingMarginThreshold: 0.5,
+      clearMarginThreshold: 0.2,
+      casualtiesByTier: {
+        crushing: { winnerPct: 0.08, loserPct: 0.25 },
+        clear:    { winnerPct: 0.10, loserPct: 0.15 },
+        marginal: { winnerPct: 0.12, loserPct: 0.12 },
       },
     },
   },

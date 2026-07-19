@@ -118,7 +118,7 @@ function pickOldestClient(clients: Client[], type: ClientType): Client | undefin
  *
  * See design doc section 1.6 for full spec.
  */
-function buildTriumphBill(
+export function buildTriumphBill(
   character: GameState['family'][0],
   state: GameState,
 ): Bill {

@@ -17,6 +17,7 @@ function makeUnit(overrides: Partial<ArmyUnit> = {}): ArmyUnit {
     id: `unit-${Math.random().toString(36).slice(2)}`,
     unitClass: 'legionary', strength: 80, veterancy: 'trained', loyalty: 50,
     elephantSteady: false, homeRegion: 'latium', raisedBy: 'state', raisedSeason: 1,
+    campaignsSurvived: 0, wonCrushingVictory: false,
     ...overrides,
   };
 }

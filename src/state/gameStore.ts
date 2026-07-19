@@ -50,7 +50,11 @@ import { quoteMuster, rollMusteredUnit, nextLegionName } from '../engine/musterE
 import { getRegion, getRegionRelationship } from '../engine/theatreEngine';
 import { buildMovementOrder } from '../engine/movementEngine';
 import type { CampaignLog, Engagement } from '../models/campaignLog';
-import { resolveEngagement } from '../engine/campaignResolver';
+import { resolveEngagement, applyPostBattleContinuation } from '../engine/campaignResolver';
+import { profileForCarthageArmy } from '../engine/campaignAi';
+import {
+  armyUnitToBattleUnit, applyArmyBattleOutcome, applyCommanderFate,
+} from '../engine/battle/armyBattleBridge';
 import type { Command, CommandElectionState } from '../models/command';
 import {
   isEligibleForCommand,
@@ -62,7 +66,7 @@ import {
   calcProrogationModifier,
   COMMAND_CANVASS_MIN_RELATIONSHIP,
 } from '../engine/commandEngine';
-import { processSeason } from '../engine/turnSequencer';
+import { processSeason, buildTriumphBill } from '../engine/turnSequencer';
 import { incrementLegacy, initLegacyObjectives } from '../engine/legacyEngine';
 import { LEGACY_DEFINITIONS } from '../data/legacyDefinitions';
 import { adjustReputation, computeReputationDelta } from '../engine/reputationEngine';
@@ -174,6 +178,32 @@ export interface LogEntry {
   turn: string;
   text: string;
   type: 'good' | 'bad' | 'neutral';
+}
+
+/** Campaign Map plan, Chunk C8 — stamped on activeBattleSetup/
+ *  activeBattleBridgeCtx when a battle was launched from
+ *  takeTheFieldForEngagement (a real campaign engagement), instead of
+ *  BattleBridgeContext (the sandbox/M9-set-piece shape). Distinguished
+ *  structurally (its own `engagementId` field) rather than a nominal `kind`
+ *  tag, so BattleBridgeContext itself never needed touching. */
+export interface CampaignBattleBridgeContext {
+  engagementId: string;
+  regionId: RegionId;
+  romeArmyId: string;
+  enemyArmyId: string;
+  /** Whether the Rome-side army was the campaign engagement's `attackerArmyId`
+   *  (vs. `defenderArmyId`) — battleEngine always deploys the Rome-side army
+   *  into the UI-attacker slot regardless (DeploymentBoard only lets the
+   *  player edit that slot), so this is the only way to map the battle's
+   *  own attacker/defender victor back onto which CAMPAIGN side actually
+   *  advances into the region. */
+  romeIsCampaignAttacker: boolean;
+  /** Did the enemy (Carthage) side field elephants at deployment? Same M8
+   *  convention as BattleBridgeContext.enemyFieldedElephants — captured here
+   *  since the enemy Army itself may no longer exist by the time the battle
+   *  resolves (arbitrarily many rounds later). */
+  enemyFieldedElephants: boolean;
+  turnNumber: number;
 }
 
 export interface GameState {
@@ -449,14 +479,18 @@ export interface GameState {
     defenderInput: DeploySideInput;
     terrain: TerrainMod;
     seed: number;
-    bridgeCtx: BattleBridgeContext;
+    bridgeCtx: BattleBridgeContext | CampaignBattleBridgeContext;
   } | null;
   activeBattle: BattleState | null;
   /** Carried over from activeBattleSetup.bridgeCtx at commitDeployment time
    *  (activeBattleSetup itself is cleared once the battle starts) — needed
    *  by returnFromBattle to call resolveBattleOutcome (M4) once the battle
-   *  finishes, arbitrarily many rounds later. */
-  activeBattleBridgeCtx: BattleBridgeContext | null;
+   *  finishes, arbitrarily many rounds later. Campaign Map plan, Chunk C8 —
+   *  widened to a union: a battle launched from takeTheFieldForEngagement
+   *  carries a CampaignBattleBridgeContext instead (distinguished by its
+   *  `engagementId` field, which BattleBridgeContext never has — see
+   *  returnFromBattle's own branch). */
+  activeBattleBridgeCtx: BattleBridgeContext | CampaignBattleBridgeContext | null;
 
   // ── Canvassing ──────────────────────────────────────────────────────────
   activeCanvassingEvent: CanvassingEvent | null;
@@ -812,19 +846,29 @@ export interface GameActions {
   issueMovementOrder: (armyId: string, destinationRegionId: RegionId, forcedMarch: boolean) => void;
   clearOrder: (armyId: string) => void;
 
-  // ── Campaign Map plan, Chunk C7 — Turn-end resolution ────────────────────
+  // ── Campaign Map plan, Chunk C7/C8 — Turn-end resolution & the battle bridge ─
   /** Dismisses the playback (MapView's playback mode) once the player has
    *  watched or skipped it — clears campaignLog only, never pendingEngagements
    *  (a pending battle keeps its own agenda/interstitial alive independently
    *  of whether the map animation has been seen). */
   dismissCampaignLog: () => void;
-  /** TEMPORARY — see campaignResolver.ts's header comment. Resolves one
-   *  pending engagement via the same abstract-battle stub NPC-vs-NPC fights
-   *  already use, and removes it from pendingEngagements. C8 replaces this
-   *  with a real interstitial offering a tactical option alongside it; this
-   *  action's shape (an engagement id in, nothing out but the state update)
-   *  does not need to change when that lands. */
+  /** "Trust the Legate" — resolves one pending engagement via
+   *  engine/battle/abstractResolver.ts's real resolver (Chunk C7's own
+   *  stub, superseded by C8) and removes it from pendingEngagements. Applies
+   *  any commanderFateRolls the resolver rolled for a real family-member
+   *  commander (wound/capture/death) via armyBattleBridge.applyCommanderFate. */
   resolveEngagementAbstract: (engagementId: string) => void;
+  /** "Take the Field" — Chunk C8. Stages a REAL tactical battle
+   *  (battleEngine/DeploymentBoard/BattleScreen — the same M5 pipeline the
+   *  sandbox and M9 set-piece flows already use) from a pending engagement's
+   *  two Armies. If the Rome-side army is leaderless, auto-assigns the
+   *  player's paterfamilias as its commander (permanently — see this
+   *  action's own implementation comment) so DeploymentBoard has someone to
+   *  draw a stratagem hand/roster martial for; "Trust the Legate" has no such
+   *  fallback, since there's no legate to trust in the first place. No-op if
+   *  the engagement doesn't exist or the player has no living paterfamilias
+   *  to fall back on. */
+  takeTheFieldForEngagement: (engagementId: string) => void;
 
   // ── Military (Chunk M) ──────────────────────────────────────────────────
   raiseLevy: (characterId: string, musterProvinceId: string) => void;
@@ -851,6 +895,15 @@ export interface GameActions {
   payRansom: (characterId: string) => void;
   negotiateRansom: (characterId: string) => void;
   refuseRansom: (characterId: string) => void;
+  /** Campaign Map plan, Chunk C8 — the Army-flavored analog of
+   *  resolveBattleOutcome above, called from returnFromBattle when
+   *  activeBattleBridgeCtx is a CampaignBattleBridgeContext instead of a
+   *  BattleBridgeContext. See engine/battle/armyBattleBridge.ts. */
+  resolveCampaignBattleOutcome: (
+    battleState: BattleState,
+    outcome: BattleOutcome,
+    ctx: CampaignBattleBridgeContext,
+  ) => void;
 
   // ── Military Overhaul M5 — battle session (deployment, orders, UI entry) ──
   /** Debug-only entry point (DebugPanel "Launch Sandbox Battle" — M11 expands
@@ -3964,7 +4017,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     }));
   },
 
-  // ── Campaign Map plan, Chunk C7 — Turn-end resolution ────────────────────
+  // ── Campaign Map plan, Chunk C7/C8 — Turn-end resolution & the battle bridge ─
 
   dismissCampaignLog: () => set({ campaignLog: null }),
 
@@ -3975,10 +4028,206 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
     const result = resolveEngagement(engagement, s.armies, s.theatre, s.family, s.clans);
     const label = turnLabel(s);
+    const playerId = s.family.find(c => c.isPlayer)?.id ?? '';
+
+    let { family, flags, pendingEvents, pendingSuccession, cadetBranch, pendingEpilogue } = s;
+    const fateNotes: string[] = [];
+    for (const roll of result.commanderFateRolls) {
+      const fate = applyCommanderFate(
+        roll.characterId, roll.result,
+        { family, flags, pendingEvents, pendingSuccession, cadetBranch, pendingEpilogue },
+        { turnNumber: s.turnNumber, playerCharacterId: playerId, gensName: s.gensName },
+      );
+      family = fate.slice.family;
+      flags = fate.slice.flags;
+      pendingEvents = fate.slice.pendingEvents;
+      pendingSuccession = fate.slice.pendingSuccession;
+      cadetBranch = fate.slice.cadetBranch;
+      pendingEpilogue = fate.slice.pendingEpilogue;
+      fateNotes.push(...fate.ledgerNotes);
+    }
+
     set({
       armies: result.armies,
+      family, flags, pendingEvents, pendingSuccession, cadetBranch, pendingEpilogue,
       pendingEngagements: s.pendingEngagements.filter(e => e.id !== engagementId),
-      log: [...s.log, ...result.logEntries.map(e => mkLog(label, e.text, 'neutral'))],
+      log: [...s.log, ...[...result.logEntries.map(e => e.text), ...fateNotes].map(text => mkLog(label, text, 'neutral'))],
+    });
+  },
+
+  takeTheFieldForEngagement: (engagementId) => {
+    const s = get();
+    const engagement = s.pendingEngagements.find(e => e.id === engagementId);
+    if (!engagement) return;
+    const player = s.family.find(c => c.isPlayer);
+    if (!player) return;
+
+    const attackerArmy = s.armies.find(a => a.id === engagement.attackerArmyId);
+    const defenderArmy = s.armies.find(a => a.id === engagement.defenderArmyId);
+    if (!attackerArmy || !defenderArmy) return;
+    // Every pendingEngagements entry is rome(player/rome_state) vs. carthage —
+    // C7's own gate never lets a rome_rival-vs-carthage (NPC-vs-NPC) fight
+    // reach this list. See campaignResolver.ts's header comment.
+    const romeIsAttacker = attackerArmy.owner !== 'carthage';
+    let romeArmy = romeIsAttacker ? attackerArmy : defenderArmy;
+    const enemyArmy = romeIsAttacker ? defenderArmy : attackerArmy;
+
+    // A leaderless Rome-side army has no one to draw a stratagem hand or
+    // roster martial for — auto-assign the paterfamilias (permanently; this
+    // mirrors "you sent someone, they now lead" rather than a one-battle
+    // stand-in). "Trust the Legate" has no such fallback since there's no
+    // legate to trust — see EngagementInterstitial.tsx's own gating.
+    if (!romeArmy.commanderId) {
+      romeArmy = { ...romeArmy, commanderId: player.id };
+    }
+
+    const region = REGIONS.find(r => r.id === engagement.regionId);
+    const terrain = BALANCE.battle.terrains[region?.terrainId ?? 'open_plain'] ?? BALANCE.battle.terrains.open_plain;
+    const seed = Math.floor(Math.random() * 1e9);
+
+    // battleEngine.ts has no native fatigue concept (verified — grep turned
+    // up nothing) — a fatigued Army (C5's forced march) applies its penalty
+    // here, pre-deployment, as a flat strength scale-down, reusing the SAME
+    // constant the abstract path multiplies POWER by (BALANCE.campaign.abstract
+    // .fatiguePenaltyMult) for consistency between the two paths, even
+    // though the mechanism differs (there's no single shared "power" number
+    // in a real tactical battle to scale instead).
+    const romeUnits = romeArmy.units.map(u => {
+      const battleUnit = armyUnitToBattleUnit(u);
+      return romeArmy.fatigued
+        ? { ...battleUnit, strength: Math.round(battleUnit.strength * BALANCE.campaign.abstract.fatiguePenaltyMult) }
+        : battleUnit;
+    });
+    const captains = getEligibleFamilyCaptains(s.family, romeArmy.commanderId!, s.flags);
+    const romeRoster: Record<string, number> = {};
+    const romeCommanderCharacter = s.family.find(c => c.id === romeArmy.commanderId);
+    if (romeCommanderCharacter) romeRoster[romeCommanderCharacter.id] = romeCommanderCharacter.skills.martial;
+    for (const c of captains) romeRoster[c.characterId] = c.martial;
+    const romeHand = drawStratagemHand(romeCommanderCharacter?.skills.martial ?? 0, romeUnits, terrain, makeSeededRng(seed ^ 0x51ed270b));
+
+    const generalProfile = profileForCarthageArmy(enemyArmy);
+    const enemyUnits = enemyArmy.units.map(armyUnitToBattleUnit);
+    const enemyHand = drawStratagemHand(generalProfile.martial, enemyUnits, terrain, makeSeededRng(seed ^ 0x2545f491));
+    const aiDeployment = chooseDeployment(generalProfile, enemyUnits, terrain, enemyHand, makeSeededRng(seed ^ 0x9e3779b9));
+
+    const attackerInput: DeploySideInput = {
+      label: romeArmy.name,
+      deployment: buildDefaultDeployment(romeUnits),
+      commanderId: romeArmy.commanderId,
+      roster: { martialById: romeRoster },
+      stratagemHand: romeHand,
+    };
+    const defenderInput: DeploySideInput = {
+      label: `Carthage (${generalProfile.name} ${generalProfile.epithet})`,
+      deployment: aiDeployment.deployment,
+      commanderId: aiDeployment.commanderId,
+      roster: aiDeployment.roster,
+      generalProfileId: generalProfile.id,
+      stratagemHand: enemyHand,
+    };
+
+    const bridgeCtx: CampaignBattleBridgeContext = {
+      engagementId,
+      regionId: engagement.regionId,
+      romeArmyId: romeArmy.id,
+      enemyArmyId: enemyArmy.id,
+      romeIsCampaignAttacker: romeIsAttacker,
+      enemyFieldedElephants: enemyArmy.units.some(u => u.unitClass === 'elephant'),
+      turnNumber: s.turnNumber,
+    };
+
+    set({
+      armies: s.armies.map(a => a.id === romeArmy.id ? romeArmy : a),
+      activeBattleSetup: { attackerInput, defenderInput, terrain, seed, bridgeCtx },
+    });
+  },
+
+  /** Chunk C8's tactical write-back, called from returnFromBattle when
+   *  activeBattleBridgeCtx is a CampaignBattleBridgeContext. Runs
+   *  engine/battle/armyBattleBridge.applyArmyBattleOutcome for BOTH sides
+   *  (the enemy call's family/flags/etc mutations are discarded — Carthage
+   *  generals are never state.family Characters, so applyCommanderFate
+   *  no-ops for them; only its returned `.army` matters), then the SAME
+   *  campaignResolver.applyPostBattleContinuation the abstract path uses for
+   *  retreat/shatter/occupy — "one pathway for tactical and abstract
+   *  results," per the plan's own C8 instruction. */
+  resolveCampaignBattleOutcome: (battleState, outcome, ctx) => {
+    const s = get();
+    const romeArmy = s.armies.find(a => a.id === ctx.romeArmyId);
+    if (!romeArmy) return;
+    const enemyArmy = s.armies.find(a => a.id === ctx.enemyArmyId) ?? null;
+    const playerId = s.family.find(c => c.isPlayer)?.id ?? '';
+
+    const romeResult = applyArmyBattleOutcome({
+      army: romeArmy, battleState, romeSide: 'attacker', outcome,
+      turnNumber: ctx.turnNumber, playerCharacterId: playerId, gensName: s.gensName,
+      enemyFieldedElephants: ctx.enemyFieldedElephants, activeCommand: s.activeCommand,
+      family: s.family, flags: s.flags, pendingEvents: s.pendingEvents,
+      pendingSuccession: s.pendingSuccession, cadetBranch: s.cadetBranch, pendingEpilogue: s.pendingEpilogue,
+    });
+
+    const enemyResult = enemyArmy ? applyArmyBattleOutcome({
+      army: enemyArmy, battleState, romeSide: 'defender', outcome,
+      turnNumber: ctx.turnNumber, playerCharacterId: playerId, gensName: s.gensName,
+      enemyFieldedElephants: false, activeCommand: null,
+      family: s.family, flags: s.flags, pendingEvents: s.pendingEvents,
+      pendingSuccession: s.pendingSuccession, cadetBranch: s.cadetBranch, pendingEpilogue: s.pendingEpilogue,
+    }) : null;
+
+    const romeWon = outcome.victor === 'attacker';
+    const winnerIsCampaignAttacker = ctx.romeIsCampaignAttacker ? romeWon : !romeWon;
+    const winnerArmy = romeWon ? romeResult.army : enemyResult?.army ?? null;
+    const loserArmy = romeWon ? enemyResult?.army ?? null : romeResult.army;
+    const loserArmyMeta = romeWon
+      ? { id: enemyArmy?.id ?? ctx.enemyArmyId, name: enemyArmy?.name ?? 'The enemy army', owner: enemyArmy?.owner ?? 'carthage' as const }
+      : { id: romeArmy.id, name: romeArmy.name, owner: romeArmy.owner };
+    // Flavor-only (the shatter log line): whichever side LOST this battle,
+    // did battleEngine's own captainOutcomes mark its commander captured?
+    // Only meaningful to the player when the loser is Rome (a Carthage
+    // general's "capture" has no mechanical effect — see applyCommanderFate's
+    // "not a Character, skip" precedent) but harmless to compute either way.
+    const loserCommanderId = romeWon ? enemyArmy?.commanderId ?? null : romeArmy.commanderId;
+    const commanderCaptured = !!loserCommanderId
+      && outcome.captainOutcomes.some(c => c.characterId === loserCommanderId && c.result === 'captured');
+
+    const armiesAfterBattle = s.armies
+      .map(a => {
+        if (a.id === romeArmy.id) return romeResult.army;
+        if (enemyArmy && a.id === enemyArmy.id) return enemyResult?.army ?? null;
+        return a;
+      })
+      .filter((a): a is Army => a !== null);
+
+    const continuation = applyPostBattleContinuation(
+      {
+        regionId: ctx.regionId,
+        attackerArmyId: ctx.romeIsCampaignAttacker ? ctx.romeArmyId : ctx.enemyArmyId,
+        defenderArmyId: ctx.romeIsCampaignAttacker ? ctx.enemyArmyId : ctx.romeArmyId,
+      },
+      armiesAfterBattle, s.theatre, winnerIsCampaignAttacker, winnerArmy, loserArmy, loserArmyMeta, commanderCaptured,
+    );
+
+    const label = turnLabel(s);
+    let triumphBills = s.bills;
+    let triumphNotes: string[] = [];
+    if (romeResult.crushingWinByCommandHolder && romeArmy.commanderId) {
+      const commander = romeResult.family.find(c => c.id === romeArmy.commanderId);
+      const alreadyQueued = s.bills.some(b => b.id.startsWith(`triumph-${romeArmy.commanderId}`))
+        || (s.passedBills ?? []).some(b => b.id.startsWith(`triumph-${romeArmy.commanderId}`));
+      if (commander && !alreadyQueued && (s.lifetimeImperium ?? 0) >= 50) {
+        triumphBills = [...s.bills, buildTriumphBill(commander, s)];
+        triumphNotes = [`⚔ ${commander.name} is eligible for a Triumph. A petition has been tabled in the Senate.`];
+      }
+    }
+
+    set({
+      armies: continuation.armies,
+      family: romeResult.family, flags: romeResult.flags, pendingEvents: romeResult.pendingEvents,
+      pendingSuccession: romeResult.pendingSuccession, cadetBranch: romeResult.cadetBranch, pendingEpilogue: romeResult.pendingEpilogue,
+      activeCommand: romeResult.activeCommand,
+      bills: triumphBills,
+      pendingEngagements: s.pendingEngagements.filter(e => e.id !== ctx.engagementId),
+      log: [...s.log, ...[...romeResult.ledgerNotes, ...continuation.logEntries.map(e => e.text), ...triumphNotes].map(text => mkLog(label, text, 'neutral'))],
     });
   },
 
@@ -4366,7 +4615,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const s = get();
     const battle = s.activeBattle;
     if (battle?.phase === 'resolved' && battle.outcome && s.activeBattleBridgeCtx) {
-      get().resolveBattleOutcome(battle, 'attacker', battle.outcome, s.activeBattleBridgeCtx);
+      // Campaign Map plan, Chunk C8 — a CampaignBattleBridgeContext is
+      // distinguished structurally (its own `engagementId` field, which
+      // BattleBridgeContext never has) rather than a nominal tag.
+      if ('engagementId' in s.activeBattleBridgeCtx) {
+        get().resolveCampaignBattleOutcome(battle, battle.outcome, s.activeBattleBridgeCtx);
+      } else {
+        get().resolveBattleOutcome(battle, 'attacker', battle.outcome, s.activeBattleBridgeCtx);
+      }
     }
     set({ activeBattle: null, activeBattleSetup: null, activeBattleBridgeCtx: null });
   },

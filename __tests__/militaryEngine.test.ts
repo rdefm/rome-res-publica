@@ -545,6 +545,7 @@ describe('tickSenateResponse / capitulate — Chunk C3 Army-sourced branch', () 
     id: `unit-${Math.random().toString(36).slice(2)}`,
     unitClass: 'legionary', strength: 80, veterancy: 'trained', loyalty: 50,
     elephantSteady: false, homeRegion: 'latium', raisedBy: 'player', raisedSeason: 1,
+    campaignsSurvived: 0, wonCrushingVictory: false,
     ...overrides,
   });
 
