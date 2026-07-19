@@ -7,6 +7,7 @@ import type { Character } from '../src/models/character';
 import { buildInitialCityStates } from '../src/data/cityDefinitions';
 import { REGIONS } from '../src/data/theatreMap';
 import { makeSeededRng } from '../src/utils/seededRng';
+import { BALANCE } from '../src/data/balance';
 
 // ─── Fixtures (real 8-region graph, per movementEngine.test.ts's own
 // convention — no synthetic topology needed) ────────────────────────────────
@@ -274,18 +275,25 @@ describe('resolveEngagement — retreat priority & shatter', () => {
 // ─── Control flips ───────────────────────────────────────────────────────────
 
 describe('resolveCampaignSeason — control flips', () => {
-  test('a region flips only on the 2nd consecutive uncontested-hostile season', () => {
+  test('a region flips only after controlFlipThresholdSeasons consecutive uncontested-hostile seasons', () => {
+    // C10 tuning pass raised controlFlipThresholdSeasons off its original
+    // literal "2" — this test now reads BALANCE live instead of hardcoding
+    // the count, so it keeps proving the underlying invariant (no flip
+    // before the threshold, a flip exactly on it) independent of the exact
+    // tuned value.
+    const threshold = BALANCE.campaign.resolution.controlFlipThresholdSeasons;
     const carthageArmy = makeArmy({ id: 'occupier', owner: 'carthage', location: 'latium' });
-    const input1 = baseInput([carthageArmy]);
-    const r1 = resolveCampaignSeason(input1, makeSeededRng(9));
-    expect(r1.theatre.controllers.latium).toBe('rome'); // not yet — 1st season
-    expect(r1.theatre.contested.latium).toBe(1);
-
-    const input2 = { ...input1, theatre: r1.theatre, armies: r1.armies };
-    const r2 = resolveCampaignSeason(input2, makeSeededRng(9));
-    expect(r2.theatre.controllers.latium).toBe('carthage'); // flips on the 2nd season
-    expect(r2.theatre.contested.latium).toBe(0);
-    expect(r2.log.entries.some(e => e.type === 'flip' && e.regionId === 'latium')).toBe(true);
+    let input = baseInput([carthageArmy]);
+    let result = resolveCampaignSeason(input, makeSeededRng(9));
+    for (let season = 1; season < threshold; season++) {
+      expect(result.theatre.controllers.latium).toBe('rome'); // not yet
+      expect(result.theatre.contested.latium).toBe(season);
+      input = { ...input, theatre: result.theatre, armies: result.armies };
+      result = resolveCampaignSeason(input, makeSeededRng(9));
+    }
+    expect(result.theatre.controllers.latium).toBe('carthage'); // flips on the threshold-th season
+    expect(result.theatre.contested.latium).toBe(0);
+    expect(result.log.entries.some(e => e.type === 'flip' && e.regionId === 'latium')).toBe(true);
   });
 
   test('contested resets to 0 once the hostile occupier leaves', () => {

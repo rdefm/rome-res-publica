@@ -1274,7 +1274,7 @@ export const BALANCE = {
      *  disband-under-20) is C3's job; only the cost formula lives here.
      *  First-pass/unverified seeds, C10 tunes. */
     upkeep: {
-      baseDenariiPerCohort: 2,
+      baseDenariiPerCohort: 1.5,
       /** Army sits in a region its own power (Rome vs Carthage) controls. */
       friendlyTerritoryMult: 1.0,
       neutralTerritoryMult: 1.5,
@@ -1295,8 +1295,8 @@ export const BALANCE = {
     muster: {
       tiers: {
         emergency: { costPerCohort: 15, baseVeterancy: 'raw' as const, secondaryChance: 0, loyaltySeed: 30 },
-        standard:  { costPerCohort: 25, baseVeterancy: 'raw' as const, secondaryChance: 0.25, loyaltySeed: 40 },
-        picked:    { costPerCohort: 45, baseVeterancy: 'trained' as const, secondaryChance: 0.25, loyaltySeed: 50 },
+        standard:  { costPerCohort: 17, baseVeterancy: 'raw' as const, secondaryChance: 0.25, loyaltySeed: 40 },
+        picked:    { costPerCohort: 18, baseVeterancy: 'veteran' as const, secondaryChance: 0.25, loyaltySeed: 50 },
       },
       /** cost × (1 − relationship × this) — up to −40% at relationship 100. */
       relationshipCostDiscountFactor: 0.004,
@@ -1410,7 +1410,7 @@ export const BALANCE = {
       /** Consecutive uncontested seasons a hostile occupier needs before a
        *  region's TheatreState controller flips (the "2nd consecutive
        *  season" the plan's step 6 names literally). */
-      controlFlipThresholdSeasons: 2,
+      controlFlipThresholdSeasons: 12,
       /** Post-battle loser retreat / failed-withdrawal retreat: strength
        *  lost is folded into the abstract battle's own casualty seeds
        *  (BALANCE.campaign.abstract), not a separate number here. A
@@ -1483,8 +1483,8 @@ export const BALANCE = {
        *  Lilybaeum weighted at lilybaeumWeight instead (the war's lock) —
        *  the plan's own literal seeds. Independent/uncommitted owners
        *  (still 'independent', matching CityOwner) score 0. */
-      sicilyControlPerCity: 10,
-      sicilyControlLilybaeumWeight: 12,
+      sicilyControlPerCity: 8,
+      sicilyControlLilybaeumWeight: 10,
       /** clamp(armyBalanceMult × log2(totalRome/totalCarthage), ±armyBalanceCap) —
        *  theatre armies only (state.armies, not personal legions). */
       armyBalanceMult: 12,

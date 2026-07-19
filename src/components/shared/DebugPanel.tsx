@@ -34,6 +34,8 @@ import type { RegionId, TheatreState } from '../../models/theatre';
 import type { CityState } from '../../models/city';
 import type { Clan } from '../../models/clan';
 import { assignCarthaginianOrders, assignNpcRomanOrders } from '../../engine/campaignAi';
+// Campaign Map plan, Chunk C10 — headless full-war harness.
+import { simulateWar, type RomanPolicy, type WarSimAggregate } from '../../engine/campaignSim';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -776,6 +778,83 @@ function TheatreSection() {
   );
 }
 
+// ─── Section: Campaign Harness (Campaign Map plan, Chunk C10) ──────────────
+// Headless full-war runner (`campaignSim.ts`'s own simulateWar) — mirrors
+// the M11 battle harness above at the campaign-map layer: N whole wars
+// (264-241 BC), no UI, seeded. Never touches real gameStore state (unlike
+// the AI-only preview above, which at least reads live armies/theatre —
+// this tool builds its own synthetic Rome/Carthage from scratch every run).
+// The only production caller of `simulateWar`, per that file's own header.
+function CampaignHarnessSection() {
+  const [policy, setPolicy] = useState<RomanPolicy>('ai');
+  const [trialsText, setTrialsText] = useState('60');
+  const [seedBaseText, setSeedBaseText] = useState('1');
+  const [result, setResult] = useState<WarSimAggregate | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function run() {
+    setError(null);
+    setResult(null);
+    const n = clampInt(parseInt(trialsText, 10), 1, 500, 60);
+    const seedBase = clampInt(parseInt(seedBaseText, 10), 1, 1_000_000, 1);
+    try {
+      setResult(simulateWar(policy, n, seedBase));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>CAMPAIGN HARNESS (C10)</Text>
+      <Text style={styles.eventId}>
+        Runs N full headless wars (264 BC to a terminal outcome or the 241 BC cutoff) via
+        campaignSim.simulateWar — the plan's Chunk C10 tuning evidence. 'idle' fields no Roman
+        armies ever; 'ai' fields a competent NPC-Roman general (campaignAi's own brain).
+      </Text>
+
+      <View style={chipStyles.chipRow}>
+        <Chip label="idle" selected={policy === 'idle'} onPress={() => setPolicy('idle')} />
+        <Chip label="ai" selected={policy === 'ai'} onPress={() => setPolicy('ai')} />
+      </View>
+
+      <View style={styles.row}>
+        <Text style={styles.rowLabel}>Trials</Text>
+        <TextInput
+          style={styles.input}
+          value={trialsText}
+          onChangeText={setTrialsText}
+          keyboardType="numeric"
+          placeholder="60"
+          placeholderTextColor={COLORS.dust}
+        />
+      </View>
+      <View style={styles.row}>
+        <Text style={styles.rowLabel}>Seed base</Text>
+        <TextInput
+          style={styles.input}
+          value={seedBaseText}
+          onChangeText={setSeedBaseText}
+          keyboardType="numeric"
+          placeholder="1"
+          placeholderTextColor={COLORS.dust}
+        />
+      </View>
+
+      <TouchableOpacity style={styles.applyBtn} onPress={run}>
+        <Text style={styles.applyBtnText}>▶ RUN CAMPAIGN HARNESS</Text>
+      </TouchableOpacity>
+
+      {error && <Text style={styles.flagNote}>{error}</Text>}
+      {result && (
+        <Text style={styles.dump} selectable>
+          {JSON.stringify(result, null, 2)}
+        </Text>
+      )}
+    </View>
+  );
+}
+
 // ─── Section: Telemetry (P2-A) ─────────────────────────────────────────────
 // Dumps BALANCE and seasonStatsHistory for tuning reference. Chunk P2-E adds
 // a richer "Pace" view (rolling averages, band/time flags) on top of the same
@@ -1109,7 +1188,7 @@ export default function DebugPanel() {
         {tab === 'events'     && <EventsSection />}
         {tab === 'battle'     && <BattleSection />}
         {tab === 'war'        && <WarSection />}
-        {tab === 'theatre'    && <TheatreSection />}
+        {tab === 'theatre'    && <><TheatreSection /><CampaignHarnessSection /></>}
         {tab === 'secrets'    && <SecretsSection />}
         {tab === 'telemetry'  && <TelemetrySection />}
         {tab === 'pace'       && <><AutoSeasonRunnerSection /><PaceSection /></>}

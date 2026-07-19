@@ -586,6 +586,19 @@ export function resolveCampaignSeason(
   const raidingArmyIds = new Set(raidedThisSeason.map(r => r.armyId));
   const newContested: Record<RegionId, number> = { ...theatre.contested };
   const newControllers: Record<RegionId, Controller> = { ...theatre.controllers };
+  // C10 fix: a region flip on the theatre map never used to reach CityState —
+  // warStanding.computeSicilyControl reads live city.owner (Sicily is 4
+  // cities in 1 region, C1's own collapse), but nothing synced it, so
+  // sicilyControl sat frozen at its starting value for an entire war no
+  // matter how the map actually went (found tuning target #2 — median war
+  // length pinned at the 241 BC ceiling since warScore could never clear the
+  // sue threshold on armyBalance alone). Fixed here, at the one place a flip
+  // is already decided — mirrors cityEngine.applyCityFlips' idempotent
+  // shape, deliberately narrowed to status:'foreign' cities only (an
+  // already-incorporated/unincorporated Roman city is never re-flipped by
+  // this — that would ripple into the Governor/Ambassador systems, well
+  // outside this fix's scope).
+  const flippedRegionOwners = new Map<RegionId, 'rome' | 'carthage'>();
   for (const region of REGIONS) {
     const controller = theatre.controllers[region.id];
     const occupants = [...armyMap.values()].filter(a => a.location === region.id && !raidingArmyIds.has(a.id));
@@ -596,6 +609,7 @@ export function resolveCampaignSeason(
       if (count >= res.controlFlipThresholdSeasons) {
         newControllers[region.id] = occupierPower;
         newContested[region.id] = 0;
+        flippedRegionOwners.set(region.id, occupierPower);
         const text = `${region.name} falls under ${occupierPower === 'rome' ? 'Roman' : 'Carthaginian'} control.`;
         entries.push({ type: 'flip', regionId: region.id, newController: occupierPower, text });
         headlines.push(text);
@@ -608,6 +622,14 @@ export function resolveCampaignSeason(
   }
 
   const updatedCities = cities.map(c => ({ ...c }));
+  for (const [regionId, newOwner] of flippedRegionOwners) {
+    const region = REGIONS.find(r => r.id === regionId)!;
+    for (const city of updatedCities) {
+      if (!region.cityIds.includes(city.id) || city.status !== 'foreign') continue;
+      city.owner = newOwner;
+      if (newOwner === 'rome') city.status = 'unincorporated';
+    }
+  }
   for (const raid of raidedThisSeason) {
     const army = armyMap.get(raid.armyId);
     if (!army) continue;

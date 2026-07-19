@@ -224,6 +224,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Domus',
   },
   {
+    id: 'levy-tiers',
+    term: 'Levy Tiers',
+    definition: 'Three ways to muster a cohort from a theatre region: an Emergency Levy (cheap, whoever\'s on hand), a Standard Levy, or Picked Men (a smaller, selective muster — priced for that selectivity, but reliably the better soldier). Good relations with the region\'s cities improve quality further on all three.',
+    relatedTab: 'Provinciae',
+  },
+  {
     id: 'lifetime-dignitas',
     term: 'Lifetime Dignitas',
     definition: 'A permanent, never-spent prestige score that gates your Patron Tier. Unlike other resources it only rises — certain catastrophic events can reduce it, but normal resource spending cannot.',
