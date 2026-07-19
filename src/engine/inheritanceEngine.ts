@@ -5,18 +5,7 @@ import { BALANCE } from '../data/balance';
 import { OFFICES } from '../data/offices';
 import { getHighestOffice } from './electionEngine';
 import { LEADER_PRAENOMINA } from '../data/clientNames';
-
-// ─── Name pools ───────────────────────────────────────────────────────────────
-
-const ROMAN_NAMES_MALE = [
-  'Lucius', 'Marcus', 'Quintus', 'Titus', 'Gaius', 'Publius', 'Gnaeus',
-  'Sextus', 'Aulus', 'Decimus', 'Spurius', 'Manius', 'Servius', 'Appius',
-];
-
-const ROMAN_NAMES_FEMALE = [
-  'Livia', 'Julia', 'Claudia', 'Aemilia', 'Valeria', 'Cornelia', 'Porcia',
-  'Caecilia', 'Marcia', 'Tullia', 'Sempronia', 'Hortensia', 'Fulvia', 'Licinia',
-];
+import { ROMAN_NAMES_MALE, ROMAN_NAMES_FEMALE } from '../data/romanNames';
 
 export function suggestChildName(role: 'son' | 'daughter', familyName: string): string {
   const pool = role === 'son' ? ROMAN_NAMES_MALE : ROMAN_NAMES_FEMALE;
