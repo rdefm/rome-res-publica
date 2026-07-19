@@ -563,12 +563,15 @@ function genAgingBondedLeader(state: GameState): AgendaItem[] {
 }
 
 // ─── Generator 19 — Munificence games opportunity (P2-F) ────────────────────
-// #17/#18 were reserved here since M4 but couldn't be built until
-// WarState/SetPieceOffer existed as live state (M9) — they're defined below
-// this one, after the Public API marker's original position, since this
-// generator was written first. Fires when Unrest is tier >= 2, the shared
-// 'games' slot is unused this year, and the player can afford Fund the
-// Ludi — games are a lever the player may not think to reach for.
+// #18 was reserved here since M4 but couldn't be built until WarState
+// existed as live state (M9) — it's defined below this one, after the Public
+// API marker's original position, since this generator was written first.
+// (#17, genPendingSetPiece, covered the M9 scripted-battle scheduler retired
+// in Chunk C9 — removed along with it; genPendingEngagement is its
+// replacement, covering the same "a battle awaits your decision" role for
+// the campaign map's real engagements.) Fires when Unrest is tier >= 2, the
+// shared 'games' slot is unused this year, and the player can afford Fund
+// the Ludi — games are a lever the player may not think to reach for.
 
 function genMunificenceGamesOpportunity(state: GameState): AgendaItem[] {
   if (state.crisis.unrest.tier < 2) return [];
@@ -589,30 +592,6 @@ function genMunificenceGamesOpportunity(state: GameState): AgendaItem[] {
     target: { tab: 'Curia' as const },
     sortWeight: 20,
   }];
-}
-
-// ─── Generator 17 — Pending set-piece offer (Military Overhaul M9) ──────────
-// Reserved since M4 (couldn't be built until WarState/SetPieceOffer were
-// actually live state — that only happens in M9). A dedicated, blocking
-// SetPieceOfferModal is the primary resolution path; this item is a
-// secondary reminder for the AgendaTablet's comprehensive to-do view,
-// matching every other generator's role here.
-
-function genPendingSetPiece(state: GameState): AgendaItem[] {
-  const items: AgendaItem[] = [];
-  for (const war of (state.wars ?? [])) {
-    if (!war.active || !war.pendingSetPiece) continue;
-    items.push({
-      id: `agenda-critical-set-piece-${war.id}`,
-      category: 'military' as const,
-      severity: 'critical',
-      title: `The armies will meet at ${war.pendingSetPiece.siteName}`,
-      detail: 'Give battle, or decline and let the moment pass.',
-      target: { tab: 'Provinciae' as const },
-      sortWeight: 0,
-    });
-  }
-  return items;
 }
 
 // ─── Generator 18 — Peace threshold reached (Military Overhaul M9) ──────────
@@ -945,7 +924,6 @@ export function generateAgenda(state: GameState): AgendaItem[] {
     ...genPatronTierProximity(state),
     ...genAgingBondedLeader(state),
     ...genMunificenceGamesOpportunity(state),
-    ...genPendingSetPiece(state),
     ...genWarPeaceThreshold(state),
     ...genWarStatus(state),
     ...genSueForPeaceOpportunity(state),

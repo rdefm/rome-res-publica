@@ -55,7 +55,7 @@ import { computeTotalAssetBonuses } from './assetEngine';
 import { computeHouseBonuses } from './houseEngine';
 import { tickAllCities } from './cityEngine';
 import { applyTroopAttrition, calcMilitaryImperium } from './troopEngine';
-import { processWarSeason } from './warEngine';
+import { processWarSeason, classifyTerminalOutcome, computeRipeness } from './warEngine';
 import { tickSenateResponse } from './senateResponseEngine';
 import { calcAntagonismLevel, tickNpcConsul } from './npcConsulEngine';
 import {
@@ -765,7 +765,12 @@ export function processSeason(state: GameState): {
   // failure (munificenceEngine.test.ts's minimal fixture, which never sets
   // armies/theatre at all, still picks up a Carthage reinforcement army from
   // step 2h's OWN `if (s.theatre && ...)` guard being fooled the same way).
-  if (s.armies && s.theatre?.controllers) {
+  // Chunk C9 — additionally gated on `!s.endlessMode`: Endless entry
+  // (gameStore.enterEndlessMode) empties `s.armies` and the plan's spec
+  // calls for the campaign step to be a permanent no-op from that point on
+  // ("zeroes the campaign step... freezes controllers as-won") rather than
+  // just naturally idling because there are no armies left to move.
+  if (!s.endlessMode && s.armies && s.theatre?.controllers) {
     const resolution = resolveCampaignSeason({
       armies: s.armies,
       theatre: s.theatre,
@@ -775,6 +780,14 @@ export function processSeason(state: GameState): {
       denarii: s.denarii,
       seasonIndex: s.seasonIndex,
       turnNumber: s.turnNumber,
+      // Chunk C9 — the active major Carthage war's warScore is recomputed
+      // here, fresh, from this season's post-resolution armies/cities/
+      // momentum (engine/warStanding.ts) — BEFORE step 9d3's
+      // processWarSeason runs (which only reacts to whatever value it
+      // finds: threshold crossings, treaty resolution, dictate-tier).
+      wars: s.wars ?? [],
+      unrestTier: s.crisis.unrest.tier,
+      crossedNewYear,
     });
     s = {
       ...s,
@@ -784,6 +797,7 @@ export function processSeason(state: GameState): {
       denarii: resolution.denarii,
       campaignLog: resolution.log,
       pendingEngagements: [...(s.pendingEngagements ?? []), ...resolution.pendingEngagements],
+      wars: resolution.wars,
     };
     events.push(...resolution.headlines);
 
@@ -1192,13 +1206,18 @@ export function processSeason(state: GameState): {
     s = { ...s, family: updatedFamily };
   }
 
-  // 9d3. Military Overhaul M9 — war score season tick. Skirmish drift,
-  // weariness, threshold-crossing notices, and the provisional set-piece
-  // scheduler (warEngine.ts's seam) for every active war. Placed right
-  // after 9d2 (both are military-upkeep-adjacent); crisis escalation (step
-  // 5, earlier) reads state.wars as it stood BEFORE this step runs — see
-  // crisisEngine.ts's calcWarEscalation comment for why that's consistent
-  // with every other crisis input in this file.
+  // 9d3. Military Overhaul M9 — war score season tick: threshold-crossing
+  // notices, treaty resolution (Senate vote / dictate-tier auto-ratify),
+  // funding/sue-for-peace bill queueing, for every active war. Chunk C9
+  // retired the skirmish-drift roll and the set-piece scheduler this step
+  // used to also run — step 6c (campaignResolver.resolveCampaignSeason,
+  // earlier THIS SAME processSeason call) already recomputed the active
+  // major Carthage war's warScore fresh from the campaign map before this
+  // step ever runs; this step only reacts to that value now, same as
+  // before. Placed right after 9d2 (both are military-upkeep-adjacent);
+  // crisis escalation (step 5, earlier) reads state.wars as it stood BEFORE
+  // this step runs — see crisisEngine.ts's calcWarEscalation comment for
+  // why that's consistent with every other crisis input in this file.
   //
   // M10 WIDENING (per the plan's Cross-Chunk Notes: turnSequencer.ts is only
   // touched by M9's one step, not a new one for M10) — a treaty resolving
@@ -1206,9 +1225,10 @@ export function processSeason(state: GameState): {
   // family (prisoner release), provinces (Sicily cession), and bills (a
   // triumph petition) via warResult.statePatch. lifetimeDignitas is merged
   // explicitly rather than just spread, since both the pre-existing
-  // lifetimeDignitasDelta path (set-piece decline) and the new statePatch
-  // path (face-saver clause) can independently want to change it the same
-  // season.
+  // lifetimeDignitasDelta path (always 0 now — see warEngine.ts's own header
+  // note, kept for shape stability rather than trimmed) and the new
+  // statePatch path (face-saver clause) can independently want to change it
+  // the same season.
   {
     const warResult = processWarSeason(s);
     const mergedLifetimeDignitas = (warResult.statePatch.lifetimeDignitas ?? s.lifetimeDignitas) + warResult.lifetimeDignitasDelta;
@@ -1220,6 +1240,44 @@ export function processSeason(state: GameState): {
       lifetimeDignitas: mergedLifetimeDignitas,
     };
     events.push(...warResult.events);
+  }
+
+  // 9d4. Campaign Map plan, Chunk C9 — 241 BC terminal evaluation. The plan
+  // assumed this already existed somewhere ("likely already a terminal
+  // check; redirect it") — verified it does not (grep-checked before
+  // writing this: no existing code anywhere compares GameState.year against
+  // 241). This is the fallback the plan's own spec calls for: an active
+  // major war that NOTHING else ended this season (no treaty ratified, no
+  // dictate-tier auto-ratify — step 9d3, just above, already had its chance)
+  // is force-classified from wherever its standing currently sits, once the
+  // calendar reaches the historical end of the war. Endless mode already
+  // retires the major war from processWarSeason's own gate — nothing to
+  // additionally check here for it.
+  if (!s.endlessMode) {
+    const majorWar = (s.wars ?? []).find(w => w.active && w.scale === 'major' && w.enemyId === 'carthage');
+    if (majorWar && Math.abs(s.year) <= BALANCE.war.ripeness.historicalEndYear) {
+      const outcome = classifyTerminalOutcome(majorWar.warScore, computeRipeness(s.year), false);
+      s = {
+        ...s,
+        wars: s.wars.map(w => w.id === majorWar.id
+          ? { ...w, active: false, terminalOutcome: outcome, endedYear: s.year }
+          : w),
+        pendingEpilogue: outcome,
+      };
+      const player = s.family.find(c => c.isPlayer);
+      s = {
+        ...s,
+        pendingEvents: [...s.pendingEvents, injectNoticeEvent(`evt-war-outcome-${outcome}`, s.turnNumber, player?.id ?? 'pc-1', {
+          title: outcome === 'victory' ? 'Victory' : outcome === 'humbled' ? 'Rome Humbled' : 'Peace of Exhaustion',
+          bodyText: `The war with Carthage has run its historical course. ${
+            outcome === 'victory' ? 'Rome has won it.'
+            : outcome === 'humbled' ? 'Rome did not win it.'
+            : 'Not a triumph, but an end — both sides had bled enough to want it.'
+          }`,
+        })],
+      };
+      events.push(`241 BC arrives with the war undecided by treaty — Rome's standing settles it: ${outcome}.`);
+    }
   }
 
   // 9e. Recalculate militaryImperium

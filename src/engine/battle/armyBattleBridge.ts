@@ -31,6 +31,7 @@
 // the way musterEngine.applyBattleOutcome's does.
 
 import type { Army, ArmyUnit } from '../../models/army';
+import type { TroopUnit, TroopType } from '../../models/troop';
 import type { Character, PendingSuccession, CadetBranch } from '../../models/character';
 import type { EpilogueOutcome } from '../../models/epilogue';
 import type { EventInstance } from '../../models/event';
@@ -79,6 +80,41 @@ export function battleUnitToArmyUnit(original: ArmyUnit, unit: BattleUnit): Army
     veterancy: unit.veterancy,
     loyalty: clamp(unit.loyalty, 0, 100),
     campaignsSurvived: original.campaignsSurvived + 1,
+  };
+}
+
+function troopTypeForVeterancy(v: Veterancy): TroopType {
+  switch (v) {
+    case 'legendary': return 'seasoned_veteran';
+    case 'veteran':   return 'veteran';
+    default:          return 'raised'; // 'raw' | 'trained' — no exact TroopType match; these
+                                        // troops have seen the theatre, so 'garrison' (never
+                                        // fought) would be wrong.
+  }
+}
+
+/** Campaign Map plan, Chunk C9 — Endless-mode entry's "retain" choice for a
+ *  personal Army: folds its ArmyUnits back into the commanding character's
+ *  `veterans` (TroopUnit). This is the one direction Army and TroopUnit have
+ *  ever needed to convert between — they're deliberately parallel, never
+ *  interchangeable elsewhere (see this file's header comment) — so there's
+ *  no existing helper to reuse; rescales strength the same direction
+ *  battle/musterEngine.battleUnitToTroop already does (0–100 → 1–10).
+ *  `homeRegion` doubles as `musterProvinceId` (same RegionId string space
+ *  raiseLevy already uses for that field — 'latium' included). */
+export function armyUnitToTroop(unit: ArmyUnit): TroopUnit {
+  return {
+    id: unit.id,
+    type: troopTypeForVeterancy(unit.veterancy),
+    strength: clamp(Math.round(unit.strength / 10), 1, 10),
+    campaignsSurvived: unit.campaignsSurvived,
+    yearsInactive: 0,
+    bondToCommander: clamp(unit.loyalty, 0, 100),
+    musterProvinceId: unit.homeRegion,
+    unitClass: unit.unitClass,
+    veterancy: unit.veterancy,
+    elephantSteady: unit.elephantSteady,
+    wonCrushingVictory: unit.wonCrushingVictory,
   };
 }
 

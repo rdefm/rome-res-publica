@@ -17,6 +17,7 @@ import { officeName } from '../engine/epilogueEngine';
 import type { EpilogueOutcome } from '../models/epilogue';
 import HallOfAncestorsScreen from './HallOfAncestorsScreen';
 import InfoTap from '../components/shared/InfoTap';
+import EndlessDisbandModal from '../components/shared/EndlessDisbandModal';
 import { DIFFICULTY_DEFINITIONS } from '../data/startDefinitions';
 
 // Phase 5, Chunk P5-E — 'victory'/'gens_ends' tones were hardcoded 'Gens
@@ -36,7 +37,10 @@ export default function EpilogueScreen() {
   const record = useGameStore(s => s.currentEpilogueRecord);
   const returnToStartMenu = useGameStore(s => s.returnToStartMenu);
   const enterEndlessMode = useGameStore(s => s.enterEndlessMode);
+  const armies = useGameStore(s => s.armies);
+  const family = useGameStore(s => s.family);
   const [showHall, setShowHall] = useState(false);
+  const [showEndlessDisband, setShowEndlessDisband] = useState(false);
 
   const isOpen = runFinished && !!record;
   if (!isOpen) return null;
@@ -45,6 +49,31 @@ export default function EpilogueScreen() {
     return (
       <Modal visible={isOpen} animationType="slide" presentationStyle="fullScreen">
         <HallOfAncestorsScreen onBack={() => setShowHall(false)} />
+      </Modal>
+    );
+  }
+
+  const personalTheatreArmies = armies.filter(a => a.owner === 'player');
+
+  const handleContinueEndless = () => {
+    if (personalTheatreArmies.length === 0) {
+      enterEndlessMode({});
+    } else {
+      setShowEndlessDisband(true);
+    }
+  };
+
+  if (showEndlessDisband) {
+    return (
+      <Modal visible={isOpen} animationType="slide" presentationStyle="fullScreen">
+        <EndlessDisbandModal
+          armies={personalTheatreArmies}
+          family={family}
+          onConfirm={(decisions) => {
+            enterEndlessMode(decisions);
+            setShowEndlessDisband(false);
+          }}
+        />
       </Modal>
     );
   }
@@ -113,7 +142,7 @@ export default function EpilogueScreen() {
 
           <View style={styles.actionsBlock}>
             {record!.outcome === 'victory' && (
-              <TouchableOpacity style={styles.actionBtn} onPress={enterEndlessMode}>
+              <TouchableOpacity style={styles.actionBtn} onPress={handleContinueEndless}>
                 <InfoTap termId="endless-mode">
                   <Text style={styles.actionText}>Continue in Endless Mode</Text>
                 </InfoTap>

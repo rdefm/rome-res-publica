@@ -29,43 +29,16 @@
 // "which army is on campaign" signal to hook into.
 
 import type { GameState } from '../state/gameStore';
-import type { WarState, SetPieceOffer, WarScale, TreatyState, TreatyTerm, WarPhase, WarTerminalOutcome } from '../models/war';
+import type { WarState, WarScale, TreatyState, TreatyTerm, WarPhase, WarTerminalOutcome } from '../models/war';
 import type { CityState } from '../models/city';
 import type { EventInstance } from '../models/event';
-import type { BattleUnit, UnitClass } from '../models/battle';
 import type { Bill } from '../models/bill';
 import { BALANCE } from '../data/balance';
-import { WAR_SITES } from '../data/warSites';
 import { ENEMY_GENERAL_LIST, type GeneralProfile } from '../data/enemyGenerals';
-import { musterArmy } from './battle/musterEngine';
 import { injectNoticeEvent } from './eventEngine';
 import { applyEffectString } from './resourceEngine';
 import { TREATY_TERMS, getTreatyTerm } from '../data/treatyTerms';
 import { buildCityState, getCityDefinition } from '../data/cityDefinitions';
-
-// ─── Small helpers ───────────────────────────────────────────────────────────
-
-function clampScore(v: number): number {
-  return Math.min(100, Math.max(-100, v));
-}
-
-/** Moves `current` toward `target` by up to `step`, never overshooting. */
-function moveToward(current: number, step: number, target: number): number {
-  if (current > target) return Math.max(target, current - step);
-  if (current < target) return Math.min(target, current + step);
-  return current;
-}
-
-function pickWeighted<T extends string>(weights: Partial<Record<T, number>>, rng: () => number): T {
-  const entries = Object.entries(weights) as [T, number][];
-  const total = entries.reduce((s, [, w]) => s + (w ?? 0), 0);
-  let roll = rng() * total;
-  for (const [id, w] of entries) {
-    roll -= w ?? 0;
-    if (roll <= 0) return id;
-  }
-  return entries[entries.length - 1][0];
-}
 
 // ─── Desperation tier (M1's "desperation/overextension modifier
 // recomputation" — exposed as a pure function of warScore so callers can
@@ -239,100 +212,6 @@ function buildTerminalOutcomeNotice(
     },
   };
   return injectNoticeEvent(`evt-war-outcome-${outcome}`, turnNumber, playerId, copy[outcome]);
-}
-
-// ─── Skirmish drift ──────────────────────────────────────────────────────────
-
-function rollSkirmishDrift(playerArmyStrength: number, playerMartial: number, rng: () => number): number {
-  const w = BALANCE.war;
-  const sk = w.skirmish;
-  const magnitude = Math.floor(rng() * (w.skirmishDriftMax - w.skirmishDriftMin + 1)) + w.skirmishDriftMin;
-  const strengthSignal = playerArmyStrength >= sk.strengthBaseline ? 1 : -1;
-  const martialSignal = playerMartial >= sk.martialBaseline ? 1 : -1;
-  const sign = (strengthSignal + martialSignal) >= 0 ? 1 : -1;
-  return sign * magnitude;
-}
-
-// ─── Enemy army generation (consumed only by the seam below) ───────────────
-
-function generateEnemyArmy(profile: GeneralProfile, warScore: number, scale: WarScale, rng: () => number): BattleUnit[] {
-  const so = BALANCE.war.setPieceOffer;
-  // Rome winning (positive warScore) faces a WEAKER enemy; a losing Rome
-  // faces a growing one — mirrors BALANCE.war.desperation's framing (the
-  // losing side gets buffs; here the winning side gets an easier scheduler
-  // roll instead of a battle-time buff, since the enemy army is generated
-  // once, at offer time).
-  const rawCohorts = so.baseCohorts - warScore / so.warScoreDivisor;
-  const scaledCohorts = rawCohorts * BALANCE.war.scaleArmyMultiplier[scale];
-  const cohortCount = Math.round(Math.min(so.maxCohorts, Math.max(so.minCohorts, scaledCohorts)));
-
-  const weights = Object.entries(profile.armyComposition) as [UnitClass, number][];
-  const totalWeight = weights.reduce((s, [, w]) => s + w, 0);
-  const units: BattleUnit[] = [];
-  let allocated = 0;
-  weights.forEach(([unitClass, weight], i) => {
-    const isLast = i === weights.length - 1;
-    const count = isLast ? Math.max(0, cohortCount - allocated) : Math.round((cohortCount * weight) / totalWeight);
-    allocated += count;
-    for (let n = 0; n < count; n++) {
-      units.push({
-        id: `enemy-${profile.id}-${unitClass}-${n}-${Math.floor(rng() * 1e9)}`,
-        unitClass,
-        strength: 100,
-        veterancy: 'trained',
-        loyalty: 60,
-        elephantSteady: false,
-      });
-    }
-  });
-  return units;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ── THE SEAM ─────────────────────────────────────────────────────────────────
-// scheduleSetPiece is the ONLY function anywhere in this codebase that may
-// construct a SetPieceOffer. Phase 3A's war script replaces this single
-// exported function wholesale with script-driven scheduling — nothing else
-// (processWarSeason included) may build offer generation logic directly;
-// everything else just calls this and reacts to its result.
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function scheduleSetPiece(
-  state: GameState,
-  war: WarState,
-  rng: () => number = Math.random,
-  opts: { forceRoll?: boolean } = {},
-): SetPieceOffer | null {
-  if (!war.active) return null;
-
-  const player = state.family.find(c => c.isPlayer);
-  const hasArmy = !!player && ((player.raisedLegions?.length ?? 0) + (player.veterans?.length ?? 0)) > 0;
-  if (!hasArmy) return null;
-
-  const so = BALANCE.war.setPieceOffer;
-  if (!opts.forceRoll) {
-    if (state.turnNumber - war.lastSetPieceTurn < so.minSpacingTurns) return null;
-    if (rng() >= so.chancePerSeason) return null;
-  }
-
-  const site = WAR_SITES[Math.floor(rng() * WAR_SITES.length)];
-  const terrainId = pickWeighted(site.terrainWeights, rng);
-  const terrain = BALANCE.battle.terrains[terrainId];
-
-  // "General chosen round-robin from enemyGenerals.ts" — deterministic
-  // cycling keyed off the current turn (no extra persisted counter needed).
-  const general = ENEMY_GENERAL_LIST[state.turnNumber % ENEMY_GENERAL_LIST.length];
-
-  const enemyArmy = generateEnemyArmy(general, war.warScore, war.scale, rng);
-
-  return {
-    id: `offer-${war.id}-${state.turnNumber}-${Math.floor(rng() * 1e9)}`,
-    siteName: site.name,
-    terrainId: terrain.id,
-    enemyArmy,
-    enemyGeneralId: general.id,
-    expiresTurn: state.turnNumber + so.expiryTurns,
-  };
 }
 
 // ─── Peace: Negotiation & Senate Ratification (Chunk M10) ──────────────────
@@ -675,10 +554,6 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
 
   const player = state.family.find(c => c.isPlayer) ?? null;
   const playerId = player?.id ?? 'pc-1';
-  const playerArmy = player ? musterArmy(player) : [];
-  const playerArmyStrength = playerArmy.reduce((s, u) => s + u.strength, 0);
-  const playerMartial = player?.skills.martial ?? 0;
-  const so = BALANCE.war.setPieceOffer;
   const t = BALANCE.war.treaty;
 
   const wars = (state.wars ?? []).map(war => {
@@ -694,22 +569,24 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
     // here rather than reusing this one.
     if (war.scale === 'major' && state.endlessMode) return war;
     let next: WarState = { ...war };
-    const beforeScore = next.warScore;
+    // Chunk C9 — warScore/weariness/momentum are no longer computed here at
+    // all: turnSequencer.ts's step 6c (campaignResolver.resolveCampaignSeason,
+    // engine/warStanding.ts) already recomputed them fresh from the campaign
+    // map earlier THIS SAME season, before this function ever runs. This
+    // function only reacts to whatever value it finds — threshold crossings,
+    // treaty resolution, dictate-tier checks, bill queueing — the same as it
+    // always did, just no longer the thing that MOVES warScore itself.
+    // `beforeScore` for threshold-crossing purposes is therefore last
+    // season's post-processWarSeason value (nothing mutates it between here
+    // and the previous season's end) — crossings are still detected
+    // correctly, just against a season-over-season delta instead of a
+    // within-this-function-call one.
+    const beforeScore = state.flags[`war-score-snapshot-${next.id}`] as number ?? next.warScore;
 
-    // "General chosen round-robin from enemyGenerals.ts" — same
-    // deterministic cycling scheduleSetPiece uses, reused here for any
-    // AI term composition this war needs this season.
+    // "General chosen round-robin from enemyGenerals.ts" — deterministic
+    // cycling keyed off the current turn, for any AI term composition this
+    // war needs this season.
     const general = ENEMY_GENERAL_LIST[state.turnNumber % ENEMY_GENERAL_LIST.length];
-
-    // 1. Skirmish drift.
-    next.warScore = clampScore(next.warScore + rollSkirmishDrift(playerArmyStrength, playerMartial, rng));
-
-    // 2. Weariness — after wearinessAfterTurns, warScore erodes toward 0.
-    const turnsSinceStart = state.turnNumber - next.startedTurn;
-    if (turnsSinceStart > BALANCE.war.wearinessAfterTurns) {
-      next.warScore = moveToward(next.warScore, BALANCE.war.wearinessDriftPerSeason, 0);
-    }
-    next.weariness += 1;
 
     // 2b. Phase 3, Chunk P3-A — cosmetic phase recompute. No mechanic reads
     // this beyond a future chunk's agenda copy (see WarPhase's doc comment).
@@ -749,26 +626,10 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
         events.push(`${capitalizeEnemyId(next.enemyId)} sends terms for Rome to consider.`);
       }
     }
-
-    // 4. A stale, unanswered offer expires with the same consequence as an
-    // explicit decline (defensive — keeps the scheduler unstuck even if the
-    // player never opens the app to answer it; see SetPieceOfferModal for
-    // the normal, immediate resolution path).
-    if (next.pendingSetPiece && next.pendingSetPiece.expiresTurn <= state.turnNumber) {
-      events.push(`The offer at ${next.pendingSetPiece.siteName} goes unanswered — the moment passes.`);
-      next.warScore = clampScore(next.warScore + so.declineWarScorePenalty);
-      lifetimeDignitasDelta += so.declineLifetimeDignitasPenalty;
-      next = { ...next, pendingSetPiece: null };
-    }
-
-    // 5. THE SEAM — scheduler roll (only when no offer is currently pending).
-    if (!next.pendingSetPiece) {
-      const offer = scheduleSetPiece(state, next, rng);
-      if (offer) {
-        next = { ...next, pendingSetPiece: offer, lastSetPieceTurn: state.turnNumber };
-        events.push(`The armies will meet at ${offer.siteName}.`);
-      }
-    }
+    statePatch = {
+      ...statePatch,
+      flags: { ...(statePatch.flags ?? state.flags), [`war-score-snapshot-${next.id}`]: next.warScore },
+    };
 
     // 6. Chunk M10 — resolve a tabled ratification bill. gameStore.tableTreaty
     // pushed a Bill with id `treaty-${war.id}-${treaty.proposedTurn}` into
@@ -789,7 +650,6 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
         next = {
           ...next,
           active: false,
-          pendingSetPiece: null,
           treaty: { ...next.treaty, ratified: true, resolvedTurn: state.turnNumber },
         };
         // P3-A — classify the conclusion (major wars only; see
@@ -821,10 +681,14 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
           }
         }
       } else if (!stillPending) {
-        // Failed/expired without passing.
+        // Failed/expired without passing. Chunk C9 — a momentum injection
+        // (fades over the next few seasons, per warStanding's decay) rather
+        // than a direct warScore set, which a fresh recompute next season
+        // would just overwrite (see this function's own header note above).
+        const cap = BALANCE.campaign.standing.momentumCap;
         next = {
           ...next,
-          warScore: clampScore(next.warScore + t.failWarScorePenalty),
+          momentum: Math.max(-cap, Math.min(cap, next.momentum + t.failWarScorePenalty)),
           treaty: { ...next.treaty, ratified: false, resolvedTurn: state.turnNumber },
         };
         events.push(`Ratification fails — ${capitalizeEnemyId(next.enemyId)} takes heart. The war continues.`);
@@ -855,7 +719,6 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
       next = {
         ...next,
         active: false,
-        pendingSetPiece: null,
         treaty: {
           id: `treaty-dictated-${next.id}-${state.turnNumber}`,
           proposedTurn: state.turnNumber,
@@ -890,16 +753,20 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
       const f = BALANCE.war.funding;
       const idPrefix = `war-funding-${next.id}-`;
 
-      // Resolve: apply the warScore bonus exactly once per passed bill, via
+      // Resolve: apply the momentum bonus exactly once per passed bill, via
       // a one-shot flag — mirrors this file's existing `triumph-granted-
       // <id>` convention. Treasury/crisis-war are already applied by the
-      // generic bill pipeline's passEffect; only the warScore bonus needs
+      // generic bill pipeline's passEffect; only the momentum bonus needs
       // this special detection (not expressible in a flat effect string).
+      // Chunk C9 — a momentum injection, not a direct warScore set (see this
+      // function's header note) — "better-supplied legions fight better"
+      // shows up in NEXT season's warStanding recompute, not this instant.
       const passedFunding = (state.passedBills ?? []).find(b =>
         b.id.startsWith(idPrefix) && !state.flags[`war-funding-applied-${b.id}`]
       );
       if (passedFunding) {
-        next.warScore = clampScore(next.warScore + f.warScoreBonusOnPass);
+        const cap = BALANCE.campaign.standing.momentumCap;
+        next.momentum = Math.max(-cap, Math.min(cap, next.momentum + f.momentumBonusOnPass));
         statePatch = {
           ...statePatch,
           flags: { ...(statePatch.flags ?? state.flags), [`war-funding-applied-${passedFunding.id}`]: true },
@@ -936,7 +803,6 @@ export function processWarSeason(state: GameState, rng: () => number = Math.rand
         next = {
           ...next,
           active: false,
-          pendingSetPiece: null,
           terminalOutcome: outcome,
           endedYear: state.year,
           peaceOffered: false,

@@ -590,13 +590,8 @@ export const BALANCE = {
   // ─── M1 — War score & strategic layer (src/engine/warEngine.ts, M9) ────────
   war: {
     maxSingleBattleSwing: 25,
-    skirmishDriftMin: 1,
-    skirmishDriftMax: 3,
     siegeObjectiveMin: 5,
     siegeObjectiveMax: 10,
-    /** 12 war-turns (3 years) before weariness drift begins. */
-    wearinessAfterTurns: 12,
-    wearinessDriftPerSeason: 1,
     thresholds: { sue: 40, forced: 70, dictate: 90 },
     /** Applies to the losing side once |warScore| crosses the given threshold. */
     desperation: {
@@ -620,39 +615,6 @@ export const BALANCE = {
       negotiateSuccessMult: 0.5,
       refuseLifetimeDignitasPenalty: -5,
     },
-    /** Design decision (see models/war.ts header comment): provincial revolts
-     *  route through this same set-piece system as a 'local' scale war,
-     *  scaled well below a 'major' foreign war's enemy army size. M9's
-     *  scheduler multiplies its enemy-army-size formula by this factor. */
-    scaleArmyMultiplier: { major: 1.0, local: 0.4 },
-
-    /** M9 — src/engine/warEngine.ts. FIRST-PASS/UNVERIFIED (the plan gives
-     *  the scheduler's shape but not every constant — same treatment as
-     *  M7's stratagem draw weights): the scheduler is explicitly provisional
-     *  (Phase 3A replaces scheduleSetPiece wholesale, see warEngine.ts's
-     *  seam comment), so these are reasonable starting numbers, not tuned
-     *  ones. Revisit in a future tuning pass alongside M11's battle numbers. */
-    setPieceOffer: {
-      chancePerSeason: 0.25,
-      minSpacingTurns: 2,
-      expiryTurns: 3,
-      baseCohorts: 10,
-      warScoreDivisor: 10,
-      minCohorts: 4,
-      maxCohorts: 16,
-      /** Decline OR let the offer expire unanswered — same consequence either way. */
-      declineWarScorePenalty: -3,
-      declineLifetimeDignitasPenalty: -2,
-    },
-    /** Skirmish drift: magnitude is uniform in [skirmishDriftMin,
-     *  skirmishDriftMax] (existing M1 constants); sign is biased toward
-     *  Rome when the campaigning character's army strength / martial clear
-     *  these baselines. */
-    skirmish: {
-      strengthBaseline: 300,
-      martialBaseline: 5,
-    },
-
     /** M10 — src/engine/warEngine.ts / src/data/treatyTerms.ts. FIRST-PASS/
      *  UNVERIFIED (same treatment as setPieceOffer above — the plan gives
      *  the negotiation flow's shape but not every constant). Per-term
@@ -683,7 +645,8 @@ export const BALANCE = {
       aiOfferTermCount: 2,
       /** Refusing a sue-tier AI offer costs nothing mechanical per the plan,
        *  but does ding relationship with the initiating side's sympathetic
-       *  faction — mirrors declineSetPieceOffer's dignitas-only cost. */
+       *  faction — a dignitas-only cost, same shape as the retired M9
+       *  set-piece decline penalty (Chunk C9). */
       refuseAiOfferLifetimeDignitasPenalty: -2,
     },
 
@@ -747,11 +710,15 @@ export const BALANCE = {
       treasuryCost: 15,
       crisisWarEaseOnPass: 6,
       crisisWarSpikeOnFail: 8,
-      /** Applied directly to WarState.warScore on pass only (detected via
-       *  the reconstructable bill id, same pattern as the M10 treaty bill —
-       *  not expressible through the generic passEffect string, since
-       *  warScore lives inside a specific WarState, not top-level GameState). */
-      warScoreBonusOnPass: 6,
+      /** Chunk C9 — a one-time momentum injection on pass only (detected via
+       *  the reconstructable bill id, same pattern as the M10 treaty bill).
+       *  Was a direct warScore bump before C9; a direct set no longer makes
+       *  sense once warScore is recomputed fresh each season from map state
+       *  (see warStanding.ts) — better-supplied legions fight better this
+       *  season, which the SAME decaying momentum bucket a battle result
+       *  feeds already models, so this folds into that rather than adding a
+       *  second parallel "temporary standing boost" concept. */
+      momentumBonusOnPass: 6,
       /** calcRomeStatVoteModifier-style ±clamp on the support bias term
        *  (Optimates favour funding the legions; Populares wary of the cost). */
       supportBiasClamp: 10,
@@ -1504,6 +1471,50 @@ export const BALANCE = {
         clear:    { winnerPct: 0.10, loserPct: 0.15 },
         marginal: { winnerPct: 0.12, loserPct: 0.12 },
       },
+    },
+
+    /** Chunk C9 — engine/warStanding.ts. The active major Carthage war's
+     *  warScore is recomputed fresh each season from these terms (sicilyControl
+     *  + armyBalance + momentum − wearinessGap), replacing the old internal
+     *  skirmish-drift roll. First-pass/unverified seeds (the plan's own
+     *  spec-table numbers where given), C10 tunes. */
+    standing: {
+      /** Σ over sicilia's 4 cities of ±this per city (owner rome/carthage),
+       *  Lilybaeum weighted at lilybaeumWeight instead (the war's lock) —
+       *  the plan's own literal seeds. Independent/uncommitted owners
+       *  (still 'independent', matching CityOwner) score 0. */
+      sicilyControlPerCity: 10,
+      sicilyControlLilybaeumWeight: 12,
+      /** clamp(armyBalanceMult × log2(totalRome/totalCarthage), ±armyBalanceCap) —
+       *  theatre armies only (state.armies, not personal legions). */
+      armyBalanceMult: 12,
+      armyBalanceCap: 20,
+      /** Momentum: signed per-tier delta fed by every battle this war (NPC-
+       *  vs-NPC inline, or a deferred player engagement resolved later),
+       *  decayed once per season — "the Cannae rule" survives as the cap. */
+      momentumDeltaByTier: { crushing: 8, clear: 5, marginal: 2 },
+      momentumDecayMult: 0.6,
+      momentumCap: 25,
+      /** wearinessGap: clamp((enemyWeariness − weariness) × gapMult, ±gapCap) —
+       *  nudges standing toward whichever side is fresher. */
+      wearinessGapMult: 0.5,
+      wearinessGapCap: 10,
+      /** Rome's own yearly weariness accrual — baseRate always, plus a
+       *  bonus in any season where a player/rome_state army went unpaid
+       *  this turn, plus a bonus while the Unrest crisis track is elevated
+       *  (tier ≥ this threshold — mirrors CRISIS_TIER_LABELS' own tier-2
+       *  "real strain" cutoff elsewhere in this codebase). Carthage's
+       *  enemyWeariness accrues at baseRate only — no symmetric upkeep/
+       *  unrest signal exists for an AI power in this codebase. */
+      weariness: {
+        baseRate: 1,
+        upkeepShortfallBonus: 1,
+        unrestElevatedBonus: 1,
+        unrestElevatedTier: 2,
+      },
+      /** Final warScore clamp — same -100..100 range every other consumer
+       *  (getDesperationTier, classifyTerminalOutcome, etc.) already expects. */
+      clamp: 100,
     },
   },
 };

@@ -263,24 +263,16 @@ describe('generateAgenda', () => {
   function makeWar(overrides: Record<string, unknown> = {}) {
     return {
       id: 'war-carthage-1', active: true, enemyId: 'carthage', scale: 'major', provinceId: null,
-      warScore: 0, startedTurn: 1, lastSetPieceTurn: 1, weariness: 0,
-      pendingSetPiece: null, treaty: null,
+      warScore: 0, startedTurn: 1, weariness: 0, enemyWeariness: 0, momentum: 0,
+      treaty: null,
       ...overrides,
     } as any;
   }
 
-  test('#17 fires when an active war has a pending set-piece offer', () => {
-    const offer = { id: 'offer-1', siteName: 'Agrigentum', terrainId: 'open_plain', enemyArmy: [], enemyGeneralId: 'hanno_cautious', expiresTurn: 5 };
-    const state = makeState({ wars: [makeWar({ pendingSetPiece: offer })] } as any);
-    const items = getCriticalItems(state);
-    expect(items.some(i => i.id === 'agenda-critical-set-piece-war-carthage-1' && i.title.includes('Agrigentum'))).toBe(true);
-  });
-
-  test('#17 does not fire without a pending offer, or for an inactive war', () => {
-    const state = makeState({ wars: [makeWar(), makeWar({ id: 'w2', active: false, pendingSetPiece: { id: 'x', siteName: 'X', terrainId: 'open_plain', enemyArmy: [], enemyGeneralId: 'hanno_cautious', expiresTurn: 5 } })] } as any);
-    const items = getCriticalItems(state);
-    expect(items.some(i => i.category === 'military')).toBe(false);
-  });
+  // #17 (genPendingSetPiece) was retired in Campaign Map plan Chunk C9 along
+  // with the scripted set-piece scheduler it reminded the player about;
+  // genPendingEngagement (campaignEngine.test.ts / agendaEngine's own
+  // #27 coverage) is its replacement for "a battle awaits your decision".
 
   test('#18 fires once |warScore| crosses the sue threshold, framed by who is winning', () => {
     const losing = makeState({ wars: [makeWar({ warScore: -45 })] } as any);

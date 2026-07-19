@@ -525,23 +525,27 @@ function BattleSection() {
   );
 }
 
-// ─── Section: War (Military Overhaul M9) ───────────────────────────────────
+// ─── Section: War (Military Overhaul M9 / Campaign Map plan Chunk C9) ──────
 // No real "declare war" trigger exists anywhere in the app yet (Phase 3A
 // supplies one) — this is the only way to start/advance a war today.
+// Chunk C9 retired the scripted skirmish-drift/set-piece scheduler — warScore
+// is now `warStanding.ts`'s live recompute (sicilyControl + armyBalance +
+// momentum − wearinessGap) each season, driven by the campaign map, not by
+// this panel.
 
 function WarSection() {
   const wars = useGameStore(s => s.wars);
   const startWar = useGameStore(s => s.startWar);
   const endWar = useGameStore(s => s.endWar);
-  const forceSetPieceOffer = useGameStore(s => s.forceSetPieceOffer);
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>WAR SCORE (M9)</Text>
+      <Text style={styles.sectionTitle}>WAR SCORE (C9)</Text>
       <Text style={styles.eventId}>
-        processWarSeason runs every season end for each active war (skirmish drift, weariness,
-        threshold notices, the provisional set-piece scheduler). No in-game "declare war" trigger
-        exists yet — Phase 3A supplies one; this panel is the only entry point today.
+        warScore is recomputed every season from live map state (engine/warStanding.ts) by
+        campaignResolver, before processWarSeason reacts to it (threshold notices, treaty
+        resolution). No in-game "declare war" trigger exists yet — Phase 3A supplies one; this
+        panel is the only entry point today.
       </Text>
       <TouchableOpacity
         style={styles.eventRow}
@@ -558,20 +562,13 @@ function WarSection() {
         <View key={war.id} style={styles.eventRow}>
           <View style={styles.eventRowInner}>
             <Text style={styles.eventTitle}>
-              {war.active ? '⚔' : '☮'} {war.enemyId} ({war.scale}) — score {war.warScore}, weariness {war.weariness}
+              {war.active ? '⚔' : '☮'} {war.enemyId} ({war.scale}) — score {war.warScore}, momentum {war.momentum}
             </Text>
             <Text style={styles.eventId}>
-              {war.pendingSetPiece
-                ? `Pending offer: ${war.pendingSetPiece.siteName} (expires turn ${war.pendingSetPiece.expiresTurn})`
-                : 'No pending offer'}
+              weariness {war.weariness} / enemy weariness {war.enemyWeariness}
             </Text>
             {war.active && (
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-                <TouchableOpacity onPress={() => forceSetPieceOffer(war.id)} disabled={!!war.pendingSetPiece}>
-                  <Text style={[styles.flagNote, war.pendingSetPiece ? { opacity: 0.4 } : null]}>
-                    Force Set-Piece Offer
-                  </Text>
-                </TouchableOpacity>
                 <TouchableOpacity onPress={() => endWar(war.id)}>
                   <Text style={styles.flagNote}>End War</Text>
                 </TouchableOpacity>

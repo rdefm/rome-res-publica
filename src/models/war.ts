@@ -9,7 +9,10 @@
 // revolts (today's `CampaignState` with `type: 'suppression'`) should ALSO
 // route through the new set-piece battle system rather than keep the old
 // abstract dice-roll resolution — just scaled down (smaller enemy armies;
-// see BALANCE.war.scaleArmyMultiplier in balance.ts). That means more than
+// see BALANCE.war.scaleArmyMultiplier in balance.ts — AMENDED, Chunk C9:
+// this constant and the whole set-piece scheduler it fed are gone now, see
+// warEngine.ts's header comment; never wired to a real 'local' war in
+// practice anyway, per M9's own baseline note below). That means more than
 // one WarState can plausibly be active at once (one major foreign war +
 // one or more local revolts), so:
 //   - `enemyId` is a plain `string`, not a closed 'carthage' literal union.
@@ -22,18 +25,7 @@
 // revolt war and a major war can be fought with the same field army at once
 // (the plan's "one Roman field army at a time" constraint suggests no).
 
-import type { BattleUnit } from './battle';
-
 export type WarScale = 'major' | 'local';
-
-export interface SetPieceOffer {
-  id: string;
-  siteName: string;
-  terrainId: string;
-  enemyArmy: BattleUnit[];
-  enemyGeneralId: string;
-  expiresTurn: number;
-}
 
 // ─── Chunk M10 — Peace: Negotiation & Senate Ratification ────────────────────
 
@@ -152,12 +144,35 @@ export interface WarState {
   scale: WarScale;
   /** Set only for local/revolt wars — the province this war is tied to. */
   provinceId: string | null;
-  /** −100…100. */
+  /** −100…100. Campaign Map plan, Chunk C9 — no longer drifted by an
+   *  internal skirmish roll; recomputed fresh each season by
+   *  engine/warStanding.ts's computeWarScore (sicilyControl + armyBalance +
+   *  momentum − wearinessGap) from the campaign map's own live state. Every
+   *  existing consumer (getDesperationTier, computeTreatyBudget, losingSide,
+   *  classifyTerminalOutcome, NegotiationScreen, the agenda generators)
+   *  keeps reading this same field/name unchanged — only what computes it
+   *  changed (the user's own call: rename churn wasn't worth it). */
   warScore: number;
   startedTurn: number;
-  lastSetPieceTurn: number;
+  /** Chunk C9 — Rome's own weariness (yearly accrual, rising faster while
+   *  upkeep shortfalls or high unrest persist — see warStanding.ts). Still
+   *  also drives the existing peaceReachable/peaceOffered sue-for-peace
+   *  lever, unchanged. */
   weariness: number;
-  pendingSetPiece: SetPieceOffer | null;
+  /** Chunk C9 — Carthage's mirror of `weariness` (flat yearly accrual) — the
+   *  two together feed warStanding.ts's wearinessGap term. No AI-side
+   *  "peaceOffered" lever reads this; it only ever feeds the gap. */
+  enemyWeariness: number;
+  /** Chunk C9 — decaying tally of recent battle results for this war
+   *  (crushing ±8 / clear ±5 / narrow ±2, ×0.6 decay/season, capped ±25 —
+   *  "the Cannae rule"), Rome-positive. Fed by every battle resolution that
+   *  concerns this war (NPC-vs-NPC inline, and a deferred player engagement
+   *  resolved later) via warStanding.applyBattleMomentum, and by two
+   *  narrative sources that used to write warScore directly: the Mamertine-
+   *  ignition event's opening delta, and warEvents.ts's periodic
+   *  warScoreDelta: token (both now one-time momentum injections instead of
+   *  a permanent set — see resourceEngine.ts's effect-token comments). */
+  momentum: number;
   treaty: TreatyState | null;
   /** P3-A — cosmetic narrative stage, recomputed each active season. */
   phase: WarPhase;
@@ -173,8 +188,7 @@ export interface WarState {
    *  gates agenda #21. Always false for 'local'-scale wars. */
   peaceOffered: boolean;
   /** P3-B — GameState.turnNumber the war-funding bill was last auto-tabled
-   *  for this war (any outcome). −Infinity until the first offer, mirroring
-   *  lastSetPieceTurn's "immediately eligible" convention. Gates re-offering
-   *  via BALANCE.war.funding.recurTurns. */
+   *  for this war (any outcome). −Infinity until the first offer, so it's
+   *  immediately eligible. Gates re-offering via BALANCE.war.funding.recurTurns. */
   lastFundingOfferTurn: number;
 }

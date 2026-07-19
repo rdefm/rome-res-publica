@@ -101,7 +101,7 @@ describe('gameStore.enterEndlessMode — P5-D endless-mode-active flag mirror', 
   beforeEach(() => resetStore());
 
   test('entering Endless mode sets both endlessMode and flags.endless-mode-active', () => {
-    useGameStore.getState().enterEndlessMode();
+    useGameStore.getState().enterEndlessMode({});
     const s = useGameStore.getState();
     expect(s.endlessMode).toBe(true);
     expect(s.flags['endless-mode-active']).toBe(true);
@@ -109,7 +109,7 @@ describe('gameStore.enterEndlessMode — P5-D endless-mode-active flag mirror', 
 
   test('preserves pre-existing flags rather than replacing them', () => {
     useGameStore.setState({ flags: { 'some-other-flag': true } } as any);
-    useGameStore.getState().enterEndlessMode();
+    useGameStore.getState().enterEndlessMode({});
     expect(useGameStore.getState().flags['some-other-flag']).toBe(true);
     expect(useGameStore.getState().flags['endless-mode-active']).toBe(true);
   });

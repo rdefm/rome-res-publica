@@ -28,6 +28,7 @@ import type { RegionId, TheatreState, Controller } from '../models/theatre';
 import type { CityState } from '../models/city';
 import type { Character } from '../models/character';
 import type { Clan } from '../models/clan';
+import type { WarState } from '../models/war';
 import type { CampaignLog, CampaignLogEntry, Engagement } from '../models/campaignLog';
 import { BALANCE } from '../data/balance';
 import { REGIONS, THEATRE_EDGES } from '../data/theatreMap';
@@ -36,6 +37,10 @@ import { armyStrength, armyPowerOf } from './armyEngine';
 import { applyForcedMarchAttrition, rollSeaLaneStorm, applyStormAttrition } from './movementEngine';
 import { ENEMY_GENERALS } from '../data/enemyGenerals';
 import { abstractResolver, type AbstractCommanderFateResult } from './battle/abstractResolver';
+import {
+  computeSicilyControl, computeArmyBalance, applyBattleMomentum, decayMomentum,
+  computeWearinessGap, accrueWeariness, computeWarScore,
+} from './warStanding';
 
 // ─── Small shared lookups (local copies — matches this codebase's existing
 // per-file "garrisonStrengthAt" convention, e.g. campaignAi.ts, rather than
@@ -371,6 +376,20 @@ export interface CampaignResolutionInput {
   denarii: number;
   seasonIndex: number;
   turnNumber: number;
+  /** Chunk C9 — the active major Carthage war (if any) gets its warScore
+   *  recomputed at the end of this season from armies/cities/momentum —
+   *  see engine/warStanding.ts. Other wars (a 'local' revolt, or a foreign
+   *  power's war outside the Punic theatre) pass through unchanged. */
+  wars: WarState[];
+  /** Chunk C9 — GameState.crisis.unrest.tier, read-only, for Rome's own
+   *  weariness accrual (rises faster while unrest is elevated). */
+  unrestTier: number;
+  /** Chunk C9 — weariness accrues yearly, not every season (the plan's own
+   *  literal wording) — same Winter→Spring gate every other yearly system
+   *  in this codebase already uses, computed by the caller (turnSequencer.ts
+   *  already has this before calling in). Momentum decay is NOT gated by
+   *  this — the plan's own "decay ×0.6/season" is explicitly per-season. */
+  crossedNewYear: boolean;
 }
 
 export interface CampaignResolutionResult {
@@ -381,6 +400,8 @@ export interface CampaignResolutionResult {
   log: CampaignLog;
   pendingEngagements: Engagement[];
   headlines: string[];
+  /** Chunk C9 — see CampaignResolutionInput.wars. */
+  wars: WarState[];
 }
 
 interface WorkingOrder {
@@ -409,6 +430,7 @@ export function resolveCampaignSeason(
   const entries: CampaignLogEntry[] = [];
   const headlines: string[] = [];
   let denarii = input.denarii;
+  let wars = input.wars;
 
   const armyMap = new Map<string, Army>(input.armies.map(a => [a.id, a]));
 
@@ -549,7 +571,15 @@ export function resolveCampaignSeason(
     for (const a of resolution.armies) armyMap.set(a.id, a);
     entries.push(...resolution.logEntries);
     const battleEntry = resolution.logEntries.find((e): e is Extract<CampaignLogEntry, { type: 'battle' }> => e.type === 'battle');
-    if (battleEntry) headlines.push(battleEntry.text);
+    if (battleEntry) {
+      headlines.push(battleEntry.text);
+      // Chunk C9 — feed this battle's result into the war's momentum term.
+      // NPC-vs-NPC is always rome_rival vs carthage here (a player/rome_state
+      // side always routed to pendingEngagements above), so armyPowerOf on
+      // either original army resolves the winner's side cleanly.
+      const winnerPower = armyPowerOf((battleEntry.winnerArmyId === attacker.id ? attacker : defender).owner);
+      wars = applyBattleMomentum(wars, 'carthage', winnerPower, battleEntry.tier);
+    }
   }
 
   // ── Step 6: control flips + raid stings ─────────────────────────────────
@@ -597,14 +627,43 @@ export function resolveCampaignSeason(
   }
 
   const newTheatre: TheatreState = { ...theatre, controllers: newControllers, contested: newContested };
+  const finalArmies = [...armyMap.values()];
+
+  // ── Step 8 (Chunk C9): war standing — momentum decay (every season),
+  // weariness accrual (yearly only — see CampaignResolutionInput.crossedNewYear's
+  // own comment), then a full warScore recompute for the active major
+  // Carthage war from this season's FINAL armies/cities. Battle-driven
+  // momentum was already folded in as each NPC-vs-NPC fight resolved above;
+  // a deferred player engagement (pendingEngagements) recomputes this same
+  // way later, in gameStore, once it actually resolves — see
+  // warStanding.ts's applyBattleMomentum/computeWarScore, the shared
+  // functions both call sites use.
+  wars = wars.map(w => {
+    if (!w.active || w.scale !== 'major' || w.enemyId !== 'carthage') return w;
+    const decayedMomentum = decayMomentum(w.momentum);
+    let weariness = w.weariness;
+    let enemyWeariness = w.enemyWeariness;
+    if (input.crossedNewYear) {
+      const hadUpkeepShortfall = finalArmies.some(a => (a.owner === 'player' || a.owner === 'rome_state') && a.unpaidSeasons > 0);
+      const accrued = accrueWeariness(weariness, enemyWeariness, hadUpkeepShortfall, input.unrestTier);
+      weariness = accrued.weariness;
+      enemyWeariness = accrued.enemyWeariness;
+    }
+    const sicilyControl = computeSicilyControl(updatedCities);
+    const armyBalance = computeArmyBalance(finalArmies);
+    const wearinessGap = computeWearinessGap(weariness, enemyWeariness);
+    const warScore = computeWarScore(sicilyControl, armyBalance, decayedMomentum, wearinessGap);
+    return { ...w, momentum: decayedMomentum, weariness, enemyWeariness, warScore };
+  });
 
   return {
-    armies: [...armyMap.values()],
+    armies: finalArmies,
     theatre: newTheatre,
     cities: updatedCities,
     denarii,
     log: { turnNumber, entries },
     pendingEngagements,
     headlines: headlines.slice(0, 2),
+    wars,
   };
 }

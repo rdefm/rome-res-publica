@@ -442,13 +442,6 @@ export interface BattleBridgeContext {
    *  destroyed them). Drives the captured-elephant roll below. Undefined =
    *  false (no elephants, no roll) — safe default for older callers. */
   enemyFieldedElephants?: boolean;
-  /** M9 — which WarState (state.wars[].id) this battle's outcome.warScoreDelta
-   *  should feed back into. Undefined for sandbox/unlinked battles (no
-   *  write-back). Rome is always cast as the battle 'attacker' in every M9
-   *  set-piece-offer flow (gameStore.acceptSetPieceOffer), so no sign
-   *  negation is needed here — see battleEngine.ts's warScoreDelta sign
-   *  convention comment. */
-  warId?: string;
 }
 
 export interface ApplyBattleOutcomeResult {
@@ -505,7 +498,6 @@ export function applyBattleOutcome(
   let cadetBranch = state.cadetBranch;
   let pendingEpilogue = state.pendingEpilogue;
   let provinces = state.cities;
-  let wars = state.wars;
 
   const playerId = family.find(c => c.isPlayer)?.id ?? ctx.troopOwnerCharacterId;
 
@@ -663,30 +655,11 @@ export function applyBattleOutcome(
     ledgerNotes.push('The beasts of Carthage now eat from Roman hands.');
   }
 
-  // 5. War score write-back (M9) — Rome is always cast as 'attacker' in
-  // every set-piece-offer flow (see BattleBridgeContext.warId's comment),
-  // so outcome.warScoreDelta is applied as-is, re-clamped to the -100..100
-  // range (battleEngine.ts already caps the swing itself; this guards the
-  // war's RUNNING total against overflow near either end).
-  if (ctx.warId) {
-    wars = wars.map(w => {
-      if (w.id !== ctx.warId) return w;
-      const newScore = Math.min(100, Math.max(-100, w.warScore + outcome.warScoreDelta));
-      return { ...w, warScore: newScore, pendingSetPiece: null };
-    });
-    const war = wars.find(w => w.id === ctx.warId);
-    if (war) {
-      ledgerNotes.push(
-        `War score: ${outcome.warScoreDelta >= 0 ? '+' : ''}${outcome.warScoreDelta} (now ${war.warScore}).`,
-      );
-    }
-  }
-
   const commanderName = rome.commanderId ? (state.family.find(c => c.id === rome.commanderId)?.name ?? null) : null;
   ledgerNotes.unshift(battleHeadline(outcome, commanderName));
 
   return {
-    state: { ...state, family, flags, familyReputations, lifetimeDignitas, denarii, fides, pendingEvents, cities: provinces, wars, pendingSuccession, cadetBranch, pendingEpilogue },
+    state: { ...state, family, flags, familyReputations, lifetimeDignitas, denarii, fides, pendingEvents, cities: provinces, pendingSuccession, cadetBranch, pendingEpilogue },
     ledgerNotes,
   };
 }

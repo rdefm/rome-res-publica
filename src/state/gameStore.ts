@@ -44,16 +44,19 @@ import { buildInitialCityStates, getCityDefinition } from '../data/cityDefinitio
 import type { TheatreState, RegionId } from '../models/theatre';
 import { REGIONS } from '../data/theatreMap';
 import type { Army } from '../models/army';
-import { combine as engineCombineArmies, divide as engineDivideArmy } from '../engine/armyEngine';
+import { combine as engineCombineArmies, divide as engineDivideArmy, armyPowerOf } from '../engine/armyEngine';
+import {
+  applyBattleMomentum, computeSicilyControl, computeArmyBalance, computeWearinessGap, computeWarScore,
+} from '../engine/warStanding';
 import type { MusterTier } from '../engine/musterEngine';
 import { quoteMuster, rollMusteredUnit, nextLegionName } from '../engine/musterEngine';
 import { getRegion, getRegionRelationship } from '../engine/theatreEngine';
 import { buildMovementOrder } from '../engine/movementEngine';
-import type { CampaignLog, Engagement } from '../models/campaignLog';
+import type { CampaignLog, CampaignLogEntry, Engagement } from '../models/campaignLog';
 import { resolveEngagement, applyPostBattleContinuation } from '../engine/campaignResolver';
 import { profileForCarthageArmy } from '../engine/campaignAi';
 import {
-  armyUnitToBattleUnit, applyArmyBattleOutcome, applyCommanderFate,
+  armyUnitToBattleUnit, applyArmyBattleOutcome, applyCommanderFate, armyUnitToTroop,
 } from '../engine/battle/armyBattleBridge';
 import type { Command, CommandElectionState } from '../models/command';
 import {
@@ -163,7 +166,7 @@ import { makeSeededRng } from '../utils/seededRng';
 // Military Overhaul M9 — war score & set-piece scheduling
 import type { WarState } from '../models/war';
 import type { AncestorRecord, EpilogueOutcome } from '../models/epilogue';
-import { scheduleSetPiece, applyTreatyEffects, buildTreatyBill, getDesperationTier, phaseForYear, type TreatySide } from '../engine/warEngine';
+import { applyTreatyEffects, buildTreatyBill, getDesperationTier, phaseForYear, type TreatySide } from '../engine/warEngine';
 import { generateCadet } from '../engine/inheritanceEngine';
 // Phase 5, Chunk P5-F — Achievements ("Laurels"). evaluateAchievements is
 // pure (no AsyncStorage), safe to import eagerly; achievementStore is
@@ -675,8 +678,22 @@ export interface GameActions {
    *  epilogue and re-finish the run before the player took a single turn).
    *  currentEpilogueRecord is left as-is — harmless, since EpilogueScreen
    *  gates on runFinished, and it'll be overwritten if a later ending
-   *  (e.g. a second, cadet-branch extinction) ever fires in Endless. */
-  enterEndlessMode: () => void;
+   *  (e.g. a second, cadet-branch extinction) ever fires in Endless.
+   *
+   *  Campaign Map plan, Chunk C9 — also stands the Punic theatre down for
+   *  good (the campaign step no-ops from here on, gated on `endlessMode` in
+   *  turnSequencer.ts's step 6c): every `rome_state`-owned Army is removed
+   *  ("stands down honorably"); every enemy-owned Army (`carthage`/
+   *  `rome_rival`) is simply removed (the war is over); every `player`-owned
+   *  Army is resolved per `personalArmyDecisions[armyId]` (default 'retain'
+   *  if the caller omits an id) — 'disband' removes it outright, 'retain'
+   *  folds its units back into its commander's `veterans` (via
+   *  armyBattleBridge.armyUnitToTroop) if the commander is a living family
+   *  member, otherwise it's removed the same as 'disband' (no one left to
+   *  retain it for). EpilogueScreen gathers the decisions via a new
+   *  confirmation modal before calling this (skipped entirely, called with
+   *  `{}`, when there are no personal armies to decide on). */
+  enterEndlessMode: (personalArmyDecisions: Record<string, 'retain' | 'disband'>) => void;
 
   // Resources
   spendResource: (resource: 'fides' | 'denarii', amount: number) => void;
@@ -949,19 +966,6 @@ export interface GameActions {
   /** Debug-only — marks a war inactive (kept in `wars` for any later
    *  treaty/history reference, not removed). */
   endWar: (warId: string) => void;
-  /** Debug-only — bypasses the scheduler's spacing/roll gate (still goes
-   *  through warEngine.scheduleSetPiece, the sole offer source). No-ops if
-   *  an offer is already pending for this war. */
-  forceSetPieceOffer: (warId: string) => void;
-  /** SetPieceOfferModal's "Give Battle" — musters the player's own army as
-   *  attacker, deploys the offer's pre-generated enemy army (via
-   *  battleAi.chooseDeployment) as defender, and stages activeBattleSetup
-   *  exactly like startSandboxBattle, but with bridgeCtx.warId set so
-   *  returnFromBattle's write-back feeds the outcome back into this war. */
-  acceptSetPieceOffer: (warId: string) => void;
-  /** SetPieceOfferModal's "Decline" — same consequence as an unanswered
-   *  offer expiring (see BALANCE.war.setPieceOffer). */
-  declineSetPieceOffer: (warId: string) => void;
 
   // ── Military Overhaul M10 — peace: negotiation & Senate ratification ─────
   /** Sue-tier AI offer, "Accept" — applies the offer's terms immediately
@@ -1301,6 +1305,33 @@ const SEASON_NAMES = ['Spring', 'Summer', 'Autumn', 'Winter'];
 
 function turnLabel(state: GameState): string {
   return `${Math.abs(state.year)} BC · ${SEASON_NAMES[state.seasonIndex]}`;
+}
+
+/** Campaign Map plan, Chunk C9 — a DEFERRED battle's momentum feed + warScore
+ *  recompute. campaignResolver.resolveCampaignSeason's own step 8 already
+ *  did this for every battle resolved DURING that season's pass; a
+ *  player-manageable engagement can resolve LATER (the interstitial waits
+ *  on the player), after that pass already finished — this is the same
+ *  math, applied once more right when that deferred battle actually
+ *  resolves, so its result isn't silently lost until next season. Does NOT
+ *  decay momentum (that's a once-per-season thing, already done this
+ *  season) — only adds this battle's delta and refreshes warScore from the
+ *  CURRENT (post-battle) armies/cities against the momentum this produces. */
+function applyDeferredBattleToWarStanding(
+  wars: WarState[],
+  armies: Army[],
+  cities: CityState[],
+  winnerPower: 'rome' | 'carthage',
+  tier: 'marginal' | 'clear' | 'crushing',
+): WarState[] {
+  const bumped = applyBattleMomentum(wars, 'carthage', winnerPower, tier);
+  const sicilyControl = computeSicilyControl(cities);
+  const armyBalance = computeArmyBalance(armies);
+  return bumped.map(w => {
+    if (!w.active || w.scale !== 'major' || w.enemyId !== 'carthage') return w;
+    const wearinessGap = computeWearinessGap(w.weariness, w.enemyWeariness);
+    return { ...w, warScore: computeWarScore(sicilyControl, armyBalance, w.momentum, wearinessGap) };
+  });
 }
 
 // P2-E — spread into the set() call of every "meaningful action" (E1's counted-action
@@ -1742,8 +1773,34 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   returnToStartMenu: () => set({ gameStarted: false }),
 
-  enterEndlessMode: () => {
+  enterEndlessMode: (personalArmyDecisions) => {
     const s = get();
+    const label = turnLabel(s);
+    const notes: string[] = [];
+    let family = s.family;
+
+    for (const army of s.armies) {
+      if (army.owner === 'rome_state') {
+        notes.push(`${army.name} stands down honorably as Rome secures Sicily.`);
+        continue;
+      }
+      if (army.owner === 'carthage' || army.owner === 'rome_rival') {
+        continue; // the war is over — no notice needed per enemy army
+      }
+      // owner === 'player'
+      const decision = personalArmyDecisions[army.id] ?? 'retain';
+      const commander = army.commanderId ? family.find(c => c.id === army.commanderId) : undefined;
+      if (decision === 'retain' && commander) {
+        const troops = army.units.map(armyUnitToTroop);
+        family = family.map(c => (c.id === commander.id ? { ...c, veterans: [...c.veterans, ...troops] } : c));
+        notes.push(`${army.name} stands down; its veterans return to ${commander.name}'s service.`);
+      } else if (decision === 'retain') {
+        notes.push(`${army.name} disperses — with no commander left to retain it.`);
+      } else {
+        notes.push(`${army.name} is disbanded.`);
+      }
+    }
+
     set({
       endlessMode: true,
       runFinished: false,
@@ -1753,6 +1810,13 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       // here (the one place Endless mode is ever entered) so evt-end-*
       // ambience events can gate on it without a new condition type.
       flags: { ...s.flags, 'endless-mode-active': true },
+      // Chunk C9 — every theatre Army is gone once Endless mode begins (the
+      // campaign step no-ops from here on, gated on `endlessMode` in
+      // turnSequencer.ts's step 6c); controllers are left exactly as they
+      // stand ("frozen as-won") since nothing will ever flip them again.
+      armies: [],
+      family,
+      log: [...s.log, ...notes.map(text => mkLog(label, text, 'neutral'))],
     });
   },
 
@@ -4047,11 +4111,32 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       fateNotes.push(...fate.ledgerNotes);
     }
 
+    // Chunk C9 — this engagement may have resolved LATER than the season it
+    // was created in (the interstitial waited on the player), so the season's
+    // one-shot momentum/warScore pass (campaignResolver step 8) already ran
+    // without it. Feed this battle's result in now, at the moment it actually
+    // resolves.
+    let wars = s.wars;
+    const battleEntry = result.logEntries.find(
+      (e): e is Extract<CampaignLogEntry, { type: 'battle' }> => e.type === 'battle',
+    );
+    if (battleEntry) {
+      const attackerArmy = s.armies.find(a => a.id === engagement.attackerArmyId);
+      const defenderArmy = s.armies.find(a => a.id === engagement.defenderArmyId);
+      const winnerArmy = battleEntry.winnerArmyId === attackerArmy?.id ? attackerArmy : defenderArmy;
+      if (winnerArmy) {
+        wars = applyDeferredBattleToWarStanding(
+          s.wars, result.armies, s.cities, armyPowerOf(winnerArmy.owner), battleEntry.tier,
+        );
+      }
+    }
+
     set({
       armies: result.armies,
       family, flags, pendingEvents, pendingSuccession, cadetBranch, pendingEpilogue,
       pendingEngagements: s.pendingEngagements.filter(e => e.id !== engagementId),
       log: [...s.log, ...[...result.logEntries.map(e => e.text), ...fateNotes].map(text => mkLog(label, text, 'neutral'))],
+      wars,
     });
   },
 
@@ -4220,6 +4305,15 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       }
     }
 
+    // Chunk C9 — this tactical battle may resolve LATER than the season it
+    // was created in, after campaignResolver step 8's once-per-season
+    // momentum/warScore pass already ran. Feed the result in now. romeSide is
+    // always 'attacker' per C8's design (see applyArmyBattleOutcome calls
+    // above), so victor === 'attacker' means Rome won regardless of which
+    // side was the campaign-layer attacker.
+    const winnerPower = romeWon ? 'rome' : 'carthage';
+    const wars = applyDeferredBattleToWarStanding(s.wars, continuation.armies, s.cities, winnerPower, outcome.tier);
+
     set({
       armies: continuation.armies,
       family: romeResult.family, flags: romeResult.flags, pendingEvents: romeResult.pendingEvents,
@@ -4228,6 +4322,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       bills: triumphBills,
       pendingEngagements: s.pendingEngagements.filter(e => e.id !== ctx.engagementId),
       log: [...s.log, ...[...romeResult.ledgerNotes, ...continuation.logEntries.map(e => e.text), ...triumphNotes].map(text => mkLog(label, text, 'neutral'))],
+      wars,
     });
   },
 
@@ -4640,11 +4735,9 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       provinceId: provinceId ?? null,
       warScore: 0,
       startedTurn: s.turnNumber,
-      // Immediately eligible for a scheduler roll — no mandatory dead
-      // multi-turn wait before the first offer can appear.
-      lastSetPieceTurn: s.turnNumber - BALANCE.war.setPieceOffer.minSpacingTurns,
       weariness: 0,
-      pendingSetPiece: null,
+      enemyWeariness: 0,
+      momentum: 0,
       treaty: null,
       // P3-A
       phase: phaseForYear(s.year, 0),
@@ -4664,90 +4757,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   endWar: (warId) => {
     set(s => ({
-      wars: s.wars.map(w => (w.id === warId ? { ...w, active: false, pendingSetPiece: null, phase: 'ended' as const, endedYear: s.year } : w)),
+      wars: s.wars.map(w => (w.id === warId ? { ...w, active: false, phase: 'ended' as const, endedYear: s.year } : w)),
     }));
-  },
-
-  forceSetPieceOffer: (warId) => {
-    const s = get();
-    const war = s.wars.find(w => w.id === warId);
-    if (!war || !war.active || war.pendingSetPiece) return;
-    const offer = scheduleSetPiece(s, war, Math.random, { forceRoll: true });
-    if (!offer) return;
-    set({
-      wars: s.wars.map(w => (w.id === warId ? { ...w, pendingSetPiece: offer, lastSetPieceTurn: s.turnNumber } : w)),
-    });
-  },
-
-  acceptSetPieceOffer: (warId) => {
-    const s = get();
-    const war = s.wars.find(w => w.id === warId);
-    const offer = war?.pendingSetPiece;
-    const player = s.family.find(c => c.isPlayer);
-    if (!war || !offer || !player) return;
-
-    const attackerUnits = musterArmy(player);
-    const captains = getEligibleFamilyCaptains(s.family, player.id, s.flags);
-    const attackerRoster: Record<string, number> = { [player.id]: player.skills.martial };
-    for (const c of captains) attackerRoster[c.characterId] = c.martial;
-
-    const terrain = BALANCE.battle.terrains[offer.terrainId] ?? BALANCE.battle.terrains.open_plain;
-    const seed = Math.floor(Math.random() * 1e9);
-    // Same RNG-offset convention as startSandboxBattle — see its comment.
-    const attackerHand = drawStratagemHand(player.skills.martial, attackerUnits, terrain, makeSeededRng(seed ^ 0x51ed270b));
-
-    const generalProfile = ENEMY_GENERALS[offer.enemyGeneralId] ?? ENEMY_GENERAL_LIST[0];
-    const defenderHand = drawStratagemHand(generalProfile.martial, offer.enemyArmy, terrain, makeSeededRng(seed ^ 0x2545f491));
-    // offer.enemyArmy was already generated by warEngine.scheduleSetPiece —
-    // chooseDeployment only lays it out into lanes/reserve, it does not
-    // regenerate the army.
-    const aiDeployment = chooseDeployment(generalProfile, offer.enemyArmy, terrain, defenderHand, makeSeededRng(seed ^ 0x9e3779b9));
-
-    const attackerInput: DeploySideInput = {
-      label: player.name,
-      deployment: buildDefaultDeployment(attackerUnits),
-      commanderId: player.id,
-      roster: { martialById: attackerRoster },
-      stratagemHand: attackerHand,
-    };
-    const defenderInput: DeploySideInput = {
-      label: `Carthage (${generalProfile.name} ${generalProfile.epithet})`,
-      deployment: aiDeployment.deployment,
-      commanderId: aiDeployment.commanderId,
-      roster: aiDeployment.roster,
-      generalProfileId: generalProfile.id,
-      stratagemHand: defenderHand,
-    };
-
-    const bridgeCtx: BattleBridgeContext = {
-      troopOwnerCharacterId: player.id,
-      legateRoster: {},
-      enemyFieldedElephants: offer.enemyArmy.some(u => u.unitClass === 'elephant'),
-      provinceId: war.provinceId ?? undefined,
-      turnNumber: s.turnNumber,
-      warId: war.id,
-    };
-
-    set({
-      wars: s.wars.map(w => (w.id === warId ? { ...w, pendingSetPiece: null } : w)),
-      activeBattleSetup: { attackerInput, defenderInput, terrain, seed, bridgeCtx },
-    });
-  },
-
-  declineSetPieceOffer: (warId) => {
-    const s = get();
-    const war = s.wars.find(w => w.id === warId);
-    if (!war || !war.pendingSetPiece) return;
-    const so = BALANCE.war.setPieceOffer;
-    const siteName = war.pendingSetPiece.siteName;
-    const label = turnLabel(s);
-    set({
-      wars: s.wars.map(w => (w.id === warId
-        ? { ...w, warScore: Math.min(100, Math.max(-100, w.warScore + so.declineWarScorePenalty)), pendingSetPiece: null }
-        : w)),
-      lifetimeDignitas: s.lifetimeDignitas + so.declineLifetimeDignitasPenalty,
-      log: [...s.log, mkLog(label, `Rome declines battle at ${siteName}.`, 'bad')],
-    });
   },
 
   // ── Military Overhaul M10 — peace: negotiation & Senate ratification ─────
@@ -4763,7 +4774,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set({
       ...effectPatch,
       wars: s.wars.map(w => (w.id === warId
-        ? { ...w, active: false, pendingSetPiece: null, treaty: { ...w.treaty!, ratified: true, resolvedTurn: s.turnNumber } }
+        ? { ...w, active: false, treaty: { ...w.treaty!, ratified: true, resolvedTurn: s.turnNumber } }
         : w)),
       log: [...s.log, mkLog(label, `Rome accepts terms from ${war.enemyId}. The war is over.`, 'good')],
     });

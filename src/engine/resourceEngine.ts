@@ -504,7 +504,7 @@ export function applyEffectString(
         continue;
       }
 
-      // Phase 3, P3-B — startWar:enemyId:scale:openingWarScoreDelta
+      // Phase 3, P3-B — startWar:enemyId:scale:openingMomentumDelta
       // Scripted ignition events (evt-messana-appeal, warEvents.ts) trigger
       // war state through this token rather than a direct store-action call — keeps
       // event content routed through the same generic effect-string
@@ -517,10 +517,17 @@ export function applyEffectString(
       // circular). Kept in sync by hand — small, stable shape, same
       // tradeoff warEngine.ts's buildWarTriumphBill already accepts for an
       // identical reason (see that function's header comment).
+      //
+      // Chunk C9 — the third parameter seeds MOMENTUM, not warScore
+      // directly: warScore is recomputed fresh each season from the
+      // campaign map (engine/warStanding.ts), so a direct set here would
+      // just be overwritten the very first season after ignition. Starting
+      // momentum instead gives the same "opening kick" and fades on the
+      // same decay schedule a real battle result would.
       if (key === 'startWar') {
         const enemyId = parts[1];
         const scale = (parts[2] ?? 'major') as WarScale;
-        const openingDelta = parseInt(parts[3] ?? '0', 10);
+        const openingMomentum = parseInt(parts[3] ?? '0', 10);
         const wars = patch.wars ?? state.wars ?? [];
         const alreadyActive = wars.some((w: WarState) => w.active && w.enemyId === enemyId && w.scale === scale);
         if (!alreadyActive) {
@@ -530,11 +537,11 @@ export function applyEffectString(
             enemyId,
             scale,
             provinceId: null,
-            warScore: Math.min(100, Math.max(-100, openingDelta)),
+            warScore: Math.min(100, Math.max(-100, openingMomentum)),
             startedTurn: state.turnNumber,
-            lastSetPieceTurn: state.turnNumber - BALANCE.war.setPieceOffer.minSpacingTurns,
             weariness: 0,
-            pendingSetPiece: null,
+            enemyWeariness: 0,
+            momentum: Math.max(-BALANCE.campaign.standing.momentumCap, Math.min(BALANCE.campaign.standing.momentumCap, openingMomentum)),
             treaty: null,
             // Ignition always fires within the first few years (see
             // evt-messana-appeal's force-injection guard in turnSequencer.ts)
@@ -555,16 +562,17 @@ export function applyEffectString(
 
       // Phase 3, P3-B — warScoreDelta:enemyId:±N. Periodic war events
       // (warEvents.ts) move a specific active war's score through this
-      // token, same reasoning as startWar: above — warScore lives inside a
-      // WarState, not a top-level GameState key, so the generic
-      // key±N parser can't reach it.
+      // token. Chunk C9 — folded into a momentum injection, same reasoning
+      // as startWar: above (a direct warScore set would just be overwritten
+      // next season's fresh recompute).
       if (key === 'warScoreDelta') {
         const enemyId = parts[1];
         const delta = parseInt(parts[2] ?? '0', 10);
         const wars = patch.wars ?? state.wars ?? [];
+        const cap = BALANCE.campaign.standing.momentumCap;
         patch.wars = wars.map((w: WarState) =>
           w.active && w.enemyId === enemyId
-            ? { ...w, warScore: Math.min(100, Math.max(-100, w.warScore + delta)) }
+            ? { ...w, momentum: Math.max(-cap, Math.min(cap, w.momentum + delta)) }
             : w
         );
         continue;

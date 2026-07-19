@@ -489,11 +489,19 @@ export function checkForeignWarDeclarations(
         enemyId,
         scale: 'major',
         provinceId: null,
+        // Campaign Map plan, Chunk C9 — this AI-declared foreign war is
+        // OUTSIDE the Punic War theatre (a different enemyId entirely, no
+        // armies/Sicily/theatre map to derive a standing from — design
+        // invariant 9's scope boundary). warStanding.ts only ever recomputes
+        // the ACTIVE MAJOR CARTHAGE war's warScore; this one keeps whatever
+        // it starts at — a documented, accepted side effect of retiring the
+        // shared skirmish-drift/weariness-erosion mechanics that used to
+        // move EVERY war's score (including this one) each season.
         warScore: -5, // the power struck first — first-pass/tunable
         startedTurn: state.turnNumber,
-        lastSetPieceTurn: state.turnNumber - BALANCE.war.setPieceOffer.minSpacingTurns,
         weariness: 0,
-        pendingSetPiece: null,
+        enemyWeariness: 0,
+        momentum: 0,
         treaty: null,
         phase: 'opening',
         ignitedYear: state.year,

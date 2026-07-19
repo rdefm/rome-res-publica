@@ -18,7 +18,6 @@ import AgendaTablet from './src/components/shared/AgendaTablet';
 import WelcomeBackModal from './src/components/shared/WelcomeBackModal';
 import BattleScreen from './src/screens/BattleScreen';
 import EpilogueScreen from './src/screens/EpilogueScreen';
-import SetPieceOfferModal from './src/components/shared/SetPieceOfferModal';
 import TrialSessionModal from './src/components/cursus/TrialSessionModal';
 import EngagementInterstitial from './src/components/provinciae/EngagementInterstitial';
 import AchievementToast from './src/components/shared/AchievementToast';
@@ -246,8 +245,7 @@ function GameRoot() {
             active trial system-wide), so it never stacks with itself, though it can in principle
             coincide with a same-season random event (both are native Modals; no explicit
             deferral was added for this rare overlap, same looseness this codebase already
-            tolerates elsewhere). SetPieceOfferModal (M9) self-gates OFF whenever a battle is in
-            progress, so it never stacks with BattleScreen. EpilogueScreen (Phase 3, P3-E)
+            tolerates elsewhere). EpilogueScreen (Phase 3, P3-E)
             self-gates on runFinished — takes over the whole screen once a run ends, same idiom,
             outranking everything else here since nothing is actionable once a run is finished.
             EngagementInterstitial (Campaign Map plan, Chunk C7) is the same full-screen-Modal
@@ -262,7 +260,6 @@ function GameRoot() {
           visible={showWelcomeBack}
           onDismiss={() => setShowWelcomeBack(false)}
         />
-        <SetPieceOfferModal />
         <TrialSessionModal />
         <EngagementInterstitial />
         <BattleScreen />

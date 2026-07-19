@@ -104,6 +104,9 @@ function baseInput(armies: Army[], theatreOverrides: Partial<TheatreState['contr
     denarii: 1000,
     seasonIndex: 0,
     turnNumber: 10,
+    wars: [],
+    unrestTier: 0,
+    crossedNewYear: false,
   };
 }
 
@@ -338,7 +341,7 @@ describe('resolveCampaignSeason — multi-season sim', () => {
         return { ...a, ordersThisSeason: makeOrder([a.location, dest], { raiding: true }) };
       });
       const result = resolveCampaignSeason(
-        { armies, theatre, cities: CITIES, family, clans, denarii, seasonIndex: season % 4, turnNumber: season },
+        { armies, theatre, cities: CITIES, family, clans, denarii, seasonIndex: season % 4, turnNumber: season, wars: [], unrestTier: 0, crossedNewYear: season % 4 === 3 },
         rng,
       );
       armies = result.armies;

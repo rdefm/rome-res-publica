@@ -198,8 +198,8 @@ describe('checkForeignWarDeclarations', () => {
     const carthage = { ...findState('carthage'), relationshipScore: 5 };
     const existingWar: WarState = {
       id: 'war-carthage-1', active: true, enemyId: 'carthage', scale: 'major', provinceId: null,
-      warScore: 0, startedTurn: 1, lastSetPieceTurn: -1, weariness: 0,
-      pendingSetPiece: null, treaty: null,
+      warScore: 0, startedTurn: 1, weariness: 0, enemyWeariness: 0, momentum: 0,
+      treaty: null,
       phase: 'opening', ignitedYear: -264, endedYear: null, terminalOutcome: null,
       peaceOffered: false, lastFundingOfferTurn: -100,
     };

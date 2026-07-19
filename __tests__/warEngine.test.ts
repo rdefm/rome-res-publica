@@ -1,5 +1,5 @@
 import {
-  processWarSeason, scheduleSetPiece, getDesperationTier,
+  processWarSeason, getDesperationTier,
   computeTreatyBudget, computePackagePrice, calcFactionReactionModifier,
   composeAiOffer, composeAiTreaty, applyTreatyEffects, buildTreatyBill, losingSide,
   computeRipeness, terminalThresholds, phaseForYear, classifyTerminalOutcome,
@@ -9,7 +9,6 @@ import { applyEffectString } from '../src/engine/resourceEngine';
 import { processSeason } from '../src/engine/turnSequencer';
 import { WAR_EVENT_DEFS } from '../src/data/warEvents';
 import { BALANCE } from '../src/data/balance';
-import { WAR_SITES } from '../src/data/warSites';
 import { ENEMY_GENERAL_LIST } from '../src/data/enemyGenerals';
 import { TREATY_TERMS } from '../src/data/treatyTerms';
 import { buildInitialCityStates } from '../src/data/cityDefinitions';
@@ -18,10 +17,9 @@ import type { Character } from '../src/models/character';
 import type { TroopUnit } from '../src/models/troop';
 import type { WarState, TreatyState } from '../src/models/war';
 import type { Clan } from '../src/models/clan';
+import type { Army, ArmyUnit } from '../src/models/army';
 import { useGameStore } from '../src/state/gameStore';
 import type { GameState } from '../src/state/gameStore';
-import * as fs from 'fs';
-import * as path from 'path';
 
 // ─── Fixtures (mirrors musterEngine.test.ts's pattern) ──────────────────────
 
@@ -59,12 +57,32 @@ function makeCharacter(overrides: Partial<Character> = {}): Character {
 function makeWar(overrides: Partial<WarState> = {}): WarState {
   return {
     id: 'war-carthage-1', active: true, enemyId: 'carthage', scale: 'major', provinceId: null,
-    warScore: 0, startedTurn: 1, lastSetPieceTurn: -1, weariness: 0,
-    pendingSetPiece: null, treaty: null,
+    warScore: 0, startedTurn: 1, weariness: 0,
+    // Chunk C9
+    enemyWeariness: 0, momentum: 0,
+    treaty: null,
     // P3-A
     phase: 'opening', ignitedYear: -264, endedYear: null, terminalOutcome: null,
     // P3-B
     peaceOffered: false, lastFundingOfferTurn: -100,
+    ...overrides,
+  };
+}
+
+function makeArmyUnit(overrides: Partial<ArmyUnit> = {}): ArmyUnit {
+  return {
+    id: 'armyunit-1', unitClass: 'legionary', strength: 80, veterancy: 'trained', loyalty: 60,
+    elephantSteady: false, homeRegion: 'sicilia', raisedBy: 'player', raisedSeason: 1,
+    campaignsSurvived: 1, wonCrushingVictory: false,
+    ...overrides,
+  };
+}
+
+function makeArmy(overrides: Partial<Army> = {}): Army {
+  return {
+    id: 'army-1', name: 'Legio I', owner: 'player', commanderId: 'pc-1', location: 'sicilia',
+    stationedCityId: null, units: [makeArmyUnit()], stance: 'give_battle',
+    ordersThisSeason: null, fatigued: false, unpaidSeasons: 0,
     ...overrides,
   };
 }
@@ -150,207 +168,60 @@ describe('getDesperationTier', () => {
   });
 });
 
-// ─── scheduleSetPiece (THE SEAM) ─────────────────────────────────────────────
-
-describe('scheduleSetPiece', () => {
-  test('null when the war is inactive', () => {
-    const state = makeState();
-    const war = makeWar({ active: false });
-    expect(scheduleSetPiece(state, war, () => 0, { forceRoll: true })).toBeNull();
-  });
-
-  test('null when the player has no troops', () => {
-    const state = makeState({ family: [makeCharacter({ raisedLegions: [], veterans: [] })] });
-    const war = makeWar();
-    expect(scheduleSetPiece(state, war, () => 0, { forceRoll: true })).toBeNull();
-  });
-
-  test('null when spacing has not elapsed (no forceRoll)', () => {
-    const state = makeState({ turnNumber: 10 });
-    const war = makeWar({ lastSetPieceTurn: 9 }); // < minSpacingTurns (2) since 10-9=1
-    expect(scheduleSetPiece(state, war, () => 0)).toBeNull();
-  });
-
-  test('null when the roll fails (no forceRoll)', () => {
-    const state = makeState({ turnNumber: 10 });
-    const war = makeWar({ lastSetPieceTurn: 1 });
-    expect(scheduleSetPiece(state, war, () => 0.99)).toBeNull(); // >= chancePerSeason (0.25)
-  });
-
-  test('forceRoll bypasses both spacing and the roll', () => {
-    const state = makeState({ turnNumber: 10 });
-    const war = makeWar({ lastSetPieceTurn: 10 }); // spacing would normally block this
-    const offer = scheduleSetPiece(state, war, () => 0.99, { forceRoll: true });
-    expect(offer).not.toBeNull();
-  });
-
-  test('offer fields: valid site/terrain, non-empty army, valid general, correct expiry', () => {
-    const state = makeState({ turnNumber: 10 });
-    const war = makeWar();
-    const offer = scheduleSetPiece(state, war, makeSeededRng(7), { forceRoll: true })!;
-    expect(offer).not.toBeNull();
-    expect(WAR_SITES.some(s => s.name === offer.siteName)).toBe(true);
-    expect(Object.keys(BALANCE.battle.terrains)).toContain(offer.terrainId);
-    expect(offer.enemyArmy.length).toBeGreaterThan(0);
-    expect(ENEMY_GENERAL_LIST.some(g => g.id === offer.enemyGeneralId)).toBe(true);
-    expect(offer.expiresTurn).toBe(10 + BALANCE.war.setPieceOffer.expiryTurns);
-    // Every generated unit's class must appear in that general's composition table.
-    const general = ENEMY_GENERAL_LIST.find(g => g.id === offer.enemyGeneralId)!;
-    for (const unit of offer.enemyArmy) {
-      expect(Object.keys(general.armyComposition)).toContain(unit.unitClass);
-    }
-  });
-
-  test('a losing Rome (negative warScore) faces a bigger enemy army than a winning Rome', () => {
-    const state = makeState({ turnNumber: 10 });
-    const losingWar = makeWar({ warScore: -80 });
-    const winningWar = makeWar({ warScore: 80 });
-    const losingOffer = scheduleSetPiece(state, losingWar, makeSeededRng(1), { forceRoll: true })!;
-    const winningOffer = scheduleSetPiece(state, winningWar, makeSeededRng(1), { forceRoll: true })!;
-    expect(losingOffer.enemyArmy.length).toBeGreaterThan(winningOffer.enemyArmy.length);
-  });
-
-  test('cohort count is clamped to [minCohorts, maxCohorts]', () => {
-    const state = makeState({ turnNumber: 10 });
-    const extremeLoss = makeWar({ warScore: -100 });
-    const extremeWin = makeWar({ warScore: 100 });
-    const so = BALANCE.war.setPieceOffer;
-    const bigOffer = scheduleSetPiece(state, extremeLoss, makeSeededRng(2), { forceRoll: true })!;
-    const smallOffer = scheduleSetPiece(state, extremeWin, makeSeededRng(2), { forceRoll: true })!;
-    expect(bigOffer.enemyArmy.length).toBeLessThanOrEqual(so.maxCohorts);
-    expect(smallOffer.enemyArmy.length).toBeGreaterThanOrEqual(so.minCohorts);
-  });
-
-  test('a local-scale war fields a smaller army than a major war at the same warScore', () => {
-    const state = makeState({ turnNumber: 10 });
-    const major = makeWar({ scale: 'major', warScore: 0 });
-    const local = makeWar({ scale: 'local', warScore: 0 });
-    const majorOffer = scheduleSetPiece(state, major, makeSeededRng(3), { forceRoll: true })!;
-    const localOffer = scheduleSetPiece(state, local, makeSeededRng(3), { forceRoll: true })!;
-    expect(localOffer.enemyArmy.length).toBeLessThan(majorOffer.enemyArmy.length);
-  });
-
-  test('architectural: scheduleSetPiece is the only place a SetPieceOffer object is constructed', () => {
-    const source = fs.readFileSync(path.join(__dirname, '../src/engine/warEngine.ts'), 'utf8');
-    const occurrences = source.match(/id: `offer-/g) ?? [];
-    expect(occurrences.length).toBe(1);
-  });
-});
-
 // ─── processWarSeason ────────────────────────────────────────────────────────
+// Chunk C9 retired the skirmish-drift/weariness-erosion/set-piece-scheduler
+// machinery that used to live here — warScore/weariness/momentum are now
+// computed once per season by engine/warStanding.ts (see turnSequencer.ts's
+// step 6c, BEFORE this function runs); this function only REACTS to whatever
+// value it finds (threshold crossings, treaty resolution, dictate-tier,
+// bill queueing). It never mutates warScore itself anymore — see the
+// dedicated regression test below and warStanding.test.ts for the standing
+// math itself.
 
 describe('processWarSeason', () => {
-  test('skirmish drift moves warScore by 1-3 magnitude', () => {
-    const state = makeState({ turnNumber: 3, wars: [makeWar({ startedTurn: 1, lastSetPieceTurn: 3 })] });
-    const result = processWarSeason(state, makeSeededRng(11));
-    const delta = Math.abs(result.wars[0].warScore - 0);
-    expect(delta).toBeGreaterThanOrEqual(1);
-    // (weariness doesn't kick in this early, so drift is the only mover here
-    // unless a scheduler roll also fires — scheduler doesn't touch warScore.)
-  });
-
   test('inactive wars are left untouched', () => {
     const state = makeState({ wars: [makeWar({ active: false, warScore: 12 })] });
     const result = processWarSeason(state, () => 0.5);
     expect(result.wars[0].warScore).toBe(12);
   });
 
-  test('no weariness drift before wearinessAfterTurns', () => {
-    const state = makeState({ turnNumber: 5, wars: [makeWar({ startedTurn: 1, warScore: 50, lastSetPieceTurn: 5 })] });
-    // Force skirmish drift toward a KNOWN small delta via rng=0 (min magnitude, negative-biased sign
-    // since strength/martial are below baseline in this fixture) — just assert weariness doesn't
-    // additionally erode a score nowhere near the wearinessAfterTurns threshold (turnsSinceStart=4).
-    const result = processWarSeason(state, () => 0);
-    // Only skirmish drift (max magnitude 3) should have moved it — nowhere near a weariness-scale change.
-    expect(Math.abs(result.wars[0].warScore - 50)).toBeLessThanOrEqual(BALANCE.war.skirmishDriftMax);
+  test('never mutates warScore itself — only reacts to the value already set upstream', () => {
+    const state = makeState({ wars: [makeWar({ warScore: 17 })] });
+    const result = processWarSeason(state, () => 0.5);
+    expect(result.wars[0].warScore).toBe(17);
   });
 
-  test('weariness erodes warScore toward 0 once past wearinessAfterTurns', () => {
+  test('threshold crossing (detected via the war-score-snapshot flag) fires a notice once, not again while sustained', () => {
+    // Simulates campaignResolver having already moved warScore from 38 (last
+    // season's snapshot) to 41 THIS season, crossing the sue threshold (40).
     const state = makeState({
-      turnNumber: 20,
-      wars: [makeWar({ startedTurn: 1, warScore: 50, lastSetPieceTurn: 20 })], // turnsSinceStart = 19 > 12
+      turnNumber: 3,
+      flags: { 'war-score-snapshot-war-carthage-1': 38 },
+      wars: [makeWar({ warScore: 41, startedTurn: 1 })],
     });
-    const result = processWarSeason(state, () => 0);
-    // Both fixtures share the identical (deterministic, rng=()=>0) skirmish
-    // drift — the only difference is turnsSinceStart crossing
-    // wearinessAfterTurns. Weariness pulls a POSITIVE score down toward 0,
-    // so the weariness-active run must land lower than the no-weariness
-    // control despite starting from the same warScore and drift.
-    const control = processWarSeason(
-      makeState({ turnNumber: 12, wars: [makeWar({ startedTurn: 1, warScore: 50, lastSetPieceTurn: 12 })] }), // turnsSinceStart = 11, not > 12
-      () => 0,
-    );
-    expect(result.wars[0].warScore).toBeLessThan(control.wars[0].warScore);
-  });
+    const first = processWarSeason(state, () => 0.5);
+    expect(first.noticeEvents.some(e => e.defId === 'evt-war-threshold-notice')).toBe(true);
 
-  test('weariness counter increments every active season', () => {
-    const state = makeState({ wars: [makeWar({ weariness: 5 })] });
-    const result = processWarSeason(state, () => 0.9);
-    expect(result.wars[0].weariness).toBe(6);
-  });
-
-  test('threshold crossing fires a notice once, not again while sustained beyond it', () => {
-    // warScore 38 -> drift pushes it past 40 (sue) this season.
-    const state = makeState({ turnNumber: 3, wars: [makeWar({ warScore: 38, lastSetPieceTurn: 3, startedTurn: 1 })] });
-    const rngUp = makeSeededRng(99);
-    const first = processWarSeason(state, rngUp);
-    const crossed = first.wars[0].warScore > 38 && Math.abs(first.wars[0].warScore) >= BALANCE.war.thresholds.sue;
-    if (crossed) {
-      expect(first.noticeEvents.some(e => e.defId === 'evt-war-threshold-notice')).toBe(true);
-      // A second season that stays beyond the threshold should not re-fire.
-      const second = processWarSeason({ ...state, wars: first.wars, turnNumber: state.turnNumber + 1 }, () => 0.9);
-      // Only re-fires if it crosses to a STRICTLY higher band — staying in 'sue' band must not re-notify.
-      if (Math.abs(second.wars[0].warScore) < BALANCE.war.thresholds.forced) {
-        expect(second.noticeEvents.some(e => e.defId === 'evt-war-threshold-notice')).toBe(false);
-      }
-    } else {
-      // Seed didn't happen to cross this run — not a meaningful failure of the mechanism.
-      expect(first.wars[0].warScore).toBeDefined();
-    }
-  });
-
-  test('cap enforcement: warScore application never exceeds the -100..100 range', () => {
-    const state = makeState({ turnNumber: 3, wars: [makeWar({ warScore: 99, lastSetPieceTurn: 3, startedTurn: 1 })] });
-    const result = processWarSeason(state, () => 0); // biased-positive drift for this fixture
-    expect(result.wars[0].warScore).toBeLessThanOrEqual(100);
-    expect(result.wars[0].warScore).toBeGreaterThanOrEqual(-100);
-
-    const stateLow = makeState({ turnNumber: 3, wars: [makeWar({ warScore: -99, lastSetPieceTurn: 3, startedTurn: 1 })] });
-    const resultLow = processWarSeason(stateLow, () => 0.999);
-    expect(resultLow.wars[0].warScore).toBeGreaterThanOrEqual(-100);
-    expect(resultLow.wars[0].warScore).toBeLessThanOrEqual(100);
-  });
-
-  test('a stale pendingSetPiece auto-expires with the decline penalty and unblocks scheduling', () => {
-    const staleOffer = {
-      id: 'offer-x', siteName: 'Test Site', terrainId: 'open_plain',
-      enemyArmy: [], enemyGeneralId: ENEMY_GENERAL_LIST[0].id, expiresTurn: 5,
+    // A second season sustained at the same warScore (snapshot now 41, same
+    // as current) must not re-fire — no crossing happened.
+    const state2 = {
+      ...state, turnNumber: 4, wars: first.wars,
+      flags: { ...state.flags, ...first.statePatch.flags },
     };
-    const state = makeState({
-      turnNumber: 6, // >= expiresTurn
-      wars: [makeWar({ warScore: 10, pendingSetPiece: staleOffer, lastSetPieceTurn: 1, startedTurn: 1 })],
-    });
-    const before = state.wars[0].warScore;
-    const result = processWarSeason(state, () => 0); // 0 also passes the (now re-armed) scheduler roll
-    expect(result.wars[0].pendingSetPiece).not.toEqual(staleOffer); // either cleared or replaced by a fresh offer
-    expect(result.lifetimeDignitasDelta).toBeLessThan(0);
-    // The decline penalty was applied on top of whatever drift did — score moved down net of the -3.
-    expect(result.wars[0].warScore).toBeLessThan(before + BALANCE.war.skirmishDriftMax);
+    const second = processWarSeason(state2, () => 0.5);
+    expect(second.noticeEvents.some(e => e.defId === 'evt-war-threshold-notice')).toBe(false);
   });
 
-  test('scheduler spacing is respected inside processWarSeason across consecutive seasons', () => {
-    let state = makeState({ turnNumber: 1, wars: [makeWar({ lastSetPieceTurn: -10, startedTurn: 1 })] });
-    // rng always "succeeds" the 25% roll — spacing is the only gate left.
-    const rng = () => 0;
-    const s1 = processWarSeason(state, rng);
-    expect(s1.wars[0].pendingSetPiece).not.toBeNull(); // first season, immediately eligible
-
-    // Decline it (simulate) so scheduling isn't blocked by "already pending" for this check.
-    const afterDecline = { ...s1.wars[0], pendingSetPiece: null };
-    state = { ...state, turnNumber: 2, wars: [afterDecline] };
-    const s2 = processWarSeason(state, rng);
-    // Only 1 turn has elapsed since lastSetPieceTurn (still turn 1) — minSpacingTurns is 2.
-    expect(s2.wars[0].pendingSetPiece).toBeNull();
+  test('crossing into the sue tier while Rome is winning auto-generates an AI offer', () => {
+    const state = makeState({
+      turnNumber: 3,
+      flags: { 'war-score-snapshot-war-carthage-1': 38 },
+      wars: [makeWar({ warScore: 41, startedTurn: 1 })],
+    });
+    const result = processWarSeason(state, () => 0.5);
+    expect(result.wars[0].warScore).toBe(41); // unchanged — this function never sets warScore
+    expect(result.wars[0].treaty?.stage).toBe('ai_offer');
+    expect(result.wars[0].treaty?.initiator).toBe('enemy');
   });
 
   test('ledger events include a warScore delta headline for each active war', () => {
@@ -533,7 +404,7 @@ describe('processWarSeason — treaty resolution (Chunk M10)', () => {
     const treaty = makeTreaty({ termIds: ['lilybaeum'], proposedTurn: 10 });
     const state = makeState({
       turnNumber: 12,
-      wars: [makeWar({ warScore: 75, startedTurn: 1, lastSetPieceTurn: 12, treaty })],
+      wars: [makeWar({ warScore: 75, startedTurn: 1, treaty })],
       passedBills: [{ id: `treaty-war-carthage-1-10`, name: 'Treaty with Carthage', passedOnTurn: 12 }] as any,
     });
     const result = processWarSeason(state, () => 0);
@@ -546,33 +417,36 @@ describe('processWarSeason — treaty resolution (Chunk M10)', () => {
     const treaty = makeTreaty({ termIds: ['indemnity_minor'], proposedTurn: 10 });
     const state = makeState({
       turnNumber: 12,
-      wars: [makeWar({ warScore: 75, startedTurn: 1, lastSetPieceTurn: 12, treaty })],
+      wars: [makeWar({ warScore: 75, startedTurn: 1, treaty })],
       passedBills: [{ id: `treaty-war-carthage-1-10`, name: 'Treaty with Carthage', passedOnTurn: 12 }] as any,
     });
     const result = processWarSeason(state, () => 0);
     expect(result.statePatch.bills?.some(b => b.id.startsWith('triumph-pc-1'))).toBe(true);
   });
 
-  test('a failed/expired ratification keeps the war active, penalises warScore, and locks the treaty out', () => {
+  test('a failed/expired ratification keeps the war active, bumps momentum (not warScore), and locks the treaty out', () => {
     const treaty = makeTreaty({ termIds: ['indemnity_minor'], proposedTurn: 5 });
     const state = makeState({
       turnNumber: 9,
-      wars: [makeWar({ warScore: 75, startedTurn: 1, lastSetPieceTurn: 9, treaty })],
+      wars: [makeWar({ warScore: 75, momentum: 0, startedTurn: 1, treaty })],
       bills: [], passedBills: [],
     });
     const result = processWarSeason(state, () => 0);
     expect(result.wars[0].active).toBe(true);
     expect(result.wars[0].treaty?.ratified).toBe(false);
     expect(result.wars[0].treaty?.resolvedTurn).toBe(9);
-    // warScore moved down by at least the fail penalty net of that season's drift.
-    expect(result.wars[0].warScore).toBeLessThan(75 + BALANCE.war.skirmishDriftMax);
+    // Chunk C9 — the fail penalty is now a momentum injection; warScore itself
+    // is untouched by processWarSeason (it's recomputed fresh next season by
+    // warStanding.ts from this momentum, among other terms).
+    expect(result.wars[0].warScore).toBe(75);
+    expect(result.wars[0].momentum).toBe(BALANCE.war.treaty.failWarScorePenalty);
   });
 
   test('a still-pending ratification bill is left untouched', () => {
     const treaty = makeTreaty({ termIds: ['indemnity_minor'], proposedTurn: 9 });
     const state = makeState({
       turnNumber: 10,
-      wars: [makeWar({ warScore: 75, startedTurn: 1, lastSetPieceTurn: 10, treaty })],
+      wars: [makeWar({ warScore: 75, startedTurn: 1, treaty })],
       bills: [{ id: 'treaty-war-carthage-1-9', support: 0 } as any],
       passedBills: [],
     });
@@ -586,7 +460,7 @@ describe('processWarSeason — treaty resolution (Chunk M10)', () => {
     const treaty = makeTreaty({ ratified: false, resolvedTurn: 10, proposedTurn: 5 });
     const state = makeState({
       turnNumber: 10 + lockoutTurns,
-      wars: [makeWar({ warScore: 75, startedTurn: 1, lastSetPieceTurn: 10 + lockoutTurns, treaty })],
+      wars: [makeWar({ warScore: 75, startedTurn: 1, treaty })],
     });
     const result = processWarSeason(state, () => 0);
     expect(result.wars[0].treaty).toBeNull();
@@ -596,7 +470,7 @@ describe('processWarSeason — treaty resolution (Chunk M10)', () => {
     const treaty = makeTreaty({ ratified: false, resolvedTurn: 10, proposedTurn: 5 });
     const state = makeState({
       turnNumber: 11,
-      wars: [makeWar({ warScore: 75, startedTurn: 1, lastSetPieceTurn: 11, treaty })],
+      wars: [makeWar({ warScore: 75, startedTurn: 1, treaty })],
     });
     const result = processWarSeason(state, () => 0);
     expect(result.wars[0].treaty).not.toBeNull();
@@ -605,7 +479,7 @@ describe('processWarSeason — treaty resolution (Chunk M10)', () => {
   test('Rome losing at the dictate tier auto-ratifies terms with no vote', () => {
     const state = makeState({
       turnNumber: 20,
-      wars: [makeWar({ warScore: -95, startedTurn: 1, lastSetPieceTurn: 20 })],
+      wars: [makeWar({ warScore: -95, startedTurn: 1})],
     });
     const result = processWarSeason(state, () => 0.5);
     expect(result.wars[0].active).toBe(false);
@@ -614,55 +488,39 @@ describe('processWarSeason — treaty resolution (Chunk M10)', () => {
     expect(result.statePatch.flags?.[`campaign-failure-epilogue-${state.wars[0].id}`]).toBe(true);
   });
 
-  test('crossing into the sue tier while Rome is winning auto-generates an AI offer', () => {
-    // Default fixture (martial 6 >= baseline 5, army strength << baseline) drifts
-    // POSITIVE regardless of rng (sign only depends on those two signals) — rng
-    // here only sets the magnitude. 0.99 -> max magnitude (3): 38 + 3 = 41, crossing 40.
-    const state = makeState({
-      turnNumber: 3,
-      wars: [makeWar({ warScore: 38, startedTurn: 1, lastSetPieceTurn: 3 })],
-    });
-    const result = processWarSeason(state, () => 0.99);
-    expect(result.wars[0].warScore).toBe(41);
-    expect(result.wars[0].treaty?.stage).toBe('ai_offer');
-    expect(result.wars[0].treaty?.initiator).toBe('enemy');
-  });
+  // "crossing into the sue tier..." is covered by the dedicated
+  // processWarSeason describe block above (Chunk C9 — the crossing is now
+  // detected via the war-score-snapshot flag, not in-function drift).
 });
 
 // ─── DONE-WHEN: 20-season simulation coherence ──────────────────────────────
 
 describe('DONE-WHEN: 20-season simulation', () => {
-  test('a debug-started war produces coherent drift/weariness/offers/notices across 20 seasons without crashing', () => {
-    let state = makeState({ turnNumber: 1, wars: [makeWar({ startedTurn: 1, lastSetPieceTurn: -1 })] });
-    const rng = makeSeededRng(1234);
-    let offersSeen = 0;
+  test('a war with steadily escalating warScore produces coherent notices/events across 20 seasons without crashing', () => {
+    // Chunk C9 — warScore is now driven upstream by the campaign map
+    // (warStanding.ts), recomputed once per season BEFORE processWarSeason
+    // ever runs; this loop simulates that upstream step with a steady climb
+    // so it still exercises threshold crossings/AI-offer auto-generation
+    // under realistic input, without reintroducing the retired skirmish-
+    // drift/scheduler machinery this function no longer owns.
+    let state = makeState({ turnNumber: 1, wars: [makeWar({ startedTurn: 1 })] });
     let noticesSeen = 0;
 
     for (let season = 1; season <= 20; season++) {
-      state = { ...state, turnNumber: season };
-      const result = processWarSeason(state, rng);
+      const warScore = Math.min(100, season * 5);
+      state = { ...state, turnNumber: season, wars: [{ ...state.wars[0], warScore }] };
+      const result = processWarSeason(state, () => 0.5);
       expect(result.wars).toHaveLength(1);
-      const war = result.wars[0];
-      expect(war.warScore).toBeGreaterThanOrEqual(-100);
-      expect(war.warScore).toBeLessThanOrEqual(100);
-      expect(war.weariness).toBe(season); // increments exactly once per active season
-
-      if (war.pendingSetPiece) {
-        offersSeen += 1;
-        // Auto-decline immediately so the simulation isn't stuck on one
-        // offer forever (mirrors "player eventually resolves it").
-        state = { ...state, wars: [{ ...war, pendingSetPiece: null }] };
-      } else {
-        state = { ...state, wars: result.wars };
-      }
+      expect(result.wars[0].warScore).toBeGreaterThanOrEqual(-100);
+      expect(result.wars[0].warScore).toBeLessThanOrEqual(100);
+      state = { ...state, wars: result.wars, flags: { ...state.flags, ...result.statePatch.flags } };
       noticesSeen += result.noticeEvents.length;
     }
 
-    expect(offersSeen).toBeGreaterThan(0);
-    // Coherence, not a specific count — the war crisis coupling and threshold
-    // notices are exercised by the dedicated tests above; here we just need
-    // the whole loop to run cleanly for 20 seasons.
-    expect(noticesSeen).toBeGreaterThanOrEqual(0);
+    // Coherence, not a specific count — the threshold-crossing/AI-offer
+    // mechanism is exercised by the dedicated tests above; here we just need
+    // the whole loop to run cleanly for 20 seasons under a realistic climb.
+    expect(noticesSeen).toBeGreaterThan(0);
   });
 });
 
@@ -775,7 +633,7 @@ describe('processWarSeason — terminal outcome tagging (P3-A)', () => {
     const state = makeState({
       turnNumber: 12,
       year: -264,
-      wars: [makeWar({ warScore: 95, scale: 'major', startedTurn: 1, lastSetPieceTurn: 12, treaty })],
+      wars: [makeWar({ warScore: 95, scale: 'major', startedTurn: 1, treaty })],
       passedBills: [{ id: `treaty-war-carthage-1-10`, name: 'Treaty with Carthage', passedOnTurn: 12 }] as any,
     });
     const result = processWarSeason(state, () => 0);
@@ -788,7 +646,7 @@ describe('processWarSeason — terminal outcome tagging (P3-A)', () => {
     const treaty = makeTreaty({ termIds: ['indemnity_minor'], proposedTurn: 10, id: 'treaty-war-carthage-1-10' });
     const state = makeState({
       turnNumber: 12,
-      wars: [makeWar({ warScore: 95, scale: 'local', startedTurn: 1, lastSetPieceTurn: 12, treaty })],
+      wars: [makeWar({ warScore: 95, scale: 'local', startedTurn: 1, treaty })],
       passedBills: [{ id: `treaty-war-carthage-1-10`, name: 'Treaty', passedOnTurn: 12 }] as any,
     });
     const result = processWarSeason(state, () => 0);
@@ -802,7 +660,7 @@ describe('processWarSeason — terminal outcome tagging (P3-A)', () => {
     const state = makeState({
       turnNumber: 20,
       year: -264,
-      wars: [makeWar({ warScore: -95, scale: 'major', startedTurn: 1, lastSetPieceTurn: 20 })],
+      wars: [makeWar({ warScore: -95, scale: 'major', startedTurn: 1})],
     });
     const result = processWarSeason(state, () => 0.5);
     expect(result.wars[0].terminalOutcome).toBe('humbled');
@@ -869,18 +727,20 @@ describe('applyEffectString — startWar: token', () => {
 });
 
 describe('applyEffectString — warScoreDelta: token', () => {
-  test('bumps the matching active war\'s score, clamped to -100..100', () => {
-    const state = makeState({ wars: [makeWar({ warScore: 95 })] });
+  test('bumps the matching active war\'s momentum, clamped to ±momentumCap (Chunk C9 — warScore itself is untouched)', () => {
+    const cap = BALANCE.campaign.standing.momentumCap;
+    const state = makeState({ wars: [makeWar({ warScore: 95, momentum: cap - 5 })] });
     const patch = applyEffectString('warScoreDelta:carthage:10', state);
-    expect(patch.wars![0].warScore).toBe(100);
+    expect(patch.wars![0].momentum).toBe(cap);
+    expect(patch.wars![0].warScore).toBe(95);
   });
 
   test('leaves an inactive or differently-enemied war untouched', () => {
     const state = makeState({
-      wars: [makeWar({ id: 'w1', active: false, warScore: 0 }), makeWar({ id: 'w2', enemyId: 'a-revolt', warScore: 0 })],
+      wars: [makeWar({ id: 'w1', active: false, momentum: 0 }), makeWar({ id: 'w2', enemyId: 'a-revolt', momentum: 0 })],
     });
     const patch = applyEffectString('warScoreDelta:carthage:10', state);
-    expect(patch.wars!.every(w => w.warScore === 0)).toBe(true);
+    expect(patch.wars!.every(w => w.momentum === 0)).toBe(true);
   });
 });
 
@@ -922,7 +782,7 @@ describe('processWarSeason — war-funding bill (P3-B)', () => {
   test('queues a bill when none pending and the cooldown has elapsed', () => {
     const state = makeState({
       turnNumber: 10,
-      wars: [makeWar({ lastFundingOfferTurn: -100, lastSetPieceTurn: 10 })],
+      wars: [makeWar({ lastFundingOfferTurn: -100})],
     });
     const result = processWarSeason(state, () => 0.99); // 0.99 avoids a competing set-piece offer this same season
     expect(result.statePatch.bills?.some(b => b.id.startsWith('war-funding-war-carthage-1-'))).toBe(true);
@@ -932,7 +792,7 @@ describe('processWarSeason — war-funding bill (P3-B)', () => {
   test('does not queue a second bill while one is already pending', () => {
     const state = makeState({
       turnNumber: 10,
-      wars: [makeWar({ lastFundingOfferTurn: -100, lastSetPieceTurn: 10 })],
+      wars: [makeWar({ lastFundingOfferTurn: -100})],
       bills: [{ id: 'war-funding-war-carthage-1-5', support: 0 } as any],
     });
     const result = processWarSeason(state, () => 0.99);
@@ -943,27 +803,29 @@ describe('processWarSeason — war-funding bill (P3-B)', () => {
   test('does not queue while an M10 treaty is in flight', () => {
     const state = makeState({
       turnNumber: 10,
-      wars: [makeWar({ lastFundingOfferTurn: -100, lastSetPieceTurn: 10, treaty: makeTreaty() })],
+      wars: [makeWar({ lastFundingOfferTurn: -100, treaty: makeTreaty() })],
     });
     const result = processWarSeason(state, () => 0.99);
     expect(result.statePatch.bills?.some(b => b.id.startsWith('war-funding-war-carthage-1-'))).toBeFalsy();
   });
 
-  test('applies the warScore bonus exactly once when a matching bill has passed', () => {
+  test('applies the momentum bonus exactly once when a matching bill has passed', () => {
     const state = makeState({
       turnNumber: 10,
-      wars: [makeWar({ warScore: 0, lastFundingOfferTurn: 10, lastSetPieceTurn: 10 })], // just tabled -> no re-queue this season
+      wars: [makeWar({ warScore: 0, momentum: 0, lastFundingOfferTurn: 10 })], // just tabled -> no re-queue this season
       passedBills: [{ id: 'war-funding-war-carthage-1-6', name: 'War Funding: Carthage', passedOnTurn: 6 }] as any,
     });
     const result = processWarSeason(state, () => 0);
-    expect(result.wars[0].warScore).toBeGreaterThanOrEqual(BALANCE.war.funding.warScoreBonusOnPass);
+    // Chunk C9 — the pass bonus is now a momentum injection, not a direct
+    // warScore set (see this function's own header comment).
+    expect(result.wars[0].momentum).toBe(BALANCE.war.funding.momentumBonusOnPass);
+    expect(result.wars[0].warScore).toBe(0);
     expect(result.statePatch.flags?.['war-funding-applied-war-funding-war-carthage-1-6']).toBe(true);
 
     // A second call with the SAME passedBills (simulating next season, flag now set) must not re-apply.
     const state2 = { ...state, flags: { ...state.flags, ...result.statePatch.flags }, wars: result.wars };
     const result2 = processWarSeason(state2, () => 0);
-    const controlDrift = result2.wars[0].warScore - result.wars[0].warScore;
-    expect(Math.abs(controlDrift)).toBeLessThanOrEqual(BALANCE.war.skirmishDriftMax);
+    expect(result2.wars[0].momentum).toBe(result.wars[0].momentum);
   });
 });
 
@@ -972,8 +834,8 @@ describe('processWarSeason — sue-for-peace bill (P3-B)', () => {
     // peaceOffered is recomputed from `weariness` each season (step 2c) —
     // a high weariness clears BALANCE.war.ripeness.exhaustionWeariness at
     // any ripeness, so this holds regardless of the fixture's year.
-    const offered = makeState({ turnNumber: 30, wars: [makeWar({ weariness: 50, lastSetPieceTurn: 30 })] });
-    const notOffered = makeState({ turnNumber: 30, wars: [makeWar({ weariness: 0, lastSetPieceTurn: 30 })] });
+    const offered = makeState({ turnNumber: 30, wars: [makeWar({ weariness: 50})] });
+    const notOffered = makeState({ turnNumber: 30, wars: [makeWar({ weariness: 0})] });
     const r1 = processWarSeason(offered, () => 0.99);
     const r2 = processWarSeason(notOffered, () => 0.99);
     expect(r1.statePatch.bills?.some(b => b.id.startsWith('sue-for-peace-war-carthage-1-'))).toBe(true);
@@ -983,7 +845,7 @@ describe('processWarSeason — sue-for-peace bill (P3-B)', () => {
   test('never queues for a local-scale war', () => {
     const state = makeState({
       turnNumber: 30,
-      wars: [makeWar({ scale: 'local', peaceOffered: true, lastSetPieceTurn: 30 })],
+      wars: [makeWar({ scale: 'local', peaceOffered: true})],
     });
     const result = processWarSeason(state, () => 0.99);
     expect(result.statePatch.bills?.some(b => b.id.startsWith('sue-for-peace-'))).toBeFalsy();
@@ -993,7 +855,7 @@ describe('processWarSeason — sue-for-peace bill (P3-B)', () => {
     const state = makeState({
       turnNumber: 30,
       year: -264, // ripeness 0 -> wide victory/humbled bounds, a mid score reads exhaustion
-      wars: [makeWar({ warScore: 10, peaceOffered: true, lastSetPieceTurn: 30 })],
+      wars: [makeWar({ warScore: 10, peaceOffered: true})],
       passedBills: [{ id: 'sue-for-peace-war-carthage-1-25', name: 'Sue for Peace: Carthage', passedOnTurn: 25 }] as any,
     });
     const result = processWarSeason(state, () => 0);
@@ -1007,7 +869,7 @@ describe('processWarSeason — sue-for-peace bill (P3-B)', () => {
     const state = makeState({
       turnNumber: 30,
       year: -264, // ripeness 0
-      wars: [makeWar({ warScore: th.victory, peaceOffered: true, lastSetPieceTurn: 30 })],
+      wars: [makeWar({ warScore: th.victory, peaceOffered: true})],
       passedBills: [{ id: 'sue-for-peace-war-carthage-1-25', name: 'Sue for Peace: Carthage', passedOnTurn: 25 }] as any,
     });
     const result = processWarSeason(state, () => 0);
@@ -1195,14 +1057,14 @@ describe('processWarSeason — Endless mode (P3-F)', () => {
     expect(result.wars[0]).toEqual(state.wars[0]);
   });
 
-  test('still processes a local-scale (revolt) war while endlessMode is true', () => {
-    const rng = makeSeededRng(1);
+  test('still processes a local-scale (revolt) war while endlessMode is true (phase still recomputes)', () => {
     const state = makeState({
       endlessMode: true,
-      wars: [makeWar({ id: 'w-local', scale: 'local', warScore: 0, active: true })],
+      year: -241, // ripe
+      wars: [makeWar({ id: 'w-local', scale: 'local', warScore: 0, active: true, phase: 'opening' })],
     } as any);
-    const result = processWarSeason(state, rng);
-    expect(result.wars[0].weariness).toBe(1);
+    const result = processWarSeason(state, () => 0.5);
+    expect(result.wars[0].phase).toBe('ripe');
   });
 });
 
@@ -1212,11 +1074,71 @@ describe('enterEndlessMode (P3-F)', () => {
       runFinished: true,
       pendingEpilogue: 'victory' as any,
       currentEpilogueRecord: { outcome: 'victory' } as any,
+      armies: [],
     });
-    useGameStore.getState().enterEndlessMode();
+    useGameStore.getState().enterEndlessMode({});
     const s = useGameStore.getState();
     expect(s.endlessMode).toBe(true);
     expect(s.runFinished).toBe(false);
     expect(s.pendingEpilogue).toBeNull();
+  });
+
+  // ─── Chunk C9 — theatre stand-down ────────────────────────────────────────
+
+  test('removes every rome_state and enemy army; empties the theatre entirely', () => {
+    useGameStore.setState({
+      armies: [
+        makeArmy({ id: 'a-state', owner: 'rome_state', commanderId: null }),
+        makeArmy({ id: 'a-carthage', owner: 'carthage', commanderId: 'gen-1' }),
+        makeArmy({ id: 'a-rival', owner: 'rome_rival', commanderId: 'rival-1' }),
+      ],
+      family: [makeCharacter()],
+    });
+    useGameStore.getState().enterEndlessMode({});
+    expect(useGameStore.getState().armies).toHaveLength(0);
+  });
+
+  test('"retain" folds a personal army\'s units into its living commander\'s veterans', () => {
+    useGameStore.setState({
+      armies: [makeArmy({ id: 'a-player', owner: 'player', commanderId: 'pc-1', units: [makeArmyUnit({ id: 'u1', strength: 87 })] })],
+      family: [makeCharacter({ id: 'pc-1', veterans: [] })],
+    });
+    useGameStore.getState().enterEndlessMode({ 'a-player': 'retain' });
+    const s = useGameStore.getState();
+    expect(s.armies).toHaveLength(0);
+    const commander = s.family.find(c => c.id === 'pc-1')!;
+    expect(commander.veterans).toHaveLength(1);
+    expect(commander.veterans[0].strength).toBe(9); // 87/10 rounded
+  });
+
+  test('"disband" removes a personal army without adding any veterans', () => {
+    useGameStore.setState({
+      armies: [makeArmy({ id: 'a-player', owner: 'player', commanderId: 'pc-1' })],
+      family: [makeCharacter({ id: 'pc-1', veterans: [] })],
+    });
+    useGameStore.getState().enterEndlessMode({ 'a-player': 'disband' });
+    const s = useGameStore.getState();
+    expect(s.armies).toHaveLength(0);
+    expect(s.family.find(c => c.id === 'pc-1')!.veterans).toHaveLength(0);
+  });
+
+  test('a personal army with no living commander is removed even when "retain" is requested', () => {
+    useGameStore.setState({
+      armies: [makeArmy({ id: 'a-orphan', owner: 'player', commanderId: 'nobody' })],
+      family: [makeCharacter({ id: 'pc-1', veterans: [] })],
+    });
+    useGameStore.getState().enterEndlessMode({ 'a-orphan': 'retain' });
+    const s = useGameStore.getState();
+    expect(s.armies).toHaveLength(0);
+    expect(s.family.find(c => c.id === 'pc-1')!.veterans).toHaveLength(0);
+  });
+
+  test('defaults an undecided personal army to "retain"', () => {
+    useGameStore.setState({
+      armies: [makeArmy({ id: 'a-player', owner: 'player', commanderId: 'pc-1' })],
+      family: [makeCharacter({ id: 'pc-1', veterans: [] })],
+    });
+    useGameStore.getState().enterEndlessMode({}); // no decision supplied for 'a-player'
+    expect(useGameStore.getState().family.find(c => c.id === 'pc-1')!.veterans).toHaveLength(1);
   });
 });
