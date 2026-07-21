@@ -841,10 +841,13 @@ export const BALANCE = {
     /** npcGatherTick — each leader with standing < hostileStandingMax rolls
      *  once per season: npcGatherBase + npcGatherPerCorruption × (highest
      *  corruption among your family) capped at npcGatherCap. Corruption is
-     *  the fuel — a clean family is nearly un-blackmailable. */
-    npcGatherBase: 0.03,
+     *  the fuel — a clean family is nearly un-blackmailable.
+     *  July 2026 frequency-down-tune (base 0.03→0.018, cap 0.15→0.10) — with
+     *  13 leaders each rolling independently every season, the old base rate
+     *  produced too many fresh secrets even for a clean family. */
+    npcGatherBase: 0.018,
     npcGatherPerCorruption: 0.0015,
-    npcGatherCap: 0.15,
+    npcGatherCap: 0.10,
     hostileStandingMax: 30,
     maxHeldAgainstFamily: 3,
     /** Potency 1 / 2 / 3 generation weights (sums to 1). */
@@ -871,8 +874,10 @@ export const BALANCE = {
     /** Per-season, per-LatentSecret chance (secretEngine.latentSecretDiscoveryTick)
      *  that a compromising choice the player knowingly made (see
      *  resourceEngine's `createLatentSecret:` token) gets noticed by a
-     *  hostile leader and converted into a real, demandable Secret. */
-    latentDiscoveryChance: 0.12,
+     *  hostile leader and converted into a real, demandable Secret.
+     *  July 2026 frequency-down-tune (0.12→0.08) — part of the same
+     *  scandal-frequency pass as npcGatherBase/npcUseCooldownSeasons. */
+    latentDiscoveryChance: 0.08,
 
     // ── Phase 4, Chunk P4-B — spend/counterplay/NPC behavior ────────────────
     /** Leverage (player, on a held Secret): consumes it, forces the target
@@ -913,7 +918,12 @@ export const BALANCE = {
      *  secretEngine.npcSecretDecision). FIRST-PASS/UNVERIFIED, same
      *  treatment as every other constant group in this file. */
     npcAi: {
-      npcUseCooldownSeasons: 4,
+      /** July 2026 frequency-down-tune (4→6 seasons) — every leader clearing
+       *  cooldown acts unconditionally (no extra probability roll), so this
+       *  constant directly sets demand cadence; with several leaders each
+       *  independently accumulating secrets, the old value compounded into
+       *  demands feeling near-constant. */
+      npcUseCooldownSeasons: 6,
       /** Leverage retains the Secret for this many uses before it's spent. */
       leverageReuseLimit: 2,
       /** Defying a social-class demand: scandal event hits. */

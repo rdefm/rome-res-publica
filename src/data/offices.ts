@@ -15,7 +15,7 @@ export const OFFICES: Office[] = [
     seats: 6,
     desc: 'Entry-level board of twenty minor magistrates. The first rung of public life.',
     flavor: 'You serve on one of the boards of twenty. Minor, but it is a beginning.',
-    active: false,
+    active: true,
     inOfficeDesc: 'Administrative duties.',
     inOfficeActions: [
       {
@@ -334,7 +334,7 @@ export const OFFICES: Office[] = [
     seats: 4,
     desc: 'Senior judicial magistrate. Commands a small army and presides over courts.',
     flavor: 'Justice and command are now yours. Wield them without prejudice.',
-    active: false,
+    active: true,
     inOfficeDesc: 'Judicial investigation and provincial command.',
     inOfficeActions: [
       {
@@ -596,7 +596,7 @@ export const OFFICES: Office[] = [
     seats: 2,
     desc: 'Guardian of Roman morality and the Senate rolls. Immense informal power.',
     flavor: 'You hold the stylus that writes and erases senatorial careers.',
-    active: false,
+    active: true,
     inOfficeDesc: 'Senate roster control and census powers.',
     inOfficeActions: [
       {
@@ -716,7 +716,7 @@ export const OFFICES: Office[] = [
     seats: 1,
     desc: 'Emergency appointment granting supreme authority. Only when crisis demands it.',
     flavor: 'All power is yours — and all responsibility. Do not fail Rome.',
-    active: false,
+    active: true,
     inOfficeDesc: 'Emergency powers. Only available when crisis > 70.',
     inOfficeActions: [
       {

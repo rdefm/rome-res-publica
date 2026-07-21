@@ -12,12 +12,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
-import { COLORS, FONTS, SPACING, RESOURCE_BAR_HEIGHT } from '../utils/theme';
+import { COLORS, FONTS, SPACING, RADIUS, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 import { useGameStore } from '../state/gameStore';
 import MapView from '../components/provinciae/MapView';
 import CitySheet from '../components/provinciae/CitySheet';
 import LatiumSheet from '../components/provinciae/LatiumSheet';
 import RegionSheet from '../components/provinciae/RegionSheet';
+import WarStatusModal from '../components/provinciae/WarStatusModal';
 import type { GovernorPolicy } from '../models/city';
 import type { AmbassadorActionId } from '../engine/cityEngine';
 import type { RegionId } from '../models/theatre';
@@ -39,6 +40,8 @@ export default function ProvinciaeScreen() {
   // whichever sheet is open — see enterOrderMode below).
   const [orderModeArmyId, setOrderModeArmyId] = useState<string | null>(null);
   const [orderModeForcedMarch, setOrderModeForcedMarch] = useState(false);
+  // July Fixes plan, Chunk C — war status banner/modal.
+  const [warStatusModalOpen, setWarStatusModalOpen] = useState(false);
   const sheetAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const sheetVisible = selectedProvinceId !== null || selectedRegionId !== null;
 
@@ -53,6 +56,7 @@ export default function ProvinciaeScreen() {
   const selectedCharacterId      = useGameStore(s => s.selectedCharacterId);
   const bills                    = useGameStore(s => s.bills);
   const armies                   = useGameStore(s => s.armies);
+  const wars                     = useGameStore(s => s.wars);
   const theatre                  = useGameStore(s => s.theatre);
   const activeCommand            = useGameStore(s => s.activeCommand);
   const seasonIndex               = useGameStore(s => s.seasonIndex);
@@ -113,6 +117,11 @@ export default function ProvinciaeScreen() {
     .map(c => (c as any).provincialClientDefId ?? c.id);
 
   const playerPostings = provinces.filter(p => p.playerGovernor || p.playerAmbassador);
+
+  // July Fixes plan, Chunk C — the one major foreign war (see warEngine.ts's
+  // own "primary major war" convention — local-scale revolt wars keep their
+  // existing CitySheet/Military-tab UI, not this banner).
+  const activeMajorWar = wars.find(w => w.active && w.scale === 'major');
 
   // ── Sheet animation ──────────────────────────────────────────────────────────
 
@@ -255,6 +264,21 @@ export default function ProvinciaeScreen() {
           playbackLog={campaignLog}
           onPlaybackComplete={dismissCampaignLog}
         />
+
+        {/* July Fixes plan, Chunk C — war status banner. MapView itself stays
+            a pure, store-free rendering component; the banner belongs here. */}
+        {activeMajorWar && (
+          <TouchableOpacity
+            style={styles.warBanner}
+            onPress={() => setWarStatusModalOpen(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.warBannerIcon}>⚔</Text>
+            <Text style={styles.warBannerText}>
+              {activeMajorWar.enemyId.charAt(0).toUpperCase() + activeMajorWar.enemyId.slice(1)} War
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Campaign Map plan, Chunk C5 — order-mode banner */}
@@ -378,6 +402,14 @@ export default function ProvinciaeScreen() {
             ) : null}
           </Animated.View>
         </>
+      )}
+
+      {activeMajorWar && (
+        <WarStatusModal
+          warId={activeMajorWar.id}
+          visible={warStatusModalOpen}
+          onClose={() => setWarStatusModalOpen(false)}
+        />
       )}
 
       <SeasonOverlay />
@@ -517,6 +549,34 @@ const styles = StyleSheet.create({
   } as TextStyle,
 
   mapContainer: { flex: 1, overflow: 'hidden' } as ViewStyle,
+
+  // July Fixes plan, Chunk C — war status banner, pinned top-right over the map.
+  warBanner: {
+    position: 'absolute',
+    top: SPACING.sm,
+    right: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(30,16,12,0.85)',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.crimson + 'aa',
+  } as ViewStyle,
+
+  warBannerIcon: {
+    fontSize: 13,
+  } as TextStyle,
+
+  warBannerText: {
+    color: COLORS.marble,
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  } as TextStyle,
 
   legend: {
     flexDirection: 'row',
