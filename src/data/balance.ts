@@ -1527,6 +1527,16 @@ export const BALANCE = {
       clamp: 100,
     },
   },
+
+  /** July 2026 fixes, Chunk D — cityEvents.ts's CITY_EVENTS pool (6 governor
+   *  + 2 ambassador cards) was fully authored but never fired: no season
+   *  tick ever rolled for it, and the ambassador half's only trigger
+   *  (cultural_exchange) was a dead stub. This is the season-tick chance,
+   *  checked independently per role-holding city (see cityEngine.
+   *  rollCityEventTick). First-pass/unverified, per this file's convention. */
+  cityEvents: {
+    tickChance: 0.25,
+  },
 };
 
 // ─── Known un-extracted tunables ───────────────────────────────────────────

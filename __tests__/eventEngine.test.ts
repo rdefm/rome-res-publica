@@ -176,6 +176,27 @@ describe('resolveEventChoice — branching', () => {
     expect(result.effectStr).toBe('');
   });
 
+  // July 2026 fixes, Chunk D — client/asset rhetoricalBonus/martialBonus/
+  // intrigusBonus were computed by clientEngine/assetEngine but never added
+  // to any skill check anywhere in the engine. getEffectiveSkill (used here
+  // via resolveEventChoice) is the fix.
+  test('skill check succeeds using client intrigusBonus even when base skill alone would fail', () => {
+    const choice: EventChoice = {
+      id: 'investigate',
+      label: 'Investigate',
+      skillCheck: { characterId: 'player', skill: 'intrigus', difficulty: 6 },
+      successEffect: '', failureEffect: '',
+    };
+    // Base intrigus is 4 (makeState fixture) — fails difficulty 6 alone.
+    const withoutBonus = resolveEventChoice(choice, makeState() as any);
+    expect(withoutBonus.succeeded).toBe(false);
+
+    const withBonus = resolveEventChoice(choice, makeState({
+      clients: [{ id: 'c1', name: 'Test Client', type: 'provincial', flavourTitle: '', flavourText: '', bonus: { intrigusBonus: 3 }, acquiredTurn: 1 }],
+    }) as any);
+    expect(withBonus.succeeded).toBe(true);
+  });
+
   test('non-branching choice applies effectStr normally', () => {
     const choice: EventChoice = {
       id: 'accept',

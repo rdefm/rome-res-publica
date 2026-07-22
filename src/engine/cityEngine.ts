@@ -30,6 +30,7 @@ import type { Bill } from '../models/bill';
 import type { WarState } from '../models/war';
 import { getCityDefinition } from '../data/cityDefinitions';
 import { getCityAssetDefinition } from '../data/cityAssets';
+import { getEventsForContext } from '../data/cityEvents';
 import { BALANCE } from '../data/balance';
 import { resetAmbassadorCooldowns, calcRapportDecay } from './ambassadorEngine';
 
@@ -530,6 +531,7 @@ export function tickAllCities(
   totalTreasuryDelta: number;
   newWars: WarState[];
   events: string[];
+  newCityEvent: { cityId: string; defId: string } | null;
 } {
   const { cities: flippedCities, events: flipEvents } = applyCityFlips(cities, state.flags);
 
@@ -575,7 +577,16 @@ export function tickAllCities(
   const { newWars, events: warDeclarationEvents } = checkForeignWarDeclarations(updatedCities, state);
   events.push(...warDeclarationEvents);
 
-  return { updatedCities, totalGoldDelta, totalImperiumDelta, totalTreasuryDelta, newWars, events };
+  // July 2026 fixes, Chunk D — passive governor/ambassador city event roll.
+  // Checked against updatedCities (this season's drift already applied) and
+  // (state.activeCityEvent ?? null) so it never overwrites an unresolved one.
+  const newCityEvent = rollCityEventTick(updatedCities, !!state.activeCityEvent);
+  if (newCityEvent) {
+    const def = getCityDefinition(newCityEvent.cityId);
+    events.push(`⚑ A situation has arisen in ${def?.name ?? newCityEvent.cityId} requiring your attention.`);
+  }
+
+  return { updatedCities, totalGoldDelta, totalImperiumDelta, totalTreasuryDelta, newWars, events, newCityEvent };
 }
 
 /**
@@ -671,6 +682,118 @@ export function resolveAmbassadorAction(
         logMessage: 'Unknown action.',
       };
   }
+}
+
+// ─── City events — governor/ambassador random situations (July 2026 fixes, Chunk D) ─
+// data/cityEvents.ts's CITY_EVENTS pool (6 governor + 2 ambassador cards) was
+// fully authored but never fired — no season tick rolled for it, and
+// cultural_exchange's "a region-specific event has been queued" was a dead
+// stub. These two pure functions are the whole mechanism: a per-season roll
+// (rollCityEventTick, called from tickAllCities below) for the passive fire,
+// and an effect-string resolver (resolveCityEventEffect) shared by both the
+// passive tick and cultural_exchange's guaranteed fire.
+
+export interface CityEventEffectResult {
+  cityPatch: Partial<CityState>;
+  /** Applied by the caller to the acting (governor/ambassador) character's
+   *  own corruptionScore — CityState has no corruption field of its own. */
+  corruptionDelta: number;
+  resourcePatch: {
+    denarii?: number;
+    fides?: number;
+    imperium?: number;
+    lifetimeDignitas?: number;
+  };
+}
+
+const CITY_EVENT_TOKEN = /^(rel|corruption|gold|infra|localSupport|lifetimeDignitas|fides|imperium):([+-]\d+)$/;
+
+/**
+ * Resolves a CityEventOption's comma-separated 'key:±N' effect string
+ * (cityEvents.ts's own grammar — distinct from resourceEngine's pipe-
+ * delimited applyEffectString tokens) against a specific city.
+ */
+export function resolveCityEventEffect(
+  effectStr: string,
+  city: CityState
+): CityEventEffectResult {
+  const cityPatch: Partial<CityState> = {};
+  const resourcePatch: CityEventEffectResult['resourcePatch'] = {};
+  let corruptionDelta = 0;
+
+  const segments = effectStr.split(',').map(s => s.trim()).filter(Boolean);
+  for (const segment of segments) {
+    const match = segment.match(CITY_EVENT_TOKEN);
+    if (!match) continue;
+    const key = match[1];
+    const delta = parseInt(match[2], 10);
+
+    switch (key) {
+      case 'rel':
+        cityPatch.relationshipScore = Math.max(0, Math.min(100, (cityPatch.relationshipScore ?? city.relationshipScore) + delta));
+        break;
+      case 'localSupport':
+        cityPatch.localSupport = Math.max(0, Math.min(100, (cityPatch.localSupport ?? city.localSupport) + delta));
+        break;
+      case 'infra':
+        cityPatch.infrastructureRating = Math.max(0, Math.min(100, (cityPatch.infrastructureRating ?? city.infrastructureRating) + delta));
+        break;
+      case 'corruption':
+        corruptionDelta += delta;
+        break;
+      case 'gold':
+        resourcePatch.denarii = (resourcePatch.denarii ?? 0) + delta;
+        break;
+      case 'fides':
+        resourcePatch.fides = (resourcePatch.fides ?? 0) + delta;
+        break;
+      case 'imperium':
+        resourcePatch.imperium = (resourcePatch.imperium ?? 0) + delta;
+        break;
+      case 'lifetimeDignitas':
+        resourcePatch.lifetimeDignitas = (resourcePatch.lifetimeDignitas ?? 0) + delta;
+        break;
+    }
+  }
+
+  return { cityPatch, corruptionDelta, resourcePatch };
+}
+
+/**
+ * Per-season roll for a passive governor/ambassador city event. Returns the
+ * first role-holding city (in array order) that rolls a hit, or null if none
+ * do — deliberately simple rather than a global weighted pick across every
+ * held city at once, since only one city event can be active at a time
+ * (mirrors this codebase's single-active-event conventions elsewhere) and
+ * holding several governorships/ambassadorships simultaneously is rare.
+ * No-ops entirely if one is already active (hasActiveCityEvent), so the
+ * check doesn't burn a season's roll on a city event the player hasn't
+ * resolved yet.
+ */
+export function rollCityEventTick(
+  cities: CityState[],
+  hasActiveCityEvent: boolean
+): { cityId: string; defId: string } | null {
+  if (hasActiveCityEvent) return null;
+
+  for (const city of cities) {
+    if (city.playerGovernor && Math.random() < BALANCE.cityEvents.tickChance) {
+      const pool = getEventsForContext('governor', city.id);
+      if (pool.length > 0) {
+        const pick = pool[Math.floor(Math.random() * pool.length)];
+        return { cityId: city.id, defId: pick.id };
+      }
+    }
+    if (city.playerAmbassador && Math.random() < BALANCE.cityEvents.tickChance) {
+      const pool = getEventsForContext('ambassador', city.id);
+      if (pool.length > 0) {
+        const pick = pool[Math.floor(Math.random() * pool.length)];
+        return { cityId: city.id, defId: pick.id };
+      }
+    }
+  }
+
+  return null;
 }
 
 /**

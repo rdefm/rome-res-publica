@@ -61,6 +61,7 @@ const BONUS_LABELS: Record<keyof ClientBonus, string> = {
   corruptionShield:   '🔒 Corruption',
   rhetoricalBonus:    '📜 Rhetoric',
   martialBonus:       '⚔ Martial',
+  intrigusBonus:      '🗡 Intrigus',
   votingSwayBonus:    '🗳 Votes',
 };
 

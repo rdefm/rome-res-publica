@@ -41,11 +41,19 @@ export const SaveSchema = z.object({
   secrets: z.array(z.any()).default([]),
   // Player-choice blackmail — .default([]) ensures pre-existing saves load cleanly.
   latentSecrets: z.array(z.any()).default([]),
-  // .default([]) ensures save files created before this feature load cleanly
+  // .default([]) ensures save files created before this feature load cleanly.
+  // July 2026 fixes, Chunk D — 'provincial' was missing from this enum even
+  // though gameStore.recruitCityClient has set Client.type to 'provincial'
+  // since provincial clients were introduced: SaveSchema.parse() throws on
+  // any value outside the enum, so any save containing a recruited
+  // provincial client (previously only possible via 4 Italy cities) was
+  // silently treated as corrupted and failed to load entirely (see
+  // LocalSaveProvider.load's try/catch). Chunk D adds provincial clients to
+  // 10 more cities, making this far more likely to be hit.
   clients: z.array(z.object({
     id: z.string(),
     name: z.string(),
-    type: z.enum(['muscle', 'publicSupport', 'votingSway']),
+    type: z.enum(['muscle', 'publicSupport', 'votingSway', 'provincial']),
     acquiredTurn: z.number(),
   })).default([]),
   ownedAssets: z.array(z.object({
@@ -113,6 +121,11 @@ export const SaveSchema = z.object({
   // below, which both return the original `parsed` object, not the parsed
   // schema value), so unlisted fields are never stripped.
   wars: z.array(z.any()).default([]),
+  // July 2026 fixes, Chunk D — .default(null) ensures pre-Chunk-D saves load cleanly.
+  activeCityEvent: z.object({
+    defId: z.string(),
+    cityId: z.string(),
+  }).nullable().default(null),
   // Phase 3, Chunk P3-A — .default(null) ensures pre-P3-A saves load cleanly.
   // Widened by P3-D ('gens_ends') and P3-E ('republic_falls') — see
   // gameStore.ts's field comment; now matches models/epilogue.ts's full

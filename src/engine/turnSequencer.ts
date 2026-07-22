@@ -1070,7 +1070,7 @@ export function processSeason(state: GameState): {
     }
 
     // ── 9c-ii: City tick ─────────────────────────────────────────────────────
-    const { updatedCities, totalGoldDelta, totalImperiumDelta, totalTreasuryDelta, newWars, events: cityEvents } =
+    const { updatedCities, totalGoldDelta, totalImperiumDelta, totalTreasuryDelta, newWars, events: cityEvents, newCityEvent } =
       tickAllCities(s.cities, s);
 
     s = {
@@ -1081,6 +1081,10 @@ export function processSeason(state: GameState): {
       lifetimeImperium: (s.lifetimeImperium ?? 0) + Math.max(0, totalImperiumDelta),
       rome: { ...s.rome, treasury: Math.min(100, Math.max(0, s.rome.treasury + totalTreasuryDelta)) },
       wars: newWars.length > 0 ? [...s.wars, ...newWars] : s.wars,
+      // July 2026 fixes, Chunk D — rollCityEventTick already no-ops while one
+      // is active, but guard here too so this assignment can never clobber
+      // an unresolved city event with null.
+      activeCityEvent: s.activeCityEvent ?? newCityEvent,
     };
 
     for (const msg of cityEvents) events.push(msg);

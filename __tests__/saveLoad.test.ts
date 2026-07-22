@@ -135,3 +135,53 @@ describe('Export/import round-trip — schema drift check', () => {
     errorSpy.mockRestore();
   });
 });
+
+// ─── Provincial client save-corruption bug (July 2026 fixes, Chunk D) ──────
+// SaveSchema's clients.type enum was missing 'provincial' even though
+// gameStore.recruitCityClient has always set it — any save containing a
+// recruited provincial client (possible since the 4 original Italy clients)
+// silently failed to load entirely (SaveSchema.parse throws -> caught ->
+// treated as corrupted -> load() returns null). Chunk D makes provincial
+// clients available in 10 more cities, so this regression matters a lot more.
+
+describe('Provincial client save-corruption fix', () => {
+  test('SaveSchema accepts a client with type "provincial"', () => {
+    const withProvincialClient = {
+      year: -264, turnNumber: 1, seasonIndex: 0,
+      fides: 30, denarii: 200, crisisLevel: 0,
+      family: [{ id: 'pc-1', name: 'Marcus' }],
+      bills: [], clans: [],
+      clients: [{
+        id: 'provincial-etruscan_augur-1',
+        name: 'Vel Saties, Augur',
+        type: 'provincial',
+        acquiredTurn: 1,
+      }],
+      lifetimeDignitas: 0,
+    };
+    expect(() => SaveSchema.parse(withProvincialClient)).not.toThrow();
+  });
+
+  test('a save with a recruited provincial client loads via loadGame without being treated as corrupted', () => {
+    useGameStore.getState().startGame('standard');
+    const base = useGameStore.getState();
+    const stateWithClient = {
+      ...base,
+      clients: [{
+        id: 'provincial-etruscan_augur-1',
+        name: 'Vel Saties, Augur',
+        type: 'provincial' as any,
+        flavourTitle: 'Provincial Client',
+        flavourText: '+3 Auctoritas.',
+        bonus: {},
+        acquiredTurn: 1,
+        isProvincialClient: true,
+        provincialClientDefId: 'etruscan_augur',
+      }],
+    };
+    const roundTripped = JSON.parse(JSON.stringify(stateWithClient));
+    expect(() => SaveSchema.parse(roundTripped)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(roundTripped)).not.toThrow();
+    expect(useGameStore.getState().clients).toHaveLength(1);
+  });
+});

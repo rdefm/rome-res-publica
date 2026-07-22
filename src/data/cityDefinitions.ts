@@ -181,7 +181,7 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     baseImperiumOutput: 0,
     nodeX: 0.562,
     nodeY: 0.533,
-    clientIds: [],
+    clientIds: ['mamertine_captain'],
     npcRoleHolder: {
       name: 'Mamertine garrison council',
       clanId: '',
@@ -208,7 +208,7 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     baseImperiumOutput: 0,
     nodeX: 0.532,
     nodeY: 0.590,
-    clientIds: [],
+    clientIds: ['syracusan_engineer'],
     npcRoleHolder: {
       name: 'Hiero II',
       clanId: '',
@@ -233,7 +233,7 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     baseImperiumOutput: 0,
     nodeX: 0.449,
     nodeY: 0.575,
-    clientIds: [],
+    clientIds: ['agrigentine_magistrate'],
     npcRoleHolder: {
       name: 'Agrigentine assembly',
       clanId: '',
@@ -258,7 +258,7 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     baseImperiumOutput: 0,
     nodeX: 0.360,
     nodeY: 0.540,
-    clientIds: [],
+    clientIds: ['lilybaeum_quartermaster'],
     npcRoleHolder: {
       name: 'Carthaginian garrison command',
       clanId: '',
@@ -285,7 +285,7 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     baseImperiumOutput: 0,
     nodeX: 0.206,
     nodeY: 0.271,
-    clientIds: [],
+    clientIds: ['corsican_tribal_contact'],
     npcRoleHolder: {
       name: 'Carthaginian factor',
       clanId: '',
@@ -310,7 +310,7 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     baseImperiumOutput: 0,
     nodeX: 0.196,
     nodeY: 0.356,
-    clientIds: [],
+    clientIds: ['sardinian_grain_factor'],
     npcRoleHolder: {
       name: 'Carthaginian factor',
       clanId: '',
@@ -335,7 +335,7 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     baseImperiumOutput: 0,
     nodeX: 0.179,
     nodeY: 0.448,
-    clientIds: [],
+    clientIds: ['sulci_mine_overseer'],
     npcRoleHolder: {
       name: 'Carthaginian factor',
       clanId: '',
@@ -360,7 +360,7 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     baseImperiumOutput: 0,
     nodeX: 0.248,
     nodeY: 0.649,
-    clientIds: [],
+    clientIds: ['carthaginian_merchant_contact'],
     npcRoleHolder: {
       name: 'The Carthaginian Senate',
       clanId: '',
@@ -388,7 +388,7 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     baseImperiumOutput: 0,
     nodeX: 0.120,
     nodeY: 0.636,
-    clientIds: [],
+    clientIds: ['numidian_court_noble'],
     npcRoleHolder: {
       name: 'The Numidian court',
       clanId: '',
@@ -413,7 +413,7 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     baseImperiumOutput: 0,
     nodeX: 0.432,
     nodeY: 0.688,
-    clientIds: [],
+    clientIds: ['tripolitanian_caravan_master'],
     npcRoleHolder: {
       name: 'Carthaginian factor',
       clanId: '',

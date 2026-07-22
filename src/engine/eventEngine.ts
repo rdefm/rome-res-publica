@@ -1,6 +1,31 @@
 import type { GameState } from '../state/gameStore';
 import type { EventCondition, ConditionOperator, EventDef, EventChoice, EventInstance } from '../models/event';
 import type { ClientType } from '../models/client';
+import { computeTotalClientBonuses } from './clientEngine';
+import { computeTotalAssetBonuses } from './assetEngine';
+
+// ─── Effective skill (July 2026 fixes, Chunk D) ──────────────────────────────
+// clientEngine's rolled rhetoricalBonus/martialBonus and assetEngine's
+// rhetoricalBonus/martialBonus/intrigusBonus were computed and aggregated but
+// never actually added to any skill check anywhere in the engine — this was
+// the single choke point every skillCheck resolves through, so it's the one
+// place that needed fixing to make both systems' skill bonuses real.
+const SKILL_BONUS_KEY: Record<'rhetoric' | 'martial' | 'intrigus', 'rhetoricalBonus' | 'martialBonus' | 'intrigusBonus'> = {
+  rhetoric: 'rhetoricalBonus',
+  martial: 'martialBonus',
+  intrigus: 'intrigusBonus',
+};
+
+export function getEffectiveSkill(
+  baseSkill: number,
+  skill: 'rhetoric' | 'martial' | 'intrigus',
+  state: GameState
+): number {
+  const bonusKey = SKILL_BONUS_KEY[skill];
+  const clientBonus = computeTotalClientBonuses(state.clients)[bonusKey] ?? 0;
+  const assetBonus = computeTotalAssetBonuses(state.ownedAssets)[bonusKey] ?? 0;
+  return baseSkill + clientBonus + assetBonus;
+}
 
 // ─── Notice event injection (P2-B) ───────────────────────────────────────────
 // Shared builder for weight-0, single-choice, Philon-voiced interstitials —
@@ -155,7 +180,8 @@ export function resolveEventChoice(
   let succeeded = true;
   if (choice.skillCheck) {
     const player = state.family.find(c => c.isPlayer);
-    const skillVal = (player?.skills as any)?.[choice.skillCheck.skill] ?? 0;
+    const baseSkill = (player?.skills as any)?.[choice.skillCheck.skill] ?? 0;
+    const skillVal = getEffectiveSkill(baseSkill, choice.skillCheck.skill, state);
     succeeded = skillVal >= choice.skillCheck.difficulty;
   }
 

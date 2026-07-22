@@ -12,6 +12,7 @@ import CuriaScreen from './src/screens/CuriaScreen';
 import ProvinciaeScreen from './src/screens/ProvinciaeScreen';
 import ResourceBar from './src/components/shared/ResourceBar';
 import EventModal from './src/components/shared/EventModal';
+import CityEventModal from './src/components/provinciae/CityEventModal';
 import AmbitionSelectionModal from './src/components/shared/AmbitionSelectionModal';
 import BirthNamingModal from './src/components/domus/BirthNamingModal';
 import AgendaTablet from './src/components/shared/AgendaTablet';
@@ -253,6 +254,7 @@ function GameRoot() {
             header comment): C8 replaces its single "Trust the Legate" button with a real
             tactical-vs-abstract choice, not this component's mounting or gating. */}
         <EventModal />
+        <CityEventModal />
         <AmbitionSelectionModal />
         <BirthNamingModal />
         <AgendaTablet />

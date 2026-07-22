@@ -9,10 +9,12 @@ import {
   getDeclareWarBillName,
   buildAmbassadorPostingBill,
   getAmbassadorPostingBillName,
+  resolveCityEventEffect,
+  rollCityEventTick,
 } from '../src/engine/cityEngine';
 import { applyEffectString } from '../src/engine/resourceEngine';
 import { buildInitialCityStates, getCityDefinition } from '../src/data/cityDefinitions';
-import type { CityState, AmbassadorState, GovernorPolicy } from '../src/models/city';
+import type { CityState, AmbassadorState, GovernorState, GovernorPolicy } from '../src/models/city';
 import type { WarState } from '../src/models/war';
 import type { GameState } from '../src/state/gameStore';
 
@@ -393,5 +395,94 @@ describe('cityEngine — applyCityFlips (conquest/defection)', () => {
     const messana = flipped.find(p => p.id === 'messana')!;
     const result = tickCity(messana, 0, 0);
     expect(result.updatedCity.status).toBe('unincorporated');
+  });
+});
+
+// ─── resolveCityEventEffect (July 2026 fixes, Chunk D) ──────────────────────
+
+describe('resolveCityEventEffect', () => {
+  const city = findState('syracuse');
+
+  test('applies rel/localSupport/infra as clamped absolute city values', () => {
+    const result = resolveCityEventEffect('rel:+8,localSupport:+10,infra:-5', city);
+    expect(result.cityPatch.relationshipScore).toBe(city.relationshipScore + 8);
+    expect(result.cityPatch.localSupport).toBe(city.localSupport + 10);
+    expect(result.cityPatch.infrastructureRating).toBe(city.infrastructureRating - 5);
+  });
+
+  test('clamps rel to [0, 100]', () => {
+    const hot = { ...city, relationshipScore: 95 };
+    const result = resolveCityEventEffect('rel:+20', hot);
+    expect(result.cityPatch.relationshipScore).toBe(100);
+
+    const cold = { ...city, relationshipScore: 5 };
+    const result2 = resolveCityEventEffect('rel:-20', cold);
+    expect(result2.cityPatch.relationshipScore).toBe(0);
+  });
+
+  test('routes corruption to corruptionDelta, not cityPatch', () => {
+    const result = resolveCityEventEffect('corruption:+10,rel:+3', city);
+    expect(result.corruptionDelta).toBe(10);
+    expect((result.cityPatch as any).corruption).toBeUndefined();
+  });
+
+  test('routes gold/fides/imperium/lifetimeDignitas to resourcePatch', () => {
+    const result = resolveCityEventEffect('gold:+40,fides:+5,imperium:+2,lifetimeDignitas:+8', city);
+    expect(result.resourcePatch).toEqual({ denarii: 40, fides: 5, imperium: 2, lifetimeDignitas: 8 });
+  });
+
+  test('ignores unmatched/malformed tokens rather than throwing', () => {
+    expect(() => resolveCityEventEffect('garbage,rel:notanumber,', city)).not.toThrow();
+  });
+});
+
+// ─── rollCityEventTick (July 2026 fixes, Chunk D) ───────────────────────────
+
+describe('rollCityEventTick', () => {
+  function makeGovernor(overrides: Partial<GovernorState> = {}): GovernorState {
+    return {
+      characterId: 'pc-1',
+      policy: STANDARD_POLICY,
+      corruptionAccrued: 0,
+      turnsServed: 0,
+      ...overrides,
+    };
+  }
+
+  test('never fires when a city event is already active', () => {
+    const cities = [{ ...findState('etruria'), playerGovernor: makeGovernor() }];
+    jest.spyOn(Math, 'random').mockReturnValue(0); // would always hit if checked
+    const result = rollCityEventTick(cities, true);
+    expect(result).toBeNull();
+  });
+
+  test('never fires for a city with neither a governor nor an ambassador', () => {
+    const cities = [findState('etruria')];
+    jest.spyOn(Math, 'random').mockReturnValue(0);
+    const result = rollCityEventTick(cities, false);
+    expect(result).toBeNull();
+  });
+
+  test('fires a governor-pool card for a governed city on a hit roll', () => {
+    const cities = [{ ...findState('etruria'), playerGovernor: makeGovernor() }];
+    jest.spyOn(Math, 'random').mockReturnValue(0); // < tickChance, and picks pool[0]
+    const result = rollCityEventTick(cities, false);
+    expect(result).not.toBeNull();
+    expect(result!.cityId).toBe('etruria');
+  });
+
+  test('fires an ambassador-pool card for an ambassador-posted city on a hit roll', () => {
+    const cities = [{ ...findState('syracuse'), playerAmbassador: makeAmbassador() }];
+    jest.spyOn(Math, 'random').mockReturnValue(0);
+    const result = rollCityEventTick(cities, false);
+    expect(result).not.toBeNull();
+    expect(result!.cityId).toBe('syracuse');
+  });
+
+  test('does not fire when the roll misses', () => {
+    const cities = [{ ...findState('etruria'), playerGovernor: makeGovernor() }];
+    jest.spyOn(Math, 'random').mockReturnValue(0.999); // >= tickChance
+    const result = rollCityEventTick(cities, false);
+    expect(result).toBeNull();
   });
 });

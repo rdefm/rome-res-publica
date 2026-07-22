@@ -119,10 +119,12 @@ import {
   buildDeclareWarBill,
   getForeignWarTargetEnemyId,
   buildAmbassadorPostingBill,
+  resolveCityEventEffect,
 } from '../engine/cityEngine';
 import { getCityAssetDefinition } from '../data/cityAssets';
 import { getHouseLocationDefinition } from '../data/houseLocations';
 import { getCityClientDef } from '../data/cityClients';
+import { getEventsForContext, getCityEventDef } from '../data/cityEvents';
 import { BALANCE } from '../data/balance';
 import { calcTrainingCost } from '../engine/resourceEngine';
 import type { SeasonStats } from '../models/telemetry';
@@ -134,7 +136,7 @@ import {
   getMunificenceEffects,
 } from '../engine/munificenceEngine';
 import { applyTrackDelta } from '../engine/crisisEngine';
-import { injectNoticeEvent } from '../engine/eventEngine';
+import { injectNoticeEvent, getEffectiveSkill } from '../engine/eventEngine';
 // Military Overhaul M4 — battle bridge
 import type { BattleState, BattleSide, BattleOutcome } from '../models/battle';
 import {
@@ -397,6 +399,14 @@ export interface GameState {
   // Event queue
   pendingEvents: EventInstance[];
   activeEvent: EventInstance | null;
+
+  // July 2026 fixes, Chunk D — governor/ambassador city event (data/cityEvents.ts's
+  // CITY_EVENTS pool). Kept separate from pendingEvents/activeEvent above since
+  // CityEventDefinition is a distinct shape (city-scoped effects, not player-resource
+  // ones) with its own resolution path — see cityEngine.rollCityEventTick /
+  // resolveCityEventEffect and CityEventModal.tsx. Single slot, not a queue: only
+  // one can be active at a time (rollCityEventTick no-ops while this is set).
+  activeCityEvent: { defId: string; cityId: string } | null;
 
   // Birth naming queue
   pendingBirthNaming: {
@@ -808,6 +818,11 @@ export interface GameActions {
   // ── Provinciae ────────────────────────────────────────────────────────
   updateCityPolicy: (cityId: string, policy: GovernorPolicy) => void;
   resolveAmbassadorAction: (provinceId: string, actionId: AmbassadorActionId) => void;
+  /** July 2026 fixes, Chunk D — resolves state.activeCityEvent's chosen
+   *  option (governor/ambassador city event card). No-ops if none is active. */
+  resolveCityEventChoice: (optionId: string) => void;
+  /** Clears state.activeCityEvent without applying any effect (mirrors dismissEvent). */
+  dismissCityEvent: () => void;
   proposeIncorporationBill: (provinceId: string) => void;
   proposeDeclareWarBill: (provinceId: string) => void;
   seekAmbassadorPosting: (provinceId: string) => void;
@@ -1201,6 +1216,7 @@ export const INITIAL_STATE: GameState = {
 
   pendingEvents: [],
   activeEvent: null,
+  activeCityEvent: null,
   pendingBirthNaming: null,
 
   log: [mkLog('264 BC · Spring', 'The Brutii begin their ascent.', 'neutral')],
@@ -3662,9 +3678,34 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const label = turnLabel(s);
     const rp = result.resourcePatch;
 
+    // July 2026 fixes, Chunk D — cultural_exchange's guaranteed city-event
+    // fire, on top of (not instead of) the passive per-season roll: it's a
+    // deliberate, paid action, so it should never buy nothing. Only fires if
+    // no city event is already active (mirrors rollCityEventTick's own guard).
+    const queuedEvent = actionId === 'cultural_exchange' && !s.activeCityEvent
+      ? getEventsForContext('ambassador', provinceId)
+      : [];
+    const newActiveCityEvent = queuedEvent.length > 0
+      ? { defId: queuedEvent[Math.floor(Math.random() * queuedEvent.length)].id, cityId: provinceId }
+      : s.activeCityEvent;
+
+    // July 2026 fixes, Chunk D — corrupt_dealing's resourcePatch.corruption
+    // was silently dropped here (only fides/denarii were ever applied),
+    // so "at a cost to Rome's standing" never actually cost anything. Applies
+    // to the posted ambassador's own corruptionScore, clamped 0-100 same as
+    // every other corruptionScore mutation in this codebase.
+    const ambassadorCharacterId = city.playerAmbassador!.characterId;
+
     set({
       ...(rp.fides   !== undefined ? { fides:   Math.max(0, s.fides   + rp.fides)   } : {}),
       ...(rp.denarii !== undefined ? { denarii: Math.max(0, s.denarii + rp.denarii) } : {}),
+      family: rp.corruption !== undefined
+        ? s.family.map(c =>
+            c.id === ambassadorCharacterId
+              ? { ...c, corruptionScore: Math.max(0, Math.min(100, c.corruptionScore + rp.corruption!)) }
+              : c
+          )
+        : s.family,
       cities: s.cities.map(p =>
         p.id === provinceId
           ? {
@@ -3683,6 +3724,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
             }
           : p
       ),
+      activeCityEvent: newActiveCityEvent,
       log: [...s.log, mkLog(label, result.logMessage, 'neutral')],
       ...bumpActions(s),
       ...bumpSpend(s, {
@@ -3691,6 +3733,75 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       }),
     });
   },
+
+  // July 2026 fixes, Chunk D — resolves state.activeCityEvent (fired by
+  // cityEngine.rollCityEventTick's passive season tick, or cultural_exchange's
+  // guaranteed fire above). Mirrors resolveEvent's shape but scoped to a
+  // specific city and its own CityEventOption effect grammar — doesn't count
+  // against the season action budget (bumpActions/bumpSpend), same as
+  // resolveEvent itself: responding to an event that already fired isn't a
+  // new player-initiated action.
+  resolveCityEventChoice: (optionId) => {
+    const s = get();
+    if (!s.activeCityEvent) return;
+
+    const def = getCityEventDef(s.activeCityEvent.defId);
+    const city = s.cities.find(p => p.id === s.activeCityEvent!.cityId);
+    if (!def || !city) {
+      set({ activeCityEvent: null });
+      return;
+    }
+
+    const option = def.options.find(o => o.id === optionId);
+    if (!option) {
+      set({ activeCityEvent: null });
+      return;
+    }
+
+    const actingCharacterId = def.triggerCondition === 'governor'
+      ? city.playerGovernor?.characterId
+      : city.playerAmbassador?.characterId;
+    const actingCharacter = s.family.find(c => c.id === actingCharacterId);
+
+    let costDenarii = 0, costFides = 0, costImperium = 0;
+    if (option.cost) {
+      if (option.cost.resource === 'denarii') costDenarii = option.cost.amount;
+      else if (option.cost.resource === 'fides') costFides = option.cost.amount;
+      else if (option.cost.resource === 'imperium') costImperium = option.cost.amount;
+    }
+
+    let succeeded = true;
+    if (option.skillCheck) {
+      const baseSkill = (actingCharacter?.skills as any)?.[option.skillCheck.skill] ?? 0;
+      const skillVal = getEffectiveSkill(baseSkill, option.skillCheck.skill as any, s);
+      succeeded = skillVal >= option.skillCheck.difficulty;
+    }
+
+    const effectStr = (succeeded ? option.successEffect : option.failureEffect) ?? '';
+    const resultText = (succeeded ? option.successText : option.failureText) ?? option.successText;
+
+    const { cityPatch, corruptionDelta, resourcePatch } = resolveCityEventEffect(effectStr, city);
+    const label = turnLabel(s);
+
+    set({
+      fides:   Math.max(0, s.fides   - costFides   + (resourcePatch.fides   ?? 0)),
+      denarii: Math.max(0, s.denarii - costDenarii + (resourcePatch.denarii ?? 0)),
+      imperium: s.imperium - costImperium + (resourcePatch.imperium ?? 0),
+      lifetimeDignitas: s.lifetimeDignitas + (resourcePatch.lifetimeDignitas ?? 0),
+      family: (corruptionDelta !== 0 && actingCharacter)
+        ? s.family.map(c =>
+            c.id === actingCharacter.id
+              ? { ...c, corruptionScore: Math.max(0, Math.min(100, c.corruptionScore + corruptionDelta)) }
+              : c
+          )
+        : s.family,
+      cities: s.cities.map(p => (p.id === city.id ? { ...p, ...cityPatch } : p)),
+      activeCityEvent: null,
+      log: [...s.log, mkLog(label, resultText, 'neutral')],
+    });
+  },
+
+  dismissCityEvent: () => set({ activeCityEvent: null }),
 
   purchaseCityAsset: (cityId, assetId) => {
     const s = get();
@@ -3777,17 +3888,28 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     if (s.clients.length >= getClientSlotCap(s.house)) return;
 
     const label = turnLabel(s);
+    // July 2026 fixes, Chunk D — resourceBonus/skillBonus used to be
+    // descriptive-only (bonus: {} below, always empty): computeTotalClientBonuses
+    // reads exactly these ClientBonus keys (gold/fides feed resourceEngine's
+    // season income calc; rhetoricalBonus/martialBonus/intrigusBonus now feed
+    // eventEngine.getEffectiveSkill's skill checks), so populating it here
+    // makes every provincial client's stated bonus real. auctoritas has no
+    // skill-check consumer anywhere in the engine (SkillCheck only ever
+    // checks rhetoric/martial/intrigus) — left out, same as it's always been.
+    const bonus: Record<string, number> = {};
+    if (clientDef.resourceBonus?.goldPerTurn)   bonus.gold  = clientDef.resourceBonus.goldPerTurn;
+    if (clientDef.resourceBonus?.gratiaPerTurn) bonus.fides = (bonus.fides ?? 0) + clientDef.resourceBonus.gratiaPerTurn;
+    if (clientDef.skillBonus?.rhetoric)  bonus.rhetoricalBonus = clientDef.skillBonus.rhetoric;
+    if (clientDef.skillBonus?.martial)   bonus.martialBonus    = clientDef.skillBonus.martial;
+    if (clientDef.skillBonus?.intrigus)  bonus.intrigusBonus   = clientDef.skillBonus.intrigus;
+
     const newClient = {
       id: `provincial-${clientId}-${Date.now()}`,
       name: clientDef.name,
       type: 'provincial' as any,
       flavourTitle: 'Provincial Client',
       flavourText: clientDef.bonusDescription,
-      // Provincial clients carry their bonuses via provincialClientDefId (resolved through
-      // getCityClientDef), not the generic ClientBonus pool — but computeTotalClientBonuses
-      // and the Clientela UI both assume every Client has a `bonus` object, so this must be
-      // present (even empty) or those call sites crash on Object.entries(undefined).
-      bonus: {},
+      bonus,
       acquiredTurn: s.turnNumber,
       isProvincialClient: true,
       provincialClientDefId: clientId,
