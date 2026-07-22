@@ -15,6 +15,9 @@ import SeasonOverlay from '../components/shared/SeasonOverlay';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
 import BasilicaSheet from '../components/cursus/BasilicaSheet';
 import CandidateHeader from '../components/cursus/CandidateHeader';
+import GildedPanel from '../components/shared/GildedPanel';
+import PortraitRoundel from '../components/shared/PortraitRoundel';
+import { characterPortraitSubject, leaderPortraitSubject } from '../engine/portraitEngine';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 import InfoTap from '../components/shared/InfoTap';
 
@@ -426,15 +429,15 @@ function ElectionPanel({ character }: { character: Character }) {
   const seasonsToWinter = (3 - seasonIndex + 4) % 4;
   const playerScore     = calcPlayerElectionScore(state);
 
-  const clanInfluenceMap = Object.fromEntries(clans.map(c => [c.id, c.influence]));
+  const leaderById = new Map(clans.flatMap(c => c.leaders.map(l => [l.id, l] as const)));
 
   const candidates = [
     {
-      name:          character.name,
-      subtitle:      `Base ${PLAYER_BASE_SCORE} + clients + canvassed`,
-      votes:         playerScore,
-      isPlayer:      true,
-      highestOffice: null as string | null,
+      name:     character.name,
+      subtitle: `Base ${PLAYER_BASE_SCORE} + clients + canvassed`,
+      votes:    playerScore,
+      isPlayer: true,
+      subject:  characterPortraitSubject(character),
     },
     ...electionRivals.map((r) => ({
       name:     r.name,
@@ -443,7 +446,9 @@ function ElectionPanel({ character }: { character: Character }) {
         : r.clanName,
       votes:    r.strength,
       isPlayer: false,
-      highestOffice: r.highestOffice,
+      // electionRivals carries id+clanId back to the real ClanLeader (electionEngine.generateRivals) —
+      // age isn't on ElectionRival itself, so look the leader up for the portrait's age band.
+      subject:  leaderPortraitSubject(leaderById.get(r.id) ?? { id: r.id, name: r.name, age: 40 }, r.clanId),
     })),
   ].sort((a, b) => b.votes - a.votes);
 
@@ -452,22 +457,23 @@ function ElectionPanel({ character }: { character: Character }) {
   const onTrackToWin = playerRank <= seats;
 
   return (
-    <View style={ep.container}>
-      <Text style={ep.title}>Campaign: {office?.name}</Text>
-      <Text style={ep.candidate}>Candidate: {character.name}</Text>
-
-      <View style={ep.seatsRow}>
-        <Text style={ep.seatsLabel}>{seats} seat{seats !== 1 ? 's' : ''} available</Text>
+    <GildedPanel style={ep.panel}>
+      <View style={ep.titleRow}>
+        <Text style={ep.title} numberOfLines={1}>CAMPAIGN: {office?.name?.toUpperCase()}</Text>
         <Text style={[ep.rankBadge, onTrackToWin ? ep.rankBadgeWin : ep.rankBadgeLose]}>
           {onTrackToWin ? `✓ Est. #${playerRank}` : `✗ Est. #${playerRank}`}
         </Text>
       </View>
 
-      {seasonsToWinter === 0 ? (
-        <Text style={ep.urgent}>Election resolves this season — End Season to vote.</Text>
-      ) : (
-        <Text style={ep.countdown}>{seasonsToWinter} season{seasonsToWinter !== 1 ? 's' : ''} until election</Text>
-      )}
+      <View style={ep.metaRow}>
+        <Text style={ep.metaText}>
+          {seasonsToWinter === 0 ? '⏳ Election resolves this season' : `⏳ ${seasonsToWinter} Season${seasonsToWinter !== 1 ? 's' : ''} Remaining`}
+        </Text>
+        <Text style={ep.metaDot}>·</Text>
+        <Text style={ep.metaText}>{seats} Seat{seats !== 1 ? 's' : ''} Available</Text>
+      </View>
+
+      <Text style={ep.subheader}>Live Polling Standings</Text>
 
       {candidates.map((c, i) => {
         const inWinningZone = i < seats;
@@ -485,6 +491,7 @@ function ElectionPanel({ character }: { character: Character }) {
               </View>
             )}
             <View style={ep.candidateRow}>
+              <PortraitRoundel subject={c.subject} size={32} frame={c.isPlayer ? 'gold' : 'plain'} />
               <View style={ep.candidateInfo}>
                 <Text style={[ep.candidateName, c.isPlayer && { color: COLORS.gold }]} numberOfLines={1}>
                   {c.name}
@@ -502,28 +509,28 @@ function ElectionPanel({ character }: { character: Character }) {
           </React.Fragment>
         );
       })}
-    </View>
+    </GildedPanel>
   );
 }
 
 const ep = StyleSheet.create({
-  container: { backgroundColor: 'rgba(200,168,112,0.25)', borderWidth: 1, borderColor: COLORS.gold, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md },
-  title: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 16, fontWeight: '700', marginBottom: 2 },
-  candidate: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, marginBottom: 4 },
-  seatsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xs },
-  seatsLabel: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 10, letterSpacing: 0.3 },
+  panel: { marginBottom: SPACING.md },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xs },
+  title: { flex: 1, color: COLORS.gold, fontFamily: FONTS.display, fontSize: 15, letterSpacing: 0.5, fontWeight: '700', marginRight: SPACING.sm },
   rankBadge: { fontFamily: FONTS.display, fontSize: 11, fontWeight: '700', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   rankBadgeWin: { color: COLORS.laurel, backgroundColor: 'rgba(80,140,60,0.2)' },
   rankBadgeLose: { color: COLORS.crimson, backgroundColor: 'rgba(160,40,40,0.2)' },
-  countdown: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, marginBottom: SPACING.sm },
-  urgent: { color: COLORS.crimson, fontFamily: FONTS.display, fontSize: 12, fontWeight: '700', marginBottom: SPACING.sm },
-  candidateRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  candidateInfo: { width: 110 },
-  candidateName: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 12 },
-  candidateClan: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 9, letterSpacing: 0.3 },
-  voteBarTrack: { flex: 1, height: 8, backgroundColor: COLORS.bg, borderRadius: 4, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
-  voteBarFill: { height: '100%', borderRadius: 4 },
-  voteCount: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, width: 30, textAlign: 'right' },
+  metaRow: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.sm },
+  metaText: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11 },
+  metaDot: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, marginHorizontal: 5 },
+  subheader: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: SPACING.sm },
+  candidateRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: SPACING.sm },
+  candidateInfo: { width: 100 },
+  candidateName: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 12 },
+  candidateClan: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 9, letterSpacing: 0.3 },
+  voteBarTrack: { flex: 1, height: 6, backgroundColor: COLORS.bg, borderRadius: 3, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
+  voteBarFill: { height: '100%', borderRadius: 3 },
+  voteCount: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, width: 30, textAlign: 'right' },
   seatDivider: { flexDirection: 'row', alignItems: 'center', marginVertical: 4 },
   seatDividerLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
   seatDividerLabel: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 8, letterSpacing: 0.5, marginHorizontal: 4 },

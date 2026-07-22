@@ -18,15 +18,11 @@ import { COLORS, FONTS, RADIUS, SPACING } from '../../utils/theme';
 import GildedPanel from '../shared/GildedPanel';
 import PortraitRoundel from '../shared/PortraitRoundel';
 import SkillMeter from '../shared/SkillMeter';
-import type { PortraitSubject } from '../../engine/portraitEngine';
+import { characterPortraitSubject } from '../../engine/portraitEngine';
 
 interface CandidateHeaderProps {
   selected: string;
   onSelect: (id: string) => void;
-}
-
-function subjectFor(c: Character): PortraitSubject {
-  return { kind: 'character', id: c.id, name: c.name, role: c.role, age: c.age };
 }
 
 /** True household-wide officeholder check (Finding: `character.officeId` is
@@ -101,7 +97,7 @@ export default function CandidateHeader({ selected, onSelect }: CandidateHeaderP
 
           <View style={styles.main}>
             <View style={styles.identityRow}>
-              <PortraitRoundel subject={subjectFor(character)} size={56} frame="gold" />
+              <PortraitRoundel subject={characterPortraitSubject(character)} size={56} frame="gold" />
               <View style={styles.textBlock}>
                 <TouchableOpacity onPress={() => setPickerOpen(true)}>
                   <Text style={styles.name} numberOfLines={1}>
@@ -123,7 +119,7 @@ export default function CandidateHeader({ selected, onSelect }: CandidateHeaderP
           <TouchableOpacity onPress={goNext} style={styles.peek} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
             {eligible.length > 1 && (
               <>
-                <PortraitRoundel subject={subjectFor(nextChar)} size={32} frame="plain" />
+                <PortraitRoundel subject={characterPortraitSubject(nextChar)} size={32} frame="plain" />
                 <Text style={styles.peekName} numberOfLines={1}>{nextChar.name.split(' ')[0]}</Text>
               </>
             )}
@@ -143,7 +139,7 @@ export default function CandidateHeader({ selected, onSelect }: CandidateHeaderP
                   style={[pk.row, c.id === selected && pk.rowActive]}
                   onPress={() => { onSelect(c.id); setPickerOpen(false); }}
                 >
-                  <PortraitRoundel subject={subjectFor(c)} size={36} frame={c.id === selected ? 'gold' : 'plain'} />
+                  <PortraitRoundel subject={characterPortraitSubject(c)} size={36} frame={c.id === selected ? 'gold' : 'plain'} />
                   <View style={pk.rowText}>
                     <Text style={pk.rowName}>{c.isPlayer ? '⭐ ' : ''}{c.name}</Text>
                     <Text style={pk.rowSub}>

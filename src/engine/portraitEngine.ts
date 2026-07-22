@@ -96,6 +96,25 @@ export type PortraitSubject =
   | { kind: 'character'; id: string; name: string; role: Character['role']; age: number }
   | { kind: 'leader'; id: string; name: string; age: number; clanId: string };
 
+/** Builds a `PortraitSubject` straight from a `Character` — the shape every
+ *  Cursus consumer (candidate header, campaign panel) needs, kept here so
+ *  it's defined once rather than re-typed at each call site. */
+export function characterPortraitSubject(
+  character: Pick<Character, 'id' | 'name' | 'role' | 'age'>,
+): PortraitSubject {
+  return { kind: 'character', id: character.id, name: character.name, role: character.role, age: character.age };
+}
+
+/** Builds a `PortraitSubject` for a `ClanLeader` — `clanId` isn't on
+ *  `ClanLeader` itself (see `lineageForLeader`'s doc comment), so the caller
+ *  supplies it from whatever scope already has both. */
+export function leaderPortraitSubject(
+  leader: Pick<ClanLeader, 'id' | 'name' | 'age'>,
+  clanId: string,
+): PortraitSubject {
+  return { kind: 'leader', id: leader.id, name: leader.name, age: leader.age, clanId };
+}
+
 /** Appendix A's recommended v1 pool size (1 variant per lineage/gender/age
  *  band, 60 images total) — bump when a second variant's assets land; no
  *  other code changes needed, variantIndexFor already handles any count. */
