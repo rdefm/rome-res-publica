@@ -38,6 +38,18 @@ export const COLORS = {
   goldBorder:      '#8B6914',
   crimsonDeep:     '#4a1a1a',
   crimsonBlack:    '#2a0a0a',
+  // Cursus Tab Visual Redesign plan, Chunk C1 — gilded-panel tokens.
+  // Finding 5 audit: gildFrame/panelWood/lockedText reuse existing Domus
+  // tokens (goldBorder/crimsonBlack/dust) rather than minting near-dupes;
+  // rivet/gildFrameDark/sealWaxGrey/scrim* have no existing equivalent.
+  gildFrame:       '#8B6914',   // = goldBorder — reused, not duplicated
+  gildFrameDark:   '#6E5426',
+  rivet:           '#D9B45C',
+  panelWood:       '#2a0a0a',   // = crimsonBlack — reused, not duplicated
+  sealWaxGrey:     '#8E8A82',
+  lockedText:      '#9c8e7e',   // = dust — reused, not duplicated
+  scrimTop:        'rgba(20,14,8,0.35)',
+  scrimBottom:     'rgba(20,14,8,0.92)',
 };
 
 // ─── Typography ───────────────────────────────────────────────────────────────
