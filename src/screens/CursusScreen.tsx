@@ -14,65 +14,12 @@ import { evaluateGates } from '../engine/officeActionEngine';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
 import BasilicaSheet from '../components/cursus/BasilicaSheet';
+import CandidateHeader from '../components/cursus/CandidateHeader';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 import InfoTap from '../components/shared/InfoTap';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const BASILICA_SHEET_HEIGHT = SCREEN_HEIGHT * 0.72;
-
-// ─── Family member picker ─────────────────────────────────────────────────────
-
-function FamilyMemberPicker({
-  selected,
-  onSelect,
-}: {
-  selected: string;
-  onSelect: (id: string) => void;
-}) {
-  const { family } = useGameStore();
-  const eligible = family.filter(c => c.age >= 18);
-
-  return (
-    <View style={fp.container}>
-      <Text style={fp.label}>VIEWING</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={fp.row}>
-        {eligible.map(c => (
-          <TouchableOpacity
-            key={c.id}
-            style={[fp.pill, selected === c.id && fp.pillActive]}
-            onPress={() => onSelect(c.id)}
-          >
-            <Text style={[fp.pillText, selected === c.id && fp.pillTextActive]}>
-              {c.isPlayer ? '⭐ ' : ''}{c.name.split(' ')[0]}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
-
-const fp = StyleSheet.create({
-  container: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  label: {
-    color: COLORS.goldDim,
-    fontFamily: FONTS.ui,
-    fontSize: 9,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    marginBottom: SPACING.xs,
-  },
-  row: { gap: SPACING.sm },
-  pill: { borderWidth: 1, borderColor: PARCHMENT_TEXT.border, borderRadius: RADIUS.md, paddingHorizontal: SPACING.sm, paddingVertical: 5 },
-  pillActive: { borderColor: COLORS.gold, backgroundColor: COLORS.goldDim + '22' },
-  pillText: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 12 },
-  pillTextActive: { color: COLORS.gold },
-});
 
 // ─── Action button ─────────────────────────────────────────────────────────────
 // Shared between OfficeRung and TribunePanel.
@@ -763,7 +710,7 @@ export default function CursusScreen() {
         )}
       </View>
 
-      <FamilyMemberPicker selected={selectedCharId} onSelect={setSelectedCharId} />
+      <CandidateHeader selected={selectedCharId} onSelect={setSelectedCharId} />
 
       <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}>
         {selectedChar && <ElectionPanel character={selectedChar} />}
