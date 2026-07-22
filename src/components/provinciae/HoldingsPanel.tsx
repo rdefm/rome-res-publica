@@ -6,15 +6,16 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
-import { ASSET_DEFINITIONS } from '../../data/assetDefinitions';
-import type { AssetDefinition } from '../../models/asset';
+import { getAvailableAssetsForLocation } from '../../data/cityAssets';
+import type { AssetDefinition, OwnedAsset } from '../../models/asset';
 import HoldingsModal from './HoldingsModal';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import ParchmentCard, { PARCHMENT_TEXT } from '../shared/ParchmentCard';
 
 // ─── Asset image map ──────────────────────────────────────────────────────────
-// Family House rework — `library` (formerly here) is gone; ASSET_DEFINITIONS
-// now only ever holds these 4 relocated-to-Latium assets.
+// July 2026 fixes, Chunk E — still Latium-only art; province assets have no
+// image files yet, so they simply aren't keyed here (ASSET_IMAGES[id] is
+// undefined, treated the same as a graceful require()-missing fallback).
 
 const ASSET_IMAGES: Record<string, ReturnType<typeof require> | null> = {
   vineyard: (() => {
@@ -44,10 +45,31 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 const TIER_STARS = ['★☆☆', '★★☆', '★★★'];
 
+// ─── Owned-assets-at-location selector ───────────────────────────────────────
+// July 2026 fixes, Chunk E — 'latium' reads the flat GameState.ownedAssets;
+// any other locationId is a CityState.id and reads that city's nested one.
+
+function useOwnedAssetsAt(locationId: string): OwnedAsset[] {
+  return useGameStore(s =>
+    locationId === 'latium'
+      ? s.ownedAssets
+      : s.cities.find(c => c.id === locationId)?.ownedAssets ?? []
+  );
+}
+
 // ─── Asset card ───────────────────────────────────────────────────────────────
 
-function AssetCard({ def, onPress }: { def: AssetDefinition; onPress: () => void }) {
-  const { ownedAssets, denarii } = useGameStore();
+function AssetCard({
+  def,
+  locationId,
+  onPress,
+}: {
+  def: AssetDefinition;
+  locationId: string;
+  onPress: () => void;
+}) {
+  const ownedAssets = useOwnedAssetsAt(locationId);
+  const denarii = useGameStore(s => s.denarii);
   const owned = ownedAssets.find(a => a.definitionId === def.id);
   const currentTier = owned?.currentTier ?? null;
   const isMaxTier = currentTier === 3;
@@ -109,21 +131,47 @@ function AssetCard({ def, onPress }: { def: AssetDefinition; onPress: () => void
   );
 }
 
+// ─── Local Support summary (province locations only) ─────────────────────────
+// July 2026 fixes, Chunk E — ported from the now-retired CityAssetGrid.tsx.
+// Latium has no Local Support concept, so this section is simply omitted
+// there rather than shown with a meaningless value.
+
+function LocalSupportNote({ locationId }: { locationId: string }) {
+  const localSupport = useGameStore(s => s.cities.find(c => c.id === locationId)?.localSupport ?? 0);
+
+  return (
+    <View style={styles.supportNote}>
+      <Text style={styles.supportLabel}>LOCAL SUPPORT</Text>
+      <View style={styles.supportBar}>
+        <View style={[styles.supportBarFill, { width: `${localSupport}%` }]} />
+      </View>
+      <Text style={styles.supportValue}>{localSupport} / 100</Text>
+      <Text style={styles.supportHint}>
+        Assets increase Local Support, gating Provincial Client recruitment.
+      </Text>
+    </View>
+  );
+}
+
 // ─── Main panel ───────────────────────────────────────────────────────────────
 // Family House rework — moved here from Domus's old Patrimonium panel.
-// Unchanged logic: same ASSET_DEFINITIONS, same ownedAssets/purchaseAsset/
-// upgradeAsset store wiring. Embedded as a section inside LatiumSheet.tsx —
-// no ScrollView/container of its own so it can sit inline in that screen's
-// existing ScrollView (avoids a scroll-view-inside-scroll-view).
+// July 2026 fixes, Chunk E — generalized with a `locationId` prop ('latium'
+// default, or a CityState.id) so this single component + HoldingsModal now
+// serve both Latium (LatiumSheet.tsx, unchanged call site) and every
+// province (CitySheet.tsx, replacing the old CityAssetGrid.tsx) — "one
+// coherent asset system" rather than two UIs that must be hand-kept in sync.
+// Embedded as a section inside its parent screen's own ScrollView (no
+// ScrollView/container of its own, avoiding scroll-view-inside-scroll-view).
 
-export default function HoldingsPanel() {
-  const { ownedAssets } = useGameStore();
+export default function HoldingsPanel({ locationId = 'latium' }: { locationId?: string }) {
+  const ownedAssets = useOwnedAssetsAt(locationId);
   const [selectedDef, setSelectedDef] = useState<AssetDefinition | null>(null);
 
-  const ownedDefs = ASSET_DEFINITIONS.filter(d =>
+  const availableAtLocation = getAvailableAssetsForLocation(locationId);
+  const ownedDefs = availableAtLocation.filter(d =>
     ownedAssets.some(a => a.definitionId === d.id)
   );
-  const availableDefs = ASSET_DEFINITIONS.filter(d =>
+  const availableDefs = availableAtLocation.filter(d =>
     !ownedAssets.some(a => a.definitionId === d.id)
   );
 
@@ -133,7 +181,7 @@ export default function HoldingsPanel() {
         <>
           <Text style={styles.sectionLabel}>YOUR HOLDINGS</Text>
           {ownedDefs.map(def => (
-            <AssetCard key={def.id} def={def} onPress={() => setSelectedDef(def)} />
+            <AssetCard key={def.id} def={def} locationId={locationId} onPress={() => setSelectedDef(def)} />
           ))}
         </>
       )}
@@ -142,7 +190,7 @@ export default function HoldingsPanel() {
         <>
           <Text style={styles.sectionLabel}>AVAILABLE TO ACQUIRE</Text>
           {availableDefs.map(def => (
-            <AssetCard key={def.id} def={def} onPress={() => setSelectedDef(def)} />
+            <AssetCard key={def.id} def={def} locationId={locationId} onPress={() => setSelectedDef(def)} />
           ))}
         </>
       )}
@@ -151,8 +199,10 @@ export default function HoldingsPanel() {
         <Text style={styles.emptyText}>No holdings available.</Text>
       )}
 
+      {locationId !== 'latium' && <LocalSupportNote locationId={locationId} />}
+
       {selectedDef && (
-        <HoldingsModal def={selectedDef} onClose={() => setSelectedDef(null)} />
+        <HoldingsModal def={selectedDef} locationId={locationId} onClose={() => setSelectedDef(null)} />
       )}
     </View>
   );
@@ -162,7 +212,7 @@ export default function HoldingsPanel() {
 
 const styles = StyleSheet.create({
   container: {
-    // No flex:1 — embedded inline inside LatiumSheet's own ScrollView.
+    // No flex:1 — embedded inline inside the parent screen's own ScrollView.
   },
   sectionLabel: {
     color: COLORS.goldDim,
@@ -252,5 +302,49 @@ const styles = StyleSheet.create({
   },
   cardActionTextDisabled: {
     color: PARCHMENT_TEXT.muted,
+  },
+
+  // ── Local Support note (province locations only) ──────────────────────────
+  supportNote: {
+    marginTop: SPACING.md,
+    padding: SPACING.sm,
+    backgroundColor: '#1a1a10',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  supportLabel: {
+    color: COLORS.dust,
+    fontFamily: FONTS.ui,
+    fontSize: 9,
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  supportBar: {
+    height: 6,
+    backgroundColor: '#2a2018',
+    borderRadius: 3,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 3,
+  },
+  supportBarFill: {
+    height: '100%',
+    backgroundColor: COLORS.laurel,
+    borderRadius: 3,
+  },
+  supportValue: {
+    color: COLORS.laurel,
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    marginBottom: 4,
+  },
+  supportHint: {
+    color: COLORS.dust,
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    fontStyle: 'italic',
+    lineHeight: 14,
   },
 });

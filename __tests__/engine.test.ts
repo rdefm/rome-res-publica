@@ -188,6 +188,41 @@ describe('calcResourceIncome', () => {
     // base: 6 × 2 = 12, + best other rhetoric (7, not 4+7) × 1 = 7
     expect(fidesIncome).toBe(12 + 7);
   });
+
+  // July 2026 fixes, Chunk E — province assets now share Latium's
+  // AssetDefinition/OwnedAsset shape (cityEngine.calcCityAssetBonuses,
+  // replacing the old single-field calcAssetGoldOutput/calcAssetFidesOutput).
+  test('a province-owned asset contributes its gold/fides bonus to season income', () => {
+    const s = makeState({
+      cities: [
+        { id: 'campania', ownedAssets: [{ definitionId: 'latifundium', currentTier: 1, turnAcquired: 0 }] },
+      ],
+    });
+    const withAsset = calcResourceIncome(s as any);
+    const without = calcResourceIncome(makeState() as any);
+    expect(withAsset.denariiIncome).toBe(without.denariiIncome + 6); // latifundium tier 1: +6 gold
+  });
+
+  test('a province asset upgraded to tier 3 uses its tier-3 bonus, not tier 1', () => {
+    const s = makeState({
+      cities: [
+        { id: 'campania', ownedAssets: [{ definitionId: 'latifundium', currentTier: 3, turnAcquired: 0 }] },
+      ],
+    });
+    const { denariiIncome } = calcResourceIncome(s as any);
+    const without = calcResourceIncome(makeState() as any);
+    expect(denariiIncome).toBe(without.denariiIncome + 22); // latifundium tier 3: +22 gold
+  });
+
+  test("an asset's plebsPerTurn (e.g. Provincial Ludus) feeds plebsDelta — the real 'reduce unrest' hook", () => {
+    const s = makeState({
+      cities: [
+        { id: 'campania', ownedAssets: [{ definitionId: 'provincial_ludus', currentTier: 1, turnAcquired: 0 }] },
+      ],
+    });
+    const { plebsDelta } = calcResourceIncome(s as any);
+    expect(plebsDelta).toBe(2); // provincial_ludus tier 1: plebsPerTurn 2, no unrest penalty at CRISIS_ALL_ZERO
+  });
 });
 
 // ─── Training cost (P2-C) ─────────────────────────────────────────────────────
@@ -265,6 +300,20 @@ describe('applyFactionDrift', () => {
     const result = applyFactionDrift(s as any);
     expect(result.popularesRel).toBe(-100);
     expect(result.optimatesRel).toBe(-100);
+  });
+
+  // July 2026 fixes, Chunk E — the Campania Holiday Estate's Optimates-
+  // relation ask, via AssetBonus.optimatesRelPerTurn (owned by Latium or any
+  // city — summed across both).
+  test('an owned asset with optimatesRelPerTurn offsets the -1 baseline drift', () => {
+    const s = makeState({
+      optimatesRel: 0,
+      cities: [
+        { id: 'campania', ownedAssets: [{ definitionId: 'campania_holiday_estate', currentTier: 1, turnAcquired: 0 }] },
+      ],
+    });
+    const result = applyFactionDrift(s as any);
+    expect(result.optimatesRel).toBe(1); // -1 baseline + optimatesRelPerTurn 2
   });
 });
 

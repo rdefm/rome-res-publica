@@ -29,7 +29,8 @@ import {
 import type { Bill } from '../models/bill';
 import type { WarState } from '../models/war';
 import { getCityDefinition } from '../data/cityDefinitions';
-import { getCityAssetDefinition } from '../data/cityAssets';
+import { getAssetDefinition } from '../data/cityAssets';
+import type { AssetBonus } from '../models/asset';
 import { getEventsForContext } from '../data/cityEvents';
 import { BALANCE } from '../data/balance';
 import { resetAmbassadorCooldowns, calcRapportDecay } from './ambassadorEngine';
@@ -550,15 +551,9 @@ export function tickAllCities(
     }
 
     // Calculate asset relationship and Imperium bonuses for this city
-    let assetRelBonus = 0;
-    let assetImperiumBonus = 0;
-    for (const asset of city.ownedAssets) {
-      const def = getCityAssetDefinition(asset.definitionId);
-      if (!def) continue;
-      const bonus = asset.tier === 2 ? def.tier2Bonus : def.tier1Bonus;
-      assetRelBonus += bonus.relationshipPerTurn ?? 0;
-      assetImperiumBonus += bonus.imperiumPerTurn ?? 0;
-    }
+    const cityAssetBonus = calcCityAssetBonuses(city);
+    const assetRelBonus = cityAssetBonus.relationshipPerTurn ?? 0;
+    const assetImperiumBonus = cityAssetBonus.imperium ?? 0;
 
     const { updatedCity, goldDelta, imperiumDelta, treasuryDelta, events: pEvents } =
       tickCity(city, governorMartial, assetRelBonus);
@@ -797,31 +792,24 @@ export function rollCityEventTick(
 }
 
 /**
- * Calculate gold output from all player-owned assets in a city.
+ * Aggregate all passive bonuses across one city's owned assets — the
+ * city-scoped counterpart to assetEngine.computeTotalAssetBonuses (Latium).
+ * July 2026 fixes, Chunk E — replaces the old calcAssetGoldOutput/
+ * calcAssetFidesOutput pair (each single-field, tier1Bonus/tier2Bonus-only)
+ * now that province assets share Latium's 3-tier AssetDefinition/AssetBonus
+ * shape; every field (gold/fides/imperium/relationshipPerTurn/plebsPerTurn/
+ * optimatesRelPerTurn/...) is available from one aggregate instead of one
+ * narrow function per field.
  */
-export function calcAssetGoldOutput(city: CityState): number {
-  let total = 0;
+export function calcCityAssetBonuses(city: CityState): AssetBonus {
+  const total: AssetBonus = {};
   for (const asset of city.ownedAssets) {
-    const def = getCityAssetDefinition(asset.definitionId);
+    const def = getAssetDefinition(asset.definitionId);
     if (!def) continue;
-    const bonus = asset.tier === 2 ? def.tier2Bonus : def.tier1Bonus;
-    total += bonus.goldPerTurn ?? 0;
-  }
-  return total;
-}
-
-/**
- * Calculate Fides output from all player-owned assets in a city.
- * (Consolidates the former separate Dignitas/Gratia asset outputs — both
- * resources were removed and folded into Fides.)
- */
-export function calcAssetFidesOutput(city: CityState): number {
-  let total = 0;
-  for (const asset of city.ownedAssets) {
-    const def = getCityAssetDefinition(asset.definitionId);
-    if (!def) continue;
-    const bonus = asset.tier === 2 ? def.tier2Bonus : def.tier1Bonus;
-    total += bonus.fidesPerTurn ?? 0;
+    const bonus = def.tiers[asset.currentTier - 1].passiveBonus;
+    for (const key of Object.keys(bonus) as (keyof AssetBonus)[]) {
+      (total[key] as number) = ((total[key] as number) ?? 0) + (bonus[key] as number);
+    }
   }
   return total;
 }

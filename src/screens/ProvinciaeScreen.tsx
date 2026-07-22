@@ -70,8 +70,6 @@ export default function ProvinciaeScreen() {
   const proposeIncorporationBill = useGameStore(s => s.proposeIncorporationBill);
   const proposeDeclareWarBill    = useGameStore(s => s.proposeDeclareWarBill);
   const seekAmbassadorPosting    = useGameStore(s => s.seekAmbassadorPosting);
-  const purchaseProvinceAsset    = useGameStore(s => s.purchaseCityAsset);
-  const upgradeProvinceAsset     = useGameStore(s => s.upgradeCityAsset);
   const recruitProvincialClient  = useGameStore(s => s.recruitCityClient);
   const startCampaign            = useGameStore(s => s.startCampaign);
   const volunteerOfficer         = useGameStore(s => s.volunteerOfficer);
@@ -384,8 +382,6 @@ export default function ProvinciaeScreen() {
               onClose={closeSheet}
               onPolicyChange={(provinceId, policy) => updateProvincePolicy(provinceId, policy)}
               onAmbassadorAction={(provinceId, actionId) => resolveAmbassadorAction(provinceId, actionId)}
-              onPurchaseAsset={(provinceId, assetId) => purchaseProvinceAsset(provinceId, assetId)}
-              onUpgradeAsset={(provinceId, assetId) => upgradeProvinceAsset(provinceId, assetId)}
               onRecruitClient={(provinceId, clientId) => recruitProvincialClient(provinceId, clientId)}
               onSeekPosting={(provinceId) => seekAmbassadorPosting(provinceId)}
               onProposeIncorporation={(provinceId) => proposeIncorporationBill(provinceId)}

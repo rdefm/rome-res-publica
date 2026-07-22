@@ -46,9 +46,19 @@ const BONUS_LABELS: Record<keyof AssetBonus, string> = {
   clientSlots:      '+{n} Client slot(s)',
   corruptionShield: '-{n} Corruption gain/season',
   trialDefenseBonus:'+{n} Trial defense bonus',
+  // July 2026 fixes, Chunk E — city-scoped/Rome-wide bonuses, previously
+  // Latium-only fields. relationshipPerTurn can be negative (e.g. Mining
+  // Rights' unpopularity), so it's the one label whose {n} carries its own
+  // sign rather than a hardcoded '+' — see formatBonus below.
+  relationshipPerTurn: '{n} Relationship/season',
+  plebsPerTurn:        '+{n} Plebs mood/season',
+  optimatesRelPerTurn: '+{n} Optimates relation/season',
 };
 
 function formatBonus(key: keyof AssetBonus, value: number): string {
+  if (key === 'relationshipPerTurn') {
+    return BONUS_LABELS[key].replace('{n}', value >= 0 ? `+${value}` : `${value}`);
+  }
   return (BONUS_LABELS[key] ?? `+{n} ${key}`).replace('{n}', String(value));
 }
 
@@ -118,13 +128,20 @@ function TierRow({
 
 interface HoldingsModalProps {
   def: AssetDefinition;
+  /** July 2026 fixes, Chunk E — 'latium' (default) or a CityState.id. */
+  locationId?: string;
   onClose: () => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function HoldingsModal({ def, onClose }: HoldingsModalProps) {
-  const { ownedAssets, denarii, purchaseAsset, upgradeAsset } = useGameStore();
+export default function HoldingsModal({ def, locationId = 'latium', onClose }: HoldingsModalProps) {
+  const denarii = useGameStore(s => s.denarii);
+  const ownedAssets = useGameStore(s =>
+    locationId === 'latium' ? s.ownedAssets : s.cities.find(c => c.id === locationId)?.ownedAssets ?? []
+  );
+  const purchaseAsset = useGameStore(s => s.purchaseAsset);
+  const upgradeAsset = useGameStore(s => s.upgradeAsset);
 
   const owned = ownedAssets.find(a => a.definitionId === def.id);
   const currentTier = owned?.currentTier ?? null;
@@ -144,9 +161,9 @@ export default function HoldingsModal({ def, onClose }: HoldingsModalProps) {
 
   function handleAction() {
     if (!owned) {
-      purchaseAsset(def.id);
+      purchaseAsset(locationId, def.id);
     } else {
-      upgradeAsset(def.id);
+      upgradeAsset(locationId, def.id);
     }
     onClose();
   }

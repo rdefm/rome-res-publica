@@ -23,7 +23,7 @@ import { getRelationshipLabel, getRelationshipTier } from '../../models/city';
 import { getCityDefinition } from '../../data/cityDefinitions';
 import PolicyBoard from './PolicyBoard';
 import DiplomatDesk from './DiplomatDesk';
-import CityAssetGrid from './CityAssetGrid';
+import HoldingsPanel from './HoldingsPanel';
 import CityClientCard from './CityClientCard';
 import MilitaryTab from './MilitaryTab';
 import MusterPickerModal from './MusterPickerModal';
@@ -58,8 +58,6 @@ interface CitySheetProps {
   onClose: () => void;
   onPolicyChange: (provinceId: string, policy: GovernorPolicy) => void;
   onAmbassadorAction: (provinceId: string, actionId: AmbassadorActionId) => void;
-  onPurchaseAsset: (provinceId: string, assetId: string) => void;
-  onUpgradeAsset: (provinceId: string, assetId: string) => void;
   onRecruitClient: (provinceId: string, clientId: string) => void;
   onSeekPosting: (provinceId: string) => void;
   onProposeIncorporation: (provinceId: string) => void;
@@ -91,8 +89,6 @@ export default function CitySheet({
   onClose,
   onPolicyChange,
   onAmbassadorAction,
-  onPurchaseAsset,
-  onUpgradeAsset,
   onRecruitClient,
   onSeekPosting,
   onProposeIncorporation,
@@ -251,12 +247,7 @@ export default function CitySheet({
               />
             )}
             {activeTab === 'assets' && (
-              <CityAssetGrid
-                province={province}
-                playerDenarii={playerDenarii}
-                onPurchase={(assetId) => onPurchaseAsset(province.id, assetId)}
-                onUpgrade={(assetId) => onUpgradeAsset(province.id, assetId)}
-              />
+              <HoldingsPanel locationId={province.id} />
             )}
             {activeTab === 'clients' && (
               <CityClientCard

@@ -11,6 +11,7 @@ import {
   getAmbassadorPostingBillName,
   resolveCityEventEffect,
   rollCityEventTick,
+  calcCityAssetBonuses,
 } from '../src/engine/cityEngine';
 import { applyEffectString } from '../src/engine/resourceEngine';
 import { buildInitialCityStates, getCityDefinition } from '../src/data/cityDefinitions';
@@ -484,5 +485,56 @@ describe('rollCityEventTick', () => {
     jest.spyOn(Math, 'random').mockReturnValue(0.999); // >= tickChance
     const result = rollCityEventTick(cities, false);
     expect(result).toBeNull();
+  });
+});
+
+// ─── calcCityAssetBonuses (July 2026 fixes, Chunk E) ────────────────────────
+// Replaces the old single-field calcAssetGoldOutput/calcAssetFidesOutput now
+// that province assets share Latium's 3-tier AssetDefinition/AssetBonus
+// shape (models/asset.ts) instead of their own 2-tier CityAssetDefinition.
+
+describe('calcCityAssetBonuses', () => {
+  test('returns an empty object for a city with no owned assets', () => {
+    const city = { ...findState('campania'), ownedAssets: [] };
+    expect(calcCityAssetBonuses(city)).toEqual({});
+  });
+
+  test('reads the tier matching currentTier, not always tier 1', () => {
+    const city = {
+      ...findState('campania'),
+      ownedAssets: [{ definitionId: 'latifundium', currentTier: 2 as const, turnAcquired: 0 }],
+    };
+    expect(calcCityAssetBonuses(city).gold).toBe(12); // latifundium tier 2
+  });
+
+  test('sums bonuses across multiple owned assets, including different fields', () => {
+    const city = {
+      ...findState('campania'),
+      ownedAssets: [
+        { definitionId: 'latifundium', currentTier: 1 as const, turnAcquired: 0 },       // gold: 6
+        { definitionId: 'temple_patronage', currentTier: 1 as const, turnAcquired: 0 },  // fides: 3, relationshipPerTurn: 2
+      ],
+    };
+    const total = calcCityAssetBonuses(city);
+    expect(total.gold).toBe(6);
+    expect(total.fides).toBe(3);
+    expect(total.relationshipPerTurn).toBe(2);
+  });
+
+  test('a negative relationshipPerTurn (Mining Rights) is preserved, not clamped away', () => {
+    const city = {
+      ...findState('etruria'),
+      ownedAssets: [{ definitionId: 'mining_rights', currentTier: 1 as const, turnAcquired: 0 }],
+    };
+    expect(calcCityAssetBonuses(city).relationshipPerTurn).toBe(-3);
+  });
+
+  test('ignores an owned asset whose definitionId no longer resolves', () => {
+    const city = {
+      ...findState('campania'),
+      ownedAssets: [{ definitionId: 'not-a-real-asset', currentTier: 1 as const, turnAcquired: 0 }],
+    };
+    expect(() => calcCityAssetBonuses(city)).not.toThrow();
+    expect(calcCityAssetBonuses(city)).toEqual({});
   });
 });

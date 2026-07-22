@@ -8,7 +8,7 @@ import { parseEffect } from '../models/bill';
 import { generateClientName } from '../data/clientNames';
 import { computeTotalAssetBonuses } from './assetEngine';
 import { computeHouseBonuses } from './houseEngine';
-import { calcAssetGoldOutput, calcAssetFidesOutput } from './cityEngine';
+import { calcCityAssetBonuses } from './cityEngine';
 import { buildClient, computeTotalClientBonuses } from './clientEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import {
@@ -184,7 +184,7 @@ export function calcResourceIncome(state: GameState): {
 
   // Step 6b: City asset Fides bonus (former Gratia/Dignitas asset bonuses, now Fides)
   const provinceFidesBonus = state.cities.reduce(
-    (sum, p) => sum + calcAssetFidesOutput(p), 0
+    (sum, p) => sum + (calcCityAssetBonuses(p).fides ?? 0), 0
   );
 
   // Step 6c: Munificence endowments (P2-F) — permanent Fides/season per built endowment
@@ -206,7 +206,14 @@ export function calcResourceIncome(state: GameState): {
   // Step 9: Unrest tier ≥ 2 causes passive Plebs decay (design doc section 2.3)
   // plebsDelta is applied by turnSequencer in Chunk 2C once it reads this field.
   const unrestTier = getTierFromLevel(state.crisis.unrest.level);
-  const plebsDelta = unrestTier >= 2 ? -3 : 0;
+  // July 2026 fixes, Chunk E — assets' plebsPerTurn (e.g. Provincial Ludus)
+  // is the "reduce unrest" ask's real hook: calcUnrestEscalation reads
+  // state.rome.plebs, not a dedicated unrest token, so raising Plebs mood is
+  // how an asset actually lowers Unrest escalation. Summed across Latium's
+  // own assets plus every city's, same convention as fides/gold above.
+  const assetPlebsBonus = (assetBonuses.plebsPerTurn ?? 0)
+    + state.cities.reduce((sum, p) => sum + (calcCityAssetBonuses(p).plebsPerTurn ?? 0), 0);
+  const plebsDelta = (unrestTier >= 2 ? -3 : 0) + assetPlebsBonus;
 
   // Phase 3, Chunk P3-C — a regent governing in a minor heir's name is
   // less effective than the true paterfamilias would be. Applied to the
@@ -231,7 +238,7 @@ export function calcResourceIncome(state: GameState): {
 
   // Denarii income — assets + house + city gold output + client gold + treasury mod + crisis penalty
   const provinceDenariiBonus = state.cities.reduce(
-    (sum, p) => sum + calcAssetGoldOutput(p), 0
+    (sum, p) => sum + (calcCityAssetBonuses(p).gold ?? 0), 0
   );
   const denariiIncome =
     (assetBonuses.gold ?? 0)
@@ -780,9 +787,15 @@ export function applyEffectString(
 // ─── Faction drift ────────────────────────────────────────────────────────────
 
 export function applyFactionDrift(state: GameState): { popularesRel: number; optimatesRel: number } {
+  // July 2026 fixes, Chunk E — the Campania Holiday Estate's Optimates-
+  // relation ask, via the unified AssetBonus's optimatesRelPerTurn. Summed
+  // across Latium's own assets plus every city's, same convention as
+  // calcResourceIncome's plebsPerTurn/fides/gold sums.
+  const assetOptimatesBonus = (computeTotalAssetBonuses(state.ownedAssets).optimatesRelPerTurn ?? 0)
+    + state.cities.reduce((sum, p) => sum + (calcCityAssetBonuses(p).optimatesRelPerTurn ?? 0), 0);
   return {
     popularesRel: Math.min(100, Math.max(-100, state.popularesRel - 1)),
-    optimatesRel: Math.min(100, Math.max(-100, state.optimatesRel - 1)),
+    optimatesRel: Math.min(100, Math.max(-100, state.optimatesRel - 1 + assetOptimatesBonus)),
   };
 }
 

@@ -121,7 +121,6 @@ import {
   buildAmbassadorPostingBill,
   resolveCityEventEffect,
 } from '../engine/cityEngine';
-import { getCityAssetDefinition } from '../data/cityAssets';
 import { getHouseLocationDefinition } from '../data/houseLocations';
 import { getCityClientDef } from '../data/cityClients';
 import { getEventsForContext, getCityEventDef } from '../data/cityEvents';
@@ -753,9 +752,12 @@ export interface GameActions {
   addClient: (type: ClientType, name: string, flavourTitle: string, flavourText: string) => void;
   removeClient: (clientId: string) => void;
 
-  // Assets (Feature 1) — now Provinciae → Latium's holdings
-  purchaseAsset: (definitionId: string) => void;
-  upgradeAsset: (definitionId: string) => void;
+  // Assets (Feature 1) — now Provinciae → Latium's holdings. July 2026
+  // fixes, Chunk E — locationId is 'latium' or a CityState.id; unifies what
+  // used to be this pair plus a separate purchaseCityAsset/upgradeCityAsset
+  // pair, now that both read the same AssetDefinition/OwnedAsset shape.
+  purchaseAsset: (locationId: string, definitionId: string) => void;
+  upgradeAsset: (locationId: string, definitionId: string) => void;
 
   // Family House
   buyHouse: (locationId: string) => void;
@@ -826,8 +828,6 @@ export interface GameActions {
   proposeIncorporationBill: (provinceId: string) => void;
   proposeDeclareWarBill: (provinceId: string) => void;
   seekAmbassadorPosting: (provinceId: string) => void;
-  purchaseCityAsset: (cityId: string, assetId: string) => void;
-  upgradeCityAsset: (cityId: string, assetId: string) => void;
   recruitCityClient: (cityId: string, clientId: string) => void;
   updateCities: (cities: CityState[]) => void;
 
@@ -2601,11 +2601,22 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   // ─── Assets ─────────────────────────────────────────────────────────────────
 
-  purchaseAsset: (definitionId) => {
+  // July 2026 fixes, Chunk E — locationId 'latium' writes to the flat
+  // GameState.ownedAssets; any other locationId is a CityState.id and writes
+  // to that city's nested ownedAssets (and applies its one-time
+  // localSupportGain, a province-only concept). Unifies what used to be
+  // this action plus a separate purchaseCityAsset, now that both locations
+  // share the same AssetDefinition/OwnedAsset shape.
+  purchaseAsset: (locationId, definitionId) => {
     const s = get();
     const { purchaseCost, getDefinition } = require('../engine/assetEngine');
 
-    if (s.ownedAssets.some(a => a.definitionId === definitionId)) return;
+    const isLatium = locationId === 'latium';
+    const city = isLatium ? null : s.cities.find(p => p.id === locationId);
+    if (!isLatium && !city) return;
+
+    const ownedAssets = isLatium ? s.ownedAssets : city!.ownedAssets;
+    if (ownedAssets.some(a => a.definitionId === definitionId)) return;
 
     const def = getDefinition(definitionId);
     if (!def) return;
@@ -2620,20 +2631,41 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     };
 
     const label = turnLabel(s);
+    const logMsg = isLatium
+      ? `${def.name} acquired. (${def.tiers[0].label})`
+      : `${def.name} acquired in ${locationId}. (${def.tiers[0].label})`;
+
     set({
       denarii: s.denarii - cost,
-      ownedAssets: [...s.ownedAssets, newAsset],
-      log: [...s.log, mkLog(label, `${def.name} acquired. (${def.tiers[0].label})`, 'good')],
+      ...(isLatium
+        ? { ownedAssets: [...s.ownedAssets, newAsset] }
+        : {
+            cities: s.cities.map(p =>
+              p.id === locationId
+                ? {
+                    ...p,
+                    ownedAssets: [...p.ownedAssets, newAsset],
+                    localSupport: Math.min(100, p.localSupport + (def.localSupportGain ?? 0)),
+                  }
+                : p
+            ),
+          }),
+      log: [...s.log, mkLog(label, logMsg, 'good')],
       ...bumpActions(s),
       ...bumpSpend(s, { denarii: cost }),
     });
   },
 
-  upgradeAsset: (definitionId) => {
+  upgradeAsset: (locationId, definitionId) => {
     const s = get();
     const { upgradeCost, getDefinition } = require('../engine/assetEngine');
 
-    const owned = s.ownedAssets.find(a => a.definitionId === definitionId);
+    const isLatium = locationId === 'latium';
+    const city = isLatium ? null : s.cities.find(p => p.id === locationId);
+    if (!isLatium && !city) return;
+
+    const ownedAssets = isLatium ? s.ownedAssets : city!.ownedAssets;
+    const owned = ownedAssets.find(a => a.definitionId === definitionId);
     if (!owned) return;
     if (owned.currentTier === 3) return;
 
@@ -2645,16 +2677,32 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
     const newTier = (owned.currentTier + 1) as 2 | 3;
     const tierLabel = def.tiers[newTier - 1].label;
-
     const label = turnLabel(s);
+    const logMsg = isLatium
+      ? `${def.name} upgraded to ${tierLabel}.`
+      : `${def.name} upgraded to ${tierLabel} in ${locationId}.`;
+
     set({
       denarii: s.denarii - cost,
-      ownedAssets: s.ownedAssets.map(a =>
-        a.definitionId === definitionId
-          ? { ...a, currentTier: newTier }
-          : a
-      ),
-      log: [...s.log, mkLog(label, `${def.name} upgraded to ${tierLabel}.`, 'good')],
+      ...(isLatium
+        ? {
+            ownedAssets: s.ownedAssets.map(a =>
+              a.definitionId === definitionId ? { ...a, currentTier: newTier } : a
+            ),
+          }
+        : {
+            cities: s.cities.map(p =>
+              p.id === locationId
+                ? {
+                    ...p,
+                    ownedAssets: p.ownedAssets.map(a =>
+                      a.definitionId === definitionId ? { ...a, currentTier: newTier } : a
+                    ),
+                  }
+                : p
+            ),
+          }),
+      log: [...s.log, mkLog(label, logMsg, 'good')],
       ...bumpActions(s),
       ...bumpSpend(s, { denarii: cost }),
     });
@@ -3499,7 +3547,20 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     // relationship/governor/asset progress) unless backfilled here from the
     // old key — same per-field migration pattern as every other backfill in
     // this function.
-    cities: savedState.cities ?? (savedState as any).provinces ?? INITIAL_STATE.cities,
+    // July 2026 fixes, Chunk E — each city's ownedAssets also gets a
+    // per-element migration here: CityAssetOwned.tier (1|2) was renamed to
+    // OwnedAsset.currentTier (1|2|3) when province assets were unified onto
+    // Latium's richer shape. A pre-Chunk-E save's city assets still carry
+    // the old `tier` field only — backfilled so a save's tier-2 asset reads
+    // as "at its current max, upgrade to 3 available" (per the plan), not
+    // silently invisible to calcCityAssetBonuses/HoldingsPanel.
+    cities: (savedState.cities ?? (savedState as any).provinces ?? INITIAL_STATE.cities).map((c: any) => ({
+      ...c,
+      ownedAssets: (c.ownedAssets ?? []).map((a: any) => ({
+        ...a,
+        currentTier: a.currentTier ?? a.tier ?? 1,
+      })),
+    })),
     // Campaign Map plan, Chunk C3 — a save written during C1/C2 has a real
     // `theatre` object (controllers/contested) but no `musteredThisYear` key
     // at all; the top-level spread above only backfills a WHOLLY missing
@@ -3803,71 +3864,6 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   dismissCityEvent: () => set({ activeCityEvent: null }),
 
-  purchaseCityAsset: (cityId, assetId) => {
-    const s = get();
-    const city = s.cities.find(p => p.id === cityId);
-    if (!city) return;
-
-    if (city.ownedAssets.some(a => a.definitionId === assetId)) return;
-
-    const def = getCityAssetDefinition(assetId);
-    if (!def) return;
-
-    if (s.denarii < def.cost) return;
-
-    const label = turnLabel(s);
-    set({
-      denarii: s.denarii - def.cost,
-      cities: s.cities.map(p =>
-        p.id === cityId
-          ? {
-              ...p,
-              ownedAssets: [
-                ...p.ownedAssets,
-                { definitionId: assetId, tier: 1 as const, turnAcquired: s.turnNumber },
-              ],
-              localSupport: Math.min(100, p.localSupport + def.localSupportGain),
-            }
-          : p
-      ),
-      log: [...s.log, mkLog(label, `${def.name} acquired in ${cityId}. (+${def.localSupportGain} Local Support)`, 'good')],
-      ...bumpActions(s),
-      ...bumpSpend(s, { denarii: def.cost }),
-    });
-  },
-
-  upgradeCityAsset: (cityId, assetId) => {
-    const s = get();
-    const city = s.cities.find(p => p.id === cityId);
-    if (!city) return;
-
-    const owned = city.ownedAssets.find(a => a.definitionId === assetId);
-    if (!owned || owned.tier >= 2) return;
-
-    const def = getCityAssetDefinition(assetId);
-    if (!def) return;
-
-    const upgradeCost = Math.round(def.cost * 0.6);
-    if (s.denarii < upgradeCost) return;
-
-    const label = turnLabel(s);
-    set({
-      denarii: s.denarii - upgradeCost,
-      cities: s.cities.map(p =>
-        p.id === cityId
-          ? {
-              ...p,
-              ownedAssets: p.ownedAssets.map(a =>
-                a.definitionId === assetId ? { ...a, tier: 2 as const } : a
-              ),
-            }
-          : p
-      ),
-      log: [...s.log, mkLog(label, `${def.name} upgraded in ${cityId}.`, 'good')],
-      ...bumpActions(s),
-      ...bumpSpend(s, { denarii: upgradeCost }),
-    });
-  },
 
   recruitCityClient: (cityId, clientId) => {
     const s = get();

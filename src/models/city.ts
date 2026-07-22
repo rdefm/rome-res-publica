@@ -13,6 +13,14 @@
 // to `cityId` — they still validly reference a city id, renaming them is
 // unrelated churn across systems this chunk doesn't otherwise touch. Only
 // the entity's own type/data/engine/store-field layer was renamed.
+//
+// July 2026 fixes, Chunk E — this file's own CityAssetDefinition/
+// CityAssetOwned/AssetBonus types are retired in favor of models/asset.ts's
+// richer AssetDefinition/OwnedAsset/AssetBonus (3 tiers, unlockedActions,
+// tier labels — previously Latium-only). CityState.ownedAssets now holds
+// OwnedAsset[] imported from there; see data/cityAssets.ts for the province
+// asset catalog rewritten onto that shape.
+import type { OwnedAsset } from './asset';
 
 export type CityMap = 'italy' | 'mediterranean' | 'east';
 
@@ -73,12 +81,6 @@ export interface CampaignState {
   activeEventId: string | null; // ID of a pending campaign event card, if any
 }
 
-export interface CityAssetOwned {
-  definitionId: string;
-  tier: 1 | 2;
-  turnAcquired: number;
-}
-
 export interface CityState {
   id: string;
   map: CityMap;
@@ -105,7 +107,7 @@ export interface CityState {
   npcRoleHolder: NpcRoleHolder | null;
 
   // Player-owned assets in this city
-  ownedAssets: CityAssetOwned[];
+  ownedAssets: OwnedAsset[];
 
   // Whether an incorporation bill has been triggered (unincorporated only)
   incorporationBillAvailable: boolean;
@@ -205,26 +207,6 @@ export interface OfficerVolunteerState {
 }
 
 // ─── City Definition (static data) ───────────────────────────────────────────
-
-export interface CityAssetDefinition {
-  id: string;
-  name: string;
-  cost: number;
-  tier1Bonus: AssetBonus;
-  tier2Bonus: AssetBonus;
-  localSupportGain: number;
-  flavorText: string;
-}
-
-export interface AssetBonus {
-  label: string;
-  goldPerTurn?: number;
-  /** Consolidated from the former dignitasPerTurn/gratiaPerTurn fields — both resources were removed. */
-  fidesPerTurn?: number;
-  imperiumPerTurn?: number;
-  relationshipPerTurn?: number;
-  corruptionResistance?: number;
-}
 
 export interface CityClientDefinition {
   id: string;
