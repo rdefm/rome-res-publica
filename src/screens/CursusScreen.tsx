@@ -456,8 +456,13 @@ export default function CursusScreen() {
   ).current;
 
   return (
-    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
-      <FrescoBackground>
+    // FrescoBackground is the outermost element (mirrors DomusScreen's own
+    // ImageBackground-then-SafeAreaView pattern) — padding for the resource
+    // bar goes on ITS style prop, not on the SafeAreaView, so the image/scrim
+    // still render edge-to-edge behind the resource bar while the actual
+    // content (header/CandidateHeader/ScrollView) gets pushed down below it.
+    <FrescoBackground style={styles.frescoRoot}>
+      <SafeAreaView style={styles.screen} edges={['left', 'right']}>
         <View style={styles.header}>
           {currentOffice ? (
             <>
@@ -499,36 +504,36 @@ export default function CursusScreen() {
             </>
           )}
         </ScrollView>
-      </FrescoBackground>
 
-      {basilicaVisible && basilicaTrialId && (
-        <>
-          <Animated.View
-            style={[
-              cs.scrim,
-              {
-                opacity: basilicaAnim.interpolate({
-                  inputRange: [SCREEN_HEIGHT - BASILICA_SHEET_HEIGHT, SCREEN_HEIGHT],
-                  outputRange: [0.5, 0],
-                  extrapolate: 'clamp',
-                }),
-              },
-            ]}
-            // @ts-ignore
-            pointerEvents="none"
-          />
-          <Animated.View
-            style={[cs.sheetContainer, { top: basilicaAnim }]}
-            {...basilicaPanResponder.panHandlers}
-          >
-            <BasilicaSheet trialId={basilicaTrialId} onClose={closeBasilica} />
-          </Animated.View>
-        </>
-      )}
+        {basilicaVisible && basilicaTrialId && (
+          <>
+            <Animated.View
+              style={[
+                cs.scrim,
+                {
+                  opacity: basilicaAnim.interpolate({
+                    inputRange: [SCREEN_HEIGHT - BASILICA_SHEET_HEIGHT, SCREEN_HEIGHT],
+                    outputRange: [0.5, 0],
+                    extrapolate: 'clamp',
+                  }),
+                },
+              ]}
+              // @ts-ignore
+              pointerEvents="none"
+            />
+            <Animated.View
+              style={[cs.sheetContainer, { top: basilicaAnim }]}
+              {...basilicaPanResponder.panHandlers}
+            >
+              <BasilicaSheet trialId={basilicaTrialId} onClose={closeBasilica} />
+            </Animated.View>
+          </>
+        )}
 
-      <SeasonOverlay />
-      <OfficeActionResultModal />
-    </SafeAreaView>
+        <SeasonOverlay />
+        <OfficeActionResultModal />
+      </SafeAreaView>
+    </FrescoBackground>
   );
 }
 
@@ -538,7 +543,19 @@ const cs = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.bg, paddingTop: RESOURCE_BAR_HEIGHT },
+  // Chunk C5 fix — paddingTop lives here (FrescoBackground's own root),
+  // NOT on the SafeAreaView below: this is what lets the fresco image/scrim
+  // render edge-to-edge behind the resource bar (absolute-fill is unaffected
+  // by its own container's padding) while everything else still gets pushed
+  // down below it. Matches DomusScreen's ImageBackground/SafeAreaView split.
+  frescoRoot: { flex: 1, paddingTop: RESOURCE_BAR_HEIGHT },
+  // No backgroundColor here (matches DomusScreen's own unstyled `safeArea`)
+  // — an opaque fill here would paint over FrescoBackground's image/scrim
+  // for this entire box, leaving only the thin strip above it (behind the
+  // resource bar) actually showing the fresco. FrescoBackground already
+  // supplies its own COLORS.bg fallback when no asset is present, so
+  // nothing is lost in that case either.
+  screen: { flex: 1 },
   // Chunk C5 — floats directly over FrescoBackground, no panel/border behind it
   // (matches DomusScreen's own "header floats over the fresco" precedent);
   // the scrim (FrescoBackground's own gradient) carries legibility instead.

@@ -48,8 +48,13 @@ export const COLORS = {
   panelWood:       '#2a0a0a',   // = crimsonBlack — reused, not duplicated
   sealWaxGrey:     '#8E8A82',
   lockedText:      '#9c8e7e',   // = dust — reused, not duplicated
-  scrimTop:        'rgba(20,14,8,0.35)',
-  scrimBottom:     'rgba(20,14,8,0.92)',
+  // Retuned post-launch — the original 0.35 top alpha read as "a dark
+  // filter over the whole image" rather than "clearly visible behind the
+  // title" (design delta 6's actual intent); 0.1 keeps gold title text
+  // legible without visibly darkening the fresco right where it should
+  // read clearest.
+  scrimTop:        'rgba(20,14,8,0.1)',
+  scrimBottom:     'rgba(20,14,8,0.88)',
 };
 
 // ─── Typography ───────────────────────────────────────────────────────────────

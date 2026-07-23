@@ -158,8 +158,11 @@ export default React.memo(OfficeCard);
 const rung = StyleSheet.create({
   container: { marginBottom: SPACING.sm },
   row: { flexDirection: 'row', alignItems: 'center' },
-  icon: { fontSize: 24, marginRight: SPACING.sm },
-  iconImg: { width: 28, height: 28, marginRight: SPACING.sm },
+  icon: { fontSize: 24, marginRight: SPACING.sm, marginLeft: SPACING.xs },
+  // Bumped 28->44 (user feedback: the real office-icon images read too
+  // small at 28) — matches StatusSeal's own wax-seal image size precedent.
+  // marginLeft nudges it right off the card's own edge (user feedback).
+  iconImg: { width: 44, height: 44, marginRight: SPACING.md, marginLeft: SPACING.xs },
   info: { flex: 1 },
   inner: { padding: 2 },
   name: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 15, fontWeight: '700' },

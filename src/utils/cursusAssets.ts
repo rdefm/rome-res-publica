@@ -15,15 +15,17 @@ import type { OfficeId } from '../models/office';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RequiredAsset = any; // matches the untyped require() convention already used by ParchmentCard.tsx / portraitAssets.ts.
 
-const FRESCO_BG: RequiredAsset | undefined = undefined;
-// const FRESCO_BG = require('../assets/cursus/fresco-bg.jpg');
+// Shipped as .png, not the plan's suggested .jpg — the file the designer
+// dropped in decodes as real PNG data (verified), not a mislabeled JPG.
+// ~1010KB, over the plan's ≤400KB guidance; works fine as-is, but worth
+// re-compressing/converting to a real JPG next time art gets updated.
+const FRESCO_BG = require('../assets/cursus/fresco-bg.png');
 
-const WAX_SEAL: RequiredAsset | undefined = undefined;
-// const WAX_SEAL = require('../assets/cursus/seal-wax.png');
+const WAX_SEAL = require('../assets/cursus/seal-wax.png');
 
 const OFFICE_ICONS: Partial<Record<OfficeId, RequiredAsset>> = {
-  // vigintivirate: require('../assets/cursus/icon-vigintivirate.png'),
-  // quaestor: require('../assets/cursus/icon-quaestor.png'),
+  vigintivirate: require('../assets/cursus/icon-vigintivirate.png'),
+  quaestor: require('../assets/cursus/icon-quaestor.png'),
   // tribune: require('../assets/cursus/icon-tribune.png'),
   // aedile: require('../assets/cursus/icon-aedile.png'),
   // praetor: require('../assets/cursus/icon-praetor.png'),
