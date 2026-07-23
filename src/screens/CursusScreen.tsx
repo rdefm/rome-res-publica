@@ -7,14 +7,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useGameStore } from '../state/gameStore';
 import { OFFICES, TRIBUNE_OFFICE } from '../data/offices';
-import type { OfficeId, OfficeAction } from '../models/office';
 import type { Character } from '../models/character';
 import { calcPlayerElectionScore, calcNpcElectionScore, PLAYER_BASE_SCORE } from '../engine/electionEngine';
-import { evaluateGates } from '../engine/officeActionEngine';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
 import BasilicaSheet from '../components/cursus/BasilicaSheet';
 import CandidateHeader from '../components/cursus/CandidateHeader';
+import OfficeCard from '../components/cursus/OfficeCard';
+import ActionButton from '../components/cursus/ActionButton';
 import GildedPanel from '../components/shared/GildedPanel';
 import PortraitRoundel from '../components/shared/PortraitRoundel';
 import { characterPortraitSubject, leaderPortraitSubject } from '../engine/portraitEngine';
@@ -24,259 +24,13 @@ import InfoTap from '../components/shared/InfoTap';
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const BASILICA_SHEET_HEIGHT = SCREEN_HEIGHT * 0.72;
 
-// ─── Action button ─────────────────────────────────────────────────────────────
-// Shared between OfficeRung and TribunePanel.
-// Evaluates gates, handles extreme styling, routes to correct store action.
-
-function ActionButton({
-  action,
-  character,
-}: {
-  action: OfficeAction;
-  character: Character;
-}) {
-  const state = useGameStore();
-  const { useOfficeAction, takeOfficeAction } = state;
-
-  // Gate evaluation — structural requirements (skills, flags, assets, etc.)
-  const gateResult = evaluateGates(action, character.id, state as any);
-
-  // Affordability check — legacy cost fields used for display; actual deduction in engine
-  const resource = action.resource;
-  const canAfford = !resource || (state as any)[resource] >= action.costVal;
-
-  const isLocked = !gateResult.allowed;
-  const isDisabled = isLocked || !canAfford;
-  const isExtreme = action.isExtreme === true;
-  // New-style actions use successEffect; legacy actions use effect function
-  const isNewStyle = action.successEffect !== undefined || action.failureEffect !== undefined;
-
-  function handlePress() {
-    if (isDisabled) return;
-    if (isNewStyle) {
-      // Target context (province/leader picker) not yet implemented — pass undefined.
-      // Actions requiring PLAYER_CHOSEN_* targets will apply effects but skip
-      // those consequences. Target selection UI is planned for a subsequent chunk.
-      (takeOfficeAction as any)(action.id, character.id, undefined);
-    } else {
-      useOfficeAction(action.id);
-    }
-  }
-
-  const blockedReason = !gateResult.allowed
-    ? gateResult.blockedReason
-    : !canAfford
-      ? `Insufficient ${resource ?? 'resources'}`
-      : undefined;
-
-  return (
-    <TouchableOpacity
-      style={[
-        ab.btn,
-        isExtreme && ab.btnExtreme,
-        isDisabled && ab.btnDisabled,
-      ]}
-      disabled={isDisabled}
-      onPress={handlePress}
-      activeOpacity={0.75}
-    >
-      <View style={ab.row}>
-        <Text style={[ab.label, isExtreme && ab.labelExtreme]}>
-          {isExtreme ? '⚠ EXTREME  ' : ''}{action.name}
-        </Text>
-        <Text style={ab.cost}>{action.cost}</Text>
-      </View>
-      <Text style={ab.desc}>{action.desc}</Text>
-      {blockedReason !== undefined && (
-        <Text style={ab.blocked}>{blockedReason}</Text>
-      )}
-    </TouchableOpacity>
-  );
-}
-
-const ab = StyleSheet.create({
-  btn: {
-    backgroundColor: 'rgba(200,168,112,0.25)',
-    borderWidth: 1,
-    borderColor: PARCHMENT_TEXT.border,
-    borderRadius: RADIUS.sm,
-    padding: SPACING.sm,
-    marginBottom: SPACING.sm,
-    minHeight: 44,
-  },
-  btnExtreme: {
-    backgroundColor: 'rgba(180,60,40,0.18)',
-    borderColor: COLORS.crimson + 'aa',
-  },
-  btnDisabled: { opacity: 0.4 },
-  row: { flexDirection: 'row', justifyContent: 'space-between' },
-  label: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 13, fontWeight: '600', flex: 1 },
-  labelExtreme: { color: COLORS.crimson },
-  cost: { color: COLORS.fidesColor, fontFamily: FONTS.ui, fontSize: 11 },
-  desc: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11, marginTop: 2 },
-  blocked: { color: COLORS.crimson, fontFamily: FONTS.ui, fontSize: 10, marginTop: 3, fontStyle: 'italic' },
-});
-
-// ─── Office rung ──────────────────────────────────────────────────────────────
-
-function OfficeRung({
-  officeId,
-  character,
-}: {
-  officeId: OfficeId;
-  character: Character;
-}) {
-  const state = useGameStore();
-  const {
-    currentOffice, heldOffices, campaigning, campaigningCharacterId,
-    declareCampaign, declareFamilyCampaign, npcConsul, tribuneHolder,
-  } = state as any;
-
-  const office = OFFICES.find((o) => o.id === officeId)!;
-  const isPlayer = character.isPlayer;
-
-  // Phase 4, Chunk P4-A — non-player "held" now reads the character's own
-  // historical record (character.heldOffices) instead of character.officeId,
-  // which real elections never actually set for a family member (only the
-  // household-wide currentOffice slot and the Tribune special-case do — see
-  // turnSequencer.ts's election-win branch). isCurrent is left as-is: the
-  // single-office-slot model isn't being redesigned here.
-  const isCurrent = isPlayer ? currentOffice === officeId : character.officeId === officeId;
-  const isHeld    = isPlayer ? heldOffices.includes(officeId) : (character.heldOffices ?? []).includes(officeId);
-  const isCampaigning = campaigning === officeId && campaigningCharacterId === character.id;
-
-  const prereqMet = !office.prerequisite ||
-    (isPlayer
-      ? (heldOffices.includes(office.prerequisite) || currentOffice === office.prerequisite)
-      : (character.heldOffices ?? []).includes(office.prerequisite));
-  const ageOk           = character.age >= office.minAge;
-  const noCampaignActive = !campaigning;
-  const isEligible = !isCurrent && !isCampaigning && !isHeld && prereqMet && ageOk && noCampaignActive;
-
-  // Whether to show the Apply button at all — current/held/campaigning offices show a
-  // status badge instead. When shown, it's disabled (greyed) rather than hidden when
-  // the character doesn't meet age/prerequisite/campaign-slot requirements, so the
-  // player can see the office and why they can't apply yet.
-  const showApplyBtn = !isCurrent && !isHeld && !isCampaigning;
-  const canApply = prereqMet && ageOk && noCampaignActive;
-
-  const rungColor = isCurrent ? COLORS.gold
-    : isCampaigning ? COLORS.denariiColor
-    : isHeld        ? COLORS.laurel
-    : isEligible    ? COLORS.amber
-    : COLORS.border;
-
-  function handleDeclare() {
-    if (isPlayer) declareCampaign(officeId);
-    else declareFamilyCampaign(character.id, officeId);
-  }
-
-  // Co-consul indicator: shown inside the Consul rung when player holds it
-  const showCoConsul = officeId === 'consul' && isCurrent && isPlayer && npcConsul;
-  const npcConsulName = npcConsul
-    ? (state.clans?.find((c: any) => c.id === npcConsul.clanId)
-        ?.leaders?.find((l: any) => l.id === npcConsul.leaderId)?.name
-        ?? 'Unknown')
-    : '';
-  const npcConsulClan = npcConsul
-    ? (state.clans?.find((c: any) => c.id === npcConsul.clanId)?.name ?? npcConsul.clanId)
-    : '';
-  const antagonismLabels = ['cooperative', 'mildly opposed', 'actively hostile', 'openly antagonistic'];
-
-  return (
-    <ParchmentCard style={[rung.container]} contentStyle={rung.inner}>
-      <View style={rung.row}>
-        <Text style={rung.icon}>{office.icon}</Text>
-        <View style={rung.info}>
-          <InfoTap termId={officeId}>
-            <Text style={rung.name}>{office.name}</Text>
-          </InfoTap>
-          <Text style={rung.latin}>{office.latin}</Text>
-          <Text style={rung.meta}>Min age {office.minAge} · {office.termSeasons} seasons</Text>
-        </View>
-        {showApplyBtn && (
-          <TouchableOpacity
-            style={[rung.applyBtn, !canApply && rung.applyBtnDisabled]}
-            onPress={handleDeclare}
-            disabled={!canApply}
-          >
-            <Text style={[rung.applyText, !canApply && rung.applyTextDisabled]}>Apply</Text>
-          </TouchableOpacity>
-        )}
-        {isCurrent && <View style={rung.badge}><Text style={rung.badgeText}>IN OFFICE</Text></View>}
-        {isHeld && !isCurrent && <View style={[rung.badge, rung.badgeHeld]}><Text style={rung.badgeText}>HELD</Text></View>}
-        {isCampaigning && <View style={[rung.badge, rung.badgeCamp]}><Text style={rung.badgeText}>CAMPAIGN</Text></View>}
-      </View>
-
-      <Text style={rung.desc}>{office.desc}</Text>
-
-      {/* Co-consul indicator (Consul office only) */}
-      {showCoConsul && (
-        <View style={rung.coConsul}>
-          <Text style={rung.coConsulLabel}>CO-CONSUL</Text>
-          <Text style={rung.coConsulName}>
-            {npcConsulName} ({npcConsulClan})
-          </Text>
-          <Text style={[
-            rung.coConsulAntagonism,
-            npcConsul.antagonismLevel >= 2 && rung.coConsulHostile,
-          ]}>
-            Antagonism: {npcConsul.antagonismLevel}/3
-            {' — '}{antagonismLabels[npcConsul.antagonismLevel]}
-          </Text>
-        </View>
-      )}
-
-      {/* In-office actions — only for player character */}
-      {isCurrent && isPlayer && office.active && office.inOfficeActions && (
-        <View style={rung.actions}>
-          {office.inOfficeActions.map((action) => (
-            <ActionButton key={action.id} action={action} character={character} />
-          ))}
-        </View>
-      )}
-      {isCurrent && isPlayer && !office.active && (
-        <Text style={rung.comingSoon}>{office.inOfficeDesc}</Text>
-      )}
-
-      {/* Tribune immunity indicator when this character holds Tribune */}
-      {character.id === tribuneHolder && (
-        <View style={rung.immunityBadge}>
-          <Text style={rung.immunityText}>🛡 Sacrosanct — trial immunity active</Text>
-        </View>
-      )}
-    </ParchmentCard>
-  );
-}
-
-const rung = StyleSheet.create({
-  container: { marginBottom: SPACING.sm },
-  row: { flexDirection: 'row', alignItems: 'center' },
-  icon: { fontSize: 24, marginRight: SPACING.sm },
-  info: { flex: 1 },
-  inner: { padding: 2 },
-  name: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 15, fontWeight: '700' },
-  latin: { color: COLORS.goldDim, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11 },
-  meta: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 10, marginTop: 2 },
-  desc: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6, lineHeight: 16 },
-  applyBtn: { backgroundColor: COLORS.amber + '22', borderWidth: 1, borderColor: COLORS.amber, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.sm, paddingVertical: 6, minHeight: 36, justifyContent: 'center' },
-  applyBtnDisabled: { opacity: 0.4 },
-  applyText: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 13, fontWeight: '700' },
-  applyTextDisabled: { color: PARCHMENT_TEXT.muted },
-  badge: { backgroundColor: COLORS.gold + '22', borderWidth: 1, borderColor: COLORS.gold, borderRadius: 2, paddingHorizontal: 6, paddingVertical: 2 },
-  badgeHeld: { backgroundColor: COLORS.laurel + '22', borderColor: COLORS.laurel },
-  badgeCamp: { backgroundColor: COLORS.denariiColor + '22', borderColor: COLORS.denariiColor },
-  badgeText: { color: COLORS.gold, fontFamily: FONTS.ui, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 },
-  actions: { marginTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.sm },
-  comingSoon: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6 },
-  coConsul: { marginTop: SPACING.sm, padding: SPACING.sm, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm, backgroundColor: 'rgba(200,168,112,0.08)' },
-  coConsulLabel: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 2 },
-  coConsulName: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 13, fontWeight: '600' },
-  coConsulAntagonism: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, marginTop: 2 },
-  coConsulHostile: { color: COLORS.crimson },
-  immunityBadge: { marginTop: SPACING.sm, paddingHorizontal: SPACING.sm, paddingVertical: 5, backgroundColor: 'rgba(80,140,60,0.15)', borderWidth: 1, borderColor: COLORS.laurel + '88', borderRadius: RADIUS.sm },
-  immunityText: { color: COLORS.laurel, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 0.3 },
-});
+// ─── Action button + Office card ───────────────────────────────────────────────
+// Chunk C4 of cursus-visual-redesign-plan.md — both extracted to
+// components/cursus/ (ActionButton.tsx, OfficeCard.tsx). ActionButton is
+// still used directly below by TribunePanel; OfficeCard replaces the old
+// inline OfficeRung (per-character status via engine/officeStatus.ts, a
+// StatusSeal, and a whole-card tap that opens OfficeActionsModal instead of
+// the old always-inline action list).
 
 // ─── Tribune panel ─────────────────────────────────────────────────────────────
 // Separate from the Cursus ladder — Tribune is a parallel path.
@@ -724,7 +478,7 @@ export default function CursusScreen() {
 
         <Text style={styles.sectionLabel}>OFFICES</Text>
         {selectedChar && OFFICES.map((office) => (
-          <OfficeRung key={office.id} officeId={office.id} character={selectedChar} />
+          <OfficeCard key={office.id} officeId={office.id} character={selectedChar} />
         ))}
 
         {/* Tribune section — parallel path, separate from the ladder */}
