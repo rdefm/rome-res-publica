@@ -15,6 +15,7 @@ import BasilicaSheet from '../components/cursus/BasilicaSheet';
 import CandidateHeader from '../components/cursus/CandidateHeader';
 import OfficeCard from '../components/cursus/OfficeCard';
 import ActionButton from '../components/cursus/ActionButton';
+import FrescoBackground from '../components/shared/FrescoBackground';
 import GildedPanel from '../components/shared/GildedPanel';
 import PortraitRoundel from '../components/shared/PortraitRoundel';
 import { characterPortraitSubject, leaderPortraitSubject } from '../engine/portraitEngine';
@@ -456,47 +457,49 @@ export default function CursusScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
-      <View style={styles.header}>
-        {currentOffice ? (
-          <>
-            <Text style={styles.title}>{currentOfficeDef?.icon} {currentOfficeDef?.name.toUpperCase()}</Text>
-            <Text style={styles.flavor}>{currentOfficeDef?.flavor}</Text>
-            <Text style={styles.subtitle}>{officeSeasons} season{officeSeasons !== 1 ? 's' : ''} remaining</Text>
-          </>
-        ) : (
-          <>
-            <Text style={styles.title}>CURSUS HONORUM</Text>
-            <Text style={styles.subtitle}>The Path of Honour</Text>
-          </>
-        )}
-      </View>
+      <FrescoBackground>
+        <View style={styles.header}>
+          {currentOffice ? (
+            <>
+              <Text style={styles.title}>{currentOfficeDef?.icon} {currentOfficeDef?.name.toUpperCase()}</Text>
+              <Text style={styles.flavor}>{currentOfficeDef?.flavor}</Text>
+              <Text style={styles.subtitle}>{officeSeasons} season{officeSeasons !== 1 ? 's' : ''} remaining</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.title}>CURSUS HONORUM</Text>
+              <Text style={styles.subtitle}>The Path of Honour</Text>
+            </>
+          )}
+        </View>
 
-      <CandidateHeader selected={selectedCharId} onSelect={setSelectedCharId} />
+        <CandidateHeader selected={selectedCharId} onSelect={setSelectedCharId} />
 
-      <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}>
-        {selectedChar && <ElectionPanel character={selectedChar} />}
+        <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}>
+          {selectedChar && <ElectionPanel character={selectedChar} />}
 
-        <Text style={styles.sectionLabel}>OFFICES</Text>
-        {selectedChar && OFFICES.map((office) => (
-          <OfficeCard key={office.id} officeId={office.id} character={selectedChar} />
-        ))}
+          <Text style={styles.sectionLabel}>OFFICES</Text>
+          {selectedChar && OFFICES.map((office) => (
+            <OfficeCard key={office.id} officeId={office.id} character={selectedChar} />
+          ))}
 
-        {/* Tribune section — parallel path, separate from the ladder */}
-        <Text style={[styles.sectionLabel, { marginTop: SPACING.md }]}>TRIBUNE OF THE PLEBS</Text>
-        {selectedChar && <TribunePanel character={selectedChar} />}
+          {/* Tribune section — parallel path, separate from the ladder */}
+          <Text style={[styles.sectionLabel, { marginTop: SPACING.md }]}>TRIBUNE OF THE PLEBS</Text>
+          {selectedChar && <TribunePanel character={selectedChar} />}
 
-        {cursusLog.length > 0 && (
-          <>
-            <Text style={[styles.sectionLabel, { marginTop: SPACING.md }]}>POLITICAL RECORD</Text>
-            {[...cursusLog].reverse().map((entry) => (
-              <View key={entry.id} style={styles.logEntry}>
-                <Text style={styles.logTurn}>{entry.turn}</Text>
-                <Text style={styles.logText}>{entry.text}</Text>
-              </View>
-            ))}
-          </>
-        )}
-      </ScrollView>
+          {cursusLog.length > 0 && (
+            <>
+              <Text style={[styles.sectionLabel, { marginTop: SPACING.md }]}>POLITICAL RECORD</Text>
+              {[...cursusLog].reverse().map((entry) => (
+                <View key={entry.id} style={styles.logEntry}>
+                  <Text style={styles.logTurn}>{entry.turn}</Text>
+                  <Text style={styles.logText}>{entry.text}</Text>
+                </View>
+              ))}
+            </>
+          )}
+        </ScrollView>
+      </FrescoBackground>
 
       {basilicaVisible && basilicaTrialId && (
         <>
@@ -536,9 +539,30 @@ const cs = StyleSheet.create({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.bg, paddingTop: RESOURCE_BAR_HEIGHT },
-  header: { padding: SPACING.md, borderBottomColor: COLORS.border, borderBottomWidth: 1 },
-  title: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 20, fontWeight: '700', letterSpacing: 2 },
-  subtitle: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 1, marginTop: 2 },
+  // Chunk C5 — floats directly over FrescoBackground, no panel/border behind it
+  // (matches DomusScreen's own "header floats over the fresco" precedent);
+  // the scrim (FrescoBackground's own gradient) carries legibility instead.
+  header: { paddingHorizontal: SPACING.md, paddingTop: SPACING.md, paddingBottom: SPACING.sm },
+  title: {
+    color: COLORS.gold,
+    fontFamily: FONTS.display,
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+  },
+  subtitle: {
+    color: PARCHMENT_TEXT.muted,
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    letterSpacing: 1,
+    marginTop: 2,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
   flavor: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 13, marginTop: 3 },
   scroll: { flex: 1, padding: SPACING.md },
   sectionLabel: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: SPACING.sm },

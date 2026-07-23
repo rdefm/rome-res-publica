@@ -27,18 +27,25 @@ import { cursusAssets } from '../../utils/cursusAssets';
 import { COLORS, FONTS, RADIUS, SPACING } from '../../utils/theme';
 import OfficeActionsModal from './OfficeActionsModal';
 
-export default function OfficeCard({
+function OfficeCard({
   officeId,
   character,
 }: {
   officeId: OfficeId;
   character: Character;
 }) {
-  const state = useGameStore();
-  const {
-    currentOffice, heldOffices, campaigning, campaigningCharacterId,
-    declareCampaign, declareFamilyCampaign, npcConsul, tribuneHolder,
-  } = state as any;
+  // Chunk C5 — field-level selectors instead of an unselected useGameStore()
+  // call (CLAUDE.md's selector-discipline rule), so an unrelated store write
+  // elsewhere in the app doesn't re-render every office card on screen.
+  const currentOffice = useGameStore(s => s.currentOffice);
+  const heldOffices = useGameStore(s => s.heldOffices);
+  const campaigning = useGameStore(s => s.campaigning);
+  const campaigningCharacterId = useGameStore(s => s.campaigningCharacterId);
+  const declareCampaign = useGameStore(s => s.declareCampaign);
+  const declareFamilyCampaign = useGameStore(s => s.declareFamilyCampaign);
+  const npcConsul = useGameStore(s => s.npcConsul);
+  const tribuneHolder = useGameStore(s => s.tribuneHolder);
+  const clans = useGameStore(s => s.clans);
   const [modalOpen, setModalOpen] = useState(false);
 
   const office = OFFICES.find((o) => o.id === officeId)!;
@@ -59,12 +66,12 @@ export default function OfficeCard({
   // Co-consul indicator: shown inside the Consul card when player holds it
   const showCoConsul = officeId === 'consul' && status === 'held' && isPlayer && npcConsul;
   const npcConsulName = npcConsul
-    ? (state.clans?.find((c: any) => c.id === npcConsul.clanId)
-        ?.leaders?.find((l: any) => l.id === npcConsul.leaderId)?.name
+    ? (clans.find((c) => c.id === npcConsul.clanId)
+        ?.leaders?.find((l) => l.id === npcConsul.leaderId)?.name
         ?? 'Unknown')
     : '';
   const npcConsulClan = npcConsul
-    ? (state.clans?.find((c: any) => c.id === npcConsul.clanId)?.name ?? npcConsul.clanId)
+    ? (clans.find((c) => c.id === npcConsul.clanId)?.name ?? npcConsul.clanId)
     : '';
   const antagonismLabels = ['cooperative', 'mildly opposed', 'actively hostile', 'openly antagonistic'];
 
@@ -141,6 +148,12 @@ export default function OfficeCard({
     </>
   );
 }
+
+// Chunk C5 — memoized on (officeId, character) shallow-equality: skips a
+// re-render when a parent re-render is triggered by an unrelated store
+// write, since gameStore's family-update sites (`family.map(c => c.id ===
+// x ? {...} : c)`) keep every OTHER character's object reference stable.
+export default React.memo(OfficeCard);
 
 const rung = StyleSheet.create({
   container: { marginBottom: SPACING.sm },
