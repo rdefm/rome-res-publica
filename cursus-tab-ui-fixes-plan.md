@@ -4,14 +4,7 @@
 
 This plan addresses a batch of visual/UX bugs reported against the Cursus tab, gathered from live device screenshots and a design-review pass. It's written in the style of this repo's other plan docs (see `qa-audit-fix-plan.md`) — every item below was traced to its root cause by reading the real component it lives in, not inferred from the bug description alone. Two screenshots (device, portrait, scrolled to top and to bottom of the office list) are the ground truth for the visual items; where a fix can't be fully verified from code alone, that's called out explicitly.
 
-**You are on the right branch.** This plan lives on `claude/cursus-tab-ui-fixes-3z1iw8`, which has been reset to start from `cursus-design` (not `main`) — `cursus-design` is where the actual Cursus Tab Visual Redesign (Chunks C0–C5) lives, and every file this plan references only exists there. If you ever find yourself looking at `src/screens/CursusScreen.tsx` and it looks like a flat list with an "Apply" button and no fresco background, you're on the wrong branch/base — stop and re-check `git log --oneline -5` against the commits below before changing anything.
-
-```
-a925e03 Cursus redesign: wire up first fresco/icon assets, fix background rendering
-d98f9a9 Cursus redesign, Chunk C5: fresco background, scrim, and polish pass
-3509850 Cursus redesign, Chunk C4: office cards status, seals, action detail modal
-...
-```
+**This plan assumes the Cursus Tab Visual Redesign work (Chunks C0–C5: `FrescoBackground`, `CandidateHeader`, `OfficeCard`, `StatusSeal`, `PortraitRoundel`, `GildedPanel`, etc.) is already present in the repo** — every file this plan references only exists once that work has landed. If `src/screens/CursusScreen.tsx` looks like a flat list with an "Apply" button and no fresco background, this plan's file:line references won't match what's on disk — stop and confirm you're working against the right base before changing anything.
 
 **Chunk order:** Do B (padding) before E (icon size) — E's icon sizing interacts with B's padding fix (see E's note). Everything else is independent. G and H (contrast fixes) are quick and can be batched together. Do J (verification) last, and also spot-check each chunk with the `run` skill / Expo dev server as you go — these are all visual bugs; `tsc`/`jest` passing does not mean they're actually fixed on screen.
 
