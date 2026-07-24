@@ -14,7 +14,10 @@ import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCar
 import BasilicaSheet from '../components/cursus/BasilicaSheet';
 import CandidateHeader from '../components/cursus/CandidateHeader';
 import OfficeCard from '../components/cursus/OfficeCard';
+import OfficeActionsModal from '../components/cursus/OfficeActionsModal';
 import ActionButton from '../components/cursus/ActionButton';
+import StatusSeal from '../components/shared/StatusSeal';
+import type { OfficeStatus } from '../engine/officeStatus';
 import FrescoBackground from '../components/shared/FrescoBackground';
 import GildedPanel from '../components/shared/GildedPanel';
 import PortraitRoundel from '../components/shared/PortraitRoundel';
@@ -39,6 +42,7 @@ const BASILICA_SHEET_HEIGHT = SCREEN_HEIGHT * 0.72;
 function TribunePanel({ character }: { character: Character }) {
   const state = useGameStore();
   const { tribuneHolder, tribuneImmunity, tribuneSeasonsServed, tribuneCandidateId, family, declareTribuneCandidate, currentOffice } = state as any;
+  const [modalOpen, setModalOpen] = useState(false);
 
   const isHolder      = tribuneHolder === character.id;
   const isCandidate   = tribuneCandidateId === character.id;
@@ -60,100 +64,147 @@ function TribunePanel({ character }: { character: Character }) {
 
   const seasonsLeft = isHolder ? Math.max(0, 4 - (tribuneSeasonsServed ?? 0)) : 0;
 
+  // Chunk G of cursustabuifixesplan.md — TribuneStatus equivalent to
+  // engine/officeStatus.ts's OfficeStatus (Tribune isn't on the ladder that
+  // engine tracks, so there's no getOfficeStatus() call to reuse here; this
+  // mirrors its {status, reason} shape from the eligibility booleans above).
+  let tribuneStatus: OfficeStatus;
+  let tribuneReason: string | undefined;
+  if (isHolder) {
+    tribuneStatus = 'held';
+  } else if (isCandidate) {
+    tribuneStatus = 'active';
+  } else if (isEligible) {
+    tribuneStatus = 'eligible';
+  } else {
+    tribuneStatus = 'locked';
+    tribuneReason = someoneElseHolds
+      ? `Held by ${holderName}`
+      : someoneElseRunning
+        ? `${candidateName} running`
+        : !ageOk
+          ? 'Min age 30'
+          : !noOtherOffice
+            ? 'Already holds an office'
+            : undefined;
+  }
+
   return (
-    <ParchmentCard style={[tp.container]} contentStyle={tp.inner}>
-      <View style={tp.header}>
-        <Text style={tp.icon}>✊</Text>
-        <View style={tp.info}>
-          <InfoTap termId="tribune">
-            <Text style={tp.name}>Tribune of the Plebs</Text>
-          </InfoTap>
-          <Text style={tp.latin}>Tribunus Plebis · Parallel Path</Text>
-        </View>
-        {isHolder && (
-          <View style={tp.badge}><Text style={tp.badgeText}>IN OFFICE</Text></View>
-        )}
-        {isCandidate && (
-          <View style={[tp.badge, tp.badgePending]}><Text style={tp.badgeText}>CANDIDACY</Text></View>
-        )}
-      </View>
-
-      <Text style={tp.desc}>
-        Sacred defender of the plebeian people. Not a rung on the Cursus Honorum —
-        a separate office that can be held alongside (or instead of) the normal ladder.
-      </Text>
-
-      {/* Current holder view */}
-      {isHolder && (
-        <>
-          <View style={tp.immunity}>
-            <Text style={tp.immunityText}>🛡 Sacrosanct — trial immunity active</Text>
-            <Text style={tp.seasonsLeft}>{seasonsLeft} season{seasonsLeft !== 1 ? 's' : ''} remaining</Text>
+    <>
+      <TouchableOpacity activeOpacity={0.85} onPress={() => setModalOpen(true)}>
+        <ParchmentCard style={[tp.container]} contentStyle={tp.inner}>
+          <View style={tp.header}>
+            <Text style={tp.icon}>✊</Text>
+            <View style={tp.info}>
+              <InfoTap termId="tribune">
+                <Text style={tp.name}>Tribune of the Plebs</Text>
+              </InfoTap>
+              <Text style={tp.latin}>Tribunus Plebis · Parallel Path</Text>
+            </View>
+            {isHolder && (
+              <View style={tp.badge}><Text style={tp.badgeText}>IN OFFICE</Text></View>
+            )}
+            {isCandidate && (
+              <View style={[tp.badge, tp.badgePending]}><Text style={tp.badgeText}>CANDIDACY</Text></View>
+            )}
           </View>
-          <View style={tp.actions}>
-            {TRIBUNE_OFFICE.inOfficeActions?.map(action => (
-              <ActionButton key={action.id} action={action} character={character} />
-            ))}
+
+          <Text style={tp.desc}>
+            Sacred defender of the plebeian people. Not a rung on the Cursus Honorum —
+            a separate office that can be held alongside (or instead of) the normal ladder.
+          </Text>
+
+          {/* Chunk G — same tapHint-left/StatusSeal-right layout as OfficeCard
+              (Chunk F), bringing Tribune to parity with the ladder offices. */}
+          <View style={tp.sealRow}>
+            <Text style={tp.tapHint}>Tap for powers ›</Text>
+            <StatusSeal status={tribuneStatus} reason={tribuneReason} />
           </View>
-        </>
-      )}
 
-      {/* Pending candidacy view — this character is waiting on the election */}
-      {isCandidate && (
-        <View style={tp.pending}>
-          <Text style={tp.pendingText}>
-            ⏳ Candidacy declared — the Concilium Plebis votes at next season end.
-          </Text>
-          <Text style={tp.pendingSub}>
-            Success chance increases with Plebs mood and Populares standing.
-          </Text>
-        </View>
-      )}
+          {/* Current holder view */}
+          {isHolder && (
+            <>
+              <View style={tp.immunity}>
+                <Text style={tp.immunityText}>🛡 Sacrosanct — trial immunity active</Text>
+                <Text style={tp.seasonsLeft}>{seasonsLeft} season{seasonsLeft !== 1 ? 's' : ''} remaining</Text>
+              </View>
+              <View style={tp.actions}>
+                {TRIBUNE_OFFICE.inOfficeActions?.map(action => (
+                  <ActionButton key={action.id} action={action} character={character} />
+                ))}
+              </View>
+            </>
+          )}
 
-      {/* Another family member already holds Tribune */}
-      {someoneElseHolds && (
-        <Text style={tp.occupied}>{holderName} is serving as Tribune this term.</Text>
-      )}
+          {/* Pending candidacy view — this character is waiting on the election */}
+          {isCandidate && (
+            <View style={tp.pending}>
+              <Text style={tp.pendingText}>
+                ⏳ Candidacy declared — the Concilium Plebis votes at next season end.
+              </Text>
+              <Text style={tp.pendingSub}>
+                Success chance increases with Plebs mood and Populares standing.
+              </Text>
+            </View>
+          )}
 
-      {/* Another family member is running */}
-      {someoneElseRunning && !someoneElseHolds && (
-        <Text style={tp.occupied}>{candidateName} has declared candidacy for Tribune.</Text>
-      )}
+          {/* Another family member already holds Tribune */}
+          {someoneElseHolds && (
+            <Text style={tp.occupied}>{holderName} is serving as Tribune this term.</Text>
+          )}
 
-      {/* Eligible to declare */}
-      {isEligible && (
-        <TouchableOpacity
-          style={tp.declareBtn}
-          onPress={() => declareTribuneCandidate(character.id)}
-        >
-          <Text style={tp.declareBtnText}>Declare Candidacy</Text>
-          <Text style={tp.declareBtnSub}>Min age 30 · Election resolves next season end</Text>
-        </TouchableOpacity>
-      )}
+          {/* Another family member is running */}
+          {someoneElseRunning && !someoneElseHolds && (
+            <Text style={tp.occupied}>{candidateName} has declared candidacy for Tribune.</Text>
+          )}
 
-      {/* Not eligible — show reason */}
-      {!isHolder && !isCandidate && !someoneElseHolds && !someoneElseRunning && !isEligible && (
-        <Text style={tp.ineligible}>
-          {!ageOk
-            ? `Minimum age 30 (current: ${character.age})`
-            : !noOtherOffice
-              ? `${character.name} already holds an office`
-              : 'Not currently available'}
-        </Text>
-      )}
-    </ParchmentCard>
+          {/* Eligible to declare */}
+          {isEligible && (
+            <TouchableOpacity
+              style={tp.declareBtn}
+              onPress={() => declareTribuneCandidate(character.id)}
+            >
+              <Text style={tp.declareBtnText}>Declare Candidacy</Text>
+              <Text style={tp.declareBtnSub}>Min age 30 · Election resolves next season end</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Not eligible — show reason */}
+          {!isHolder && !isCandidate && !someoneElseHolds && !someoneElseRunning && !isEligible && (
+            <Text style={tp.ineligible}>
+              {!ageOk
+                ? `Minimum age 30 (current: ${character.age})`
+                : !noOtherOffice
+                  ? `${character.name} already holds an office`
+                  : 'Not currently available'}
+            </Text>
+          )}
+        </ParchmentCard>
+      </TouchableOpacity>
+
+      <OfficeActionsModal
+        visible={modalOpen}
+        onClose={() => setModalOpen(false)}
+        office={TRIBUNE_OFFICE}
+        character={character}
+        status={tribuneStatus}
+      />
+    </>
   );
 }
 
 const tp = StyleSheet.create({
   container: { marginBottom: SPACING.sm },
-  inner: { padding: 2 },
+  inner: { padding: SPACING.sm },
   header: { flexDirection: 'row', alignItems: 'center' },
   icon: { fontSize: 24, marginRight: SPACING.sm },
   info: { flex: 1 },
   name: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 15, fontWeight: '700' },
   latin: { color: COLORS.goldDim, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11 },
   desc: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6, lineHeight: 16 },
+  // Chunk G — same values as OfficeCard.tsx's rung.sealRow/rung.tapHint.
+  sealRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.sm },
+  tapHint: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 9, letterSpacing: 0.3, opacity: 0.8 },
   badge: { backgroundColor: COLORS.gold + '22', borderWidth: 1, borderColor: COLORS.gold, borderRadius: 2, paddingHorizontal: 6, paddingVertical: 2 },
   badgePending: { backgroundColor: COLORS.amber + '22', borderColor: COLORS.amber },
   badgeText: { color: COLORS.gold, fontFamily: FONTS.ui, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -580,10 +631,51 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
   },
-  flavor: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 13, marginTop: 3 },
+  // Chunk H of cursustabuifixesplan.md — flavor sits directly in the header,
+  // over the fresco with no card behind it (same as title/subtitle above),
+  // but never got their textShadow treatment; PARCHMENT_TEXT.heading is a
+  // dark-brown token meant for use inside a light parchment card, so
+  // without a shadow it's nearly unreadable against the fresco's darker
+  // regions — same root cause as sectionLabel below.
+  flavor: {
+    color: PARCHMENT_TEXT.heading,
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 13,
+    marginTop: 3,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
   scroll: { flex: 1, padding: SPACING.md },
-  sectionLabel: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: SPACING.sm },
+  sectionLabel: {
+    color: COLORS.goldDim,
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: SPACING.sm,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
   logEntry: { borderLeftWidth: 2, borderLeftColor: COLORS.border, paddingLeft: SPACING.sm, marginBottom: SPACING.sm },
-  logTurn: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 10 },
-  logText: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontSize: 12 },
+  // logEntry has no background — its border-strip rows sit directly on the
+  // fresco (same as flavor/sectionLabel above), audited per Chunk H step 3.
+  logTurn: {
+    color: COLORS.goldDim,
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  logText: {
+    color: PARCHMENT_TEXT.muted,
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
 });

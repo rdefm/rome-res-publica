@@ -1,3 +1,9 @@
+// Chunk I of cursustabuifixesplan.md — pulled out to a standalone const so
+// tabInactive below can reference it directly (CLAUDE.md's token rule: a
+// new token that's semantically-the-same-value as an existing one must
+// reference it, not restate the literal).
+const waxFrame = '#5a3c1a';
+
 export const COLORS = {
   bg:            '#1a1714',
   panelSurface:  '#2e2a24',
@@ -24,9 +30,14 @@ export const COLORS = {
   // Wax tablet palette (P1-C — AgendaTablet)
   // The tabula cerata: wooden frame around a dark wax writing surface.
   waxSurface:        '#141210',  // near-black warm umber — the wax field
-  waxFrame:          '#5a3c1a',  // warm wood brown — the tablet surround
+  waxFrame,                      // warm wood brown — the tablet surround
   waxInscription:    '#d4c8a0',  // pale scratched text — primary item text
   waxInscriptionDim: '#7a6e50',  // dimmer secondary — detail lines, subheaders
+  // Chunk I of cursustabuifixesplan.md — TabBar.tsx's inactive icon/label
+  // tint was a hardcoded '#9a8060' (light tan), too low-contrast against the
+  // light marble tab-bar background. waxFrame is already a dark, warm brown
+  // built for exactly this kind of "readable against a light surface" case.
+  tabInactive: waxFrame,
   // Redesign tokens (domus-visual-redesign-plan-v2)
   parchment:       '#e8dcc8',
   parchmentBorder: '#b8a070',
@@ -54,7 +65,11 @@ export const COLORS = {
   // legible without visibly darkening the fresco right where it should
   // read clearest.
   scrimTop:        'rgba(20,14,8,0.1)',
-  scrimBottom:     'rgba(20,14,8,0.88)',
+  // Chunk A of cursustabuifixesplan.md — 0.88 read as a near-opaque
+  // "dark filter" blotting out the fresco under the office list once the
+  // sizing bug (image not covering its full container) was fixed; 0.58
+  // keeps office-list text legible while leaving the image visible.
+  scrimBottom:     'rgba(20,14,8,0.58)',
 };
 
 // ─── Typography ───────────────────────────────────────────────────────────────

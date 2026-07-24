@@ -26,10 +26,10 @@ const WAX_SEAL = require('../assets/cursus/seal-wax.png');
 const OFFICE_ICONS: Partial<Record<OfficeId, RequiredAsset>> = {
   vigintivirate: require('../assets/cursus/icon-vigintivirate.png'),
   quaestor: require('../assets/cursus/icon-quaestor.png'),
+  aedile: require('../assets/cursus/icon-aedile.png'),
+  praetor: require('../assets/cursus/icon-praetor.png'),
+  consul: require('../assets/cursus/icon-consul.png'),
   // tribune: require('../assets/cursus/icon-tribune.png'),
-  // aedile: require('../assets/cursus/icon-aedile.png'),
-  // praetor: require('../assets/cursus/icon-praetor.png'),
-  // consul: require('../assets/cursus/icon-consul.png'),
   // censor: require('../assets/cursus/icon-censor.png'),
   // dictator: require('../assets/cursus/icon-dictator.png'),
 };

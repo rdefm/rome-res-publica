@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGameStore } from '../../state/gameStore';
-import { getCrisisColour } from '../../engine/crisisEngine';
 import { calcResourceIncome } from '../../engine/resourceEngine';
 import { getCriticalItems } from '../../engine/agendaEngine';
 import type { AgendaItem } from '../../models/agenda';
@@ -29,11 +28,19 @@ function ResourceItem({ value, projectedIncome, tintColor, icon }: {
   tintColor: string;
   icon: ReturnType<typeof require>;
 }) {
+  // Chunk J of cursustabuifixesplan.md — sign-based coloring (laurel/crimson
+  // are this codebase's existing win/loss precedent tokens, e.g.
+  // CursusScreen.tsx's ep.rankBadgeWin/ep.rankBadgeLose); zero stays neutral
+  // since it's neither a gain nor a loss.
+  const projectedColor = projectedIncome > 0 ? COLORS.laurel
+    : projectedIncome < 0 ? COLORS.crimson
+    : COLORS.dust;
+
   return (
     <View style={styles.resourceItem}>
       <Image source={icon} style={[styles.resourceIcon, { tintColor }]} />
       <Text style={[styles.resourceValue, { color: tintColor }]}>{value}</Text>
-      <Text style={styles.resourceProjected}>
+      <Text style={[styles.resourceProjected, { color: projectedColor }]}>
         {projectedIncome >= 0 ? '+' : ''}{projectedIncome}
       </Text>
     </View>
@@ -44,7 +51,7 @@ export default function ResourceBar() {
   const state = useGameStore();
   const {
     fides, denarii,
-    crisisLevel, year, seasonIndex,
+    year, seasonIndex,
     endSeason, seasonOverlayVisible, showAgenda,
   } = state;
   const { fidesIncome, denariiIncome } = calcResourceIncome(state);
@@ -206,8 +213,7 @@ const styles = StyleSheet.create({
   },
   resourceProjected: {
     fontFamily: FONTS.ui,
-    fontSize: 10,
-    color: COLORS.dust,
+    fontSize: 11,
   },
 
   // Single unified rectangle — date | divider | END SEASON

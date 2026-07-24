@@ -34,7 +34,7 @@ export function TabBarBackground({ height }: { height: number }): JSX.Element {
  *  specific in case a future tab wants the same treatment. */
 export function renderTabIcon(label: string, focused: boolean, badge?: boolean): JSX.Element {
   const icon = TAB_ICONS[label];
-  const tint = focused ? COLORS.crimson : '#9a8060';
+  const tint = focused ? COLORS.crimson : COLORS.tabInactive;
 
   return (
     <View style={styles.tabItem}>

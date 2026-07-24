@@ -118,10 +118,10 @@ export default function CandidateHeader({ selected, onSelect }: CandidateHeaderP
 
           <TouchableOpacity onPress={goNext} style={styles.peek} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
             {eligible.length > 1 && (
-              <>
+              <View style={styles.peekPreview}>
                 <PortraitRoundel subject={characterPortraitSubject(nextChar)} size={32} frame="plain" />
                 <Text style={styles.peekName} numberOfLines={1}>{nextChar.name.split(' ')[0]}</Text>
-              </>
+              </View>
             )}
             <Text style={styles.arrow}>›</Text>
           </TouchableOpacity>
@@ -208,20 +208,33 @@ const styles = StyleSheet.create({
   },
   skillsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     marginTop: SPACING.sm,
-    gap: SPACING.sm,
+    gap: SPACING.xs,
   },
+  // Row, not column — the "next character" preview (portrait+name) sits
+  // beside the arrow, not stacked above it. Chunk C follow-up: stacking the
+  // arrow below the preview made it the bottom item of a ~73px column, so
+  // centering that whole block in the header row left the arrow well below
+  // the left prev-arrow's position (which has no preview above it). Putting
+  // the preview and arrow side by side keeps both close to the same height,
+  // so alignItems: 'center' centers the arrow itself, not just the block.
   peek: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     width: 56,
+    gap: SPACING.xs,
+  },
+  peekPreview: {
+    alignItems: 'center',
   },
   peekName: {
     color: COLORS.dust,
     fontFamily: FONTS.ui,
     fontSize: 9,
     marginTop: 2,
-    maxWidth: 56,
+    maxWidth: 32,
   },
 });
 
