@@ -59,9 +59,8 @@ describe('actionsThisSeason — counted actions', () => {
   });
 
   test('purchaseAsset increments by 1', () => {
-    const { getDefinition } = require('../src/engine/assetEngine');
     const anyDef = require('../src/data/assetDefinitions').ASSET_DEFINITIONS[0];
-    useGameStore.getState().purchaseAsset(anyDef.id);
+    useGameStore.getState().purchaseAsset('latium', anyDef.id);
     expect(useGameStore.getState().actionsThisSeason).toBe(1);
   });
 

@@ -1,10 +1,26 @@
 import type { AssetDefinition } from '../models/asset';
 
+// Family House rework — these 4 assets now buy/upgrade from Provinciae →
+// Latium (components/provinciae/LatiumSheet.tsx) instead of Domus's old
+// Patrimonium panel, but are otherwise UNCHANGED: same OwnedAsset/tier shape,
+// same engine/assetEngine.ts functions, same income-calc wiring in
+// resourceEngine.ts. `library` (the 5th former Patrimonium asset) was
+// removed entirely — it's reborn as a Family House room (data/houseRooms.ts);
+// state/gameStore.ts's loadGame migrates any pre-rework save's `library`
+// OwnedAsset into that room so no investment is lost.
+// July 2026 fixes, Chunk E — each definition gained a `scope` field.
+// Vineyard/Gladiator School/Insulae stay 'latium' (redundant with province
+// equivalents, or too Rome-specific to generalize without inventing flavor
+// text unprompted — see the plan's own cross-over discussion). Baths became
+// 'everywhere': provincial bathhouses are an authentic, well-attested piece
+// of Roman provincial life, and its bonus shape (fides/intrigus) needs no
+// city-specific mechanic to work anywhere Latium's own copy already works.
 export const ASSET_DEFINITIONS: AssetDefinition[] = [
   {
     id: 'vineyard',
     name: 'Vineyard',
     category: 'economic',
+    scope: 'latium',
     flavourText: 'Fertile slopes outside the city yield fine wine and finer coin.',
     tiers: [
       { tier: 1, label: 'Small Vineyard',   goldCost: 80,  upgradeCost: 0,
@@ -19,6 +35,7 @@ export const ASSET_DEFINITIONS: AssetDefinition[] = [
     id: 'gladiator_school',
     name: 'Gladiator School',
     category: 'military',
+    scope: 'latium',
     flavourText: 'A ludus of hardened fighters — useful for spectacle, and for sending messages.',
     tiers: [
       { tier: 1, label: 'Small Ludus',       goldCost: 100, upgradeCost: 0,
@@ -31,24 +48,10 @@ export const ASSET_DEFINITIONS: AssetDefinition[] = [
     ],
   },
   {
-    id: 'library',
-    name: 'Library',
-    category: 'cultural',
-    flavourText: 'Scrolls of philosophy, rhetoric, and law. Knowledge is its own form of power.',
-    tiers: [
-      { tier: 1, label: 'Private Library',   goldCost: 60,  upgradeCost: 0,
-        passiveBonus: { rhetoricalBonus: 3, lifetimeDignitas: 1 } },
-      { tier: 2, label: 'Scholarly Library', goldCost: 0,   upgradeCost: 100,
-        passiveBonus: { rhetoricalBonus: 6, lifetimeDignitas: 2, fides: 1 } },
-      { tier: 3, label: 'Renowned Library',  goldCost: 0,   upgradeCost: 180,
-        passiveBonus: { rhetoricalBonus: 10, lifetimeDignitas: 4, fides: 3 },
-        unlockedActions: ['draft_legislation'] },
-    ],
-  },
-  {
     id: 'baths',
     name: 'Public Baths',
     category: 'political',
+    scope: 'everywhere',
     flavourText: 'Coin spent on the people returns as goodwill — and votes.',
     tiers: [
       { tier: 1, label: 'Modest Baths',   goldCost: 90,  upgradeCost: 0,
@@ -64,6 +67,7 @@ export const ASSET_DEFINITIONS: AssetDefinition[] = [
     id: 'urban_insulae',
     name: 'Insulae (Tenements)',
     category: 'economic',
+    scope: 'latium',
     flavourText: "Rome's poor must live somewhere. Their rent fills your coffers.",
     tiers: [
       { tier: 1, label: 'Modest Block',       goldCost: 70,  upgradeCost: 0,

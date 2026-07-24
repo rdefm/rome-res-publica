@@ -140,7 +140,7 @@ describe('endowment income (resourceEngine)', () => {
       constitution: { id: 'constitution', level: 0, tier: 0, namedCrisis: null },
       economy:      { id: 'economy', level: 0, tier: 0, namedCrisis: null },
     };
-    const base = { family: [], clans: [], clients: [], ownedAssets: [], provinces: [],
+    const base = { family: [], clans: [], clients: [], ownedAssets: [], cities: [],
       patronTier: 0, rome: { stability: 50, plebs: 50, treasury: 50 },
       crisis: zeroCrisis, endowments: [] as string[] } as any;
 
@@ -200,7 +200,7 @@ function makeSequencerState(overrides: Record<string, any> = {}) {
       inheritedTraits: [], ambitionIds: [], reputationScores: {},
       formalImperium: 0, militaryImperium: 0, raisedLegions: [], veterans: [],
     }],
-    bills: [], passedBills: [], clans: [], clients: [], ownedAssets: [], provinces: [],
+    bills: [], passedBills: [], clans: [], clients: [], ownedAssets: [], cities: [],
     pendingEvents: [], tribuneHolder: null, tribuneImmunity: false, tribuneSeasonsServed: 0,
     tribuneHostilityDebt: {}, consulAuthorityActive: false, consulAuthoritySeasonsRemaining: 0,
     npcTribuneActive: false, npcConsul: null, activeCampaignExists: false, familyHasTroops: false,

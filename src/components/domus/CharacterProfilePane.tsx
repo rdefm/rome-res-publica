@@ -44,7 +44,11 @@ export default function CharacterProfilePane({ character }: CharacterProfilePane
           ) : (
             <View style={styles.portraitPlaceholder}>
               <Text style={{ fontSize: 40 }}>
-                {character.role === 'spouse' ? '👩' : character.role === 'son' ? '👦' : '👧'}
+                {character.role === 'spouse' ? '👩'
+                  : character.role === 'son' ? '👦'
+                  : character.role === 'brother' ? '🧔'
+                  : character.role === 'sister' ? '👧'
+                  : '👧'}
               </Text>
             </View>
           )}

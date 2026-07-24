@@ -11,7 +11,7 @@ export interface GlossaryTerm {
 }
 
 // ─── Term list ────────────────────────────────────────────────────────────────
-// ~41 terms. Sorted alphabetically by term for the Tabularium display.
+// ~52 terms. Sorted alphabetically by term for the Tabularium display.
 // All definitions sourced strictly from game-manual.md.
 
 export const GLOSSARY_TERMS: GlossaryTerm[] = [
@@ -32,6 +32,30 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: 'Ambassador',
     definition: 'A family member posted to a province without governor authority. Ambassadors build rapport, gather intelligence, recruit provincial clients, and arrange cultural exchanges — one action per season.',
     relatedTab: 'Provinciae',
+  },
+  {
+    id: 'approach',
+    term: 'Approach',
+    definition: "A trial's free, adjustable stance — Ferocity, Procedure, or Sympathy — re-weighting how Logos/Pathos/Ethos preparation counts and which beats the trial-day session draws. Changeable any time until the trial begins, then locked.",
+    relatedTab: 'Cursus',
+  },
+  {
+    id: 'basilica',
+    term: 'The Basilica',
+    definition: "The screen where you prepare either side of a trial — Logos, Pathos, and Ethos sections, an Approach selector, and a speaker picker — opened from an active trial's card or an agenda item.",
+    relatedTab: 'Cursus',
+  },
+  {
+    id: 'calumnia',
+    term: 'Calumnia',
+    definition: 'The penalty for a clearly-lost prosecution you filed: Dignitas and standing with the target\'s clan both suffer, and the target may file a counter-suit against your speaker within two seasons.',
+    relatedTab: 'Cursus',
+  },
+  {
+    id: 'cadet-branch',
+    term: 'Cadet Branch',
+    definition: 'A distant relative of your gens, tracked quietly from the start of the run. If your direct line ever dies out entirely, the cadet branch offers a one-time continuation — the name endures, but the run\'s Legacy is halved. A second extinction is final.',
+    relatedTab: 'Domus',
   },
   {
     id: 'campaign',
@@ -118,6 +142,23 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Cursus',
   },
   {
+    id: 'difficulty',
+    term: 'Difficulty',
+    definition: 'Clemens, Aequus, or Ferox — chosen at new game and fixed for the run. Changes exactly two things: season income margins and how fast the four crisis tracks drift. It never hides, adds, or removes a mechanic.',
+  },
+  {
+    id: 'donative',
+    term: 'Donative',
+    definition: "A cash payment to an army's own troops, once per year, that raises their loyalty. Costs Denarii per unit and applies to every unit a commander fields, wherever they're stationed.",
+    relatedTab: 'Provinciae',
+  },
+  {
+    id: 'endless-mode',
+    term: 'Endless Mode',
+    definition: "Unlocked by a Victory epilogue. Resumes the same save past 241 BC: the war with Carthage is retired for good, and the four crisis tracks keep running with no further terminal endings from the war or the Republic. Your family's story can still end in Endless Mode — the line dying out still offers its one-time cadet-branch continuation.",
+    relatedTab: 'Domus',
+  },
+  {
     id: 'election',
     term: 'Elections',
     definition: 'Resolved in Winter at the end of the season. Vote totals reflect actions taken during the preceding seasons — canvassing, speeches, client sway, and faction relationships.',
@@ -130,6 +171,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Curia',
   },
   {
+    id: 'ethos',
+    term: 'Ethos',
+    definition: "The Basilica's third preparation section — character and standing: invoking your ancestors' record, and (its corrupt shadow) bribing jurors or the presiding Praetor.",
+    relatedTab: 'Cursus',
+  },
+  {
     id: 'fides',
     term: 'Fides',
     definition: 'Your family\'s credibility in Roman society, spent on almost every meaningful action — Senate votes, speeches, and diplomatic ties. Income each season depends on your paterfamilias\'s Rhetoric skill, offices held, Patron Tier, clients, and assets.',
@@ -140,6 +187,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: 'Fides Income',
     definition: 'Fides earned each season: paterfamilias Rhetoric × 2 × Patron multiplier, plus office bonus, clan relationships, clients, and assets, minus any active crisis penalty.',
     relatedTab: 'Forum',
+  },
+  {
+    id: 'family-house',
+    term: 'Family House',
+    definition: 'Your household\'s residence — one house at a time, relocatable to any of Rome\'s neighborhoods. Each location has its own room slots, storefront slots, and passive bonus (e.g. Palatine grants Dignitas and favor with Optimates leaders; humbler neighborhoods favor Populares and offer more storefronts). Relocating sells the old house back for a fraction of what was invested.',
+    relatedTab: 'Domus',
   },
   {
     id: 'governor-policy',
@@ -160,16 +213,39 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Domus',
   },
   {
+    id: 'laurels',
+    term: 'Laurels',
+    definition: 'Cross-run achievements, earned by any run (not just the one currently being played) and displayed in the Hall of Ancestors. Purely a trophy shelf — earning one grants nothing mechanical.',
+  },
+  {
     id: 'legatum',
     term: 'Legatum',
     definition: 'Four permanent legacy objectives tracking long-term achievements across generations. Reaching milestone thresholds unlocks permanent income bonuses and traits that persist between characters.',
     relatedTab: 'Domus',
   },
   {
+    id: 'levy-tiers',
+    term: 'Levy Tiers',
+    definition: 'Three ways to muster a cohort from a theatre region: an Emergency Levy (cheap, whoever\'s on hand), a Standard Levy, or Picked Men (a smaller, selective muster — priced for that selectivity, but reliably the better soldier). Good relations with the region\'s cities improve quality further on all three.',
+    relatedTab: 'Provinciae',
+  },
+  {
     id: 'lifetime-dignitas',
     term: 'Lifetime Dignitas',
     definition: 'A permanent, never-spent prestige score that gates your Patron Tier. Unlike other resources it only rises — certain catastrophic events can reduce it, but normal resource spending cannot.',
     relatedTab: 'Forum',
+  },
+  {
+    id: 'loyalty',
+    term: 'Loyalty',
+    definition: "A unit's bond to its commander (0–100). It rises on campaign and after shared victories, falls after defeats or a change of command, and can be topped up with a Donative — low loyalty risks desertion.",
+    relatedTab: 'Provinciae',
+  },
+  {
+    id: 'logos',
+    term: 'Logos',
+    definition: "The Basilica's evidence section — gathering evidence over time, or presenting a matching criminal Secret directly as damning proof.",
+    relatedTab: 'Cursus',
   },
   {
     id: 'martial',
@@ -202,6 +278,24 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Forum',
   },
   {
+    id: 'pathos',
+    term: 'Pathos',
+    definition: "The Basilica's persuasion section — securing named witnesses and rehearsing the speaker's oration. Witnesses are attackable at trial.",
+    relatedTab: 'Cursus',
+  },
+  {
+    id: 'peace-negotiation',
+    term: 'Peace Negotiation',
+    definition: 'Once War Score crosses a threshold, terms can be discussed: sue for peace lets the losing side propose a minor package; forced negotiation opens full term-shopping within a budget; dictated terms let the winner take everything affordable. A tabled treaty must still be ratified by the Senate.',
+    relatedTab: 'Curia',
+  },
+  {
+    id: 'treaty-terms',
+    term: 'Treaty Terms',
+    definition: 'Individual clauses — indemnities, prisoner return, ceded territory, fleet limits, or a face-saving clause — assembled into a package within the negotiating side\'s War Score budget. Optimates and Populares react differently to each term, seeding the ratification bill\'s starting support.',
+    relatedTab: 'Curia',
+  },
+  {
     id: 'relationship-anchor',
     term: 'Relationship Anchor',
     definition: 'The value a clan leader\'s relationship drifts toward once per year: 55 if marriage-linked, 40 if allied, 25 by default, or 15 if hostile. Hostile leaders never warm on their own — only your actions move them.',
@@ -226,9 +320,21 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Cursus',
   },
   {
+    id: 'regency',
+    term: 'Regency',
+    definition: 'If a confirmed heir is under 18, a regent — the spouse, or the eldest adult relative — governs in their name until they come of age. Fides income is reduced while a regency is active.',
+    relatedTab: 'Domus',
+  },
+  {
     id: 'quaestor',
     term: 'Quaestor',
     definition: 'The first elected office on the Cursus Honorum, open at age 30. Provides +3 Fides per season while in office.',
+    relatedTab: 'Cursus',
+  },
+  {
+    id: 'quaestio',
+    term: 'Quaestio',
+    definition: "Rome's standing criminal court — in game terms, any trial: a corruption charge, a hostile clan's accusation, or a prosecution you file yourself, all resolved through the same Basilica pipeline.",
     relatedTab: 'Cursus',
   },
   {
@@ -256,6 +362,11 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Curia',
   },
   {
+    id: 'saves-and-backup',
+    term: 'Saves & Backup',
+    definition: 'The game autosaves every season and whenever you leave the app. Your device\'s own backup (iCloud/iTunes on iOS, Google device backup on Android) covers that save automatically. Export creates a file you own; Import restores from one. There is no account and no cloud sync of our own.',
+  },
+  {
     id: 'season',
     term: 'Season (Turn)',
     definition: 'The game\'s turn unit. Each season you take actions across all five tabs, then press End Season. Four seasons make one in-game year; elections resolve in Winter and aging occurs at year\'s end.',
@@ -267,6 +378,24 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Provinciae',
   },
   {
+    id: 'storefront',
+    term: 'Storefront',
+    definition: 'A rentable shop slot on any Family House location except the Palatine. Rent it to one of a fixed catalog of businesses (Tavern, Bakery, Fuller\'s Shop, Moneylender) for a recurring passive bonus; vacate it any time.',
+    relatedTab: 'Domus',
+  },
+  {
+    id: 'study',
+    term: 'Study (Family House Room)',
+    definition: 'A Family House room that raises the odds a skill-training attempt succeeds. Training is a roll, not a guarantee — the chance drops as the skill being trained gets higher, and the Study offsets some of that.',
+    relatedTab: 'Domus',
+  },
+  {
+    id: 'succession',
+    term: 'Succession',
+    definition: 'When the paterfamilias dies — of age or in battle — the family does not simply lose a member. A funeral is chosen, and an heir confirmed: the eldest eligible child by default, or another at the cost of family trust. The new paterfamilias\'s own skills then drive Fides income.',
+    relatedTab: 'Domus',
+  },
+  {
     id: 'taxation',
     term: 'Taxation (Governor Policy)',
     definition: 'A governor policy axis controlling gold extraction from a province. Higher settings multiply gold income but damage provincial relationships and add corruption to the governor each season.',
@@ -275,8 +404,8 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   {
     id: 'trial',
     term: 'Trial',
-    definition: 'A legal proceeding brought by a hostile clan against a family member, lasting several seasons. You take defense actions each season; outcomes range from Acquitted to Executed.',
-    relatedTab: 'Curia',
+    definition: 'A legal proceeding — brought by a hostile clan, triggered by corruption, or filed by you against a leader — prepared in the Basilica (Cursus) over several seasons. Outcomes range from Acquitted/Dismissed to Fined, Exiled, or Executed.',
+    relatedTab: 'Cursus',
   },
   {
     id: 'tribune',
@@ -285,9 +414,129 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Cursus',
   },
   {
+    id: 'veterancy',
+    term: 'Veterancy',
+    definition: 'A unit\'s battle experience tier — raw, trained, veteran, or legendary — earned by surviving set-piece battles (legendary also requires a crushing victory). Higher tiers fight harder and hold morale better.',
+    relatedTab: 'Provinciae',
+  },
+  {
     id: 'vigintivirate',
     term: 'Vigintivirate',
     definition: 'The entry-level magistracy, open at age 18. Completing the Board of Twenty is the first formal step in political life, though its direct resource bonus is limited.',
     relatedTab: 'Cursus',
+  },
+  {
+    id: 'war-funding',
+    term: 'War Funding',
+    definition: 'A recurring Senate bill while a major war is active — passing it costs the treasury but eases War pressure and strengthens the campaign; letting it fail lets War pressure climb.',
+    relatedTab: 'Curia',
+  },
+  {
+    id: 'war-score',
+    term: 'War Score',
+    definition: 'A running −100…+100 measure of how a war is going. Crossing key thresholds unlocks suing for peace, forced negotiation, or dictating terms — no single battle can swing it by more than a capped amount.',
+    relatedTab: 'Provinciae',
+  },
+  {
+    id: 'war-weariness',
+    term: 'War Weariness',
+    definition: 'Accrues every season a war stays active, independent of who is winning. Once it climbs far enough — sooner as the war drags closer to its historical end — sitting on a stalemate becomes resolvable on its own via the Sue for Peace lever, whatever War Score currently reads.',
+    relatedTab: 'Provinciae',
+  },
+  {
+    id: 'sue-for-peace',
+    term: 'Sue for Peace',
+    definition: 'A Senate motion, available once a war\'s weariness clears a threshold, to end it now on a negotiated peace rather than ride War Score to a decisive edge. Populares tend to favour it; Optimates tend to resist.',
+    relatedTab: 'Curia',
+  },
+  {
+    id: 'peace-of-exhaustion',
+    term: 'Peace of Exhaustion',
+    definition: 'How history remembers a war that ended in a negotiated peace rather than a decisive Roman victory or defeat — the two sides simply stopped, worn down rather than beaten.',
+    relatedTab: 'Curia',
+  },
+  {
+    id: 'secret',
+    term: 'Secret',
+    definition: 'A specific piece of compromising material — an affair, embezzlement, electoral fraud — held either by you on a clan leader or by a leader on your family. Gathered by sending a family member to dig, or generated against you by a hostile leader when your own corruption invites it.',
+    relatedTab: 'Forum',
+  },
+  {
+    id: 'leverage',
+    term: 'Leverage',
+    definition: 'Spending a Secret you hold to force a leader\'s bloc behind a bill or lock their support in your campaign, free of cost — the Secret itself is the price, and it is consumed (or, held against you by a leader, retained for a limited number of demands).',
+    relatedTab: 'Forum',
+  },
+  {
+    id: 'extortion',
+    term: 'Extortion',
+    definition: 'Spending a Secret for recurring Denarii instead of a one-time use. Runs every season until you stop it or it is discovered — discovery ends the income and turns the target against you. A leader can extort your family the same way, in reverse.',
+    relatedTab: 'Forum',
+  },
+  {
+    id: 'burn',
+    term: 'Burn (Scandal)',
+    definition: 'Spending a Secret to expose it publicly. The target leader permanently loses half their votes and their clan turns hostile — the loudest, most irreversible use of a Secret.',
+    relatedTab: 'Forum',
+  },
+  {
+    id: 'deterrence',
+    term: 'Deterrence',
+    definition: 'While you hold a Secret on a leader and that leader holds one on your family, both are frozen — neither side can leverage, extort, or burn until the standoff breaks. Automatic, and shown in the Dossier as a stalemate.',
+    relatedTab: 'Forum',
+  },
+  {
+    id: 'dossier',
+    term: 'Dossier',
+    definition: 'The Forum panel listing every Secret you hold and every discovered Secret held against your family, with the spend and counterplay actions for each.',
+    relatedTab: 'Forum',
+  },
+  {
+    id: 'groundwork',
+    term: 'Groundwork',
+    definition: 'Progress toward a Secret that persists across failed attempts, raising the odds of the next one — yours against a leader when Gather Intelligence comes up empty, or a hostile leader\'s against your family when their attempt fails.',
+    relatedTab: 'Forum',
+  },
+  {
+    id: 'army',
+    term: 'Army',
+    definition: 'A stack of whole units stationed in a theatre region — state-owned, a rival commander\'s, or Carthage\'s. Combine two armies in the same region into one, or divide whole units off into a new detachment. A leaderless army may garrison but never attack.',
+    relatedTab: 'Provinciae',
+  },
+  {
+    id: 'army-stance',
+    term: 'Stance',
+    definition: 'An army\'s standing order for the season: Give Battle accepts an engagement if one arises, Avoid Battle tries to withdraw instead. Set per army from its card.',
+    relatedTab: 'Provinciae',
+  },
+  {
+    id: 'muster',
+    term: 'Muster',
+    definition: 'Raise a cohort from a region — three tiers trade cost for quality, both improved by good relations with the region\'s cities. Each region has a yearly cohort cap. Raising without the Senate\'s sanction (holding a formal office) risks the same censure-and-consular-army response as an unsanctioned personal levy.',
+    relatedTab: 'Provinciae',
+  },
+  {
+    id: 'the-command',
+    term: 'The Command',
+    definition: 'A proconsular command, won in a same-season extraordinary assembly. Winning grants imperium, a state legion at Rome, and a war chest — spendable on muster/upkeep, never mixed with personal denarii. Sanctions musters exactly like a formal office. Rivals can win it too; if they do, their army joins the enemy AI. It coexists with magistracies and holding no office.',
+    relatedTab: 'Curia',
+  },
+  {
+    id: 'proconsul',
+    term: 'Proconsul',
+    definition: 'The title held by whoever wins the theatre command — military authority over the war effort, distinct from any elected magistracy. A sitting consul or praetor can hold it alongside their office; so can a private citizen.',
+    relatedTab: 'Curia',
+  },
+  {
+    id: 'prorogation',
+    term: 'Prorogation',
+    definition: 'The automatic re-election vote called in a command\'s final season. The incumbent\'s support is boosted or hurt by their battle record; winning extends the term and tops up the war chest with no new grants. Losing — or nobody standing — lapses the command: its armies hold in place, leaderless, until a new one is won.',
+    relatedTab: 'Curia',
+  },
+  {
+    id: 'campaign-intent',
+    term: 'Campaign Intent',
+    definition: 'An enemy or rival army\'s telegraphed plan for the season: Entrenched (holding), Advancing, or Raiding. Each general has their own honesty — a schemer may show a false intent now and then, so treat it as a strong hint, not a guarantee.',
+    relatedTab: 'Provinciae',
   },
 ];

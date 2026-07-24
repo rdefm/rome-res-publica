@@ -1,8 +1,15 @@
 import type { OwnedAsset, AssetBonus, AssetDefinition } from '../models/asset';
-import { ASSET_DEFINITIONS } from '../data/assetDefinitions';
+import { getAssetDefinition } from '../data/cityAssets';
 
+// July 2026 fixes, Chunk E — getDefinition now searches the combined catalog
+// (Latium + province assets), not just the old Latium-only ASSET_DEFINITIONS.
+// Every function below already took a generic OwnedAsset/definitionId, so
+// this one change makes purchaseCost/upgradeCost/computeTotalAssetBonuses/
+// getUnlockedAssetActions all correctly generic over BOTH Latium's
+// GameState.ownedAssets and a province's CityState.ownedAssets — no other
+// change needed in this file.
 export function getDefinition(definitionId: string): AssetDefinition | undefined {
-  return ASSET_DEFINITIONS.find(d => d.id === definitionId);
+  return getAssetDefinition(definitionId);
 }
 
 /** Aggregate all passive bonuses across all owned assets */

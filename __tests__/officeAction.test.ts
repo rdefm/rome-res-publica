@@ -54,7 +54,7 @@ function makeState(overrides: Record<string, any> = {}) {
     clans: [],
     clients: [],
     ownedAssets: [],
-    provinces: [],
+    cities: [],
     pendingEvents: [],
     tribuneHolder: null,
     tribuneImmunity: false,
@@ -238,7 +238,7 @@ describe('Triumph bill generation', () => {
 
     const state = makeState({
       lifetimeImperium: 50,
-      provinces: [
+      cities: [
         {
           id: 'sicilia',
           relationshipScore: 60,
@@ -299,7 +299,7 @@ describe('Triumph bill generation', () => {
 
     const state = makeState({
       lifetimeImperium: 30,  // below threshold
-      provinces: [
+      cities: [
         {
           id: 'sicilia',
           relationshipScore: 60,
@@ -357,7 +357,7 @@ describe('Triumph bill generation', () => {
 
     const state = makeState({
       lifetimeImperium: 60,
-      provinces: [
+      cities: [
         {
           id: 'sicilia',
           relationshipScore: 60,

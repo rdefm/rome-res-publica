@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal,
-  ActivityIndicator, Alert, ScrollView,
+  ActivityIndicator, Alert, ScrollView, Platform,
 } from 'react-native';
 import { useGameStore, INITIAL_STATE } from '../../state/gameStore';
 import { saveProvider, exportSave, importSave } from '../../state/saveLoad';
 import { GLOSSARY_TERMS } from '../../data/glossaryTerms';
 import GlossaryPopup from './GlossaryPopup';
+import InfoTap from './InfoTap';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import ScrollModal, { PARCHMENT } from './ScrollModal';
 
@@ -93,7 +94,15 @@ export default function SettingsModal({ visible, onClose }: Props) {
           </TouchableOpacity>
         </View>
 
-        <Text style={s.sectionLabel}>SAVE</Text>
+        <InfoTap termId="saves-and-backup" style={s.sectionLabelRow}>
+          <Text style={s.sectionLabel}>SAVE</Text>
+        </InfoTap>
+        <Text style={s.saveStory}>
+          Autosaves every season, and whenever you leave the app. {Platform.OS === 'ios'
+            ? 'Your device’s own backup (iCloud or iTunes/Finder) covers it automatically.'
+            : 'Android backs it up automatically if you have Google device backup turned on.'
+          } Export makes a file you own — keep it anywhere. Import restores from one. There’s no account and no cloud sync of our own — your device’s backup and your own exported files are the whole story.
+        </Text>
 
         <SettingsButton
           label="Save Game"
@@ -249,6 +258,18 @@ const s = StyleSheet.create({
     letterSpacing: 2,
     marginBottom: SPACING.sm,
     marginTop: 2,
+  },
+  sectionLabelRow: {
+    alignSelf: 'flex-start',
+    marginBottom: 0,
+  },
+  saveStory: {
+    color: COLORS.dust,
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 11,
+    lineHeight: 16,
+    marginBottom: SPACING.sm,
   },
   divider: {
     height: 1,

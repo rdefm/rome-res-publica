@@ -1,9 +1,9 @@
 // ─── Ambassador Engine ────────────────────────────────────────────────────────
 // Handles Ambassador appointment, expulsion checks, and Rapport tracking.
-// Italy provinces are all incorporated so Ambassador logic is minimal in v1,
+// Italy cities are all incorporated so Ambassador logic is minimal in v1,
 // but this engine is ready for Mediterranean / East maps.
 
-import type { ProvinceState, AmbassadorState } from '../models/province';
+import type { CityState, AmbassadorState } from '../models/city';
 
 /**
  * Check whether an expulsion event should fire this season.
@@ -22,22 +22,22 @@ export function checkExpulsion(
 
 /**
  * Apply ambassador expulsion consequences.
- * Returns province state delta and resource patch.
+ * Returns city state delta and resource patch.
  */
 export function resolveExpulsion(
-  province: ProvinceState
+  city: CityState
 ): {
-  provincePatch: Partial<ProvinceState>;
+  cityPatch: Partial<CityState>;
   resourcePatch: { fides?: number; lifetimeDignitas?: number };
   logMessage: string;
 } {
   return {
-    provincePatch: {
+    cityPatch: {
       playerAmbassador: null,
-      relationshipScore: Math.max(0, province.relationshipScore - 15),
+      relationshipScore: Math.max(0, city.relationshipScore - 15),
     },
     resourcePatch: { lifetimeDignitas: -8 },
-    logMessage: `Ambassador expelled from ${province.id}. −15 Relationship, −8 Dignitas.`,
+    logMessage: `Ambassador expelled from ${city.id}. −15 Relationship, −8 Dignitas.`,
   };
 }
 
@@ -52,16 +52,16 @@ export function calcRapportDecay(_ambassador: AmbassadorState): number {
 }
 
 /**
- * Check whether a Provincial Client can be recruited from this province.
+ * Check whether a City Client can be recruited from this city.
  */
 export function canRecruitClient(
-  province: ProvinceState,
+  city: CityState,
   requiredSupport: number,
   requiredRelationship: number
 ): boolean {
   return (
-    province.localSupport >= requiredSupport &&
-    province.relationshipScore >= requiredRelationship
+    city.localSupport >= requiredSupport &&
+    city.relationshipScore >= requiredRelationship
   );
 }
 

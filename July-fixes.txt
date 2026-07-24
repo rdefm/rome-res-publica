@@ -1,0 +1,6 @@
+- Too many scandals each turn, or secrets against family members. Reduce frequency of this
+- When you are praetor, no options are present 
+- War score increases very quickly very early, never seems to go down no matter what is done. If it's is nudged or hardcoded to bring about the punic war, it should do so via events that make it clear when these things are being the player's control, they can only react to them
+ - Adjust assets to have similar UI and assets between all regions and Latium. Though have some variation (e.g. holiday estate in Campania with +fides and dignitas and optimates relation). Also add gladiator school to all regions, to bring in some money but mainly boost relation, and reduce unrest. Outline all differences currently between Latium and other regions, and propose a plan to address this.
+ - Being ambassador unlocks nothing in some regions (eg Siracusae) but does in others (eg Messana). Need to fix
+ - War score; can't see anywhere. Not clear how to influence it. On Provinciae tab, during war let's have some kind of banner (top right of map) with name of war. Tapping it opens a modal with war score, and info on how to influence it.

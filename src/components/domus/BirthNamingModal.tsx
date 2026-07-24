@@ -8,7 +8,7 @@ import { TRAIT_DEFINITIONS } from '../../data/traits';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 export default function BirthNamingModal() {
-  const { pendingBirthNaming, confirmBirthNaming, dismissBirthNaming } = useGameStore();
+  const { pendingBirthNaming, confirmBirthNaming, dismissBirthNaming, family, gensPlural } = useGameStore();
   const [name, setName] = useState('');
 
   // Pre-fill with suggested name whenever a new birth arrives
@@ -23,6 +23,10 @@ export default function BirthNamingModal() {
   const { role, inheritedTraits } = pendingBirthNaming;
   const roleLabel = role === 'son' ? 'Son' : 'Daughter';
   const canConfirm = name.trim().length > 0;
+  // Phase 5, Chunk P5-E — was hardcoded 'Livia'/'the Brutii', found during
+  // the gens-neutrality sweep. Reads the actual mother's name rather than
+  // assuming it, since a later marriage could change who she is.
+  const motherName = family.find(c => c.role === 'spouse')?.name ?? 'Your wife';
 
   return (
     <Modal visible animationType="fade" transparent presentationStyle="overFullScreen">
@@ -34,7 +38,7 @@ export default function BirthNamingModal() {
           {/* Header */}
           <Text style={styles.heading}>A CHILD IS BORN</Text>
           <Text style={styles.sub}>
-            Livia has delivered a healthy {roleLabel.toLowerCase()} to the Brutii.{'\n'}
+            {motherName} has delivered a healthy {roleLabel.toLowerCase()} to the {gensPlural}.{'\n'}
             Name this child and welcome them into the gens.
           </Text>
 
@@ -118,7 +122,7 @@ export default function BirthNamingModal() {
               disabled={!canConfirm}
             >
               <Text style={styles.confirmText}>
-                Welcome {name.trim() || '…'} to the Brutii
+                Welcome {name.trim() || '…'} to the {gensPlural}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.dismissBtn} onPress={dismissBirthNaming}>

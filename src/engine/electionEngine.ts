@@ -69,7 +69,8 @@ function clamp(min: number, max: number, val: number): number {
   return Math.min(max, Math.max(min, val));
 }
 
-function getHighestOffice(heldOffices: string[]): string | null {
+// Exported for inheritanceEngine.ts's P3-C death-card "remembered detail" line.
+export function getHighestOffice(heldOffices: string[]): string | null {
   if (heldOffices.length === 0) return null;
   let highest: string | null = null;
   let highestPrestige = -1;

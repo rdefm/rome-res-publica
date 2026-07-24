@@ -48,7 +48,7 @@ export const AMBITION_DEFINITIONS: AmbitionDefinition[] = [
     id: 'survive_dynasty',
     scope: 'family',
     title: 'Endurance of the Gens',
-    description: 'Keep the Brutii alive and active for 12 more seasons.',
+    description: 'Keep your family alive and active for 12 more seasons.',
     flavourText: '"Many families rose in our grandfather\'s day. Few endure."',
     completionCondition: { type: 'survive_turns', turns: 12 },
     reward: { lifetimeDignitas: 20, fides: 15 },

@@ -1,3 +1,9 @@
+// Chunk I of cursustabuifixesplan.md — pulled out to a standalone const so
+// tabInactive below can reference it directly (CLAUDE.md's token rule: a
+// new token that's semantically-the-same-value as an existing one must
+// reference it, not restate the literal).
+const waxFrame = '#5a3c1a';
+
 export const COLORS = {
   bg:            '#1a1714',
   panelSurface:  '#2e2a24',
@@ -24,9 +30,14 @@ export const COLORS = {
   // Wax tablet palette (P1-C — AgendaTablet)
   // The tabula cerata: wooden frame around a dark wax writing surface.
   waxSurface:        '#141210',  // near-black warm umber — the wax field
-  waxFrame:          '#5a3c1a',  // warm wood brown — the tablet surround
+  waxFrame,                      // warm wood brown — the tablet surround
   waxInscription:    '#d4c8a0',  // pale scratched text — primary item text
   waxInscriptionDim: '#7a6e50',  // dimmer secondary — detail lines, subheaders
+  // Chunk I of cursustabuifixesplan.md — TabBar.tsx's inactive icon/label
+  // tint was a hardcoded '#9a8060' (light tan), too low-contrast against the
+  // light marble tab-bar background. waxFrame is already a dark, warm brown
+  // built for exactly this kind of "readable against a light surface" case.
+  tabInactive: waxFrame,
   // Redesign tokens (domus-visual-redesign-plan-v2)
   parchment:       '#e8dcc8',
   parchmentBorder: '#b8a070',
@@ -38,6 +49,27 @@ export const COLORS = {
   goldBorder:      '#8B6914',
   crimsonDeep:     '#4a1a1a',
   crimsonBlack:    '#2a0a0a',
+  // Cursus Tab Visual Redesign plan, Chunk C1 — gilded-panel tokens.
+  // Finding 5 audit: gildFrame/panelWood/lockedText reuse existing Domus
+  // tokens (goldBorder/crimsonBlack/dust) rather than minting near-dupes;
+  // rivet/gildFrameDark/sealWaxGrey/scrim* have no existing equivalent.
+  gildFrame:       '#8B6914',   // = goldBorder — reused, not duplicated
+  gildFrameDark:   '#6E5426',
+  rivet:           '#D9B45C',
+  panelWood:       '#2a0a0a',   // = crimsonBlack — reused, not duplicated
+  sealWaxGrey:     '#8E8A82',
+  lockedText:      '#9c8e7e',   // = dust — reused, not duplicated
+  // Retuned post-launch — the original 0.35 top alpha read as "a dark
+  // filter over the whole image" rather than "clearly visible behind the
+  // title" (design delta 6's actual intent); 0.1 keeps gold title text
+  // legible without visibly darkening the fresco right where it should
+  // read clearest.
+  scrimTop:        'rgba(20,14,8,0.1)',
+  // Chunk A of cursustabuifixesplan.md — 0.88 read as a near-opaque
+  // "dark filter" blotting out the fresco under the office list once the
+  // sizing bug (image not covering its full container) was fixed; 0.58
+  // keeps office-list text legible while leaving the image visible.
+  scrimBottom:     'rgba(20,14,8,0.58)',
 };
 
 // ─── Typography ───────────────────────────────────────────────────────────────

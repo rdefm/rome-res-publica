@@ -1,4 +1,6 @@
 import type { Office, OfficeAction } from '../models/office';
+import { BALANCE } from './balance';
+import { generateSecret } from '../engine/secretEngine';
 
 export const OFFICES: Office[] = [
   // ─── VIGINTIVIRATE ──────────────────────────────────────────────────────────
@@ -13,7 +15,7 @@ export const OFFICES: Office[] = [
     seats: 6,
     desc: 'Entry-level board of twenty minor magistrates. The first rung of public life.',
     flavor: 'You serve on one of the boards of twenty. Minor, but it is a beginning.',
-    active: false,
+    active: true,
     inOfficeDesc: 'Administrative duties.',
     inOfficeActions: [
       {
@@ -88,20 +90,46 @@ export const OFFICES: Office[] = [
         cost: '5 Fides',
         costVal: 5,
         resource: 'fides',
-        desc: '60% chance to uncover leverage on a hostile clan leader.',
+        // 60% — mirrors BALANCE.secrets.auditRivalChance (the actual value
+        // used below). Kept as a static string rather than computed from
+        // BALANCE at module scope: offices.ts -> balance.ts ->
+        // electionEngine.ts -> offices.ts is an existing circular import
+        // (electionEngine.ts imports OFFICES for prerequisite checks), and
+        // dereferencing BALANCE at OFFICES-array-literal eval time (i.e.
+        // synchronously, not inside a closure) crashes on the partially-
+        // initialized module. The effect closure below is safe: it only
+        // reads BALANCE when the action actually fires, long after every
+        // module has finished loading.
+        desc: '60% chance to uncover a criminal Secret on a hostile clan leader.',
+        // Phase 4, Chunk P4-A — success now yields a real criminal Secret
+        // (embezzlement/electoral_fraud, potency 1–2) instead of the old
+        // blackmail:true flag (dropped per plan review — that flag is
+        // overloaded three ways elsewhere in the codebase and never
+        // consumed beyond a single UI label swap).
         effect: (state) => {
+          const alreadyTargeted = new Set(
+            (state.secrets ?? [])
+              .filter((s) => s.holder === 'player' && s.subject.kind === 'leader')
+              .map((s) => (s.subject as { kind: 'leader'; leaderId: string }).leaderId)
+          );
           const hostile = state.clans
             .flatMap((c) => c.leaders)
-            .find((l) => l.relationship < 30 && !l.blackmail);
+            .find((l) => l.relationship < 30 && !alreadyTargeted.has(l.id));
           if (!hostile) return { logMsg: 'No suitable target found for audit.' };
-          if (Math.random() < 0.6) {
-            const clans = state.clans.map((c) => ({
-              ...c,
-              leaders: c.leaders.map((l) =>
-                l.id === hostile.id ? { ...l, blackmail: true } : l
-              ),
-            }));
-            return { clans, logMsg: `Audit complete. You hold leverage over ${hostile.name}.` };
+          if (Math.random() < BALANCE.secrets.auditRivalChance) {
+            const secret = generateSecret(
+              { kind: 'leader', leaderId: hostile.id },
+              'player',
+              hostile.name,
+              state.turnNumber,
+              hostile.heldOffices.length > 0,
+              Math.random,
+              { typePool: ['embezzlement', 'electoral_fraud'], maxPotency: 2 }
+            );
+            return {
+              secrets: [...state.secrets, secret],
+              logMsg: `Audit complete. ${secret.flavorText}`,
+            };
           }
           return { logMsg: 'The audit reveals nothing useful this season.' };
         },
@@ -112,7 +140,7 @@ export const OFFICES: Office[] = [
         cost: '40 Denarii',
         costVal: 40,
         resource: 'denarii',
-        desc: 'Wine and conversation. All leaders warm slightly to the Brutii.',
+        desc: 'Wine and conversation. All leaders warm slightly to your family.',
         effect: (state) => {
           const clans = state.clans.map((c) => ({
             ...c,
@@ -306,7 +334,7 @@ export const OFFICES: Office[] = [
     seats: 4,
     desc: 'Senior judicial magistrate. Commands a small army and presides over courts.',
     flavor: 'Justice and command are now yours. Wield them without prejudice.',
-    active: false,
+    active: true,
     inOfficeDesc: 'Judicial investigation and provincial command.',
     inOfficeActions: [
       {
@@ -568,7 +596,7 @@ export const OFFICES: Office[] = [
     seats: 2,
     desc: 'Guardian of Roman morality and the Senate rolls. Immense informal power.',
     flavor: 'You hold the stylus that writes and erases senatorial careers.',
-    active: false,
+    active: true,
     inOfficeDesc: 'Senate roster control and census powers.',
     inOfficeActions: [
       {
@@ -688,7 +716,7 @@ export const OFFICES: Office[] = [
     seats: 1,
     desc: 'Emergency appointment granting supreme authority. Only when crisis demands it.',
     flavor: 'All power is yours — and all responsibility. Do not fail Rome.',
-    active: false,
+    active: true,
     inOfficeDesc: 'Emergency powers. Only available when crisis > 70.',
     inOfficeActions: [
       {

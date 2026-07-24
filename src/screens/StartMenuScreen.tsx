@@ -2,6 +2,14 @@
 // Replaced the old START_OPTIONS list with a two-card picker driven by
 // START_DEFINITIONS (src/data/startDefinitions.ts). Debug bypass retained.
 // onStart prop removed; startGame is called directly from the store.
+//
+// Phase 5, Chunk P5-E — START_DEFINITIONS grew two more entries (Gens
+// Duilia/Manlia); this screen just maps over whatever's in the array, so no
+// structural change was needed beyond computing each card's lock state from
+// the Hall of Ancestors and adding the "preview locked families" debug
+// toggle (DebugPanel itself only mounts after a game starts, per
+// DomusScreen.tsx — this toggle is the pre-game equivalent for a screen no
+// running game exists yet to attach a real debug panel to).
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -9,6 +17,7 @@ import {
   Text,
   ImageBackground,
   TouchableOpacity,
+  ScrollView,
   StyleSheet,
   Platform,
   ActivityIndicator,
@@ -17,8 +26,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
 import { saveProvider, hasSave, importSave } from '../state/saveLoad';
-import { START_DEFINITIONS } from '../data/startDefinitions';
+import { START_DEFINITIONS, DIFFICULTY_DEFINITIONS } from '../data/startDefinitions';
+import { loadHall } from '../state/ancestorStore';
+import { BALANCE } from '../data/balance';
+import type { AncestorRecord } from '../models/epilogue';
+import type { DifficultyId } from '../models/gameStart';
 import { COLORS, FONTS, SPACING, RADIUS } from '../utils/theme';
+import HallOfAncestorsScreen from './HallOfAncestorsScreen';
+import InfoTap from '../components/shared/InfoTap';
 
 const BG = (() => {
   try { return require('../assets/images/menu-bg.png'); } catch { return null; }
@@ -28,10 +43,37 @@ export default function StartMenuScreen() {
   const startGame                   = useGameStore(s => s.startGame);
   const [loading, setLoading]       = useState(false);
   const [saveExists, setSaveExists] = useState(false);
+  // Phase 3, Chunk P3-E — Hall of Ancestors entry point.
+  const [showHall, setShowHall]     = useState(false);
+  // Phase 5, Chunk P5-E — unlock state for Gens Duilia/Manlia, computed live
+  // from the Hall (no separate unlock flag to migrate or lose, per E2).
+  const [hallRecords, setHallRecords] = useState<AncestorRecord[]>([]);
+  const [debugUnlockAll, setDebugUnlockAll] = useState(false);
+  // Phase 5, Chunk P5-G — the difficulty-picker step. Set once a non-guided
+  // family card is tapped; startGame doesn't fire until the picker confirms.
+  const [pendingStart, setPendingStart] = useState<{ def: typeof START_DEFINITIONS[number]; mode: 'senator' | 'debug' } | null>(null);
 
   useEffect(() => {
     hasSave().then(setSaveExists).catch(() => setSaveExists(false));
+    loadHall().then(setHallRecords).catch(() => setHallRecords([]));
   }, []);
+
+  if (showHall) {
+    return <HallOfAncestorsScreen onBack={() => setShowHall(false)} />;
+  }
+
+  if (pendingStart) {
+    return (
+      <DifficultyPickerScreen
+        familyName={pendingStart.def.name}
+        onBack={() => setPendingStart(null)}
+        onConfirm={(difficulty) => {
+          startGame(pendingStart.def.id, pendingStart.mode, difficulty);
+          setPendingStart(null);
+        }}
+      />
+    );
+  }
 
   async function handleLoad() {
     setLoading(true);
@@ -61,6 +103,19 @@ export default function StartMenuScreen() {
     }
   }
 
+  function handleStartPress(def: typeof START_DEFINITIONS[number], unlocked: boolean) {
+    if (!unlocked) return; // locked cards are inert without the debug toggle
+    const mode = debugUnlockAll ? 'debug' : 'senator';
+    // Phase 5, Chunk P5-G — guided skips the picker entirely (its tutorial
+    // numbers are authored against Aequus; startGame enforces this too).
+    // Every other start routes through the difficulty picker first.
+    if (def.id === 'guided') {
+      startGame(def.id, mode);
+    } else {
+      setPendingStart({ def, mode });
+    }
+  }
+
   return (
     <ImageBackground
       source={BG ?? undefined}
@@ -77,32 +132,40 @@ export default function StartMenuScreen() {
           <View style={styles.titleRule} />
         </View>
 
-        {/* ── Two-card start picker ── */}
-        <View style={styles.cardsBlock}>
+        {/* ── Start picker ── */}
+        <ScrollView style={styles.cardsScroll} contentContainerStyle={styles.cardsBlock}>
           <Text style={styles.sectionLabel}>BEGIN</Text>
 
-          {START_DEFINITIONS.map(def => (
-            <TouchableOpacity
-              key={def.id}
-              style={[
-                styles.startCard,
-                def.recommended && styles.startCardRecommended,
-              ]}
-              onPress={() => startGame(def.id)}
-              activeOpacity={0.82}
-            >
-              {def.recommended && (
-                <View style={styles.laurel}>
-                  <Text style={styles.laurelText}>RECOMMENDED</Text>
-                </View>
-              )}
-              <Text style={styles.cardName}>{def.name}</Text>
-              <Text style={styles.cardSubtitle}>{def.subtitle}</Text>
-              <Text style={styles.cardDesc}>{def.description}</Text>
-            </TouchableOpacity>
-          ))}
+          {START_DEFINITIONS.map(def => {
+            const unlocked = debugUnlockAll || !def.isUnlocked || def.isUnlocked(hallRecords);
+            return (
+              <TouchableOpacity
+                key={def.id}
+                style={[
+                  styles.startCard,
+                  def.recommended && styles.startCardRecommended,
+                  !unlocked && styles.startCardLocked,
+                ]}
+                onPress={() => handleStartPress(def, unlocked)}
+                activeOpacity={unlocked ? 0.82 : 1}
+              >
+                {def.recommended && (
+                  <View style={styles.laurel}>
+                    <Text style={styles.laurelText}>RECOMMENDED</Text>
+                  </View>
+                )}
+                <Text style={[styles.cardName, !unlocked && styles.cardTextLocked]}>{def.name}</Text>
+                <Text style={[styles.cardSubtitle, !unlocked && styles.cardTextLocked]}>{def.subtitle}</Text>
+                {unlocked ? (
+                  <Text style={styles.cardDesc}>{def.description}</Text>
+                ) : (
+                  <Text style={styles.cardLockedCondition}>🔒 {def.unlockCondition}</Text>
+                )}
+              </TouchableOpacity>
+            );
+          })}
 
-          {/* Debug bypass — small, below the main cards */}
+          {/* Debug bypasses — small, below the main cards */}
           <TouchableOpacity
             style={styles.debugBtn}
             onPress={() => startGame('standard', 'debug')}
@@ -110,7 +173,16 @@ export default function StartMenuScreen() {
           >
             <Text style={styles.debugText}>⚙ Debug Mode</Text>
           </TouchableOpacity>
-        </View>
+          <TouchableOpacity
+            style={styles.debugBtn}
+            onPress={() => setDebugUnlockAll(v => !v)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.debugText}>
+              {debugUnlockAll ? '🔓 Previewing locked families (tap to hide)' : '🔒 Preview locked families'}
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
 
         {/* ── Continue / Load section ── */}
         <View style={styles.loadBlock}>
@@ -130,8 +202,85 @@ export default function StartMenuScreen() {
           <TouchableOpacity style={styles.loadBtn} onPress={handleImport} activeOpacity={0.75}>
             <Text style={styles.loadLabel}>Import Save File</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.loadBtn} onPress={() => setShowHall(true)} activeOpacity={0.75}>
+            <Text style={styles.loadLabel}>Hall of Ancestors</Text>
+          </TouchableOpacity>
         </View>
 
+      </SafeAreaView>
+    </ImageBackground>
+  );
+}
+
+// ─── Difficulty picker (Phase 5, Chunk P5-G) ─────────────────────────────────
+// A step in the new-game flow after family selection (every start except
+// 'guided' — see handleStartPress above). Three cards, each showing the
+// preset's name, one-line fiction, and its literal multipliers read live
+// from BALANCE.difficulty. Aequus is pre-selected/highlighted by default;
+// fixed for the run once confirmed (design invariant — no mid-run switch
+// outside the DebugPanel dev override).
+function DifficultyPickerScreen({
+  familyName,
+  onBack,
+  onConfirm,
+}: {
+  familyName: string;
+  onBack: () => void;
+  onConfirm: (difficulty: DifficultyId) => void;
+}) {
+  const [selected, setSelected] = useState<DifficultyId>('aequus');
+
+  return (
+    <ImageBackground
+      source={BG ?? undefined}
+      style={styles.bg}
+      resizeMode="cover"
+      imageStyle={{ backgroundColor: COLORS.terracotta }}
+    >
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.titleBlock}>
+          <Text style={styles.title}>DIFFICULTY</Text>
+          <Text style={styles.subtitle}>{familyName.toUpperCase()}</Text>
+          <View style={styles.titleRule} />
+        </View>
+
+        <ScrollView style={styles.cardsScroll} contentContainerStyle={styles.cardsBlock}>
+          <InfoTap termId="difficulty" style={{ alignSelf: 'flex-start' }}>
+            <Text style={styles.sectionLabel}>CHOOSE — FIXED FOR THE RUN</Text>
+          </InfoTap>
+
+          {DIFFICULTY_DEFINITIONS.map(diff => {
+            const mult = BALANCE.difficulty[diff.id];
+            const isSelected = selected === diff.id;
+            return (
+              <TouchableOpacity
+                key={diff.id}
+                style={[styles.startCard, isSelected && styles.startCardRecommended]}
+                onPress={() => setSelected(diff.id)}
+                activeOpacity={0.82}
+              >
+                <Text style={styles.cardName}>{diff.name}</Text>
+                <Text style={styles.cardSubtitle}>{diff.tagline}</Text>
+                <Text style={styles.cardDesc}>
+                  Income ×{mult.incomeMult} · Crisis pressure ×{mult.crisisMult}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        <View style={styles.loadBlock}>
+          <TouchableOpacity
+            style={[styles.loadBtn, styles.loadBtnActive]}
+            onPress={() => onConfirm(selected)}
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.loadLabel, styles.loadLabelActive]}>Begin</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.loadBtn} onPress={onBack} activeOpacity={0.75}>
+            <Text style={styles.loadLabel}>‹ Back</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     </ImageBackground>
   );
@@ -187,7 +336,10 @@ const styles = StyleSheet.create({
   },
 
   // ── Start cards ───────────────────────────────────────────────────────────
-  cardsBlock: { gap: SPACING.sm },
+  // Phase 5, Chunk P5-E — wrapped in a ScrollView (cardsScroll) now that
+  // there are 4 cards instead of 2; cardsBlock becomes its contentContainerStyle.
+  cardsScroll: { flexGrow: 0 },
+  cardsBlock: { gap: SPACING.sm, paddingBottom: SPACING.sm },
 
   startCard: {
     backgroundColor: 'rgba(26,23,20,0.88)',
@@ -199,6 +351,10 @@ const styles = StyleSheet.create({
   startCardRecommended: {
     borderColor: COLORS.goldDim,
     borderWidth: 1.5,
+  },
+  // Phase 5, Chunk P5-E — locked Duilia/Manlia cards.
+  startCardLocked: {
+    opacity: 0.55,
   },
 
   // "Recommended" laurel badge
@@ -238,6 +394,16 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.bodyRegular,
     fontSize: 12,
     color: COLORS.dust,
+    lineHeight: 17,
+  },
+  // Phase 5, Chunk P5-E
+  cardTextLocked: {
+    color: COLORS.dust,
+  },
+  cardLockedCondition: {
+    fontFamily: FONTS.bodyRegular,
+    fontSize: 12,
+    color: COLORS.goldDim,
     lineHeight: 17,
   },
 

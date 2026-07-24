@@ -2,7 +2,7 @@
 // Handles military campaign resolution for both the Medium (Commander) system
 // and the Light (Officer volunteer) system, plus commander election logic.
 
-import type { CampaignState, CommanderElectionState, GovernorCandidate } from '../models/province';
+import type { CampaignState, CommanderElectionState, GovernorCandidate } from '../models/city';
 import type { GameState } from '../state/gameStore';
 import type { Character } from '../models/character';
 import type { TroopUnit } from '../models/troop';
@@ -397,8 +397,10 @@ export function generateCommanderCandidates(
     .map(c => ({
       characterId: c.id,
       characterName: c.name,
-      clanId: 'brutii',
-      clanName: 'Brutii',
+      // Phase 5, Chunk P5-E — was hardcoded 'brutii'/'Brutii', found during
+      // the gens-neutrality sweep.
+      clanId: state.gensId,
+      clanName: state.gensPlural,
       isPlayerFamily: true,
       martialSkill: c.skills.martial,
       eligibleOffices: ['praetor', 'consul'],

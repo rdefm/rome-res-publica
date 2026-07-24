@@ -12,7 +12,8 @@ import type {
   CrisisTier,
 } from '../models/crisis';
 import { getTierFromLevel } from '../models/crisis';
-import { getProvinceDefinition } from '../data/provinceDefinitions';
+import { getCityDefinition } from '../data/cityDefinitions';
+import { BALANCE } from '../data/balance';
 
 // ─── Apply delta to a single track ───────────────────────────────────────────
 
@@ -43,33 +44,47 @@ export function applyTrackDelta(track: CrisisTrack, delta: number): CrisisTrack 
  * only per-season passive escalation that reads current state.
  */
 export function calcIndividualEscalation(trackId: CrisisTrackId, state: GameState): number {
-  switch (trackId) {
-    case 'war':          return calcWarEscalation(state);
-    case 'unrest':       return calcUnrestEscalation(state);
-    case 'constitution': return calcConstitutionEscalation(state);
-    case 'economy':      return calcEconomyEscalation(state);
-  }
+  const raw = (() => {
+    switch (trackId) {
+      case 'war':          return calcWarEscalation(state);
+      case 'unrest':       return calcUnrestEscalation(state);
+      case 'constitution': return calcConstitutionEscalation(state);
+      case 'economy':      return calcEconomyEscalation(state);
+    }
+  })();
+
+  // Phase 5, Chunk P5-G — the crisis seam (design invariant 4). Deliberately
+  // narrow: only this per-track passive delta is scaled. calcCascadeDeltas'
+  // flat +2 compounding bumps and checkMilitaryBillPressure's bill-
+  // consequence penalty stay at authored magnitude — Ferox still drifts
+  // hotter overall because a faster individual-escalation climb crosses
+  // cascade thresholds sooner, not because cascade itself is scaled.
+  // `?? 'aequus'` covers any fixture/legacy state without a difficulty
+  // field — Aequus's crisisMult is 1.0, so this is a no-op for every state
+  // that predates this chunk.
+  const crisisMult = BALANCE.difficulty[state.difficulty ?? 'aequus'].crisisMult;
+  return Math.round(raw * crisisMult);
 }
 
 function calcWarEscalation(state: GameState): number {
   let delta = 0;
 
-  for (const province of state.provinces) {
-    if (province.status === 'heartland') continue;
-    const def = getProvinceDefinition(province.id);
+  for (const city of state.cities) {
+    if (city.status === 'heartland') continue;
+    const def = getCityDefinition(city.id);
     const weight = def?.threatWeight ?? 1.0;
 
-    // Hostile/restless provinces increase War pressure (design doc section 2.4)
-    if (province.relationshipScore < 15) {
+    // Hostile/restless cities increase War pressure (design doc section 2.4)
+    if (city.relationshipScore < 15) {
       delta += 6 * weight;
-    } else if (province.relationshipScore < 30) {
+    } else if (city.relationshipScore < 30) {
       delta += 3 * weight;
     }
 
-    // Stable provinces passively reduce War pressure
+    // Stable cities passively reduce War pressure
     // Design doc: "Province relationship above 70 for 4+ consecutive seasons: −2/season"
     // Simplified: apply if currently above 70 (sustained counter is a future improvement)
-    if (province.relationshipScore > 70) {
+    if (city.relationshipScore > 70) {
       delta -= 2;
     }
   }
@@ -79,6 +94,20 @@ function calcWarEscalation(state: GameState): number {
   if (state.flags['mandatory-funding-ignored-seasons'] &&
       (state.flags['mandatory-funding-ignored-seasons'] as number) >= 2) {
     delta += 5;
+  }
+
+  // Military Overhaul M9 — one term from warScore trajectory, kept
+  // deliberately separate from warEngine.ts (per the plan's "do not merge
+  // the systems" instruction): losing a war badly adds War-track pressure;
+  // winning big eases it. Reads state.wars as it stood BEFORE this season's
+  // processWarSeason step runs (step 5 here, war-score updates land later
+  // in the 9-series) — same "one season behind" relationship every other
+  // crisis input already has with its producing system (e.g. city
+  // relationshipScore vs. step 9c's city tick).
+  for (const war of (state.wars ?? [])) {
+    if (!war.active) continue;
+    if (war.warScore < -20) delta += 2;
+    else if (war.warScore >= 20) delta -= 1;
   }
 
   return Math.round(delta);
@@ -105,10 +134,10 @@ function calcUnrestEscalation(state: GameState): number {
     delta -= 3;
   }
 
-  // Heavy/extortionate taxation per incorporated province (design doc section 2.4)
-  for (const province of state.provinces) {
-    if (province.status !== 'incorporated') continue;
-    const policy = province.playerGovernor?.policy ?? province.npcRoleHolder?.policy;
+  // Heavy/extortionate taxation per incorporated city (design doc section 2.4)
+  for (const city of state.cities) {
+    if (city.status !== 'incorporated') continue;
+    const policy = city.playerGovernor?.policy ?? city.npcRoleHolder?.policy;
     if (!policy) continue;
     if (policy.taxation === 'heavy' || policy.taxation === 'extortionate') {
       delta += 2;
@@ -170,11 +199,11 @@ function calcEconomyEscalation(state: GameState): number {
     delta -= 2;
   }
 
-  // Infrastructure stagnation per province (design doc section 2.4)
-  // Provinces that have not improved infra in 12+ seasons drain the Economy track
-  for (const province of state.provinces) {
-    if (province.status === 'heartland') continue;
-    if ((province.infraStagnationSeasons ?? 0) >= 12) {
+  // Infrastructure stagnation per city (design doc section 2.4)
+  // Cities that have not improved infra in 12+ seasons drain the Economy track
+  for (const city of state.cities) {
+    if (city.status === 'heartland') continue;
+    if ((city.infraStagnationSeasons ?? 0) >= 12) {
       delta += 3;
     }
   }
@@ -230,7 +259,7 @@ export function calcCascadeDeltas(crisisState: CrisisState): Record<CrisisTrackI
 /**
  * Returns a human-readable name for the active crisis at a given level,
  * or null at tier 0 (no active crisis). For the War track, derives the name
- * from the most hostile province if it has a namedWar field set.
+ * from the most hostile city if it has a namedWar field set.
  */
 export function getNamedCrisis(
   trackId: CrisisTrackId,
@@ -242,12 +271,12 @@ export function getNamedCrisis(
 
   switch (trackId) {
     case 'war': {
-      // Derive from most hostile non-heartland province
-      const hostile = [...state.provinces]
+      // Derive from most hostile non-heartland city
+      const hostile = [...state.cities]
         .filter(p => p.status !== 'heartland')
         .sort((a, b) => a.relationshipScore - b.relationshipScore)[0];
       if (hostile) {
-        const def = getProvinceDefinition(hostile.id);
+        const def = getCityDefinition(hostile.id);
         if (def?.namedWar) return def.namedWar;
         if (def?.name && hostile.relationshipScore < 30) {
           return `${def.name} Troubles`;

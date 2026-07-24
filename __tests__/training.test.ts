@@ -2,11 +2,14 @@ import { useGameStore, INITIAL_STATE } from '../src/state/gameStore';
 import { calcTrainingCost } from '../src/engine/resourceEngine';
 import { BALANCE } from '../src/data/balance';
 
-// ─── trainCharacter store action (P2-C) ──────────────────────────────────────
-// Deterministic, escalating-cost, once-per-season training. Tested directly
-// against the Zustand store since the validation now lives in the action
-// itself (calcTrainingCost supplies the shared cost math, tested separately
-// in engine.test.ts).
+// ─── trainCharacter store action (P2-C, roll mechanic added by the Family
+// House rework) ────────────────────────────────────────────────────────────
+// Escalating-cost, once-per-season training that now rolls for success
+// (houseEngine.rollTraining — tested directly in houseEngine.test.ts).
+// Math.random is mocked here since trainCharacter calls it internally rather
+// than accepting an externalized roll. Tested directly against the Zustand
+// store since the validation now lives in the action itself (calcTrainingCost
+// supplies the shared cost math, tested separately in engine.test.ts).
 
 function resetStore(overrides: Partial<ReturnType<typeof useGameStore.getState>> = {}) {
   useGameStore.setState({
@@ -30,15 +33,44 @@ function resetStore(overrides: Partial<ReturnType<typeof useGameStore.getState>>
 
 describe('trainCharacter', () => {
   beforeEach(() => resetStore());
+  afterEach(() => jest.restoreAllMocks());
 
-  test('training always succeeds — no chance involved', () => {
+  test('a low roll succeeds and increments the skill', () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0); // always under the success chance
     const before = useGameStore.getState().family[0].skills.rhetoric;
     useGameStore.getState().trainCharacter('pc-1', 'rhetoric');
     const after = useGameStore.getState().family[0].skills.rhetoric;
     expect(after).toBe(before + 1);
   });
 
-  test('cost is deducted per calcTrainingCost(currentLevel)', () => {
+  test('a high roll fails — no skill gain, but Fides is still spent', () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0.999); // always over the success chance
+    const before = useGameStore.getState();
+    const beforeSkill = before.family[0].skills.rhetoric;
+    const expectedCost = calcTrainingCost(beforeSkill);
+    useGameStore.getState().trainCharacter('pc-1', 'rhetoric');
+    const after = useGameStore.getState();
+    expect(after.family[0].skills.rhetoric).toBe(beforeSkill); // unchanged
+    expect(before.fides - after.fides).toBe(expectedCost);     // spent regardless
+    expect(after.trainedThisSeason).toContain('pc-1');          // the attempt still counts
+  });
+
+  test('a built Study room raises the success chance (fails without one, succeeds with one, same roll)', () => {
+    const marginalRoll = BALANCE.house.studyRollBaseChance
+      - 6 * BALANCE.house.studyRollDifficultyPerPoint // rhetoric starts at 6 in this fixture
+      + 0.01; // just above the no-Study chance, just below the with-Study chance
+    jest.spyOn(Math, 'random').mockReturnValue(marginalRoll);
+
+    useGameStore.getState().trainCharacter('pc-1', 'rhetoric');
+    expect(useGameStore.getState().family[0].skills.rhetoric).toBe(6); // failed, no Study
+
+    resetStore({ house: { ...INITIAL_STATE.house, builtRooms: ['study'] } } as any);
+    useGameStore.getState().trainCharacter('pc-1', 'rhetoric');
+    expect(useGameStore.getState().family[0].skills.rhetoric).toBe(7); // succeeded, with Study
+  });
+
+  test('cost is deducted per calcTrainingCost(currentLevel), regardless of roll outcome', () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0.999); // pin to a failure — cost is still charged
     const before = useGameStore.getState();
     const currentLevel = before.family[0].skills.rhetoric;
     const expectedCost = calcTrainingCost(currentLevel);

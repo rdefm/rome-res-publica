@@ -1,320 +1,40 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Pressable,
+  Animated, PanResponder, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { useGameStore } from '../state/gameStore';
 import { OFFICES, TRIBUNE_OFFICE } from '../data/offices';
-import type { OfficeId, OfficeAction } from '../models/office';
 import type { Character } from '../models/character';
 import { calcPlayerElectionScore, calcNpcElectionScore, PLAYER_BASE_SCORE } from '../engine/electionEngine';
-import { evaluateGates } from '../engine/officeActionEngine';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
+import BasilicaSheet from '../components/cursus/BasilicaSheet';
+import CandidateHeader from '../components/cursus/CandidateHeader';
+import OfficeCard from '../components/cursus/OfficeCard';
+import OfficeActionsModal from '../components/cursus/OfficeActionsModal';
+import ActionButton from '../components/cursus/ActionButton';
+import StatusSeal from '../components/shared/StatusSeal';
+import type { OfficeStatus } from '../engine/officeStatus';
+import FrescoBackground from '../components/shared/FrescoBackground';
+import GildedPanel from '../components/shared/GildedPanel';
+import PortraitRoundel from '../components/shared/PortraitRoundel';
+import { characterPortraitSubject, leaderPortraitSubject } from '../engine/portraitEngine';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 import InfoTap from '../components/shared/InfoTap';
 
-// ─── Family member picker ─────────────────────────────────────────────────────
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+const BASILICA_SHEET_HEIGHT = SCREEN_HEIGHT * 0.72;
 
-function FamilyMemberPicker({
-  selected,
-  onSelect,
-}: {
-  selected: string;
-  onSelect: (id: string) => void;
-}) {
-  const { family } = useGameStore();
-  const eligible = family.filter(c => c.age >= 18);
-
-  return (
-    <View style={fp.container}>
-      <Text style={fp.label}>VIEWING</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={fp.row}>
-        {eligible.map(c => (
-          <TouchableOpacity
-            key={c.id}
-            style={[fp.pill, selected === c.id && fp.pillActive]}
-            onPress={() => onSelect(c.id)}
-          >
-            <Text style={[fp.pillText, selected === c.id && fp.pillTextActive]}>
-              {c.isPlayer ? '⭐ ' : ''}{c.name.split(' ')[0]}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
-
-const fp = StyleSheet.create({
-  container: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  label: {
-    color: COLORS.goldDim,
-    fontFamily: FONTS.ui,
-    fontSize: 9,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    marginBottom: SPACING.xs,
-  },
-  row: { gap: SPACING.sm },
-  pill: { borderWidth: 1, borderColor: PARCHMENT_TEXT.border, borderRadius: RADIUS.md, paddingHorizontal: SPACING.sm, paddingVertical: 5 },
-  pillActive: { borderColor: COLORS.gold, backgroundColor: COLORS.goldDim + '22' },
-  pillText: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 12 },
-  pillTextActive: { color: COLORS.gold },
-});
-
-// ─── Action button ─────────────────────────────────────────────────────────────
-// Shared between OfficeRung and TribunePanel.
-// Evaluates gates, handles extreme styling, routes to correct store action.
-
-function ActionButton({
-  action,
-  character,
-}: {
-  action: OfficeAction;
-  character: Character;
-}) {
-  const state = useGameStore();
-  const { useOfficeAction, takeOfficeAction } = state;
-
-  // Gate evaluation — structural requirements (skills, flags, assets, etc.)
-  const gateResult = evaluateGates(action, character.id, state as any);
-
-  // Affordability check — legacy cost fields used for display; actual deduction in engine
-  const resource = action.resource;
-  const canAfford = !resource || (state as any)[resource] >= action.costVal;
-
-  const isLocked = !gateResult.allowed;
-  const isDisabled = isLocked || !canAfford;
-  const isExtreme = action.isExtreme === true;
-  // New-style actions use successEffect; legacy actions use effect function
-  const isNewStyle = action.successEffect !== undefined || action.failureEffect !== undefined;
-
-  function handlePress() {
-    if (isDisabled) return;
-    if (isNewStyle) {
-      // Target context (province/leader picker) not yet implemented — pass undefined.
-      // Actions requiring PLAYER_CHOSEN_* targets will apply effects but skip
-      // those consequences. Target selection UI is planned for a subsequent chunk.
-      (takeOfficeAction as any)(action.id, character.id, undefined);
-    } else {
-      useOfficeAction(action.id);
-    }
-  }
-
-  const blockedReason = !gateResult.allowed
-    ? gateResult.blockedReason
-    : !canAfford
-      ? `Insufficient ${resource ?? 'resources'}`
-      : undefined;
-
-  return (
-    <TouchableOpacity
-      style={[
-        ab.btn,
-        isExtreme && ab.btnExtreme,
-        isDisabled && ab.btnDisabled,
-      ]}
-      disabled={isDisabled}
-      onPress={handlePress}
-      activeOpacity={0.75}
-    >
-      <View style={ab.row}>
-        <Text style={[ab.label, isExtreme && ab.labelExtreme]}>
-          {isExtreme ? '⚠ EXTREME  ' : ''}{action.name}
-        </Text>
-        <Text style={ab.cost}>{action.cost}</Text>
-      </View>
-      <Text style={ab.desc}>{action.desc}</Text>
-      {blockedReason !== undefined && (
-        <Text style={ab.blocked}>{blockedReason}</Text>
-      )}
-    </TouchableOpacity>
-  );
-}
-
-const ab = StyleSheet.create({
-  btn: {
-    backgroundColor: 'rgba(200,168,112,0.25)',
-    borderWidth: 1,
-    borderColor: PARCHMENT_TEXT.border,
-    borderRadius: RADIUS.sm,
-    padding: SPACING.sm,
-    marginBottom: SPACING.sm,
-    minHeight: 44,
-  },
-  btnExtreme: {
-    backgroundColor: 'rgba(180,60,40,0.18)',
-    borderColor: COLORS.crimson + 'aa',
-  },
-  btnDisabled: { opacity: 0.4 },
-  row: { flexDirection: 'row', justifyContent: 'space-between' },
-  label: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 13, fontWeight: '600', flex: 1 },
-  labelExtreme: { color: COLORS.crimson },
-  cost: { color: COLORS.fidesColor, fontFamily: FONTS.ui, fontSize: 11 },
-  desc: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11, marginTop: 2 },
-  blocked: { color: COLORS.crimson, fontFamily: FONTS.ui, fontSize: 10, marginTop: 3, fontStyle: 'italic' },
-});
-
-// ─── Office rung ──────────────────────────────────────────────────────────────
-
-function OfficeRung({
-  officeId,
-  character,
-}: {
-  officeId: OfficeId;
-  character: Character;
-}) {
-  const state = useGameStore();
-  const {
-    currentOffice, heldOffices, campaigning, campaigningCharacterId,
-    declareCampaign, declareFamilyCampaign, npcConsul, tribuneHolder,
-  } = state as any;
-
-  const office = OFFICES.find((o) => o.id === officeId)!;
-  const isPlayer = character.isPlayer;
-
-  const isCurrent = isPlayer ? currentOffice === officeId : character.officeId === officeId;
-  const isHeld    = isPlayer ? heldOffices.includes(officeId) : character.officeId === officeId;
-  const isCampaigning = campaigning === officeId && campaigningCharacterId === character.id;
-
-  const prereqMet = !office.prerequisite ||
-    (isPlayer
-      ? (heldOffices.includes(office.prerequisite) || currentOffice === office.prerequisite)
-      : character.officeId === office.prerequisite);
-  const ageOk           = character.age >= office.minAge;
-  const noCampaignActive = !campaigning;
-  const isEligible = !isCurrent && !isCampaigning && !isHeld && prereqMet && ageOk && noCampaignActive;
-
-  // Whether to show the Apply button at all — current/held/campaigning offices show a
-  // status badge instead. When shown, it's disabled (greyed) rather than hidden when
-  // the character doesn't meet age/prerequisite/campaign-slot requirements, so the
-  // player can see the office and why they can't apply yet.
-  const showApplyBtn = !isCurrent && !isHeld && !isCampaigning;
-  const canApply = prereqMet && ageOk && noCampaignActive;
-
-  const rungColor = isCurrent ? COLORS.gold
-    : isCampaigning ? COLORS.denariiColor
-    : isHeld        ? COLORS.laurel
-    : isEligible    ? COLORS.amber
-    : COLORS.border;
-
-  function handleDeclare() {
-    if (isPlayer) declareCampaign(officeId);
-    else declareFamilyCampaign(character.id, officeId);
-  }
-
-  // Co-consul indicator: shown inside the Consul rung when player holds it
-  const showCoConsul = officeId === 'consul' && isCurrent && isPlayer && npcConsul;
-  const npcConsulName = npcConsul
-    ? (state.clans?.find((c: any) => c.id === npcConsul.clanId)
-        ?.leaders?.find((l: any) => l.id === npcConsul.leaderId)?.name
-        ?? 'Unknown')
-    : '';
-  const npcConsulClan = npcConsul
-    ? (state.clans?.find((c: any) => c.id === npcConsul.clanId)?.name ?? npcConsul.clanId)
-    : '';
-  const antagonismLabels = ['cooperative', 'mildly opposed', 'actively hostile', 'openly antagonistic'];
-
-  return (
-    <ParchmentCard style={[rung.container]} contentStyle={rung.inner}>
-      <View style={rung.row}>
-        <Text style={rung.icon}>{office.icon}</Text>
-        <View style={rung.info}>
-          <InfoTap termId={officeId}>
-            <Text style={rung.name}>{office.name}</Text>
-          </InfoTap>
-          <Text style={rung.latin}>{office.latin}</Text>
-          <Text style={rung.meta}>Min age {office.minAge} · {office.termSeasons} seasons</Text>
-        </View>
-        {showApplyBtn && (
-          <TouchableOpacity
-            style={[rung.applyBtn, !canApply && rung.applyBtnDisabled]}
-            onPress={handleDeclare}
-            disabled={!canApply}
-          >
-            <Text style={[rung.applyText, !canApply && rung.applyTextDisabled]}>Apply</Text>
-          </TouchableOpacity>
-        )}
-        {isCurrent && <View style={rung.badge}><Text style={rung.badgeText}>IN OFFICE</Text></View>}
-        {isHeld && !isCurrent && <View style={[rung.badge, rung.badgeHeld]}><Text style={rung.badgeText}>HELD</Text></View>}
-        {isCampaigning && <View style={[rung.badge, rung.badgeCamp]}><Text style={rung.badgeText}>CAMPAIGN</Text></View>}
-      </View>
-
-      <Text style={rung.desc}>{office.desc}</Text>
-
-      {/* Co-consul indicator (Consul office only) */}
-      {showCoConsul && (
-        <View style={rung.coConsul}>
-          <Text style={rung.coConsulLabel}>CO-CONSUL</Text>
-          <Text style={rung.coConsulName}>
-            {npcConsulName} ({npcConsulClan})
-          </Text>
-          <Text style={[
-            rung.coConsulAntagonism,
-            npcConsul.antagonismLevel >= 2 && rung.coConsulHostile,
-          ]}>
-            Antagonism: {npcConsul.antagonismLevel}/3
-            {' — '}{antagonismLabels[npcConsul.antagonismLevel]}
-          </Text>
-        </View>
-      )}
-
-      {/* In-office actions — only for player character */}
-      {isCurrent && isPlayer && office.active && office.inOfficeActions && (
-        <View style={rung.actions}>
-          {office.inOfficeActions.map((action) => (
-            <ActionButton key={action.id} action={action} character={character} />
-          ))}
-        </View>
-      )}
-      {isCurrent && isPlayer && !office.active && (
-        <Text style={rung.comingSoon}>{office.inOfficeDesc}</Text>
-      )}
-
-      {/* Tribune immunity indicator when this character holds Tribune */}
-      {character.id === tribuneHolder && (
-        <View style={rung.immunityBadge}>
-          <Text style={rung.immunityText}>🛡 Sacrosanct — trial immunity active</Text>
-        </View>
-      )}
-    </ParchmentCard>
-  );
-}
-
-const rung = StyleSheet.create({
-  container: { marginBottom: SPACING.sm },
-  row: { flexDirection: 'row', alignItems: 'center' },
-  icon: { fontSize: 24, marginRight: SPACING.sm },
-  info: { flex: 1 },
-  inner: { padding: 2 },
-  name: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 15, fontWeight: '700' },
-  latin: { color: COLORS.goldDim, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11 },
-  meta: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 10, marginTop: 2 },
-  desc: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6, lineHeight: 16 },
-  applyBtn: { backgroundColor: COLORS.amber + '22', borderWidth: 1, borderColor: COLORS.amber, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.sm, paddingVertical: 6, minHeight: 36, justifyContent: 'center' },
-  applyBtnDisabled: { opacity: 0.4 },
-  applyText: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 13, fontWeight: '700' },
-  applyTextDisabled: { color: PARCHMENT_TEXT.muted },
-  badge: { backgroundColor: COLORS.gold + '22', borderWidth: 1, borderColor: COLORS.gold, borderRadius: 2, paddingHorizontal: 6, paddingVertical: 2 },
-  badgeHeld: { backgroundColor: COLORS.laurel + '22', borderColor: COLORS.laurel },
-  badgeCamp: { backgroundColor: COLORS.denariiColor + '22', borderColor: COLORS.denariiColor },
-  badgeText: { color: COLORS.gold, fontFamily: FONTS.ui, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 },
-  actions: { marginTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.sm },
-  comingSoon: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6 },
-  coConsul: { marginTop: SPACING.sm, padding: SPACING.sm, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm, backgroundColor: 'rgba(200,168,112,0.08)' },
-  coConsulLabel: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 2 },
-  coConsulName: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 13, fontWeight: '600' },
-  coConsulAntagonism: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, marginTop: 2 },
-  coConsulHostile: { color: COLORS.crimson },
-  immunityBadge: { marginTop: SPACING.sm, paddingHorizontal: SPACING.sm, paddingVertical: 5, backgroundColor: 'rgba(80,140,60,0.15)', borderWidth: 1, borderColor: COLORS.laurel + '88', borderRadius: RADIUS.sm },
-  immunityText: { color: COLORS.laurel, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 0.3 },
-});
+// ─── Action button + Office card ───────────────────────────────────────────────
+// Chunk C4 of cursus-visual-redesign-plan.md — both extracted to
+// components/cursus/ (ActionButton.tsx, OfficeCard.tsx). ActionButton is
+// still used directly below by TribunePanel; OfficeCard replaces the old
+// inline OfficeRung (per-character status via engine/officeStatus.ts, a
+// StatusSeal, and a whole-card tap that opens OfficeActionsModal instead of
+// the old always-inline action list).
 
 // ─── Tribune panel ─────────────────────────────────────────────────────────────
 // Separate from the Cursus ladder — Tribune is a parallel path.
@@ -322,6 +42,7 @@ const rung = StyleSheet.create({
 function TribunePanel({ character }: { character: Character }) {
   const state = useGameStore();
   const { tribuneHolder, tribuneImmunity, tribuneSeasonsServed, tribuneCandidateId, family, declareTribuneCandidate, currentOffice } = state as any;
+  const [modalOpen, setModalOpen] = useState(false);
 
   const isHolder      = tribuneHolder === character.id;
   const isCandidate   = tribuneCandidateId === character.id;
@@ -343,100 +64,147 @@ function TribunePanel({ character }: { character: Character }) {
 
   const seasonsLeft = isHolder ? Math.max(0, 4 - (tribuneSeasonsServed ?? 0)) : 0;
 
+  // Chunk G of cursustabuifixesplan.md — TribuneStatus equivalent to
+  // engine/officeStatus.ts's OfficeStatus (Tribune isn't on the ladder that
+  // engine tracks, so there's no getOfficeStatus() call to reuse here; this
+  // mirrors its {status, reason} shape from the eligibility booleans above).
+  let tribuneStatus: OfficeStatus;
+  let tribuneReason: string | undefined;
+  if (isHolder) {
+    tribuneStatus = 'held';
+  } else if (isCandidate) {
+    tribuneStatus = 'active';
+  } else if (isEligible) {
+    tribuneStatus = 'eligible';
+  } else {
+    tribuneStatus = 'locked';
+    tribuneReason = someoneElseHolds
+      ? `Held by ${holderName}`
+      : someoneElseRunning
+        ? `${candidateName} running`
+        : !ageOk
+          ? 'Min age 30'
+          : !noOtherOffice
+            ? 'Already holds an office'
+            : undefined;
+  }
+
   return (
-    <ParchmentCard style={[tp.container]} contentStyle={tp.inner}>
-      <View style={tp.header}>
-        <Text style={tp.icon}>✊</Text>
-        <View style={tp.info}>
-          <InfoTap termId="tribune">
-            <Text style={tp.name}>Tribune of the Plebs</Text>
-          </InfoTap>
-          <Text style={tp.latin}>Tribunus Plebis · Parallel Path</Text>
-        </View>
-        {isHolder && (
-          <View style={tp.badge}><Text style={tp.badgeText}>IN OFFICE</Text></View>
-        )}
-        {isCandidate && (
-          <View style={[tp.badge, tp.badgePending]}><Text style={tp.badgeText}>CANDIDACY</Text></View>
-        )}
-      </View>
-
-      <Text style={tp.desc}>
-        Sacred defender of the plebeian people. Not a rung on the Cursus Honorum —
-        a separate office that can be held alongside (or instead of) the normal ladder.
-      </Text>
-
-      {/* Current holder view */}
-      {isHolder && (
-        <>
-          <View style={tp.immunity}>
-            <Text style={tp.immunityText}>🛡 Sacrosanct — trial immunity active</Text>
-            <Text style={tp.seasonsLeft}>{seasonsLeft} season{seasonsLeft !== 1 ? 's' : ''} remaining</Text>
+    <>
+      <TouchableOpacity activeOpacity={0.85} onPress={() => setModalOpen(true)}>
+        <ParchmentCard style={[tp.container]} contentStyle={tp.inner}>
+          <View style={tp.header}>
+            <Text style={tp.icon}>✊</Text>
+            <View style={tp.info}>
+              <InfoTap termId="tribune">
+                <Text style={tp.name}>Tribune of the Plebs</Text>
+              </InfoTap>
+              <Text style={tp.latin}>Tribunus Plebis · Parallel Path</Text>
+            </View>
+            {isHolder && (
+              <View style={tp.badge}><Text style={tp.badgeText}>IN OFFICE</Text></View>
+            )}
+            {isCandidate && (
+              <View style={[tp.badge, tp.badgePending]}><Text style={tp.badgeText}>CANDIDACY</Text></View>
+            )}
           </View>
-          <View style={tp.actions}>
-            {TRIBUNE_OFFICE.inOfficeActions?.map(action => (
-              <ActionButton key={action.id} action={action} character={character} />
-            ))}
+
+          <Text style={tp.desc}>
+            Sacred defender of the plebeian people. Not a rung on the Cursus Honorum —
+            a separate office that can be held alongside (or instead of) the normal ladder.
+          </Text>
+
+          {/* Chunk G — same tapHint-left/StatusSeal-right layout as OfficeCard
+              (Chunk F), bringing Tribune to parity with the ladder offices. */}
+          <View style={tp.sealRow}>
+            <Text style={tp.tapHint}>Tap for powers ›</Text>
+            <StatusSeal status={tribuneStatus} reason={tribuneReason} />
           </View>
-        </>
-      )}
 
-      {/* Pending candidacy view — this character is waiting on the election */}
-      {isCandidate && (
-        <View style={tp.pending}>
-          <Text style={tp.pendingText}>
-            ⏳ Candidacy declared — the Concilium Plebis votes at next season end.
-          </Text>
-          <Text style={tp.pendingSub}>
-            Success chance increases with Plebs mood and Populares standing.
-          </Text>
-        </View>
-      )}
+          {/* Current holder view */}
+          {isHolder && (
+            <>
+              <View style={tp.immunity}>
+                <Text style={tp.immunityText}>🛡 Sacrosanct — trial immunity active</Text>
+                <Text style={tp.seasonsLeft}>{seasonsLeft} season{seasonsLeft !== 1 ? 's' : ''} remaining</Text>
+              </View>
+              <View style={tp.actions}>
+                {TRIBUNE_OFFICE.inOfficeActions?.map(action => (
+                  <ActionButton key={action.id} action={action} character={character} />
+                ))}
+              </View>
+            </>
+          )}
 
-      {/* Another family member already holds Tribune */}
-      {someoneElseHolds && (
-        <Text style={tp.occupied}>{holderName} is serving as Tribune this term.</Text>
-      )}
+          {/* Pending candidacy view — this character is waiting on the election */}
+          {isCandidate && (
+            <View style={tp.pending}>
+              <Text style={tp.pendingText}>
+                ⏳ Candidacy declared — the Concilium Plebis votes at next season end.
+              </Text>
+              <Text style={tp.pendingSub}>
+                Success chance increases with Plebs mood and Populares standing.
+              </Text>
+            </View>
+          )}
 
-      {/* Another family member is running */}
-      {someoneElseRunning && !someoneElseHolds && (
-        <Text style={tp.occupied}>{candidateName} has declared candidacy for Tribune.</Text>
-      )}
+          {/* Another family member already holds Tribune */}
+          {someoneElseHolds && (
+            <Text style={tp.occupied}>{holderName} is serving as Tribune this term.</Text>
+          )}
 
-      {/* Eligible to declare */}
-      {isEligible && (
-        <TouchableOpacity
-          style={tp.declareBtn}
-          onPress={() => declareTribuneCandidate(character.id)}
-        >
-          <Text style={tp.declareBtnText}>Declare Candidacy</Text>
-          <Text style={tp.declareBtnSub}>Min age 30 · Election resolves next season end</Text>
-        </TouchableOpacity>
-      )}
+          {/* Another family member is running */}
+          {someoneElseRunning && !someoneElseHolds && (
+            <Text style={tp.occupied}>{candidateName} has declared candidacy for Tribune.</Text>
+          )}
 
-      {/* Not eligible — show reason */}
-      {!isHolder && !isCandidate && !someoneElseHolds && !someoneElseRunning && !isEligible && (
-        <Text style={tp.ineligible}>
-          {!ageOk
-            ? `Minimum age 30 (current: ${character.age})`
-            : !noOtherOffice
-              ? `${character.name} already holds an office`
-              : 'Not currently available'}
-        </Text>
-      )}
-    </ParchmentCard>
+          {/* Eligible to declare */}
+          {isEligible && (
+            <TouchableOpacity
+              style={tp.declareBtn}
+              onPress={() => declareTribuneCandidate(character.id)}
+            >
+              <Text style={tp.declareBtnText}>Declare Candidacy</Text>
+              <Text style={tp.declareBtnSub}>Min age 30 · Election resolves next season end</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Not eligible — show reason */}
+          {!isHolder && !isCandidate && !someoneElseHolds && !someoneElseRunning && !isEligible && (
+            <Text style={tp.ineligible}>
+              {!ageOk
+                ? `Minimum age 30 (current: ${character.age})`
+                : !noOtherOffice
+                  ? `${character.name} already holds an office`
+                  : 'Not currently available'}
+            </Text>
+          )}
+        </ParchmentCard>
+      </TouchableOpacity>
+
+      <OfficeActionsModal
+        visible={modalOpen}
+        onClose={() => setModalOpen(false)}
+        office={TRIBUNE_OFFICE}
+        character={character}
+        status={tribuneStatus}
+      />
+    </>
   );
 }
 
 const tp = StyleSheet.create({
   container: { marginBottom: SPACING.sm },
-  inner: { padding: 2 },
+  inner: { padding: SPACING.sm },
   header: { flexDirection: 'row', alignItems: 'center' },
   icon: { fontSize: 24, marginRight: SPACING.sm },
   info: { flex: 1 },
   name: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 15, fontWeight: '700' },
   latin: { color: COLORS.goldDim, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11 },
   desc: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6, lineHeight: 16 },
+  // Chunk G — same values as OfficeCard.tsx's rung.sealRow/rung.tapHint.
+  sealRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.sm },
+  tapHint: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 9, letterSpacing: 0.3, opacity: 0.8 },
   badge: { backgroundColor: COLORS.gold + '22', borderWidth: 1, borderColor: COLORS.gold, borderRadius: 2, paddingHorizontal: 6, paddingVertical: 2 },
   badgePending: { backgroundColor: COLORS.amber + '22', borderColor: COLORS.amber },
   badgeText: { color: COLORS.gold, fontFamily: FONTS.ui, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -467,15 +235,15 @@ function ElectionPanel({ character }: { character: Character }) {
   const seasonsToWinter = (3 - seasonIndex + 4) % 4;
   const playerScore     = calcPlayerElectionScore(state);
 
-  const clanInfluenceMap = Object.fromEntries(clans.map(c => [c.id, c.influence]));
+  const leaderById = new Map(clans.flatMap(c => c.leaders.map(l => [l.id, l] as const)));
 
   const candidates = [
     {
-      name:          character.name,
-      subtitle:      `Base ${PLAYER_BASE_SCORE} + clients + canvassed`,
-      votes:         playerScore,
-      isPlayer:      true,
-      highestOffice: null as string | null,
+      name:     character.name,
+      subtitle: `Base ${PLAYER_BASE_SCORE} + clients + canvassed`,
+      votes:    playerScore,
+      isPlayer: true,
+      subject:  characterPortraitSubject(character),
     },
     ...electionRivals.map((r) => ({
       name:     r.name,
@@ -484,7 +252,9 @@ function ElectionPanel({ character }: { character: Character }) {
         : r.clanName,
       votes:    r.strength,
       isPlayer: false,
-      highestOffice: r.highestOffice,
+      // electionRivals carries id+clanId back to the real ClanLeader (electionEngine.generateRivals) —
+      // age isn't on ElectionRival itself, so look the leader up for the portrait's age band.
+      subject:  leaderPortraitSubject(leaderById.get(r.id) ?? { id: r.id, name: r.name, age: 40 }, r.clanId),
     })),
   ].sort((a, b) => b.votes - a.votes);
 
@@ -493,22 +263,23 @@ function ElectionPanel({ character }: { character: Character }) {
   const onTrackToWin = playerRank <= seats;
 
   return (
-    <View style={ep.container}>
-      <Text style={ep.title}>Campaign: {office?.name}</Text>
-      <Text style={ep.candidate}>Candidate: {character.name}</Text>
-
-      <View style={ep.seatsRow}>
-        <Text style={ep.seatsLabel}>{seats} seat{seats !== 1 ? 's' : ''} available</Text>
+    <GildedPanel style={ep.panel}>
+      <View style={ep.titleRow}>
+        <Text style={ep.title} numberOfLines={1}>CAMPAIGN: {office?.name?.toUpperCase()}</Text>
         <Text style={[ep.rankBadge, onTrackToWin ? ep.rankBadgeWin : ep.rankBadgeLose]}>
           {onTrackToWin ? `✓ Est. #${playerRank}` : `✗ Est. #${playerRank}`}
         </Text>
       </View>
 
-      {seasonsToWinter === 0 ? (
-        <Text style={ep.urgent}>Election resolves this season — End Season to vote.</Text>
-      ) : (
-        <Text style={ep.countdown}>{seasonsToWinter} season{seasonsToWinter !== 1 ? 's' : ''} until election</Text>
-      )}
+      <View style={ep.metaRow}>
+        <Text style={ep.metaText}>
+          {seasonsToWinter === 0 ? '⏳ Election resolves this season' : `⏳ ${seasonsToWinter} Season${seasonsToWinter !== 1 ? 's' : ''} Remaining`}
+        </Text>
+        <Text style={ep.metaDot}>·</Text>
+        <Text style={ep.metaText}>{seats} Seat{seats !== 1 ? 's' : ''} Available</Text>
+      </View>
+
+      <Text style={ep.subheader}>Live Polling Standings</Text>
 
       {candidates.map((c, i) => {
         const inWinningZone = i < seats;
@@ -526,6 +297,7 @@ function ElectionPanel({ character }: { character: Character }) {
               </View>
             )}
             <View style={ep.candidateRow}>
+              <PortraitRoundel subject={c.subject} size={32} frame={c.isPlayer ? 'gold' : 'plain'} />
               <View style={ep.candidateInfo}>
                 <Text style={[ep.candidateName, c.isPlayer && { color: COLORS.gold }]} numberOfLines={1}>
                   {c.name}
@@ -543,28 +315,28 @@ function ElectionPanel({ character }: { character: Character }) {
           </React.Fragment>
         );
       })}
-    </View>
+    </GildedPanel>
   );
 }
 
 const ep = StyleSheet.create({
-  container: { backgroundColor: 'rgba(200,168,112,0.25)', borderWidth: 1, borderColor: COLORS.gold, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md },
-  title: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 16, fontWeight: '700', marginBottom: 2 },
-  candidate: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, marginBottom: 4 },
-  seatsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xs },
-  seatsLabel: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 10, letterSpacing: 0.3 },
+  panel: { marginBottom: SPACING.md },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xs },
+  title: { flex: 1, color: COLORS.gold, fontFamily: FONTS.display, fontSize: 15, letterSpacing: 0.5, fontWeight: '700', marginRight: SPACING.sm },
   rankBadge: { fontFamily: FONTS.display, fontSize: 11, fontWeight: '700', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   rankBadgeWin: { color: COLORS.laurel, backgroundColor: 'rgba(80,140,60,0.2)' },
   rankBadgeLose: { color: COLORS.crimson, backgroundColor: 'rgba(160,40,40,0.2)' },
-  countdown: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, marginBottom: SPACING.sm },
-  urgent: { color: COLORS.crimson, fontFamily: FONTS.display, fontSize: 12, fontWeight: '700', marginBottom: SPACING.sm },
-  candidateRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  candidateInfo: { width: 110 },
-  candidateName: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 12 },
-  candidateClan: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 9, letterSpacing: 0.3 },
-  voteBarTrack: { flex: 1, height: 8, backgroundColor: COLORS.bg, borderRadius: 4, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
-  voteBarFill: { height: '100%', borderRadius: 4 },
-  voteCount: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, width: 30, textAlign: 'right' },
+  metaRow: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.sm },
+  metaText: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11 },
+  metaDot: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, marginHorizontal: 5 },
+  subheader: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: SPACING.sm },
+  candidateRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: SPACING.sm },
+  candidateInfo: { width: 100 },
+  candidateName: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 12 },
+  candidateClan: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 9, letterSpacing: 0.3 },
+  voteBarTrack: { flex: 1, height: 6, backgroundColor: COLORS.bg, borderRadius: 3, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
+  voteBarFill: { height: '100%', borderRadius: 3 },
+  voteCount: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, width: 30, textAlign: 'right' },
   seatDivider: { flexDirection: 'row', alignItems: 'center', marginVertical: 4 },
   seatDividerLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
   seatDividerLabel: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 8, letterSpacing: 0.5, marginHorizontal: 4 },
@@ -663,65 +435,247 @@ export default function CursusScreen() {
   const [selectedCharId, setSelectedCharId] = useState(player?.id ?? '');
   const selectedChar = family.find(c => c.id === selectedCharId) ?? player;
 
+  // ── The Basilica (Phase 4, Chunk P4-D) — full-screen sheet, opened from
+  // CuriaScreen's TrialBanner (requestNavigation) or an agenda deep-link.
+  // Mirrors ProvinciaeScreen's Animated/PanResponder drag-sheet shell.
+  const navigation = useNavigation();
+  const selectedTrialId = useGameStore(s => s.selectedTrialId);
+  const selectTrialForBasilica = useGameStore(s => s.selectTrialForBasilica);
+  const basilicaReturnTab = useGameStore(s => s.basilicaReturnTab);
+  const setBasilicaReturnTab = useGameStore(s => s.setBasilicaReturnTab);
+  const [basilicaTrialId, setBasilicaTrialId] = useState<string | null>(null);
+  const basilicaAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const basilicaVisible = basilicaTrialId !== null;
+
+  function openBasilica(trialId: string) {
+    setBasilicaTrialId(trialId);
+    Animated.spring(basilicaAnim, {
+      toValue: SCREEN_HEIGHT - BASILICA_SHEET_HEIGHT,
+      useNativeDriver: false,
+      tension: 65,
+      friction: 11,
+    }).start();
+  }
+
+  function closeBasilica() {
+    Animated.timing(basilicaAnim, {
+      toValue: SCREEN_HEIGHT,
+      duration: 240,
+      useNativeDriver: false,
+    }).start(() => {
+      setBasilicaTrialId(null);
+      // Send the player back to whichever tab they were actually on before
+      // a deep-link (e.g. CuriaScreen's "Open the Basilica" button) switched
+      // them to Cursus — otherwise closing the sheet just stranded them
+      // here. null (they were already on Cursus) means stay put.
+      if (basilicaReturnTab) {
+        navigation.navigate(basilicaReturnTab as never);
+        setBasilicaReturnTab(null);
+      }
+    });
+  }
+
+  useEffect(() => {
+    if (selectedTrialId) {
+      openBasilica(selectedTrialId);
+      selectTrialForBasilica(null);
+    }
+  }, [selectedTrialId]);
+
+  const basilicaPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: (_, gs) => gs.dy > 0,
+      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 8,
+      onPanResponderMove: (_, gs) => {
+        if (gs.dy > 0) {
+          basilicaAnim.setValue(SCREEN_HEIGHT - BASILICA_SHEET_HEIGHT + gs.dy);
+        }
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > 100 || gs.vy > 0.5) {
+          closeBasilica();
+        } else {
+          Animated.spring(basilicaAnim, {
+            toValue: SCREEN_HEIGHT - BASILICA_SHEET_HEIGHT,
+            useNativeDriver: false,
+            tension: 65,
+            friction: 11,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
   return (
-    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
-      <View style={styles.header}>
-        {currentOffice ? (
+    // FrescoBackground is the outermost element (mirrors DomusScreen's own
+    // ImageBackground-then-SafeAreaView pattern) — padding for the resource
+    // bar goes on ITS style prop, not on the SafeAreaView, so the image/scrim
+    // still render edge-to-edge behind the resource bar while the actual
+    // content (header/CandidateHeader/ScrollView) gets pushed down below it.
+    <FrescoBackground style={styles.frescoRoot}>
+      <SafeAreaView style={styles.screen} edges={['left', 'right']}>
+        <View style={styles.header}>
+          {currentOffice ? (
+            <>
+              <Text style={styles.title}>{currentOfficeDef?.icon} {currentOfficeDef?.name.toUpperCase()}</Text>
+              <Text style={styles.flavor}>{currentOfficeDef?.flavor}</Text>
+              <Text style={styles.subtitle}>{officeSeasons} season{officeSeasons !== 1 ? 's' : ''} remaining</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.title}>CURSUS HONORUM</Text>
+              <Text style={styles.subtitle}>The Path of Honour</Text>
+            </>
+          )}
+        </View>
+
+        <CandidateHeader selected={selectedCharId} onSelect={setSelectedCharId} />
+
+        <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}>
+          {selectedChar && <ElectionPanel character={selectedChar} />}
+
+          <Text style={styles.sectionLabel}>OFFICES</Text>
+          {selectedChar && OFFICES.map((office) => (
+            <OfficeCard key={office.id} officeId={office.id} character={selectedChar} />
+          ))}
+
+          {/* Tribune section — parallel path, separate from the ladder */}
+          <Text style={[styles.sectionLabel, { marginTop: SPACING.md }]}>TRIBUNE OF THE PLEBS</Text>
+          {selectedChar && <TribunePanel character={selectedChar} />}
+
+          {cursusLog.length > 0 && (
+            <>
+              <Text style={[styles.sectionLabel, { marginTop: SPACING.md }]}>POLITICAL RECORD</Text>
+              {[...cursusLog].reverse().map((entry) => (
+                <View key={entry.id} style={styles.logEntry}>
+                  <Text style={styles.logTurn}>{entry.turn}</Text>
+                  <Text style={styles.logText}>{entry.text}</Text>
+                </View>
+              ))}
+            </>
+          )}
+        </ScrollView>
+
+        {basilicaVisible && basilicaTrialId && (
           <>
-            <Text style={styles.title}>{currentOfficeDef?.icon} {currentOfficeDef?.name.toUpperCase()}</Text>
-            <Text style={styles.flavor}>{currentOfficeDef?.flavor}</Text>
-            <Text style={styles.subtitle}>{officeSeasons} season{officeSeasons !== 1 ? 's' : ''} remaining</Text>
-          </>
-        ) : (
-          <>
-            <Text style={styles.title}>CURSUS HONORUM</Text>
-            <Text style={styles.subtitle}>The Path of Honour</Text>
+            <Animated.View
+              style={[
+                cs.scrim,
+                {
+                  opacity: basilicaAnim.interpolate({
+                    inputRange: [SCREEN_HEIGHT - BASILICA_SHEET_HEIGHT, SCREEN_HEIGHT],
+                    outputRange: [0.5, 0],
+                    extrapolate: 'clamp',
+                  }),
+                },
+              ]}
+              // @ts-ignore
+              pointerEvents="none"
+            />
+            <Animated.View
+              style={[cs.sheetContainer, { top: basilicaAnim }]}
+              {...basilicaPanResponder.panHandlers}
+            >
+              <BasilicaSheet trialId={basilicaTrialId} onClose={closeBasilica} />
+            </Animated.View>
           </>
         )}
-      </View>
 
-      <FamilyMemberPicker selected={selectedCharId} onSelect={setSelectedCharId} />
-
-      <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}>
-        {selectedChar && <ElectionPanel character={selectedChar} />}
-
-        <Text style={styles.sectionLabel}>OFFICES</Text>
-        {selectedChar && OFFICES.map((office) => (
-          <OfficeRung key={office.id} officeId={office.id} character={selectedChar} />
-        ))}
-
-        {/* Tribune section — parallel path, separate from the ladder */}
-        <Text style={[styles.sectionLabel, { marginTop: SPACING.md }]}>TRIBUNE OF THE PLEBS</Text>
-        {selectedChar && <TribunePanel character={selectedChar} />}
-
-        {cursusLog.length > 0 && (
-          <>
-            <Text style={[styles.sectionLabel, { marginTop: SPACING.md }]}>POLITICAL RECORD</Text>
-            {[...cursusLog].reverse().map((entry) => (
-              <View key={entry.id} style={styles.logEntry}>
-                <Text style={styles.logTurn}>{entry.turn}</Text>
-                <Text style={styles.logText}>{entry.text}</Text>
-              </View>
-            ))}
-          </>
-        )}
-      </ScrollView>
-
-      <SeasonOverlay />
-      <OfficeActionResultModal />
-    </SafeAreaView>
+        <SeasonOverlay />
+        <OfficeActionResultModal />
+      </SafeAreaView>
+    </FrescoBackground>
   );
 }
 
+const cs = StyleSheet.create({
+  scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' },
+  sheetContainer: { position: 'absolute', left: 0, right: 0, height: BASILICA_SHEET_HEIGHT },
+});
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.bg, paddingTop: RESOURCE_BAR_HEIGHT },
-  header: { padding: SPACING.md, borderBottomColor: COLORS.border, borderBottomWidth: 1 },
-  title: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 20, fontWeight: '700', letterSpacing: 2 },
-  subtitle: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 1, marginTop: 2 },
-  flavor: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 13, marginTop: 3 },
+  // Chunk C5 fix — paddingTop lives here (FrescoBackground's own root),
+  // NOT on the SafeAreaView below: this is what lets the fresco image/scrim
+  // render edge-to-edge behind the resource bar (absolute-fill is unaffected
+  // by its own container's padding) while everything else still gets pushed
+  // down below it. Matches DomusScreen's ImageBackground/SafeAreaView split.
+  frescoRoot: { flex: 1, paddingTop: RESOURCE_BAR_HEIGHT },
+  // No backgroundColor here (matches DomusScreen's own unstyled `safeArea`)
+  // — an opaque fill here would paint over FrescoBackground's image/scrim
+  // for this entire box, leaving only the thin strip above it (behind the
+  // resource bar) actually showing the fresco. FrescoBackground already
+  // supplies its own COLORS.bg fallback when no asset is present, so
+  // nothing is lost in that case either.
+  screen: { flex: 1 },
+  // Chunk C5 — floats directly over FrescoBackground, no panel/border behind it
+  // (matches DomusScreen's own "header floats over the fresco" precedent);
+  // the scrim (FrescoBackground's own gradient) carries legibility instead.
+  header: { paddingHorizontal: SPACING.md, paddingTop: SPACING.md, paddingBottom: SPACING.sm },
+  title: {
+    color: COLORS.gold,
+    fontFamily: FONTS.display,
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+  },
+  subtitle: {
+    color: PARCHMENT_TEXT.muted,
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    letterSpacing: 1,
+    marginTop: 2,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  // Chunk H of cursustabuifixesplan.md — flavor sits directly in the header,
+  // over the fresco with no card behind it (same as title/subtitle above),
+  // but never got their textShadow treatment; PARCHMENT_TEXT.heading is a
+  // dark-brown token meant for use inside a light parchment card, so
+  // without a shadow it's nearly unreadable against the fresco's darker
+  // regions — same root cause as sectionLabel below.
+  flavor: {
+    color: PARCHMENT_TEXT.heading,
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 13,
+    marginTop: 3,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
   scroll: { flex: 1, padding: SPACING.md },
-  sectionLabel: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: SPACING.sm },
+  sectionLabel: {
+    color: COLORS.goldDim,
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: SPACING.sm,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
   logEntry: { borderLeftWidth: 2, borderLeftColor: COLORS.border, paddingLeft: SPACING.sm, marginBottom: SPACING.sm },
-  logTurn: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 10 },
-  logText: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontSize: 12 },
+  // logEntry has no background — its border-strip rows sit directly on the
+  // fresco (same as flavor/sectionLabel above), audited per Chunk H step 3.
+  logTurn: {
+    color: COLORS.goldDim,
+    fontFamily: FONTS.ui,
+    fontSize: 10,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  logText: {
+    color: PARCHMENT_TEXT.muted,
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
 });

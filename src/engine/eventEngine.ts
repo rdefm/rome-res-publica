@@ -1,6 +1,31 @@
 import type { GameState } from '../state/gameStore';
 import type { EventCondition, ConditionOperator, EventDef, EventChoice, EventInstance } from '../models/event';
 import type { ClientType } from '../models/client';
+import { computeTotalClientBonuses } from './clientEngine';
+import { computeTotalAssetBonuses } from './assetEngine';
+
+// ─── Effective skill (July 2026 fixes, Chunk D) ──────────────────────────────
+// clientEngine's rolled rhetoricalBonus/martialBonus and assetEngine's
+// rhetoricalBonus/martialBonus/intrigusBonus were computed and aggregated but
+// never actually added to any skill check anywhere in the engine — this was
+// the single choke point every skillCheck resolves through, so it's the one
+// place that needed fixing to make both systems' skill bonuses real.
+const SKILL_BONUS_KEY: Record<'rhetoric' | 'martial' | 'intrigus', 'rhetoricalBonus' | 'martialBonus' | 'intrigusBonus'> = {
+  rhetoric: 'rhetoricalBonus',
+  martial: 'martialBonus',
+  intrigus: 'intrigusBonus',
+};
+
+export function getEffectiveSkill(
+  baseSkill: number,
+  skill: 'rhetoric' | 'martial' | 'intrigus',
+  state: GameState
+): number {
+  const bonusKey = SKILL_BONUS_KEY[skill];
+  const clientBonus = computeTotalClientBonuses(state.clients)[bonusKey] ?? 0;
+  const assetBonus = computeTotalAssetBonuses(state.ownedAssets)[bonusKey] ?? 0;
+  return baseSkill + clientBonus + assetBonus;
+}
 
 // ─── Notice event injection (P2-B) ───────────────────────────────────────────
 // Shared builder for weight-0, single-choice, Philon-voiced interstitials —
@@ -58,9 +83,11 @@ export function evalCondition(cond: EventCondition, state: GameState): boolean {
       return state.seasonIndex === cond.index;
     }
     case 'office': {
-      const player = state.family.find(c => c.isPlayer);
-      const held = (player as any)?.heldOffice ?? null;
-      return held === cond.held;
+      // Player office is tracked at state.currentOffice (the household-wide
+      // single office slot), never on the character object — Character has no
+      // 'heldOffice' field. Phase 5, Chunk P5-C: fixed a dead condition that
+      // read a nonexistent field and so could never match for the player.
+      return state.currentOffice === cond.held;
     }
     // ── Chunk 2B: four-track crisis conditions ────────────────────────────
     case 'crisisTrack': {
@@ -85,6 +112,9 @@ export function evalCondition(cond: EventCondition, state: GameState): boolean {
     }
     case 'campaigning': {
       return state.campaigning !== null;
+    }
+    case 'governing': {
+      return state.cities.some(p => p.playerGovernor !== null);
     }
   }
 }
@@ -150,7 +180,8 @@ export function resolveEventChoice(
   let succeeded = true;
   if (choice.skillCheck) {
     const player = state.family.find(c => c.isPlayer);
-    const skillVal = (player?.skills as any)?.[choice.skillCheck.skill] ?? 0;
+    const baseSkill = (player?.skills as any)?.[choice.skillCheck.skill] ?? 0;
+    const skillVal = getEffectiveSkill(baseSkill, choice.skillCheck.skill, state);
     succeeded = skillVal >= choice.skillCheck.difficulty;
   }
 
@@ -177,8 +208,20 @@ export function getEventDef(defId: string): EventDef | undefined {
   // Lazy-require to avoid circular dependency and keep HMR working in Expo.
   const { EVENT_DEFS } = require('../data/events');
   const { TUTORIAL_EVENT_DEFS } = require('../data/tutorialEvents');
+  const { WAR_EVENT_DEFS } = require('../data/warEvents');
+  const { SUCCESSION_EVENT_DEFS } = require('../data/successionEvents');
+  const { CADET_EVENT_DEFS } = require('../data/cadetEvents');
+  const { SECRET_EVENT_DEFS } = require('../data/secretEvents');
+  const { CLAUDIUS_ARC_EVENT_DEFS } = require('../data/claudiusArc');
+  const { COMPROMISING_EVENT_DEFS } = require('../data/compromisingEvents');
   return (EVENT_DEFS as EventDef[]).find(d => d.id === defId)
-      ?? (TUTORIAL_EVENT_DEFS as EventDef[]).find(d => d.id === defId);
+      ?? (TUTORIAL_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
+      ?? (WAR_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
+      ?? (SUCCESSION_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
+      ?? (CADET_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
+      ?? (SECRET_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
+      ?? (CLAUDIUS_ARC_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
+      ?? (COMPROMISING_EVENT_DEFS as EventDef[]).find(d => d.id === defId);
 }
 
 // ─── P1-G: Tutorial season gate ──────────────────────────────────────────────

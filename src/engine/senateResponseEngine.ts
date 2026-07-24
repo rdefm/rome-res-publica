@@ -3,7 +3,9 @@
 // Phase sequence: null → debate → censure → hostis → consular_army
 
 import type { GameState } from '../state/gameStore';
-import { calcEffectiveForce } from './troopEngine';
+import { calcEffectiveForce, getLocalSupportModifier } from './troopEngine';
+import { buildTrialState } from './trialEngine';
+import { armyStrength } from './armyEngine';
 
 // ─── Senate Response State ────────────────────────────────────────────────────
 
@@ -15,6 +17,14 @@ export interface SenateResponseState {
   consularArmyStrength: number;
   debateSuppressed: boolean;
   consularArmyArrivesOnTurn: number;   // accounts for distance delay
+  /** Campaign Map plan, Chunk C3 — set when this response was triggered by
+   *  an unsanctioned Army muster (musterEngine.ts) rather than the older
+   *  personal-levy path (gameStore.raiseLevy). Undefined/null = personal-
+   *  levy path, unchanged from before this field existed. Drives the
+   *  combat-resolution and capitulate branches below onto the Army
+   *  (state.armies) instead of the triggering character's
+   *  raisedLegions/veterans. */
+  sourceArmyId?: string | null;
 }
 
 export type SenateAwareState = GameState & {
@@ -123,7 +133,9 @@ export function tickSenateResponse(
       const censuraBill = {
         id:              `senate-censura-${turnNumber}`,
         title:           'Senatus Consultum de Censura',
-        description:     'The Senate moves to censure the Brutii for raising an unsanctioned personal levy. If passed, Fides income is suspended until all illegal troops are disbanded.',
+        // Phase 5, Chunk P5-E — was hardcoded 'the Brutii', found during the
+        // gens-neutrality sweep.
+        description:     `The Senate moves to censure the ${state.gensPlural} for raising an unsanctioned personal levy. If passed, Fides income is suspended until all illegal troops are disbanded.`,
         type:            'censure',
         forVotes:        0,
         againstVotes:    0,
@@ -140,12 +152,12 @@ export function tickSenateResponse(
   // ── debate → censure ──────────────────────────────────────────────────────
   if (turnNumber === censureTurn && response.phase === 'debate') {
     const updatedProvinces = response.musterProvinceId
-      ? state.provinces.map(p =>
+      ? state.cities.map(p =>
           p.id === response.musterProvinceId
             ? { ...p, localSupport: Math.max(0, p.localSupport - 10) }
             : p
         )
-      : state.provinces;
+      : state.cities;
 
     const updatedFamily = state.family.map(c =>
       c.id === characterId
@@ -155,25 +167,44 @@ export function tickSenateResponse(
 
     return {
       senateResponse: { ...response, phase: 'censure' },
-      provinces:      updatedProvinces,
+      cities:         updatedProvinces,
       family:         updatedFamily,
     };
   }
 
   // ── censure → hostis ──────────────────────────────────────────────────────
+  // Phase 4, Chunk P4-C — was pushing an ad-hoc object (type/severity/
+  // characterId/turnQueued/autoResolve — none of which match Trial's real
+  // fields) into trialQueue under an `as any` cast. Harmless pre-P4-C only
+  // because nothing ever read that malformed shape correctly (resolveTrial's
+  // math degraded to NaN and always fell through to 'executed', but
+  // accusedCharacterId being undefined meant OUTCOME_CONSEQUENCES's
+  // removeCharacter branch matched no one — a silent no-op, not a crash).
+  // Renaming trialQueue -> trials turned this into a real type error; fixed
+  // in place to build a genuine TrialState, preserving the original intent
+  // (defying censure escalates to a treason trial) — the Senate collectively
+  // prosecutes, so the most-influential clan's senior leader stands in as
+  // nominal prosecutor. Near-guaranteed-loss npcStrength matches the old
+  // (never-functioning) object's forcedOutcome: 'worst' intent — Hostis
+  // declaration means the Senate has already all but condemned you.
   if (turnNumber === hostisTurn && response.phase === 'censure') {
-    const treasonTrial = {
-      id:          `trial-treason-${turnNumber}`,
-      type:        'treason',
-      severity:    'capital',
-      characterId,
-      turnQueued:  turnNumber,
-      autoResolve: false,
-    } as any;
+    const mostInfluentialClan = [...state.clans].sort((a, b) => b.influence - a.influence)[0];
+    const treasonTrial = buildTrialState({
+      id: `trial-treason-${turnNumber}`,
+      seat: 'defense',
+      charge: 'maiestas',
+      chargeSource: 'accusation',
+      prosecutor: { kind: 'leader', leaderId: mostInfluentialClan?.leaders[0]?.id ?? '' },
+      defendant: { kind: 'family', characterId },
+      filedSeason: turnNumber,
+      startsSeason: turnNumber + 1,
+      initialNpcStrength: 200,
+      speakerId: characterId,
+    });
 
     return {
       senateResponse: { ...response, phase: 'hostis' },
-      trialQueue:     [...state.trialQueue, treasonTrial],
+      trials: [...(state.trials ?? []), treasonTrial],
     };
   }
 
@@ -182,40 +213,74 @@ export function tickSenateResponse(
     turnNumber >= response.consularArmyArrivesOnTurn &&
     (response.phase === 'hostis' || response.phase === 'consular_army')
   ) {
-    const character = state.family.find(c => c.id === characterId);
-    const allTroops = character
-      ? [...character.raisedLegions, ...character.veterans]
-      : [];
-
     const musterProvince = response.musterProvinceId
-      ? state.provinces.find(p => p.id === response.musterProvinceId)
+      ? state.cities.find(p => p.id === response.musterProvinceId)
       : null;
+    const localSupport = musterProvince?.localSupport ?? 0;
 
-    const localSupport    = musterProvince?.localSupport ?? 0;
-    const commanderMartial = character?.skills.martial ?? 0;
-    const effectiveForce  = calcEffectiveForce(allTroops, commanderMartial, localSupport);
+    // Chunk C3 — Army-sourced response: measure state.armies instead of the
+    // character's personal TroopUnit arrays. Mirrors calcEffectiveForce's
+    // own shape (raw strength × commander-martial bonus × local support)
+    // rather than inventing a divergent formula, so both paths are judged
+    // against the same consularArmyStrength threshold on equal footing.
+    if (response.sourceArmyId) {
+      const army = state.armies.find(a => a.id === response.sourceArmyId);
+      // The offending Army may have been combined/divided/disbanded away
+      // since detection — there is nothing left to move the consular army
+      // against, so the Senate's case quietly evaporates rather than
+      // punishing a force that no longer exists.
+      if (!army) {
+        return { senateResponse: null };
+      }
+      const commander = army.commanderId ? state.family.find(c => c.id === army.commanderId) : null;
+      const effectiveForce = Math.round(
+        armyStrength(army) * (1 + (commander?.skills.martial ?? 0) / 10) * getLocalSupportModifier(localSupport),
+      );
 
-    const playerWins = effectiveForce >= response.consularArmyStrength;
-
-    if (playerWins) {
-      return {
-        senateResponse:   null,
-        lifetimeDignitas: Math.max(0, state.lifetimeDignitas - 5),
-      };
+      if (effectiveForce >= response.consularArmyStrength) {
+        return {
+          senateResponse:   null,
+          lifetimeDignitas: Math.max(0, state.lifetimeDignitas - 5),
+        };
+      }
+      // Falls through to the shared "loses" branch below.
     } else {
-      const captureTrial = {
-        id:            `trial-capture-${turnNumber}`,
-        type:          'treason',
-        severity:      'capital',
-        characterId,
-        turnQueued:    turnNumber,
-        forcedOutcome: 'worst',
-        autoResolve:   false,
-      } as any;
+      const character = state.family.find(c => c.id === characterId);
+      const allTroops = character
+        ? [...character.raisedLegions, ...character.veterans]
+        : [];
+      const commanderMartial = character?.skills.martial ?? 0;
+      const effectiveForce = calcEffectiveForce(allTroops, commanderMartial, localSupport);
+
+      if (effectiveForce >= response.consularArmyStrength) {
+        return {
+          senateResponse:   null,
+          lifetimeDignitas: Math.max(0, state.lifetimeDignitas - 5),
+        };
+      }
+      // Falls through to the shared "loses" branch below.
+    }
+
+    {
+      // Same P4-C fix as the treason-trial branch above — captured after
+      // losing to the consular army is even more clearly a guaranteed loss.
+      const mostInfluentialClan = [...state.clans].sort((a, b) => b.influence - a.influence)[0];
+      const captureTrial = buildTrialState({
+        id: `trial-capture-${turnNumber}`,
+        seat: 'defense',
+        charge: 'maiestas',
+        chargeSource: 'accusation',
+        prosecutor: { kind: 'leader', leaderId: mostInfluentialClan?.leaders[0]?.id ?? '' },
+        defendant: { kind: 'family', characterId },
+        filedSeason: turnNumber,
+        startsSeason: turnNumber + 1,
+        initialNpcStrength: 300,
+        speakerId: characterId,
+      });
 
       return {
         senateResponse: { ...response, phase: 'consular_army' },
-        trialQueue:     [...state.trialQueue, captureTrial],
+        trials: [...(state.trials ?? []), captureTrial],
       };
     }
   }
@@ -254,20 +319,31 @@ export function capitulate(
   const response = state.senateResponse;
   if (!response?.active) return {};
 
-  const updatedFamily = state.family.map(c =>
-    c.id === characterId
-      ? { ...c, raisedLegions: [] }
-      : c
-  );
+  // Chunk C3 — Army-sourced response: stand the Army down (remove it from
+  // play) instead of clearing a character's raisedLegions, which an
+  // Army-triggered response never touched in the first place.
+  const updatedFamily = response.sourceArmyId
+    ? state.family
+    : state.family.map(c =>
+        c.id === characterId
+          ? { ...c, raisedLegions: [] }
+          : c
+      );
+  const updatedArmies = response.sourceArmyId
+    ? state.armies.filter(a => a.id !== response.sourceArmyId)
+    : state.armies;
 
-  const updatedTrialQueue = response.phase === 'hostis'
-    ? state.trialQueue.filter((t: any) => !(t.type === 'treason' && t.characterId === characterId))
-    : state.trialQueue;
+  const updatedTrials = response.phase === 'hostis'
+    ? (state.trials ?? []).filter(t =>
+        !(t.charge === 'maiestas' && t.defendant.kind === 'family' && t.defendant.characterId === characterId)
+      )
+    : (state.trials ?? []);
 
   return {
     senateResponse:   null,
     lifetimeDignitas: Math.max(0, state.lifetimeDignitas - 15),
     family:           updatedFamily,
-    trialQueue:       updatedTrialQueue,
+    armies:           updatedArmies,
+    trials:           updatedTrials,
   };
 }

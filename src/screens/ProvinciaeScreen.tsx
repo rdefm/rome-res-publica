@@ -12,25 +12,41 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
-import { COLORS, FONTS, SPACING, RESOURCE_BAR_HEIGHT } from '../utils/theme';
+import { COLORS, FONTS, SPACING, RADIUS, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 import { useGameStore } from '../state/gameStore';
 import MapView from '../components/provinciae/MapView';
-import ProvinceSheet from '../components/provinciae/ProvinceSheet';
+import CitySheet from '../components/provinciae/CitySheet';
 import LatiumSheet from '../components/provinciae/LatiumSheet';
-import type { GovernorPolicy } from '../models/province';
-import type { AmbassadorActionId } from '../engine/provinceEngine';
+import RegionSheet from '../components/provinciae/RegionSheet';
+import WarStatusModal from '../components/provinciae/WarStatusModal';
+import type { GovernorPolicy } from '../models/city';
+import type { AmbassadorActionId } from '../engine/cityEngine';
+import type { RegionId } from '../models/theatre';
 import { calcTotalImperium } from '../engine/troopEngine';
+import { reachable } from '../engine/movementEngine';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SHEET_SNAP_HEIGHT = SCREEN_HEIGHT * 0.72;
 
 export default function ProvinciaeScreen() {
   const [selectedProvinceId, setSelectedProvinceId] = useState<string | null>(null);
+  // Campaign Map plan, Chunk C2 — a region and a city are different tap
+  // targets on the map now (Chunk C1); mutually exclusive with
+  // selectedProvinceId, sharing the same bottom-sheet animation/container.
+  const [selectedRegionId, setSelectedRegionId] = useState<RegionId | null>(null);
+  const [focusArmyId, setFocusArmyId] = useState<string | null>(null);
+  // Campaign Map plan, Chunk C5 — order mode is its own top-level UI state,
+  // mutually exclusive with the bottom sheet (entering it always closes
+  // whichever sheet is open — see enterOrderMode below).
+  const [orderModeArmyId, setOrderModeArmyId] = useState<string | null>(null);
+  const [orderModeForcedMarch, setOrderModeForcedMarch] = useState(false);
+  // July Fixes plan, Chunk C — war status banner/modal.
+  const [warStatusModalOpen, setWarStatusModalOpen] = useState(false);
   const sheetAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-  const sheetVisible = selectedProvinceId !== null;
+  const sheetVisible = selectedProvinceId !== null || selectedRegionId !== null;
 
   // ── Store state — only fields that exist in GameState ────────────────────────
-  const provinces                = useGameStore(s => s.provinces);
+  const provinces                = useGameStore(s => s.cities);
   const imperium                 = useGameStore(s => s.imperium);
   const fides                    = useGameStore(s => s.fides);
   const denarii                  = useGameStore(s => s.denarii);
@@ -38,16 +54,33 @@ export default function ProvinciaeScreen() {
   const clients                  = useGameStore(s => s.clients);
   const campaignVotes            = useGameStore(s => s.campaignVotes);
   const selectedCharacterId      = useGameStore(s => s.selectedCharacterId);
+  const bills                    = useGameStore(s => s.bills);
+  const armies                   = useGameStore(s => s.armies);
+  const wars                     = useGameStore(s => s.wars);
+  const theatre                  = useGameStore(s => s.theatre);
+  const activeCommand            = useGameStore(s => s.activeCommand);
+  const seasonIndex               = useGameStore(s => s.seasonIndex);
+  // Campaign Map plan, Chunk C7 — turn-end playback.
+  const campaignLog              = useGameStore(s => s.campaignLog);
+  const dismissCampaignLog        = useGameStore(s => s.dismissCampaignLog);
 
   // ── Store actions — only actions that exist in GameActions ───────────────────
-  const updateProvincePolicy     = useGameStore(s => s.updateProvincePolicy);
+  const updateProvincePolicy     = useGameStore(s => s.updateCityPolicy);
   const resolveAmbassadorAction  = useGameStore(s => s.resolveAmbassadorAction);
-  const purchaseProvinceAsset    = useGameStore(s => s.purchaseProvinceAsset);
-  const upgradeProvinceAsset     = useGameStore(s => s.upgradeProvinceAsset);
-  const recruitProvincialClient  = useGameStore(s => s.recruitProvincialClient);
+  const proposeIncorporationBill = useGameStore(s => s.proposeIncorporationBill);
+  const proposeDeclareWarBill    = useGameStore(s => s.proposeDeclareWarBill);
+  const seekAmbassadorPosting    = useGameStore(s => s.seekAmbassadorPosting);
+  const recruitProvincialClient  = useGameStore(s => s.recruitCityClient);
   const startCampaign            = useGameStore(s => s.startCampaign);
   const volunteerOfficer         = useGameStore(s => s.volunteerOfficer);
   const resolveOfficerDecision   = useGameStore(s => s.resolveOfficerDecision);
+  const combineArmies            = useGameStore(s => s.combineArmies);
+  const divideArmy               = useGameStore(s => s.divideArmy);
+  const assignArmyCommander      = useGameStore(s => s.assignArmyCommander);
+  const setArmyStance            = useGameStore(s => s.setArmyStance);
+  const raiseTroops              = useGameStore(s => s.raiseTroops);
+  const issueMovementOrder       = useGameStore(s => s.issueMovementOrder);
+  const clearOrder               = useGameStore(s => s.clearOrder);
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const selectedProvince = provinces.find(p => p.id === selectedProvinceId);
@@ -64,6 +97,13 @@ export default function ProvinciaeScreen() {
     3: 'Imperator',
   };
 
+  // Campaign Map plan, Chunk C3 — same "senateAuthorised = holds a formal
+  // office" rule gameStore.raiseLevy already uses for personal levies.
+  const paterfamilias = family.find(c => c.isPlayer);
+  const playerHoldsOffice = !!paterfamilias?.officeId;
+  // Chunk C4 — holding the theatre command sanctions muster the same way.
+  const playerHoldsCommand = activeCommand?.holderOwner === 'player';
+
   const governorCharacterId = selectedProvince?.playerGovernor?.characterId;
   const governorCharacter   = governorCharacterId
     ? family.find(c => c.id === governorCharacterId)
@@ -76,10 +116,29 @@ export default function ProvinciaeScreen() {
 
   const playerPostings = provinces.filter(p => p.playerGovernor || p.playerAmbassador);
 
+  // July Fixes plan, Chunk C — the one major foreign war (see warEngine.ts's
+  // own "primary major war" convention — local-scale revolt wars keep their
+  // existing CitySheet/Military-tab UI, not this banner).
+  const activeMajorWar = wars.find(w => w.active && w.scale === 'major');
+
   // ── Sheet animation ──────────────────────────────────────────────────────────
 
   function openSheet(provinceId: string) {
+    setSelectedRegionId(null);
+    setFocusArmyId(null);
     setSelectedProvinceId(provinceId);
+    Animated.spring(sheetAnim, {
+      toValue: SCREEN_HEIGHT - SHEET_SNAP_HEIGHT,
+      useNativeDriver: false,
+      tension: 65,
+      friction: 11,
+    }).start();
+  }
+
+  function openRegionSheet(regionId: RegionId, armyId?: string) {
+    setSelectedProvinceId(null);
+    setFocusArmyId(armyId ?? null);
+    setSelectedRegionId(regionId);
     Animated.spring(sheetAnim, {
       toValue: SCREEN_HEIGHT - SHEET_SNAP_HEIGHT,
       useNativeDriver: false,
@@ -93,8 +152,34 @@ export default function ProvinciaeScreen() {
       toValue: SCREEN_HEIGHT,
       duration: 240,
       useNativeDriver: false,
-    }).start(() => setSelectedProvinceId(null));
+    }).start(() => {
+      setSelectedProvinceId(null);
+      setSelectedRegionId(null);
+      setFocusArmyId(null);
+    });
   }
+
+  // Campaign Map plan, Chunk C5 — order mode.
+  function enterOrderMode(armyId: string) {
+    closeSheet();
+    setOrderModeForcedMarch(false);
+    setOrderModeArmyId(armyId);
+  }
+
+  function exitOrderMode() {
+    setOrderModeArmyId(null);
+  }
+
+  function handleOrderRegionPress(regionId: RegionId) {
+    if (!orderModeArmyId) return;
+    issueMovementOrder(orderModeArmyId, regionId, orderModeForcedMarch);
+    exitOrderMode();
+  }
+
+  const orderModeArmy = orderModeArmyId ? armies.find(a => a.id === orderModeArmyId) ?? null : null;
+  const orderModeDestinations = orderModeArmy
+    ? reachable(orderModeArmy, armies, theatre, seasonIndex, orderModeForcedMarch)
+    : null;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -170,8 +255,51 @@ export default function ProvinciaeScreen() {
           provinces={provinces}
           onProvincePress={openSheet}
           selectedProvinceId={selectedProvinceId}
+          armies={armies}
+          onRegionPress={openRegionSheet}
+          orderModeDestinations={orderModeDestinations}
+          onOrderRegionPress={handleOrderRegionPress}
+          playbackLog={campaignLog}
+          onPlaybackComplete={dismissCampaignLog}
         />
+
+        {/* July Fixes plan, Chunk C — war status banner. MapView itself stays
+            a pure, store-free rendering component; the banner belongs here. */}
+        {activeMajorWar && (
+          <TouchableOpacity
+            style={styles.warBanner}
+            onPress={() => setWarStatusModalOpen(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.warBannerIcon}>⚔</Text>
+            <Text style={styles.warBannerText}>
+              {activeMajorWar.enemyId.charAt(0).toUpperCase() + activeMajorWar.enemyId.slice(1)} War
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
+
+      {/* Campaign Map plan, Chunk C5 — order-mode banner */}
+      {orderModeArmy && (
+        <View style={styles.orderBanner}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.orderBannerTitle}>Ordering {orderModeArmy.name}</Text>
+            <Text style={styles.orderBannerSub}>Tap a highlighted region, or cancel.</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.orderBannerToggle, orderModeForcedMarch && styles.orderBannerToggleActive]}
+            onPress={() => setOrderModeForcedMarch(v => !v)}
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.orderBannerToggleText, orderModeForcedMarch && styles.orderBannerToggleTextActive]}>
+              Forced March
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.orderBannerCancel} onPress={exitOrderMode} activeOpacity={0.75}>
+            <Text style={styles.orderBannerCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Map legend */}
       <View style={styles.legend}>
@@ -191,7 +319,7 @@ export default function ProvinciaeScreen() {
       </View>
 
       {/* Bottom sheet overlay */}
-      {sheetVisible && selectedProvince && (
+      {sheetVisible && (selectedProvince || selectedRegionId) && (
         <>
           <Animated.View
             style={[
@@ -212,10 +340,33 @@ export default function ProvinciaeScreen() {
             style={[styles.sheetContainer, { top: sheetAnim }]}
             {...panResponder.panHandlers}
           >
-            {selectedProvince.id === 'latium' ? (
+            {selectedRegionId ? (
+              <RegionSheet
+                regionId={selectedRegionId}
+                armies={armies}
+                cities={provinces}
+                theatre={theatre}
+                family={family}
+                focusArmyId={focusArmyId}
+                playerImperium={imperium}
+                playerHoldsOffice={playerHoldsOffice}
+                playerHoldsCommand={playerHoldsCommand}
+                denarii={denarii}
+                onClose={closeSheet}
+                onCombineArmies={combineArmies}
+                onDivideArmy={divideArmy}
+                onAssignCommander={assignArmyCommander}
+                onSetStance={setArmyStance}
+                onRaiseTroops={(tier, targetArmyId) =>
+                  selectedRegionId && raiseTroops(selectedRegionId, tier, targetArmyId)
+                }
+                onOrderMode={enterOrderMode}
+                onClearOrder={clearOrder}
+              />
+            ) : selectedProvince?.id === 'latium' ? (
               <LatiumSheet onClose={closeSheet} />
-            ) : (
-            <ProvinceSheet
+            ) : selectedProvince ? (
+            <CitySheet
               province={selectedProvince}
               family={family}
               playerFides={fides}
@@ -227,13 +378,14 @@ export default function ProvinciaeScreen() {
               commanderElection={null}
               officerVolunteer={selectedProvince?.officerVolunteer ?? null}
               campaignVotes={campaignVotes}
+              bills={bills}
               onClose={closeSheet}
               onPolicyChange={(provinceId, policy) => updateProvincePolicy(provinceId, policy)}
               onAmbassadorAction={(provinceId, actionId) => resolveAmbassadorAction(provinceId, actionId)}
-              onPurchaseAsset={(provinceId, assetId) => purchaseProvinceAsset(provinceId, assetId)}
-              onUpgradeAsset={(provinceId, assetId) => upgradeProvinceAsset(provinceId, assetId)}
               onRecruitClient={(provinceId, clientId) => recruitProvincialClient(provinceId, clientId)}
-              onSeekPosting={() => {}}
+              onSeekPosting={(provinceId) => seekAmbassadorPosting(provinceId)}
+              onProposeIncorporation={(provinceId) => proposeIncorporationBill(provinceId)}
+              onProposeDeclareWar={(provinceId) => proposeDeclareWarBill(provinceId)}
               onStartCampaign={(provinceId, type) => startCampaign(provinceId, type)}
               onCommitCampaignSeason={() => {}}
               onResolveCampaignEvent={() => {}}
@@ -243,9 +395,17 @@ export default function ProvinciaeScreen() {
               onVolunteerOfficer={(provinceId, charId) => volunteerOfficer(provinceId, charId)}
               onResolveOfficerDecision={(provinceId, idx, risk) => resolveOfficerDecision(provinceId, idx, risk)}
             />
-            )}
+            ) : null}
           </Animated.View>
         </>
+      )}
+
+      {activeMajorWar && (
+        <WarStatusModal
+          warId={activeMajorWar.id}
+          visible={warStatusModalOpen}
+          onClose={() => setWarStatusModalOpen(false)}
+        />
       )}
 
       <SeasonOverlay />
@@ -259,6 +419,34 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
     paddingTop: RESOURCE_BAR_HEIGHT,
   } as ViewStyle,
+
+  // Campaign Map plan, Chunk C5 — order mode.
+  orderBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    padding: SPACING.sm,
+    backgroundColor: '#2e2a24',
+    borderWidth: 1,
+    borderColor: COLORS.gold,
+    borderRadius: 10,
+  } as ViewStyle,
+  orderBannerTitle: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 13, fontWeight: '700' } as TextStyle,
+  orderBannerSub: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 10, marginTop: 2 } as TextStyle,
+  orderBannerToggle: {
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: 14,
+    paddingHorizontal: 10, paddingVertical: 6,
+  } as ViewStyle,
+  orderBannerToggleActive: { backgroundColor: '#1a2818', borderColor: COLORS.laurel } as ViewStyle,
+  orderBannerToggleText: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 10 } as TextStyle,
+  orderBannerToggleTextActive: { color: '#8fc98f', fontWeight: '700' } as TextStyle,
+  orderBannerCancel: {
+    borderWidth: 1, borderColor: COLORS.crimson, borderRadius: 14,
+    paddingHorizontal: 10, paddingVertical: 6,
+  } as ViewStyle,
+  orderBannerCancelText: { color: COLORS.crimson, fontFamily: FONTS.ui, fontSize: 10, fontWeight: '700' } as TextStyle,
 
   header: {
     flexDirection: 'row',
@@ -357,6 +545,34 @@ const styles = StyleSheet.create({
   } as TextStyle,
 
   mapContainer: { flex: 1, overflow: 'hidden' } as ViewStyle,
+
+  // July Fixes plan, Chunk C — war status banner, pinned top-right over the map.
+  warBanner: {
+    position: 'absolute',
+    top: SPACING.sm,
+    right: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(30,16,12,0.85)',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.crimson + 'aa',
+  } as ViewStyle,
+
+  warBannerIcon: {
+    fontSize: 13,
+  } as TextStyle,
+
+  warBannerText: {
+    color: COLORS.marble,
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  } as TextStyle,
 
   legend: {
     flexDirection: 'row',

@@ -7,8 +7,27 @@ import type { GameState } from './gameStore';
 
 const SAVE_KEY = 'rome_save_v1';
 
-// Minimal Zod schema — validates the shape is correct before loading
-const SaveSchema = z.object({
+// Phase 5, Chunk P5-I — saveVersion tracks which phase's shape a save was
+// last WRITTEN against (1-5, matching the phase-plan sequence: pre-P3 saves
+// predate this field entirely and read as `undefined`, not 1 — there was no
+// "version 1" concept before this chunk; 5 is current/Phase 5). Written on
+// every save() call; read (optionally) by loadGame/tests, never required —
+// the actual migration behavior is still the existing per-field `??`
+// fallback spread in gameStore.loadGame (unchanged, already tested), not a
+// version-dispatch table. This stamp exists so that logic has something to
+// key off in the future, and so the fixture/migration tests in
+// __tests__/saveLoad.test.ts can assert on it directly.
+export const CURRENT_SAVE_VERSION = 5;
+
+// Minimal Zod schema — validates the shape is correct before loading.
+// Exported (Phase 5, Chunk P5-I) so migration-fixture tests can validate
+// directly against it, catching schema drift precisely rather than only
+// indirectly through load()/importSave()'s try/catch.
+export const SaveSchema = z.object({
+  // Optional/no default: an absent value means "written before this chunk,"
+  // which is meaningfully different from "written at version 1" — there is
+  // no version 1. See CURRENT_SAVE_VERSION's comment above.
+  saveVersion: z.number().optional(),
   year: z.number(),
   turnNumber: z.number(),
   seasonIndex: z.number().min(0).max(3),
@@ -18,11 +37,23 @@ const SaveSchema = z.object({
   family: z.array(z.object({ id: z.string(), name: z.string() })).min(1),
   bills: z.array(z.any()),
   clans: z.array(z.any()),
-  // .default([]) ensures save files created before this feature load cleanly
+  // Phase 4, Chunk P4-A — .default([]) ensures pre-P4-A saves load cleanly.
+  secrets: z.array(z.any()).default([]),
+  // Player-choice blackmail — .default([]) ensures pre-existing saves load cleanly.
+  latentSecrets: z.array(z.any()).default([]),
+  // .default([]) ensures save files created before this feature load cleanly.
+  // July 2026 fixes, Chunk D — 'provincial' was missing from this enum even
+  // though gameStore.recruitCityClient has set Client.type to 'provincial'
+  // since provincial clients were introduced: SaveSchema.parse() throws on
+  // any value outside the enum, so any save containing a recruited
+  // provincial client (previously only possible via 4 Italy cities) was
+  // silently treated as corrupted and failed to load entirely (see
+  // LocalSaveProvider.load's try/catch). Chunk D adds provincial clients to
+  // 10 more cities, making this far more likely to be hit.
   clients: z.array(z.object({
     id: z.string(),
     name: z.string(),
-    type: z.enum(['muscle', 'publicSupport', 'votingSway']),
+    type: z.enum(['muscle', 'publicSupport', 'votingSway', 'provincial']),
     acquiredTurn: z.number(),
   })).default([]),
   ownedAssets: z.array(z.object({
@@ -31,6 +62,12 @@ const SaveSchema = z.object({
     assignedCharacterId: z.string().optional(),
     turnAcquired: z.number(),
   })).default([]),
+  // Family House rework — optional (not .default()): a missing key means a
+  // pre-rework save, and gameStore.loadGame's `savedState.house ??
+  // INITIAL_STATE.house` fallback is what actually backfills it (same
+  // pattern as `wars`/`cadetBranch`'s per-field migrations there), not this
+  // schema. z.any() loose-validation, same treatment as `secrets`/`clans`.
+  house: z.any().optional(),
   familyReputations: z.record(z.string(), z.number()).default({}),
   lifetimeDignitas: z.number(),
   legacyObjectives: z.array(z.object({
@@ -38,6 +75,9 @@ const SaveSchema = z.object({
     currentValue: z.number(),
     milestonesReached: z.array(z.number()),
   })).default([]),
+  // Legacy shape (pre-P4-C saves) — kept optional so old saves still
+  // validate; gameStore.loadGame migrates any entries here into `trials`
+  // (mirrors the wars/P3-A per-element migration pattern).
   trialQueue: z.array(z.object({
     id: z.string(),
     accusedCharacterId: z.string(),
@@ -49,7 +89,10 @@ const SaveSchema = z.object({
     resolved: z.boolean(),
     outcome: z.string().optional(),
     actionsUsed: z.array(z.string()),
-  })).default([]),
+  })).default([]).optional(),
+  // Phase 4, Chunk P4-C — the unified TrialState pipeline. .default([])
+  // ensures pre-P4-C saves (which have trialQueue instead) load cleanly.
+  trials: z.array(z.any()).default([]),
   // P2-A instrumentation — .default()s ensure pre-Phase-2 saves load cleanly.
   seasonStartedAt: z.number().default(() => Date.now()),
   actionsThisSeason: z.number().default(0),
@@ -67,6 +110,70 @@ const SaveSchema = z.object({
   })).default({}),
   grandGamesVoteBonus: z.number().default(0),
   grandGamesBonusYearsUntilDecay: z.number().default(0),
+  // Military Overhaul M9 — .default([]) ensures pre-M9 saves load cleanly.
+  // M10 grew WarState.treaty's inner shape (stage/resolvedTurn/initiator on
+  // TreatyState) and TREATY_TERMS-referencing termIds — still covered by
+  // this z.any() element type, so no schema change was needed for that part.
+  // `provinces` (which M10's treaty engine can now add Sicily entries to)
+  // isn't listed in this schema at all and never was — like every other
+  // unlisted GameState field, it passes through unvalidated: parse() here is
+  // a validation gate only, its result is discarded (see load()/importSave()
+  // below, which both return the original `parsed` object, not the parsed
+  // schema value), so unlisted fields are never stripped.
+  wars: z.array(z.any()).default([]),
+  // July 2026 fixes, Chunk D — .default(null) ensures pre-Chunk-D saves load cleanly.
+  activeCityEvent: z.object({
+    defId: z.string(),
+    cityId: z.string(),
+  }).nullable().default(null),
+  // Phase 3, Chunk P3-A — .default(null) ensures pre-P3-A saves load cleanly.
+  // Widened by P3-D ('gens_ends') and P3-E ('republic_falls') — see
+  // gameStore.ts's field comment; now matches models/epilogue.ts's full
+  // EpilogueOutcome.
+  pendingEpilogue: z.enum(['victory', 'exhaustion', 'humbled', 'republic_falls', 'gens_ends']).nullable().default(null),
+  // Phase 3, Chunk P3-C — .default(null) ensures pre-P3-C saves load cleanly.
+  pendingSuccession: z.any().nullable().default(null),
+  // Campaign Map plan, Chunk C7 — .default()s ensure pre-C7 saves (every one
+  // with no campaignLog/pendingEngagements key at all) load cleanly.
+  campaignLog: z.any().nullable().default(null),
+  pendingEngagements: z.array(z.any()).default([]),
+  regency: z.any().nullable().default(null),
+  // Phase 3, Chunk P3-D — .default()s ensure pre-P3-D saves load cleanly;
+  // loadGame's normalisation (gameStore.ts) backfills a real cadetBranch
+  // for an in-progress legacy save (a missing one would silently disable
+  // the extinction safety net otherwise).
+  cadetBranch: z.any().nullable().default(null),
+  cadetBranchUsed: z.boolean().default(false),
+  legacyPenaltyMult: z.number().default(1),
+  // Phase 3, Chunk P3-E — .default()s ensure pre-P3-E saves load cleanly.
+  // A save from before these fields existed has no way to know its true
+  // highest office/generation count — null/1 are honest "unknown" defaults,
+  // not retroactively computed.
+  highestOfficeEverHeld: z.any().nullable().default(null),
+  paterfamiliasGenerations: z.number().default(1),
+  gensFoundedYear: z.number().default(-264),
+  runFinished: z.boolean().default(false),
+  currentEpilogueRecord: z.any().nullable().default(null),
+  // Phase 3, Chunk P3-F — .default(false) ensures pre-P3-F saves load cleanly.
+  endlessMode: z.boolean().default(false),
+  // Phase 5, Chunk P5-E — .default()s ensure pre-P5-E saves (every one of
+  // which was Brutii) load cleanly. parse()'s result is discarded (see
+  // load()/importSave() below), so these defaults only matter for
+  // validation, not migration — gameStore.loadGame's `{...INITIAL_STATE,
+  // ...savedState}` spread already backfills a missing key from
+  // INITIAL_STATE's own 'brutii' defaults with no extra per-field logic
+  // needed (unlike wars/trials, this is a plain top-level scalar, not a
+  // nested shape change).
+  gensId: z.enum(['brutii', 'duilia', 'manlia']).default('brutii'),
+  gensSurname: z.string().default('Brutus'),
+  gensName: z.string().default('Brutia'),
+  gensPlural: z.string().default('Brutii'),
+  // Phase 5, Chunk P5-G — .default() ensures pre-P5-G saves load cleanly.
+  // Same discipline as gensId above: parse()'s result is discarded (see
+  // load()/importSave() below), so this default only matters for
+  // validation — gameStore.startGame/loadGame's own INITIAL_STATE spread
+  // already backfills a missing key for an actual in-progress save.
+  difficulty: z.enum(['clemens', 'aequus', 'ferox']).default('aequus'),
 });
 
 export interface SaveProvider {
@@ -77,14 +184,27 @@ export interface SaveProvider {
 export class LocalSaveProvider implements SaveProvider {
   async save(state: GameState): Promise<void> {
     // Strip UI-only fields that should never persist across sessions.
-    // agendaVisible / uiNavRequest / activeEvent are transient modal state.
+    // agendaVisible / uiNavRequest are transient modal state.
+    // Military Overhaul M5: a battle in progress does not survive an app
+    // restart (re-enter/re-launch instead) — activeEvent used to get the
+    // same treatment, but Phase 5, Chunk P5-I stopped stripping it: it's a
+    // real GameState field (EventModal renders off it directly), and unlike
+    // a battle, a single random event has no meaningful "session" to lose —
+    // keeping it means a background-save/app-kill while an event modal is
+    // showing no longer silently discards that event on restart (the gap
+    // this chunk's premium-hygiene audit found; pendingSuccession/in-session
+    // trials/pendingBirthNaming were already safe, being real fields too).
     const {
       agendaVisible: _av,
       uiNavRequest:  _unr,
-      activeEvent:   _ae,
+      activeBattle:      _ab,
+      activeBattleSetup: _abs,
+      activeBattleBridgeCtx: _abbc,
+      selectedTrialId: _sti,
+      basilicaReturnTab: _brt,
       ...persistedState
     } = state as any;
-    const json = JSON.stringify(persistedState);
+    const json = JSON.stringify({ ...persistedState, saveVersion: CURRENT_SAVE_VERSION });
     await AsyncStorage.setItem(SAVE_KEY, json);
   }
 
@@ -117,7 +237,7 @@ export async function hasSave(): Promise<boolean> {
 
 export async function exportSave(state: GameState): Promise<void> {
   try {
-    const json = JSON.stringify(state, null, 2);
+    const json = JSON.stringify({ ...state, saveVersion: CURRENT_SAVE_VERSION }, null, 2);
     const filename = `rome-save-${Date.now()}.json`;
     const uri = FileSystem.documentDirectory + filename;
     await FileSystem.writeAsStringAsync(uri, json, { encoding: FileSystem.EncodingType.UTF8 });

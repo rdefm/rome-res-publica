@@ -9,15 +9,16 @@
 //   tut-03 → add +15 support to highest live bill
 //   tut-05 → invoke declareFamilyCampaign for eligible member
 //
-// tut-04 intel: approximated via setFlag:intel-claudius-pulcher:true
-// (gatherIntelligence sets leader.intelGathered directly; adding a 4th
-//  special case would exceed the plan's limit of 3. Flag is queryable
-//  from the Forum screen as a functional equivalent.)
+// tut-04 intel: Phase 4, Chunk P4-G — rewired from the pre-Phase-4
+// setFlag:intel-claudius-pulcher:true (never consumed) to
+// grantGroundwork:claudius-pulcher:0.3, a real head start in the Secrets
+// system toward the Claudius arc's counter-Secret (data/claudiusArc.ts).
 //
 // leaderRel token: new in P1-G, added to applyEffectString in resourceEngine.ts.
 // Format: leaderRel:[leaderId]:[delta]
 
 import type { EventDef } from '../models/event';
+import { CLAUDIUS_LEADER_ID } from './claudiusArc';
 
 export const TUTORIAL_EVENT_DEFS: EventDef[] = [
 
@@ -184,9 +185,9 @@ export const TUTORIAL_EVENT_DEFS: EventDef[] = [
   },
 
   // ── tut-04 ─ "The Claudian Smile" ────────────────────────────────────────
-  // Gate: year-1 Winter (seasonIndex 3)
-  // Intel: setFlag:intel-claudius-pulcher:true approximates gatherIntelligence
-  // (see header note above).
+  // Gate: year-1 Winter (seasonIndex 3) — the arc's own year-1 introduction
+  // (data/claudiusArc.ts's starting Secret exists from game start regardless
+  // of start type; this is where a GUIDED start is told about it in-fiction).
   {
     id: 'evt-tut-04',
     title: 'The Claudian Smile',
@@ -206,12 +207,20 @@ export const TUTORIAL_EVENT_DEFS: EventDef[] = [
       {
         id: 'set-to-work',
         label: "Set Philon's contacts to work. (−8 Fides)",
-        successEffect: 'fides-8|setFlag:intel-claudius-pulcher:true',
+        // Phase 4, Chunk P4-G — was 'fides-8|setFlag:intel-claudius-pulcher:true'.
+        // That flag was never consumed anywhere (grepped before removing it,
+        // per the plan's own instruction) — a leftover from the pre-Phase-4
+        // "intel flag" system CLAUDE.md's baseline section describes as
+        // already rewired. grantGroundwork gives a real head start (capped
+        // at BALANCE.secrets.groundworkCap = 0.30, the same ceiling ordinary
+        // failed gathers climb toward) in the actual Secrets system,
+        // teaching the gather loop this event's own flavor text promises.
+        successEffect: `fides-8|grantGroundwork:${CLAUDIUS_LEADER_ID}:0.3`,
         failureEffect: '',
         successText:
           'Philon departs without elaborating on where he is going. ' +
-          'A week later he returns, says nothing, and the matter is entered in the records. ' +
-          'The Forum tab now shows what has been gathered on Ap. Claudius Pulcher.',
+          'A week later he returns, says little, but what he has learned of Ap. Claudius Pulcher\'s own ' +
+          'affairs will make the next attempt to learn more considerably easier.',
       },
       {
         id: 'wont-stoop',

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { ClanLeader } from '../../models/clan';
+import { useGameStore } from '../../state/gameStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 export function RelBar({ value }: { value: number }) {
@@ -27,6 +28,16 @@ function LeaderCard({ leader, selected, onPress, campaigning }: {
     : leader.relationship <= -20 ? COLORS.crimson
     : COLORS.border;
 
+  // Phase 4, Chunk P4-B — Dossier indicators. Only DISCOVERED against-you
+  // Secrets show — the Dossier is the player's own knowledge, not omniscience.
+  const secrets = useGameStore(s => s.secrets);
+  const youHoldOnThem = secrets.some(
+    s => s.holder === 'player' && s.subject.kind === 'leader' && s.subject.leaderId === leader.id && s.status === 'held'
+  );
+  const theyHoldOnYou = secrets.some(
+    s => s.holder === leader.id && s.subject.kind === 'family' && s.discovered && (s.status === 'held' || s.status === 'extorting')
+  );
+
   return (
     <TouchableOpacity
       style={[lc.card, { borderColor }]}
@@ -35,6 +46,8 @@ function LeaderCard({ leader, selected, onPress, campaigning }: {
     >
       {leader.blackmail && <View style={lc.blackmailDot} />}
       {leader.alliance && <View style={lc.allianceDot} />}
+      {youHoldOnThem && <View style={lc.youHoldDot} />}
+      {theyHoldOnYou && <View style={lc.theyHoldDot} />}
       <Text style={lc.emoji}>{leader.emoji}</Text>
       <Text style={lc.name} numberOfLines={1}>{leader.name.split(' ').slice(-1)[0]}</Text>
       <Text style={lc.title} numberOfLines={1}>{leader.title}</Text>
@@ -54,6 +67,10 @@ const lc = StyleSheet.create({
   },
   blackmailDot: { position: 'absolute', top: 4, right: 4, width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.crimson },
   allianceDot: { position: 'absolute', top: 4, left: 4, width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.laurel },
+  // Phase 4, Chunk P4-B — Dossier indicators, bottom corners so they never
+  // collide with the existing top-corner blackmail/alliance dots.
+  youHoldDot: { position: 'absolute', bottom: 4, right: 4, width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.gold },
+  theyHoldDot: { position: 'absolute', bottom: 4, left: 4, width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.denariiColor },
   emoji: { fontSize: 28, marginBottom: 4 },
   name: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 11, fontWeight: '600', textAlign: 'center' },
   title: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 9, textAlign: 'center', marginBottom: 4 },

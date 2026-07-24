@@ -44,6 +44,12 @@ interface EventCardProps {
 export default function EventCard({ def, instance, onChoiceMade }: EventCardProps) {
   const clients = useGameStore(s => s.clients);
   const dismissEvent = useGameStore(s => s.dismissEvent);
+  // Phase 5, Chunk P5-E — lets static event content reference the actual
+  // playing family (e.g. '{gensPlural}' -> 'Duilii') via the same
+  // interpolation chain {clientName}/{clientType} already established here.
+  const gensName = useGameStore(s => s.gensName);
+  const gensSurname = useGameStore(s => s.gensSurname);
+  const gensPlural = useGameStore(s => s.gensPlural);
 
   // P1-G: result text state — shown after a terminal, no-skill-check choice is made
   const [pendingChoice, setPendingChoice] = useState<{
@@ -76,7 +82,10 @@ export default function EventCard({ def, instance, onChoiceMade }: EventCardProp
   // in P2-B so dynamic interpolation actually reaches the player.
   const resolvedBody = (instance.bodyText ?? def.bodyText)
     .replace('{clientName}', instance.clientName ?? previewClientName ?? 'a stranger')
-    .replace('{clientType}', instance.clientType ?? 'client');
+    .replace('{clientType}', instance.clientType ?? 'client')
+    .replace('{gensName}', gensName)
+    .replace('{gensSurname}', gensSurname)
+    .replace('{gensPlural}', gensPlural);
 
   const imageSource = EVENT_IMAGES[def.imageKey] ?? null;
 

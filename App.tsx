@@ -12,15 +12,22 @@ import CuriaScreen from './src/screens/CuriaScreen';
 import ProvinciaeScreen from './src/screens/ProvinciaeScreen';
 import ResourceBar from './src/components/shared/ResourceBar';
 import EventModal from './src/components/shared/EventModal';
+import CityEventModal from './src/components/provinciae/CityEventModal';
 import AmbitionSelectionModal from './src/components/shared/AmbitionSelectionModal';
 import BirthNamingModal from './src/components/domus/BirthNamingModal';
 import AgendaTablet from './src/components/shared/AgendaTablet';
 import WelcomeBackModal from './src/components/shared/WelcomeBackModal';
+import BattleScreen from './src/screens/BattleScreen';
+import EpilogueScreen from './src/screens/EpilogueScreen';
+import TrialSessionModal from './src/components/cursus/TrialSessionModal';
+import EngagementInterstitial from './src/components/provinciae/EngagementInterstitial';
+import AchievementToast from './src/components/shared/AchievementToast';
 import { generateAgenda } from './src/engine/agendaEngine';
 import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle } from './src/components/shared/TabBar';
 import StartMenuScreen from './src/screens/StartMenuScreen';
 import { COLORS } from './src/utils/theme';
 import { useGameStore } from './src/state/gameStore';
+import { loadEarnedAchievements } from './src/state/achievementStore';
 
 const Tab = createBottomTabNavigator();
 
@@ -53,6 +60,14 @@ const eb = StyleSheet.create({
 
 // ─── Tab navigator ────────────────────────────────────────────────────────────
 
+// Campaign Map plan, Chunk C7 — Provinciae's tab-icon badge (unseen campaign
+// activity) needs a live store subscription; the plain renderTabIcon
+// function screenOptions otherwise calls has no React context to read from.
+function ProvinciaeTabIcon({ focused }: { focused: boolean }) {
+  const hasCampaignActivity = useGameStore(s => s.campaignLog !== null);
+  return renderTabIcon('Provinciae', focused, hasCampaignActivity);
+}
+
 function AppNavigator() {
   const insets = useSafeAreaInsets();
   const barHeight = tabBarStyle.height + insets.bottom;
@@ -61,7 +76,8 @@ function AppNavigator() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarIcon: ({ focused }) => renderTabIcon(route.name, focused),
+        tabBarIcon: ({ focused }) =>
+          route.name === 'Provinciae' ? <ProvinciaeTabIcon focused={focused} /> : renderTabIcon(route.name, focused),
         tabBarLabel: () => null,
         // Single Image covers the full bar — no per-item background needed
         tabBarBackground: () => <TabBarBackground height={barHeight} />,
@@ -97,6 +113,12 @@ function GameRoot() {
 
   // ── Welcome-back recap (local state — not in store) ────────────────────────
   const [showWelcomeBack, setShowWelcomeBack] = useState(false);
+
+  // ── Laurels — warm the cross-run earned-achievements cache once, well
+  //    before a player can realistically reach a season end (P5-F). ────────
+  useEffect(() => {
+    loadEarnedAchievements();
+  }, []);
 
   // ── AppState listener — autosave on background, welcome-back on foreground ──
   useEffect(() => {
@@ -135,20 +157,36 @@ function GameRoot() {
   const uiNavRequest  = useGameStore(s => s.uiNavRequest);
   const clearNavRequest = useGameStore(s => s.clearNavRequest);
   const selectCharacter = useGameStore(s => s.selectCharacter);
+  const selectTrialForBasilica = useGameStore(s => s.selectTrialForBasilica);
+  const setBasilicaReturnTab = useGameStore(s => s.setBasilicaReturnTab);
 
   useEffect(() => {
     if (!uiNavRequest) return;
     if (!navRef.isReady()) return;
 
+    // Basilica deep-link (trialId payload) — remember whichever tab the
+    // player was actually on before this switches them to Cursus, so
+    // CursusScreen's closeBasilica can send them back instead of stranding
+    // them on Cursus once the sheet is dismissed (e.g. CuriaScreen's "Open
+    // the Basilica" button). null when they were already on Cursus.
+    if (uiNavRequest.trialId) {
+      const currentTab = navRef.getCurrentRoute()?.name ?? null;
+      setBasilicaReturnTab(currentTab && currentTab !== uiNavRequest.tab ? (currentTab as any) : null);
+    }
+
     // Navigate to the target tab
     navRef.navigate(uiNavRequest.tab as never);
 
-    // Apply payload — selectedCharacterId is the only confirmed store field (v1).
-    // provinceId / billId / trialId: tab landing only per plan §P1-C v1 scope.
+    // Apply payload — selectedCharacterId and trialId (Phase 4, P4-D) are the
+    // only confirmed store fields so far. provinceId / billId: tab landing
+    // only per plan §P1-C v1 scope.
     // TODO (P1-C+): add selectedLeaderId, expandedClanId, provinceId deep-links
     //               once the relevant screen store fields are confirmed.
     if (uiNavRequest.selectedCharacterId) {
       selectCharacter(uiNavRequest.selectedCharacterId);
+    }
+    if (uiNavRequest.trialId) {
+      selectTrialForBasilica(uiNavRequest.trialId);
     }
 
     clearNavRequest();
@@ -168,6 +206,7 @@ function GameRoot() {
       if (s.activeEvent)                               return;
       if (s.pendingBirthNaming)                        return;
       if ((s.pendingAmbitionScopes ?? []).length > 0)  return;
+      if (s.trials.some(t => t.status === 'in_session')) return; // Phase 4, P4-E — trial day
       if (s.agendaViewedTurn >= s.turnNumber)          return;
 
       const items = generateAgenda(s);
@@ -192,14 +231,42 @@ function GameRoot() {
         <StatusBar style="light" backgroundColor={COLORS.bg} />
         <ResourceBar />
         <AppNavigator />
-        {/* Modal priority: EventModal → AmbitionSelectionModal → AgendaTablet → WelcomeBackModal */}
+        {/* Modal priority: EventModal → AmbitionSelectionModal → BirthNamingModal → AgendaTablet → WelcomeBackModal.
+            BirthNamingModal was imported but never mounted here until this fix — pendingBirthNaming
+            was being set correctly by turnSequencer's passive birth check, but with no modal ever
+            rendering, confirmBirthNaming (which actually appends the child to `family`) could never
+            fire, and the stuck pendingBirthNaming silently blocked every future birth roll too
+            (turnSequencer's `s.pendingBirthNaming === null` gate). Self-gated on pendingBirthNaming,
+            same idiom as AmbitionSelectionModal, so its position here is order-of-priority only.
+            BattleScreen is its own full-screen native Modal (Military Overhaul M5) — it takes
+            over the whole screen whenever a battle is staging/active, regardless of DOM order.
+            TrialSessionModal (Phase 4, P4-E) is the same idiom — a full-screen native Modal
+            self-gated on a trial with status 'in_session'; turnSequencer only ever puts one
+            trial in session at a time (fileProsecution/shouldTriggerTrial both enforce a single
+            active trial system-wide), so it never stacks with itself, though it can in principle
+            coincide with a same-season random event (both are native Modals; no explicit
+            deferral was added for this rare overlap, same looseness this codebase already
+            tolerates elsewhere). EpilogueScreen (Phase 3, P3-E)
+            self-gates on runFinished — takes over the whole screen once a run ends, same idiom,
+            outranking everything else here since nothing is actionable once a run is finished.
+            EngagementInterstitial (Campaign Map plan, Chunk C7) is the same full-screen-Modal
+            idiom, self-gated on pendingEngagements[0] — TEMPORARY (see that component's own
+            header comment): C8 replaces its single "Trust the Legate" button with a real
+            tactical-vs-abstract choice, not this component's mounting or gating. */}
         <EventModal />
+        <CityEventModal />
         <AmbitionSelectionModal />
+        <BirthNamingModal />
         <AgendaTablet />
         <WelcomeBackModal
           visible={showWelcomeBack}
           onDismiss={() => setShowWelcomeBack(false)}
         />
+        <TrialSessionModal />
+        <EngagementInterstitial />
+        <BattleScreen />
+        <EpilogueScreen />
+        <AchievementToast />
       </View>
     </NavigationContainer>
   );

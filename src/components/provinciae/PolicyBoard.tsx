@@ -7,7 +7,7 @@ import type {
   TaxationNotch,
   SecurityNotch,
   DevelopmentNotch,
-} from '../../models/province';
+} from '../../models/city';
 import {
   TAXATION_GOLD_MULT,
   TAXATION_REL_PER_YEAR,
@@ -16,7 +16,7 @@ import {
   SECURITY_REVOLT_DELTA,
   DEVELOPMENT_INFRA_DELTA,
   DEVELOPMENT_REL_PER_YEAR,
-} from '../../models/province';
+} from '../../models/city';
 
 // ─── Data tables ─────────────────────────────────────────────────────────────
 

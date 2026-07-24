@@ -2,10 +2,13 @@ import type { GameState } from '../state/gameStore';
 import type { Client, ClientType } from '../models/client';
 import type { EventInstance } from '../models/event';
 import type { CrisisTrackId } from '../models/crisis';
+import type { WarState, WarScale } from '../models/war';
+import type { Bill } from '../models/bill';
 import { parseEffect } from '../models/bill';
 import { generateClientName } from '../data/clientNames';
 import { computeTotalAssetBonuses } from './assetEngine';
-import { calcAssetGoldOutput, calcAssetFidesOutput } from './provinceEngine';
+import { computeHouseBonuses } from './houseEngine';
+import { calcCityAssetBonuses } from './cityEngine';
 import { buildClient, computeTotalClientBonuses } from './clientEngine';
 import { PATRON_TIER_DEFINITIONS } from '../models/patronLadder';
 import {
@@ -14,6 +17,9 @@ import {
 } from './crisisEngine';
 import { getTierFromLevel } from '../models/crisis';
 import { BALANCE } from '../data/balance';
+import { applySuccession, promoteCadetToParterfamilias } from './inheritanceEngine';
+import { generateLatentSecret } from './secretEngine';
+import type { SecretType } from '../models/secret';
 
 export interface ApplyEffectOptions {
   previewClientName?: string;
@@ -171,9 +177,14 @@ export function calcResourceIncome(state: GameState): {
   const assetBonuses = computeTotalAssetBonuses(state.ownedAssets);
   const assetFides = assetBonuses.fides ?? 0;
 
-  // Step 6b: Province asset Fides bonus (former Gratia/Dignitas asset bonuses, now Fides)
-  const provinceFidesBonus = state.provinces.reduce(
-    (sum, p) => sum + calcAssetFidesOutput(p), 0
+  // Step 6a: Family House bonuses (Library's recurring Fides, rented businesses'
+  // Fides/gold — dignitas/season and faction relationship drift are NOT part of
+  // this Fides/Denarii income calc; turnSequencer applies those directly).
+  const houseBonuses = computeHouseBonuses(state.house);
+
+  // Step 6b: City asset Fides bonus (former Gratia/Dignitas asset bonuses, now Fides)
+  const provinceFidesBonus = state.cities.reduce(
+    (sum, p) => sum + (calcCityAssetBonuses(p).fides ?? 0), 0
   );
 
   // Step 6c: Munificence endowments (P2-F) — permanent Fides/season per built endowment
@@ -195,33 +206,61 @@ export function calcResourceIncome(state: GameState): {
   // Step 9: Unrest tier ≥ 2 causes passive Plebs decay (design doc section 2.3)
   // plebsDelta is applied by turnSequencer in Chunk 2C once it reads this field.
   const unrestTier = getTierFromLevel(state.crisis.unrest.level);
-  const plebsDelta = unrestTier >= 2 ? -3 : 0;
+  // July 2026 fixes, Chunk E — assets' plebsPerTurn (e.g. Provincial Ludus)
+  // is the "reduce unrest" ask's real hook: calcUnrestEscalation reads
+  // state.rome.plebs, not a dedicated unrest token, so raising Plebs mood is
+  // how an asset actually lowers Unrest escalation. Summed across Latium's
+  // own assets plus every city's, same convention as fides/gold above.
+  const assetPlebsBonus = (assetBonuses.plebsPerTurn ?? 0)
+    + state.cities.reduce((sum, p) => sum + (calcCityAssetBonuses(p).plebsPerTurn ?? 0), 0);
+  const plebsDelta = (unrestTier >= 2 ? -3 : 0) + assetPlebsBonus;
+
+  // Phase 3, Chunk P3-C — a regent governing in a minor heir's name is
+  // less effective than the true paterfamilias would be. Applied to the
+  // WHOLE total (not just baseIncome) — the plan's "×0.75 Fides" framing.
+  const regencyMult = state.regency ? BALANCE.succession.regencyIncomeMult : 1;
 
   // Final Fides income
-  const fidesIncome = Math.max(0,
-    Math.round(baseIncome * patronMultiplier)
-    + officeIncome
-    + clanFidesIncome
-    + clientFides
-    + assetFides
-    + provinceFidesBonus
-    + endowmentFides
-    + romeStatFides
-    + crisisFidesDelta   // negative at higher crisis tiers
-  );
+  const fidesIncome = Math.max(0, Math.round(
+    (
+      Math.round(baseIncome * patronMultiplier)
+      + officeIncome
+      + clanFidesIncome
+      + clientFides
+      + assetFides
+      + houseBonuses.fides
+      + provinceFidesBonus
+      + endowmentFides
+      + romeStatFides
+      + crisisFidesDelta   // negative at higher crisis tiers
+    ) * regencyMult
+  ));
 
-  // Denarii income — assets + province gold output + client gold + treasury mod + crisis penalty
-  const provinceDenariiBonus = state.provinces.reduce(
-    (sum, p) => sum + calcAssetGoldOutput(p), 0
+  // Denarii income — assets + house + city gold output + client gold + treasury mod + crisis penalty
+  const provinceDenariiBonus = state.cities.reduce(
+    (sum, p) => sum + (calcCityAssetBonuses(p).gold ?? 0), 0
   );
   const denariiIncome =
     (assetBonuses.gold ?? 0)
+    + houseBonuses.gold
     + provinceDenariiBonus
     + (clientBonuses.gold ?? 0)
     + romeMods.denariDelta
     + crisisDenariiDelta;  // negative at higher War/Economy tiers
 
-  return { fidesIncome, denariiIncome, plebsDelta };
+  // Phase 5, Chunk P5-G — the income seam (design invariant 4). Applied to
+  // the fully-computed season totals, not to any individual term above —
+  // margins, not prices (action costs/event effects/one-off grants are
+  // untouched, computed elsewhere). `?? 'aequus'` covers any fixture/legacy
+  // state without a difficulty field — Aequus's incomeMult is 1.0, so this
+  // is a no-op for every state that predates this chunk.
+  const incomeMult = BALANCE.difficulty[state.difficulty ?? 'aequus'].incomeMult;
+
+  return {
+    fidesIncome: Math.max(0, Math.round(fidesIncome * incomeMult)),
+    denariiIncome: Math.round(denariiIncome * incomeMult),
+    plebsDelta,
+  };
 }
 
 // ─── Training cost (P2-C) ─────────────────────────────────────────────────────
@@ -261,6 +300,30 @@ export function applyEffectString(
       continue;
     }
 
+    // ── Phase 3, P3-D — bare (no-colon, no-param) tokens ────────────────────
+    // continueAsCadet/cadetVisited take no parameter, so they never match
+    // the colon-gated block below (segment.includes(':') is false for
+    // them) — matched here as whole-segment literals instead. See
+    // cadetEvents.ts's evt-cadet-succession/evt-cadet-visit choices.
+    if (segment === 'continueAsCadet') {
+      const cadet = (patch as any).cadetBranch ?? state.cadetBranch;
+      if (cadet) {
+        Object.assign(patch, promoteCadetToParterfamilias(cadet, { ...state, ...patch } as GameState));
+      }
+      continue;
+    }
+    if (segment === 'cadetVisited') {
+      const cadet = (patch as any).cadetBranch ?? state.cadetBranch;
+      if (cadet) {
+        const metCount = cadet.metCount + 1;
+        patch.cadetBranch = { ...cadet, metCount };
+        if (metCount >= BALANCE.cadet.maxVisits) {
+          patch.flags = { ...(patch.flags ?? state.flags), 'cadet-visits-exhausted': true };
+        }
+      }
+      continue;
+    }
+
     // ── Colon-delimited special tokens ────────────────────────────────────
     if (segment.includes(':')) {
       const parts = segment.split(':');
@@ -275,6 +338,91 @@ export function applyEffectString(
           rawVal === 'false' ? false :
           Number(rawVal);
         patch.flags = { ...(patch.flags ?? state.flags), [flagKey]: val };
+        continue;
+      }
+
+      // ── tableRefuseMamertineBill ─────────────────────────────────────────
+      // Fired by warEvents.ts's evt-messana-appeal 'refuse' choice. Tables a
+      // low-support Senate motion against answering Messana's plea — hard,
+      // not impossible, to pass (support: -20 is a first-pass/unverified
+      // balance call, same convention as every other bill's numbers). If it
+      // passes, Rome stays out of the war; if it fails or expires (the
+      // likelier outcome), the Senate overrules the player and answers the
+      // call anyway (see its own failEffect). Dedup follows
+      // buildWarTriumphBill's id-prefix pattern (checks both queued and
+      // already-resolved bills) since this can only ever fire once per
+      // playthrough anyway (messanaResolved is set the same moment, gating
+      // out any repeat firing of the event itself).
+      if (key === 'tableRefuseMamertineBill') {
+        const bills = patch.bills ?? state.bills;
+        const alreadyQueued = bills.some(b => b.id.startsWith('refuse-mamertines'))
+          || (state.passedBills ?? []).some(b => b.id.startsWith('refuse-mamertines'));
+        if (!alreadyQueued) {
+          const refuseBill: Bill = {
+            id: `refuse-mamertines-${state.year}`,
+            name: 'Do Not Answer the Mamertine Call',
+            desc: 'A motion urging the Senate to leave Messana to its fate rather than risk war with Carthage over a strait none of Rome\'s neighbours will fight for.',
+            type: 'military',
+            support: -20,
+            turnsLeft: 3,
+            passEffect: 'fides+5',
+            failEffect: 'setFlag:messanaJoinsRome:true|startWar:carthage:major:0|fides-5',
+            playerSubmitted: true,
+            repealable: false,
+          };
+          patch.bills = [...bills, refuseBill];
+        }
+        continue;
+      }
+
+      // ── incorporateCity:<id> ──────────────────────────────────────────────
+      // Fired by a passed incorporation bill (see cityEngine.
+      // buildIncorporationBill). Flips status: 'unincorporated' →
+      // 'incorporated' and clears incorporationBillAvailable so the bill
+      // can't be re-tabled. Also recalls any player Ambassador posted there
+      // — the Ambassador system stops applying once incorporated (see
+      // CityStatus's own type comments in models/city.ts); a
+      // Governor is later assigned by lot through the existing,
+      // unrelated governor-assignment system.
+      if (key === 'incorporateCity') {
+        const provinceId = parts[1];
+        const cities = patch.cities ?? state.cities;
+        patch.cities = cities.map(p =>
+          p.id === provinceId
+            ? { ...p, status: 'incorporated' as const, incorporationBillAvailable: false, playerAmbassador: null }
+            : p
+        );
+        continue;
+      }
+
+      // ── assignAmbassador:<cityId>:<characterId> ───────────────────────────
+      // Fired by a passed ambassador-posting bill (see cityEngine.
+      // buildAmbassadorPostingBill). Posts the named character as Ambassador
+      // on the matching city — works on both unincorporated Roman
+      // cities and, per the foreign-relations plan's chunk WD-D, foreign
+      // ones too (a deliberate reversal of the Mediterranean plan's "no
+      // Ambassador system for foreign provinces" invariant, for Ambassadors
+      // only). turnsServed starts at 0; cityEngine.tickPlayerAmbassador
+      // (called from both of tickCity's relevant branches) increments it
+      // each season and ends the posting at the 2-year (8-season) term limit.
+      if (key === 'assignAmbassador') {
+        const provinceId = parts[1];
+        const characterId = parts[2];
+        const cities = patch.cities ?? state.cities;
+        patch.cities = cities.map(p =>
+          p.id === provinceId
+            ? {
+                ...p,
+                playerAmbassador: {
+                  characterId,
+                  personalRapport: 0,
+                  turnsServed: 0,
+                  actionsUsedThisTurn: [],
+                  intelRevealed: 0,
+                },
+              }
+            : p
+        );
         continue;
       }
 
@@ -343,6 +491,214 @@ export function applyEffectString(
         continue;
       }
 
+      // Phase 4, P4-G — grantGroundwork:leaderId:amount. Sets
+      // ClanLeader.intelGroundwork to at least `amount` (never lowers an
+      // existing higher value — a head start, not a reset) — used by
+      // evt-tut-04's rewired investigate choice to grant a strong start
+      // toward the counter-Secret on Ap. Claudius Pulcher. Generic by
+      // leaderId, not Claudius-specific, so any future event can reuse it.
+      if (key === 'grantGroundwork') {
+        const leaderId = parts[1];
+        const amount = parseFloat(parts[2] ?? '0');
+        patch.clans = (patch.clans ?? state.clans).map((clan: any) => ({
+          ...clan,
+          leaders: clan.leaders.map((leader: any) =>
+            leader.id === leaderId
+              ? { ...leader, intelGroundwork: Math.max(leader.intelGroundwork ?? 0, amount) }
+              : leader
+          ),
+        })) as any;
+        continue;
+      }
+
+      // Phase 3, P3-B — startWar:enemyId:scale:openingMomentumDelta
+      // Scripted ignition events (evt-messana-appeal, warEvents.ts) trigger
+      // war state through this token rather than a direct store-action call — keeps
+      // event content routed through the same generic effect-string
+      // vocabulary every other event uses, matching this file's existing
+      // colon-token pattern (setFlag/addClient/blackmail/leaderRel above).
+      // Mirrors gameStore.startWar's WarState construction — deliberately
+      // NOT imported from there (this file has no store access, and
+      // gameStore.ts already imports FROM warEngine.ts, which itself
+      // imports FROM this file; importing gameStore.ts here would be
+      // circular). Kept in sync by hand — small, stable shape, same
+      // tradeoff warEngine.ts's buildWarTriumphBill already accepts for an
+      // identical reason (see that function's header comment).
+      //
+      // Chunk C9 — the third parameter seeds MOMENTUM, not warScore
+      // directly: warScore is recomputed fresh each season from the
+      // campaign map (engine/warStanding.ts), so a direct set here would
+      // just be overwritten the very first season after ignition. Starting
+      // momentum instead gives the same "opening kick" and fades on the
+      // same decay schedule a real battle result would.
+      if (key === 'startWar') {
+        const enemyId = parts[1];
+        const scale = (parts[2] ?? 'major') as WarScale;
+        const openingMomentum = parseInt(parts[3] ?? '0', 10);
+        const wars = patch.wars ?? state.wars ?? [];
+        const alreadyActive = wars.some((w: WarState) => w.active && w.enemyId === enemyId && w.scale === scale);
+        if (!alreadyActive) {
+          const newWar: WarState = {
+            id: `war-${enemyId}-${state.turnNumber}`,
+            active: true,
+            enemyId,
+            scale,
+            provinceId: null,
+            warScore: Math.min(100, Math.max(-100, openingMomentum)),
+            startedTurn: state.turnNumber,
+            weariness: 0,
+            enemyWeariness: 0,
+            momentum: Math.max(-BALANCE.campaign.standing.momentumCap, Math.min(BALANCE.campaign.standing.momentumCap, openingMomentum)),
+            treaty: null,
+            // Ignition always fires within the first few years (see
+            // evt-messana-appeal's force-injection guard in turnSequencer.ts)
+            // — always 'opening' under
+            // phaseForYear's own logic for so little elapsed time, so this
+            // avoids importing warEngine.ts here just to recompute it.
+            phase: 'opening',
+            ignitedYear: state.year,
+            endedYear: null,
+            terminalOutcome: null,
+            peaceOffered: false,
+            lastFundingOfferTurn: state.turnNumber - BALANCE.war.funding.recurTurns,
+          };
+          patch.wars = [...wars, newWar];
+        }
+        continue;
+      }
+
+      // Phase 3, P3-B — warScoreDelta:enemyId:±N. Periodic war events
+      // (warEvents.ts) move a specific active war's score through this
+      // token. Chunk C9 — folded into a momentum injection, same reasoning
+      // as startWar: above (a direct warScore set would just be overwritten
+      // next season's fresh recompute).
+      if (key === 'warScoreDelta') {
+        const enemyId = parts[1];
+        const delta = parseInt(parts[2] ?? '0', 10);
+        const wars = patch.wars ?? state.wars ?? [];
+        const cap = BALANCE.campaign.standing.momentumCap;
+        patch.wars = wars.map((w: WarState) =>
+          w.active && w.enemyId === enemyId
+            ? { ...w, momentum: Math.max(-cap, Math.min(cap, w.momentum + delta)) }
+            : w
+        );
+        continue;
+      }
+
+      // Phase 3, P3-C — nextEvent:defId. Queues a follow-up event instance
+      // onto pendingEvents. Exists because this codebase's built-in
+      // EventChoice.nextEventId branching (resolveEventChoice in
+      // eventEngine.ts) discards effectStr entirely whenever any
+      // nextEventId variant is set — there is no way to BOTH apply an
+      // effect (denarii/dignitas/etc.) AND advance to a new scene through
+      // the built-in mechanism (verified before writing this). This token
+      // sidesteps that: successionEvents.ts's funeral choices apply their
+      // effects normally and chain via this token instead. Consumed by
+      // gameStore.resolveEvent's merge (see that file — pendingEvents from
+      // a resolved choice's patch must be merged with, not clobbered by,
+      // the pre-existing queue; that fix shipped alongside this token).
+      if (key === 'nextEvent') {
+        const defId = parts[1];
+        const queued: EventInstance = {
+          defId,
+          firedAtTurn: state.turnNumber,
+          targetCharacterId: instance?.targetCharacterId ?? 'pc-1',
+        };
+        patch.pendingEvents = [...(patch.pendingEvents ?? state.pendingEvents), queued];
+        continue;
+      }
+
+      // Phase 3, P3-C — succeedPaterfamilias:default|alt. Applies
+      // inheritanceEngine.applySuccession using state.pendingSuccession's
+      // eligibleHeirIds (index 0 = default heir, index 1 = the "name a
+      // different heir" alternative). Gracefully falls back to the default
+      // heir if no alternative exists (this codebase's EventChoice has no
+      // per-choice conditional visibility, so "name a different heir" is
+      // always shown — see successionEvents.ts's header comment) — never
+      // soft-locks. A no-op (pendingSuccession stays set) only in the true
+      // extinction case (no eligible heir at all), which this chunk
+      // deliberately does not resolve — that is P3-D's cadet-branch scope;
+      // see this file's header comment / detectPaterfamiliasDeath's caller
+      // in turnSequencer.ts for the distinct no-heir notice shown instead.
+      if (key === 'succeedPaterfamilias') {
+        const which = parts[1];
+        const pending = state.pendingSuccession;
+        const heirId = which === 'alt'
+          ? (pending?.eligibleHeirIds[1] ?? pending?.eligibleHeirIds[0])
+          : pending?.eligibleHeirIds[0];
+        if (pending && heirId) {
+          const succPatch = applySuccession({ ...state, ...patch } as GameState, heirId, which === 'alt' && heirId === pending.eligibleHeirIds[1]);
+          Object.assign(patch, succPatch);
+        }
+        continue;
+      }
+
+      // Phase 3, P3-D — setPendingEpilogue:value. A tiny, generic token
+      // (rather than folding into continueAsCadet's sibling choice) since
+      // "let the Gens end" needs to write pendingEpilogue directly —
+      // there's no numeric key±N form for a string-enum top-level field.
+      if (key === 'setPendingEpilogue') {
+        patch.pendingEpilogue = parts[1] as GameState['pendingEpilogue'];
+        continue;
+      }
+
+      // ── createLatentSecret:<type>:<potency> ─────────────────────────────
+      // The general mechanism behind player-choice blackmail (data/
+      // compromisingEvents.ts): any event choice can offer a real reward at
+      // the risk of a compromising fact the player knowingly took on. Plants
+      // a LatentSecret on the player character — nobody holds it yet; each
+      // season secretEngine.latentSecretDiscoveryTick (turnSequencer step
+      // 9b) rolls a chance for a hostile leader to notice it and turn it
+      // into a real, demandable Secret via the existing pipeline.
+      if (key === 'createLatentSecret') {
+        const type = parts[1] as SecretType;
+        const potency = (parseInt(parts[2] ?? '1', 10) || 1) as 1 | 2 | 3;
+        const player = (patch.family ?? state.family).find(c => c.isPlayer);
+        if (player) {
+          const latent = generateLatentSecret(player.id, player.name, type, potency, state.turnNumber);
+          patch.latentSecrets = [...(patch.latentSecrets ?? state.latentSecrets ?? []), latent];
+        }
+        continue;
+      }
+
+      // ── bribeVotes:<n> ───────────────────────────────────────────────────
+      // Sets the n clan leaders with the highest votes (among those not
+      // already pledged 'for') to campaignVotes 'for' — the same lever
+      // secretEngine.resolveSecretDemand's leverage_election comply branch
+      // already uses for a single named leader, generalized to N for a
+      // flat "buy the tribes" event reward. Only meaningful mid-campaign;
+      // the originating event is expected to gate on the 'campaigning'
+      // condition, but this token is itself a no-op (sets nothing) if
+      // called outside one, since campaignVotes is otherwise unused.
+      if (key === 'bribeVotes') {
+        const n = parseInt(parts[1] ?? '0', 10) || 0;
+        const currentVotes = patch.campaignVotes ?? state.campaignVotes;
+        const targets = state.clans
+          .flatMap(c => c.leaders)
+          .filter(l => currentVotes[l.id] !== 'for')
+          .sort((a, b) => b.votes - a.votes)
+          .slice(0, n);
+        if (targets.length > 0) {
+          const bribed = { ...currentVotes };
+          for (const l of targets) bribed[l.id] = 'for';
+          patch.campaignVotes = bribed;
+        }
+        continue;
+      }
+
+      continue;
+    }
+
+    // ── Phase 3, P3-D — cadetStanding±N ─────────────────────────────────────
+    // key±N form (like the skill grants below), not a colon token — matches
+    // cadetEvents.ts's evt-cadet-visit content (`cadetStanding+5`).
+    const cadetStandingMatch = segment.match(/^cadetStanding([+-]\d+)$/);
+    if (cadetStandingMatch) {
+      const delta = parseInt(cadetStandingMatch[1], 10);
+      const cadet = (patch as any).cadetBranch ?? state.cadetBranch;
+      if (cadet) {
+        patch.cadetBranch = { ...cadet, standing: Math.max(0, Math.min(100, cadet.standing + delta)) };
+      }
       continue;
     }
 
@@ -431,9 +787,15 @@ export function applyEffectString(
 // ─── Faction drift ────────────────────────────────────────────────────────────
 
 export function applyFactionDrift(state: GameState): { popularesRel: number; optimatesRel: number } {
+  // July 2026 fixes, Chunk E — the Campania Holiday Estate's Optimates-
+  // relation ask, via the unified AssetBonus's optimatesRelPerTurn. Summed
+  // across Latium's own assets plus every city's, same convention as
+  // calcResourceIncome's plebsPerTurn/fides/gold sums.
+  const assetOptimatesBonus = (computeTotalAssetBonuses(state.ownedAssets).optimatesRelPerTurn ?? 0)
+    + state.cities.reduce((sum, p) => sum + (calcCityAssetBonuses(p).optimatesRelPerTurn ?? 0), 0);
   return {
     popularesRel: Math.min(100, Math.max(-100, state.popularesRel - 1)),
-    optimatesRel: Math.min(100, Math.max(-100, state.optimatesRel - 1)),
+    optimatesRel: Math.min(100, Math.max(-100, state.optimatesRel - 1 + assetOptimatesBonus)),
   };
 }
 
