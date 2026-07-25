@@ -17,6 +17,8 @@ import {
   CANVASS_FIDES_COST,
   CANVASS_MIN_RELATIONSHIP,
 } from '../engine/electionEngine';
+import { leaderPortraitSubject } from '../engine/portraitEngine';
+import PortraitRoundel from '../components/shared/PortraitRoundel';
 import type { CanvassingEvent } from '../data/canvassingEvents';
 
 // ─── Canvassing Event Modal ───────────────────────────────────────────────────
@@ -182,6 +184,13 @@ function CanvassingPanel() {
 
         return (
           <View key={leader.id} style={cp.leaderRow}>
+            <View style={cp.leaderAvatar}>
+              <PortraitRoundel
+                subject={leaderPortraitSubject(leader, leader.clanId)}
+                size={40}
+                frame="plain"
+              />
+            </View>
             <View style={cp.leaderInfo}>
               <Text style={cp.leaderName}>{leader.name}</Text>
               <Text style={cp.leaderMeta}>
@@ -269,6 +278,10 @@ const cp = StyleSheet.create({
     paddingVertical: SPACING.sm,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+  } as ViewStyle,
+  leaderAvatar: {
+    marginRight: SPACING.sm,
+    flexShrink: 0,
   } as ViewStyle,
   leaderInfo: { flex: 1 } as ViewStyle,
   leaderName: {

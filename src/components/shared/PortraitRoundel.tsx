@@ -2,36 +2,40 @@
 // Chunk C0 of cursus-visual-redesign-plan.md — shared, character-tied
 // portrait component. Not Cursus-specific: any tab can render a Character
 // or ClanLeader through this. Resolves an image via engine/portraitEngine +
-// utils/portraitAssets; renders initials in a themed circle when no asset
-// exists yet (the expected state for the whole pool until art lands — see
-// portraitAssets.ts's header comment).
+// utils/portraitAssets; renders a gender/age-appropriate emoji in a themed
+// circle when no asset exists yet (the expected state for the whole pool
+// until art lands — see portraitAssets.ts's header comment).
 
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
-import { COLORS, FONTS } from '../../utils/theme';
-import { portraitKeyFor, type PortraitSubject } from '../../engine/portraitEngine';
+import { COLORS, RADIUS } from '../../utils/theme';
+import {
+  ageBandFor,
+  genderForCharacter,
+  genderForLeader,
+  placeholderEmojiFor,
+  portraitKeyFor,
+  type PortraitSubject,
+} from '../../engine/portraitEngine';
 import { portraitAssets } from '../../utils/portraitAssets';
 
 interface PortraitRoundelProps {
   subject: PortraitSubject;
   size?: number;
   frame?: 'gold' | 'plain';
+  /** 'circle' (default) matches Cursus's existing look; 'square' preserves
+   *  Domus's pre-existing card/profile-pane frame (portrait-fixes.md
+   *  Chunk 3) while sharing this component's resolution/fallback logic. */
+  shape?: 'circle' | 'square';
 }
 
-function initialsFor(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  const first = parts[0]?.[0] ?? '';
-  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '';
-  return (first + last).toUpperCase();
-}
-
-export default function PortraitRoundel({ subject, size = 44, frame = 'gold' }: PortraitRoundelProps) {
+export default function PortraitRoundel({ subject, size = 44, frame = 'gold', shape = 'circle' }: PortraitRoundelProps) {
   const key = portraitKeyFor(subject);
   const source = subject.kind === 'leader'
     ? portraitAssets.leaderOverride(subject.id) ?? portraitAssets.portrait(key)
-    : portraitAssets.portrait(key);
+    : portraitAssets.characterOverride(subject.id) ?? portraitAssets.portrait(key);
 
-  const dim = { width: size, height: size, borderRadius: size / 2 };
+  const dim = { width: size, height: size, borderRadius: shape === 'square' ? RADIUS.sm : size / 2 };
   const ringStyle = frame === 'gold' ? styles.ringGold : styles.ringPlain;
 
   if (source) {
@@ -42,9 +46,12 @@ export default function PortraitRoundel({ subject, size = 44, frame = 'gold' }: 
     );
   }
 
+  const gender = subject.kind === 'leader' ? genderForLeader(subject) : genderForCharacter(subject);
+  const emoji = placeholderEmojiFor(gender, ageBandFor(subject.age));
+
   return (
     <View style={[styles.base, styles.fallback, dim, ringStyle]}>
-      <Text style={[styles.initials, { fontSize: size * 0.36 }]}>{initialsFor(subject.name)}</Text>
+      <Text style={[styles.emoji, { fontSize: size * 0.55 }]}>{emoji}</Text>
     </View>
   );
 }
@@ -66,9 +73,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  initials: {
-    fontFamily: FONTS.display,
-    color: COLORS.parchmentText,
-    fontWeight: '700',
+  emoji: {
+    textAlign: 'center',
   },
 });

@@ -83,6 +83,19 @@ const PORTRAITS: Partial<Record<string, RequiredAsset>> = {
   // 'claudii-1-f-elder': require('../assets/portraits/portrait-claudii-1-f-elder.png'),
 };
 
+// Bespoke full-image overrides for the 4 starting-family characters with
+// real art (checked before falling back to the pooled archetype lookup).
+// Keyed by Character.id — stable across every starting family variant
+// (data/startingFamily.ts, data/altFamilies.ts; see portrait-fixes.md
+// Chunk 2, finding 6). The player is keyed by literal id 'pc-1' rather than
+// isPlayer, since PortraitSubject's 'character' variant already carries id.
+const CHARACTER_PORTRAITS: Partial<Record<string, RequiredAsset>> = {
+  'pc-1':         require('../assets/images/portrait-paterfamilias.png'),
+  'npc-wife':     require('../assets/images/npc-wife.png'),
+  'npc-son':      require('../assets/images/npc-son.png'),
+  'npc-daughter': require('../assets/images/npc-daughter.png'),
+};
+
 // Optional bespoke full-image overrides for named leaders (checked before
 // falling back to their clan's pooled lineage key) — nice-to-have, the pool
 // already covers every leader. Keyed by ClanLeader.id (data/startingClans.ts).
@@ -110,4 +123,7 @@ export const portraitAssets = {
   /** `leaderId` is ClanLeader.id. Checked by PortraitRoundel before falling
    *  back to the pooled portrait() lookup. */
   leaderOverride: (leaderId: string): RequiredAsset | undefined => LEADER_PORTRAITS[leaderId],
+  /** `characterId` is Character.id. Checked by PortraitRoundel before
+   *  falling back to the pooled portrait() lookup — mirrors leaderOverride. */
+  characterOverride: (characterId: string): RequiredAsset | undefined => CHARACTER_PORTRAITS[characterId],
 };

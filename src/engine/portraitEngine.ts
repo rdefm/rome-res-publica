@@ -120,6 +120,32 @@ export function leaderPortraitSubject(
  *  other code changes needed, variantIndexFor already handles any count. */
 export const DEFAULT_PORTRAIT_VARIANT_COUNT = 1;
 
+/** Fallback glyph shown by PortraitRoundel when no image asset resolves for
+ *  a subject — gender/age-appropriate rather than the flat initials circle
+ *  it replaces (Chunk 1 of portrait-fixes.md). Not precious; easy to retune. */
+const PLACEHOLDER_EMOJI: Record<PortraitGender, Record<PortraitAgeBand, string>> = {
+  m: {
+    baby: '👶',
+    child: '👦',
+    youth: '👦',
+    adult: '👨',
+    midage: '🧔',
+    elder: '👴',
+  },
+  f: {
+    baby: '👶',
+    child: '👧',
+    youth: '👧',
+    adult: '👩',
+    midage: '👩',
+    elder: '👵',
+  },
+};
+
+export function placeholderEmojiFor(gender: PortraitGender, ageBand: PortraitAgeBand): string {
+  return PLACEHOLDER_EMOJI[gender][ageBand];
+}
+
 /** Composes the exact utils/portraitAssets.ts lookup key — matches the
  *  asset manifest's file naming (`portrait-{lineage}-{variant}-{gender}-
  *  {ageBand}.png`) minus the 'portrait-' prefix and extension, e.g.

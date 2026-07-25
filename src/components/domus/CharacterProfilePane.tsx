@@ -3,15 +3,10 @@ import { View, Text, Image, StyleSheet } from 'react-native';
 import type { Character } from '../../models/character';
 import { useGameStore } from '../../state/gameStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
+import PortraitRoundel from '../shared/PortraitRoundel';
+import { characterPortraitSubject } from '../../engine/portraitEngine';
 
-const PLAYER_PORTRAIT = require('../../assets/images/portrait-paterfamilias.png');
 const COIN = require('../../assets/images/ornament-coin.png');
-
-const NPC_PORTRAITS: Record<string, ReturnType<typeof require>> = {
-  'npc-wife':      require('../../assets/images/npc-wife.png'),
-  'npc-son':       require('../../assets/images/npc-son.png'),
-  'npc-daughter':  require('../../assets/images/npc-daughter.png'),
-};
 
 const SKILL_COLORS: Record<string, string> = {
   rhetoric:   COLORS.denariiColor,
@@ -37,21 +32,9 @@ export default function CharacterProfilePane({ character }: CharacterProfilePane
       {/* Inner dashed border wrapping all content */}
       <View style={styles.innerFrame}>
         <View style={styles.profileHeader}>
-          {character.isPlayer ? (
-            <Image source={PLAYER_PORTRAIT} style={styles.portrait} />
-          ) : NPC_PORTRAITS[character.id] ? (
-            <Image source={NPC_PORTRAITS[character.id]} style={styles.portrait} />
-          ) : (
-            <View style={styles.portraitPlaceholder}>
-              <Text style={{ fontSize: 40 }}>
-                {character.role === 'spouse' ? '👩'
-                  : character.role === 'son' ? '👦'
-                  : character.role === 'brother' ? '🧔'
-                  : character.role === 'sister' ? '👧'
-                  : '👧'}
-              </Text>
-            </View>
-          )}
+          <View style={styles.portraitWrap}>
+            <PortraitRoundel subject={characterPortraitSubject(character)} size={96} shape="square" frame="gold" />
+          </View>
 
           <View style={styles.profileInfo}>
             <Text style={styles.profileName}>{character.name}</Text>
@@ -129,23 +112,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: SPACING.md,
   },
-  portrait: {
-    width: 96,
-    height: 96,
-    borderWidth: 3,
-    borderColor: COLORS.gold,
-    borderRadius: RADIUS.sm,
-    marginRight: SPACING.md,
-  },
-  portraitPlaceholder: {
-    width: 72,
-    height: 72,
-    borderRadius: RADIUS.sm,
-    backgroundColor: COLORS.portraitPlaceholder,
+  portraitWrap: {
     marginRight: SPACING.md,
     flexShrink: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   profileInfo: {
     flex: 1,

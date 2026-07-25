@@ -1,17 +1,12 @@
 import React from 'react';
-import { View, Text, Image, ImageBackground, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ImageBackground, TouchableOpacity, StyleSheet } from 'react-native';
 import type { Character } from '../../models/character';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import { PARCHMENT_TEXT } from '../shared/ParchmentCard';
+import PortraitRoundel from '../shared/PortraitRoundel';
+import { characterPortraitSubject } from '../../engine/portraitEngine';
 
-const PLAYER_PORTRAIT = require('../../assets/images/portrait-paterfamilias.png');
-const PARCHMENT_IMG   = require('../../assets/images/card-parchment-cropped.png');
-
-const NPC_PORTRAITS: Record<string, ReturnType<typeof require>> = {
-  'npc-wife':     require('../../assets/images/npc-wife.png'),
-  'npc-son':      require('../../assets/images/npc-son.png'),
-  'npc-daughter': require('../../assets/images/npc-daughter.png'),
-};
+const PARCHMENT_IMG = require('../../assets/images/card-parchment-cropped.png');
 
 interface CharacterCardProps {
   character: Character;
@@ -30,10 +25,6 @@ function traitColor(trait: string): string {
 }
 
 export default function CharacterCard({ character, selected, onPress }: CharacterCardProps) {
-  const portrait = character.isPlayer
-    ? PLAYER_PORTRAIT
-    : NPC_PORTRAITS[character.id] ?? null;
-
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -50,19 +41,7 @@ export default function CharacterCard({ character, selected, onPress }: Characte
         <View style={styles.row}>
           {/* Portrait */}
           <View style={styles.portraitWrap}>
-            {portrait ? (
-              <Image source={portrait} style={styles.portrait} />
-            ) : (
-              <View style={styles.portraitFallback}>
-                <Text style={{ fontSize: 36 }}>
-                  {character.role === 'spouse' ? '👩'
-                    : character.role === 'son' ? '👦'
-                    : character.role === 'brother' ? '🧔'
-                    : character.role === 'sister' ? '👧'
-                    : '👧'}
-                </Text>
-              </View>
-            )}
+            <PortraitRoundel subject={characterPortraitSubject(character)} size={80} shape="square" frame="plain" />
           </View>
 
           {/* Text info */}
@@ -119,26 +98,8 @@ const styles = StyleSheet.create({
     padding: SPACING.sm + 2,
   },
   portraitWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: RADIUS.sm,
-    overflow: 'hidden',
     marginRight: SPACING.sm,
     flexShrink: 0,
-    borderWidth: 1,
-    borderColor: PARCHMENT_TEXT.border,
-    backgroundColor: 'rgba(200,184,144,0.4)',
-  },
-  portrait: {
-    width: 80,
-    height: 80,
-    resizeMode: 'cover',
-  },
-  portraitFallback: {
-    width: 80,
-    height: 80,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   info: {
     flex: 1,

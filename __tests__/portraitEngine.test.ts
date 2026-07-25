@@ -9,10 +9,12 @@ import {
   lineageForLeader,
   variantIndexFor,
   portraitKeyFor,
+  placeholderEmojiFor,
   DEFAULT_PORTRAIT_VARIANT_COUNT,
   type PortraitSubject,
 } from '../src/engine/portraitEngine';
 import type { Character } from '../src/models/character';
+import type { PortraitAgeBand, PortraitGender } from '../src/models/portrait';
 
 describe('ageBandFor', () => {
   test('baby: 0-2', () => {
@@ -139,6 +141,28 @@ describe('portraitKeyFor', () => {
     const key = portraitKeyFor(subject, 3);
     expect(key).toMatch(/^house-[1-3]-m-adult$/);
     expect(portraitKeyFor(subject, 3)).toBe(key); // deterministic across calls
+  });
+});
+
+describe('placeholderEmojiFor', () => {
+  const ageBands: PortraitAgeBand[] = ['baby', 'child', 'youth', 'adult', 'midage', 'elder'];
+  const genders: PortraitGender[] = ['m', 'f'];
+
+  test.each(genders.flatMap((g) => ageBands.map((a) => [g, a] as const)))(
+    'returns a non-empty emoji for gender %s / age band %s',
+    (gender, ageBand) => {
+      const emoji = placeholderEmojiFor(gender, ageBand);
+      expect(typeof emoji).toBe('string');
+      expect(emoji.length).toBeGreaterThan(0);
+    },
+  );
+
+  test('babies share the same emoji regardless of gender', () => {
+    expect(placeholderEmojiFor('m', 'baby')).toBe(placeholderEmojiFor('f', 'baby'));
+  });
+
+  test('adult male and female emoji differ', () => {
+    expect(placeholderEmojiFor('m', 'adult')).not.toBe(placeholderEmojiFor('f', 'adult'));
   });
 });
 
