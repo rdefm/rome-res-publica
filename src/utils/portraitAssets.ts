@@ -17,6 +17,8 @@
 // per lineage is generated later; engine/portraitEngine.ts's
 // variantIndexFor already handles any variant count with no code change.
 
+import { assignPortraitVariant, DEFAULT_PORTRAIT_VARIANT_COUNT } from '../engine/portraitEngine';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RequiredAsset = any; // RN's require() return type isn't locally typed anywhere else in this codebase (ParchmentCard.tsx, CharacterCard.tsx use the same untyped convention).
 
@@ -34,17 +36,25 @@ const PORTRAITS: Partial<Record<string, RequiredAsset>> = {
   // 'house-1-f-midage': require('../assets/portraits/portrait-house-1-f-midage.png'),
   // 'house-1-f-elder': require('../assets/portraits/portrait-house-1-f-elder.png'),
   // 'cornelii-1-m-baby': require('../assets/portraits/portrait-cornelii-1-m-baby.png'),
-  // 'cornelii-1-m-child': require('../assets/portraits/portrait-cornelii-1-m-child.png'),
+  'cornelii-1-m-child': require('../assets/portraits/portrait-cornelii-1-m-child.png'),
   // 'cornelii-1-m-youth': require('../assets/portraits/portrait-cornelii-1-m-youth.png'),
-  // 'cornelii-1-m-adult': require('../assets/portraits/portrait-cornelii-1-m-adult.png'),
-  // 'cornelii-1-m-midage': require('../assets/portraits/portrait-cornelii-1-m-midage.png'),
-  // 'cornelii-1-m-elder': require('../assets/portraits/portrait-cornelii-1-m-elder.png'),
+  'cornelii-1-m-adult': require('../assets/portraits/portrait-cornelii-1-m-adult.png'),
+  'cornelii-1-m-midage': require('../assets/portraits/portrait-cornelii-1-m-midage.png'),
+  'cornelii-1-m-elder': require('../assets/portraits/portrait-cornelii-1-m-elder.png'),
   // 'cornelii-1-f-baby': require('../assets/portraits/portrait-cornelii-1-f-baby.png'),
   // 'cornelii-1-f-child': require('../assets/portraits/portrait-cornelii-1-f-child.png'),
   // 'cornelii-1-f-youth': require('../assets/portraits/portrait-cornelii-1-f-youth.png'),
   // 'cornelii-1-f-adult': require('../assets/portraits/portrait-cornelii-1-f-adult.png'),
   // 'cornelii-1-f-midage': require('../assets/portraits/portrait-cornelii-1-f-midage.png'),
   // 'cornelii-1-f-elder': require('../assets/portraits/portrait-cornelii-1-f-elder.png'),
+  'cornelii-2-m-child': require('../assets/portraits/portrait-cornelii-2-m-child.png'),
+  'cornelii-2-m-adult': require('../assets/portraits/portrait-cornelii-2-m-adult.png'),
+  'cornelii-2-m-midage': require('../assets/portraits/portrait-cornelii-2-m-midage.png'),
+  'cornelii-2-m-elder': require('../assets/portraits/portrait-cornelii-2-m-elder.png'),
+  'cornelii-3-m-child': require('../assets/portraits/portrait-cornelii-3-m-child.png'),
+  'cornelii-3-m-adult': require('../assets/portraits/portrait-cornelii-3-m-adult.png'),
+  'cornelii-3-m-midage': require('../assets/portraits/portrait-cornelii-3-m-midage.png'),
+  'cornelii-3-m-elder': require('../assets/portraits/portrait-cornelii-3-m-elder.png'),
   // 'valerii-1-m-baby': require('../assets/portraits/portrait-valerii-1-m-baby.png'),
   // 'valerii-1-m-child': require('../assets/portraits/portrait-valerii-1-m-child.png'),
   // 'valerii-1-m-youth': require('../assets/portraits/portrait-valerii-1-m-youth.png'),
@@ -115,6 +125,17 @@ const LEADER_PORTRAITS: Partial<Record<string, RequiredAsset>> = {
   // 'claudius-nero': require('../assets/portraits/portrait-leader-claudius-nero.png'),
 };
 
+// portrait-fixes.md Chunk 6 — how many archetype variants actually exist
+// per lineage+gender group (key `${lineage}-${gender}`), read by
+// gameStore.ts's assignment hooks (startGame, confirmBirthNaming,
+// remarriage, leader succession) to know the range assignPortraitVariant
+// should pick within. Any group not listed here defaults to
+// DEFAULT_PORTRAIT_VARIANT_COUNT (1) — the same default variantIndexFor's
+// hash-fallback path already assumes.
+const VARIANT_COUNTS: Partial<Record<string, number>> = {
+  'cornelii-m': 3,
+};
+
 export const portraitAssets = {
   /** `key` is engine/portraitEngine.ts's portraitKeyFor output, e.g.
    *  'house-1-m-adult'. Returns undefined until that key's line above is
@@ -126,4 +147,32 @@ export const portraitAssets = {
   /** `characterId` is Character.id. Checked by PortraitRoundel before
    *  falling back to the pooled portrait() lookup — mirrors leaderOverride. */
   characterOverride: (characterId: string): RequiredAsset | undefined => CHARACTER_PORTRAITS[characterId],
+  /** portrait-fixes.md Chunk 6 — how many archetype variants exist for
+   *  `${lineage}-${gender}` (e.g. 'cornelii-m'). Read by assignVariant below;
+   *  exposed separately too since a couple of call sites need the raw count. */
+  variantCountFor: (lineage: string, gender: string): number =>
+    VARIANT_COUNTS[`${lineage}-${gender}`] ?? DEFAULT_PORTRAIT_VARIANT_COUNT,
+  /** portrait-fixes.md Chunk 6 — the single entry point every character/
+   *  leader creation site (gameStore.startGame/confirmBirthNaming,
+   *  turnSequencer's remarriage and leader-succession paths) calls to get a
+   *  new portraitVariant and the updated GameState.portraitVariantCycles to
+   *  persist. Lives here rather than in engine/portraitEngine.ts (which
+   *  deliberately has no knowledge of which assets exist) or state/
+   *  gameStore.ts (which turnSequencer.ts can't import a value from without
+   *  a circular dependency, since gameStore.ts already imports
+   *  turnSequencer.processSeason). */
+  assignVariant: (
+    lineage: string,
+    gender: string,
+    // Defaults to {} — plenty of test fixtures across the suite build a
+    // partial GameState predating this field, so `s.portraitVariantCycles`
+    // can arrive here as `undefined` rather than merely missing one key.
+    cycles: Record<string, number[]> = {},
+  ): { variant: number; cycles: Record<string, number[]> } => {
+    const safeCycles = cycles ?? {};
+    const key = `${lineage}-${gender}`;
+    const variantCount = VARIANT_COUNTS[key] ?? DEFAULT_PORTRAIT_VARIANT_COUNT;
+    const { variant, usedThisCycle } = assignPortraitVariant(safeCycles[key] ?? [], variantCount);
+    return { variant, cycles: { ...safeCycles, [key]: usedThisCycle } };
+  },
 };

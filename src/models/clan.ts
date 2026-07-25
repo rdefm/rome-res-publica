@@ -88,6 +88,13 @@ export interface ClanLeader {
    *  and any ClanLeader literal elsewhere in the codebase load/compile
    *  unchanged. */
   traits?: string[];
+
+  // portrait-fixes.md Chunk 6 — assigned once (gameStore.startGame, or at
+  // reputationEngine.generateSuccessor) via engine/portraitEngine.ts's
+  // assignPortraitVariant, then permanent for this leader's lifetime.
+  // Absent = not yet assigned (an existing save from before this field
+  // existed) — portraitKeyFor falls back to the old id-hash in that case.
+  portraitVariant?: number;
 }
 
 export interface Clan {

@@ -69,6 +69,10 @@ export const SaveSchema = z.object({
   // schema. z.any() loose-validation, same treatment as `secrets`/`clans`.
   house: z.any().optional(),
   familyReputations: z.record(z.string(), z.number()).default({}),
+  // portrait-fixes.md Chunk 6 — .default({}) ensures pre-Chunk-6 saves load
+  // cleanly; a group (key `${lineage}-${gender}`) absent from this map reads
+  // as a fresh cycle (portraitAssets.assignVariant's own convention).
+  portraitVariantCycles: z.record(z.string(), z.array(z.number())).default({}),
   lifetimeDignitas: z.number(),
   legacyObjectives: z.array(z.object({
     definitionId: z.string(),

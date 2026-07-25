@@ -13,6 +13,8 @@ import {
   ageBandFor,
   genderForCharacter,
   genderForLeader,
+  lineageForCharacter,
+  lineageForLeader,
   placeholderEmojiFor,
   portraitKeyFor,
   type PortraitSubject,
@@ -30,7 +32,17 @@ interface PortraitRoundelProps {
 }
 
 export default function PortraitRoundel({ subject, size = 44, frame = 'gold', shape = 'circle' }: PortraitRoundelProps) {
-  const key = portraitKeyFor(subject);
+  const variantGender = subject.kind === 'leader' ? genderForLeader(subject) : genderForCharacter(subject);
+  // portrait-fixes.md Chunk 6 hotfix — subject.portraitVariant (when
+  // present) always wins regardless of this count, but a subject that
+  // predates variant assignment (an old save, or a session that hasn't
+  // reloaded since assignment landed) falls back to portraitKeyFor's
+  // id-hash path, which needs THIS group's real variant count, not the
+  // global single-variant default, or every un-assigned subject in a
+  // multi-variant group collapses onto variant 1.
+  const variantLineage = subject.kind === 'leader' ? lineageForLeader(subject.clanId) : lineageForCharacter();
+  const variantCount = portraitAssets.variantCountFor(variantLineage, variantGender);
+  const key = portraitKeyFor(subject, variantCount);
   const source = subject.kind === 'leader'
     ? portraitAssets.leaderOverride(subject.id) ?? portraitAssets.portrait(key)
     : portraitAssets.characterOverride(subject.id) ?? portraitAssets.portrait(key);
@@ -46,8 +58,7 @@ export default function PortraitRoundel({ subject, size = 44, frame = 'gold', sh
     );
   }
 
-  const gender = subject.kind === 'leader' ? genderForLeader(subject) : genderForCharacter(subject);
-  const emoji = placeholderEmojiFor(gender, ageBandFor(subject.age));
+  const emoji = placeholderEmojiFor(variantGender, ageBandFor(subject.age));
 
   return (
     <View style={[styles.base, styles.fallback, dim, ringStyle]}>

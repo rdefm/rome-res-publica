@@ -159,6 +159,7 @@ function ClanCard({ clan }: { clan: Clan }) {
               <LeaderCard
                 key={l.id}
                 leader={l}
+                clanId={clan.id}
                 selected={l.id === selectedLeaderId}
                 onPress={() => selectLeader(l.id)}
                 campaigning={false}

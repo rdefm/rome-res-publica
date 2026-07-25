@@ -169,6 +169,8 @@ import type { WarState } from '../models/war';
 import type { AncestorRecord, EpilogueOutcome } from '../models/epilogue';
 import { applyTreatyEffects, buildTreatyBill, getDesperationTier, phaseForYear, type TreatySide } from '../engine/warEngine';
 import { generateCadet } from '../engine/inheritanceEngine';
+import { genderForCharacter, genderForLeader } from '../engine/portraitEngine';
+import { portraitAssets } from '../utils/portraitAssets';
 // Phase 5, Chunk P5-F — Achievements ("Laurels"). evaluateAchievements is
 // pure (no AsyncStorage), safe to import eagerly; achievementStore is
 // required lazily inside endSeason, same idiom as ancestorStore/saveLoad
@@ -316,6 +318,15 @@ export interface GameState {
   clans: Clan[];
   expandedClanId: string | null;
   selectedLeaderId: string | null;
+  /** portrait-fixes.md Chunk 6 — tracks which portrait archetype variants
+   *  have been handed out in the current no-repeat cycle, per lineage+gender
+   *  group (key `${lineage}-${gender}`, e.g. 'cornelii-m'). Consumed by
+   *  engine/portraitEngine.ts's assignPortraitVariant at every character/
+   *  leader creation point (startGame, confirmBirthNaming, remarriage,
+   *  leader succession) — once a group's list reaches that group's variant
+   *  count, the next assignment resets it to a fresh cycle. Absent groups
+   *  read as an empty (fresh) cycle. */
+  portraitVariantCycles: Record<string, number[]>;
 
   // ── Phase 4, Chunk P4-A — Secrets ──────────────────────────────────────────
   // Single array (plan's recommendation) filtered by `holder` for the two
@@ -1119,6 +1130,75 @@ export const INITIAL_FAMILY_REPUTATIONS: Record<string, number> = Object.fromEnt
   STARTING_CLANS.map((c) => [c.id, 0])
 );
 
+/** portrait-fixes.md Chunk 6 — assigns starting portrait variants to every
+ *  clan leader and non-bespoke-override family member at game creation.
+ *  Bespoke-override characters (pc-1/npc-wife/npc-son/npc-daughter) are left
+ *  without a portraitVariant — portraitAssets.characterOverride always wins
+ *  over the archetype pool regardless, so assigning one would be inert. */
+function assignStartingPortraitVariants(
+  clans: Clan[],
+  family: Character[],
+): { clans: Clan[]; family: Character[]; cycles: Record<string, number[]> } {
+  let cycles: Record<string, number[]> = {};
+
+  const nextClans = clans.map((clan) => ({
+    ...clan,
+    leaders: clan.leaders.map((leader) => {
+      const gender = genderForLeader(leader);
+      const result = portraitAssets.assignVariant(clan.id, gender, cycles);
+      cycles = result.cycles;
+      return { ...leader, portraitVariant: result.variant };
+    }),
+  }));
+
+  const nextFamily = family.map((character) => {
+    if (portraitAssets.characterOverride(character.id)) return character;
+    const gender = genderForCharacter(character);
+    const result = portraitAssets.assignVariant('house', gender, cycles);
+    cycles = result.cycles;
+    return { ...character, portraitVariant: result.variant };
+  });
+
+  return { clans: nextClans, family: nextFamily, cycles };
+}
+
+/** portrait-fixes.md Chunk 6 hotfix — backfills a portraitVariant for any
+ *  clan leader / non-bespoke-override family member loaded from a save that
+ *  predates variant assignment (or was captured before this session's
+ *  in-memory game state ever ran through it — e.g. a dev session that's been
+ *  hot-reloading since before this system landed). Leaves already-assigned
+ *  entries untouched; only advances portraitVariantCycles for slots it
+ *  actually assigns into, so it's safe to run on every load unconditionally. */
+function backfillMissingPortraitVariants(
+  clans: Clan[],
+  family: Character[],
+  existingCycles: Record<string, number[]> | undefined,
+): { clans: Clan[]; family: Character[]; cycles: Record<string, number[]> } {
+  let cycles = existingCycles ?? {};
+
+  const nextClans = clans.map((clan) => ({
+    ...clan,
+    leaders: clan.leaders.map((leader) => {
+      if (leader.portraitVariant !== undefined) return leader;
+      const gender = genderForLeader(leader);
+      const result = portraitAssets.assignVariant(clan.id, gender, cycles);
+      cycles = result.cycles;
+      return { ...leader, portraitVariant: result.variant };
+    }),
+  }));
+
+  const nextFamily = family.map((character) => {
+    if (character.portraitVariant !== undefined) return character;
+    if (portraitAssets.characterOverride(character.id)) return character;
+    const gender = genderForCharacter(character);
+    const result = portraitAssets.assignVariant('house', gender, cycles);
+    cycles = result.cycles;
+    return { ...character, portraitVariant: result.variant };
+  });
+
+  return { clans: nextClans, family: nextFamily, cycles };
+}
+
 export const INITIAL_STATE: GameState = {
   year: -264,
   turnNumber: 1,
@@ -1172,6 +1252,11 @@ export const INITIAL_STATE: GameState = {
   clans: STARTING_CLANS,
   expandedClanId: null,
   selectedLeaderId: null,
+  // Real starting values assigned by startGame (assignPortraitVariant per
+  // starting leader/family member) — {} here is only ever seen transiently
+  // between INITIAL_STATE construction and startGame's set() call, same
+  // idiom as cadetBranch above.
+  portraitVariantCycles: {},
   // Phase 4, Chunk P4-G — the Claudius arc's starting Secret (design point 1,
   // "exists from game start"). acquiredSeason: 1 matches turnNumber's own
   // starting value above, so scanNpcSecretDecisions' `acquiredSeason <
@@ -1537,6 +1622,15 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       ];
     }
 
+    // portrait-fixes.md Chunk 6 — starting clan leaders and any non-bespoke-
+    // override family member (alt starts never override clans — verified in
+    // data/startDefinitions.ts — but family can) get a real archetype
+    // variant assigned once, here, at game creation.
+    const baseClans  = (stateOverrides.clans as Clan[] | undefined) ?? INITIAL_STATE.clans;
+    const baseFamily = (stateOverrides.family as Character[] | undefined) ?? INITIAL_STATE.family;
+    const { clans: startingClans, family: startingFamily, cycles: portraitVariantCycles } =
+      assignStartingPortraitVariants(baseClans, baseFamily);
+
     set({
       ...INITIAL_STATE,
       ...stateOverrides,
@@ -1550,6 +1644,9 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       log: [mkLog('264 BC · Spring', `The ${gensPlural} begin their ascent.`, 'neutral')],
       // P3-D — generated once per run, every start.
       cadetBranch: generateCadet(gensName),
+      clans: startingClans,
+      family: startingFamily,
+      portraitVariantCycles,
     });
   },
 
@@ -3166,10 +3263,20 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     };
 
     const child = applyTraitModifiers(baseChild, inheritedTraits);
+
+    // portrait-fixes.md Chunk 6 — a newborn is never a bespoke-override
+    // character (those are the 4 fixed starting-family ids), so it always
+    // gets a real archetype variant assignment.
+    const { variant, cycles } = portraitAssets.assignVariant(
+      'house', genderForCharacter(child), s.portraitVariantCycles,
+    );
+    const childWithPortrait = { ...child, portraitVariant: variant };
+
     const label = turnLabel(s);
     set({
-      family: [...s.family, child],
+      family: [...s.family, childWithPortrait],
       pendingBirthNaming: null,
+      portraitVariantCycles: cycles,
       log: [...s.log, mkLog(label, `${name} is born into the ${s.gensPlural}.`, 'good')],
     });
   },
@@ -3537,9 +3644,27 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   // ── Phase 1 — Season ledger + autosave (P1-D) ─────────────────────────────
 
-  loadGame: (savedState) => set({
+  loadGame: (savedState) => {
+    // portrait-fixes.md Chunk 6 hotfix — a save (or an in-memory session)
+    // predating variant assignment has leaders/family members with no
+    // portraitVariant at all; back them onto a real assignment on load
+    // rather than leaving them to PortraitRoundel's id-hash fallback.
+    const {
+      clans: backfilledClans,
+      family: backfilledFamily,
+      cycles: backfilledPortraitVariantCycles,
+    } = backfillMissingPortraitVariants(
+      savedState.clans ?? INITIAL_STATE.clans,
+      savedState.family,
+      savedState.portraitVariantCycles,
+    );
+
+    set({
     ...INITIAL_STATE,
     ...savedState,
+    clans: backfilledClans,
+    family: backfilledFamily,
+    portraitVariantCycles: backfilledPortraitVariantCycles,
     // Campaign Map plan, Chunk C1 — the `provinces` field was renamed to
     // `cities`. A save written before this rename has a `provinces` key and
     // no `cities` key at all, so the top-level `...savedState` spread above
@@ -3669,7 +3794,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     selectedTrialId: null,
     basilicaReturnTab: null,
     activeEvent:   null,
-  }),
+    });
+  },
 
   tickLastActive: () => set({ lastActiveAt: Date.now() }),
 

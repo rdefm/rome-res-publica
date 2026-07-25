@@ -93,26 +93,40 @@ export function variantIndexFor(id: string, variantCount: number): number {
  *  ClanLeader fields directly (id/name/role/age, or id/name/age/clanId) —
  *  no store access here, this file stays pure. */
 export type PortraitSubject =
-  | { kind: 'character'; id: string; name: string; role: Character['role']; age: number }
-  | { kind: 'leader'; id: string; name: string; age: number; clanId: string };
+  | { kind: 'character'; id: string; name: string; role: Character['role']; age: number; portraitVariant?: number }
+  | { kind: 'leader'; id: string; name: string; age: number; clanId: string; portraitVariant?: number };
 
 /** Builds a `PortraitSubject` straight from a `Character` — the shape every
  *  Cursus consumer (candidate header, campaign panel) needs, kept here so
  *  it's defined once rather than re-typed at each call site. */
 export function characterPortraitSubject(
-  character: Pick<Character, 'id' | 'name' | 'role' | 'age'>,
+  character: Pick<Character, 'id' | 'name' | 'role' | 'age' | 'portraitVariant'>,
 ): PortraitSubject {
-  return { kind: 'character', id: character.id, name: character.name, role: character.role, age: character.age };
+  return {
+    kind: 'character',
+    id: character.id,
+    name: character.name,
+    role: character.role,
+    age: character.age,
+    portraitVariant: character.portraitVariant,
+  };
 }
 
 /** Builds a `PortraitSubject` for a `ClanLeader` — `clanId` isn't on
  *  `ClanLeader` itself (see `lineageForLeader`'s doc comment), so the caller
  *  supplies it from whatever scope already has both. */
 export function leaderPortraitSubject(
-  leader: Pick<ClanLeader, 'id' | 'name' | 'age'>,
+  leader: Pick<ClanLeader, 'id' | 'name' | 'age' | 'portraitVariant'>,
   clanId: string,
 ): PortraitSubject {
-  return { kind: 'leader', id: leader.id, name: leader.name, age: leader.age, clanId };
+  return {
+    kind: 'leader',
+    id: leader.id,
+    name: leader.name,
+    age: leader.age,
+    clanId,
+    portraitVariant: leader.portraitVariant,
+  };
 }
 
 /** Appendix A's recommended v1 pool size (1 variant per lineage/gender/age
@@ -157,6 +171,43 @@ export function portraitKeyFor(
   const lineage = subject.kind === 'character' ? lineageForCharacter() : lineageForLeader(subject.clanId);
   const gender = subject.kind === 'character' ? genderForCharacter(subject) : genderForLeader(subject);
   const ageBand = ageBandFor(subject.age);
-  const variant = variantIndexFor(subject.id, variantCount);
+  // portrait-fixes.md Chunk 6 — a subject assigned a real archetype variant
+  // (gameStore's assignment hooks) always uses it; variantIndexFor's id-hash
+  // is only a fallback for subjects that predate that system (old saves).
+  const variant = subject.portraitVariant ?? variantIndexFor(subject.id, variantCount);
   return `${lineage}-${variant}-${gender}-${ageBand}`;
+}
+
+/** portrait-fixes.md Chunk 6 — picks a variant for a newly-created character
+ *  or leader within a lineage+gender group, without repeating one already
+ *  used in the current cycle. Once every variant in the group has been
+ *  handed out (`usedThisCycle.length >= variantCount`, or `variantCount`
+ *  itself shrank below what the cycle recorded), starts a fresh cycle —
+ *  picks uniformly among all variants again, and the returned
+ *  `usedThisCycle` contains only that pick (the first of the new cycle).
+ *  `variantCount <= 1` always returns variant 1 with an empty cycle,
+ *  matching `variantIndexFor`'s own single-variant convention. Callers
+ *  persist the returned `usedThisCycle` back into
+ *  GameState.portraitVariantCycles under this group's key. */
+export function assignPortraitVariant(
+  usedThisCycle: number[],
+  variantCount: number,
+): { variant: number; usedThisCycle: number[] } {
+  if (variantCount <= 1) return { variant: 1, usedThisCycle: [] };
+
+  const remaining: number[] = [];
+  for (let v = 1; v <= variantCount; v++) {
+    if (!usedThisCycle.includes(v)) remaining.push(v);
+  }
+
+  const startingFreshCycle = remaining.length === 0;
+  const pool = startingFreshCycle
+    ? Array.from({ length: variantCount }, (_, i) => i + 1)
+    : remaining;
+
+  const variant = pool[Math.floor(Math.random() * pool.length)];
+  return {
+    variant,
+    usedThisCycle: startingFreshCycle ? [variant] : [...usedThisCycle, variant],
+  };
 }

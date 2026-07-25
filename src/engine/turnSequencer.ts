@@ -22,6 +22,8 @@ import { getTierFromLevel } from '../models/crisis';
 import { tickNpcCareers, resolveElection } from './electionEngine';
 import { pickRandomEvent, evalCondition, injectNoticeEvent } from './eventEngine';
 import { applyYearlyRelationshipDecay, ageAndProcessMortality } from './reputationEngine';
+import { genderForCharacter, genderForLeader } from './portraitEngine';
+import { portraitAssets } from '../utils/portraitAssets';
 import { tickAmbitions, getAmbitionDefinition } from './ambitionEngine';
 import { incrementLegacy, computeLegacyBonuses } from './legacyEngine';
 import {
@@ -956,6 +958,25 @@ export function processSeason(state: GameState): {
     s = { ...s, clans: clansAfterMortality };
 
     if (death) {
+      // portrait-fixes.md Chunk 6 — a procedurally generated successor
+      // (reputationEngine.generateSuccessor) is never a bespoke-override
+      // character, so it always gets a real archetype variant assignment.
+      const successorClan = s.clans.find(c => c.id === death.clanId);
+      const successorLeader = successorClan?.leaders.find(l => l.id === death.successorId);
+      if (successorLeader) {
+        const { variant, cycles } = portraitAssets.assignVariant(
+          death.clanId, genderForLeader(successorLeader), s.portraitVariantCycles,
+        );
+        s = {
+          ...s,
+          clans: s.clans.map(c => c.id !== death.clanId ? c : {
+            ...c,
+            leaders: c.leaders.map(l => l.id === death.successorId ? { ...l, portraitVariant: variant } : l),
+          }),
+          portraitVariantCycles: cycles,
+        };
+      }
+
       const stampClause = death.biasInherited ? "a man of his father's stamp" : 'an unknown quantity';
       let noticeBody =
         `Word from the Forum: ${death.deadLeaderName} of the ${death.clanName} has died, aged ${death.deadLeaderAge}. ` +
@@ -2088,8 +2109,15 @@ export function processSeason(state: GameState): {
   if (needsSpouse(s.family)) {
     if (Math.random() < BALANCE.succession.remarriageChance) {
       const player = s.family.find(c => c.isPlayer)!;
-      const spouse = generateSpouse(s.gensSurname);
-      s = { ...s, family: [...s.family, spouse] };
+      const rawSpouse = generateSpouse(s.gensSurname);
+      // portrait-fixes.md Chunk 6 — a remarried-in spouse is never a
+      // bespoke-override character, so it always gets a real archetype
+      // variant assignment.
+      const { variant, cycles } = portraitAssets.assignVariant(
+        'house', genderForCharacter(rawSpouse), s.portraitVariantCycles,
+      );
+      const spouse = { ...rawSpouse, portraitVariant: variant };
+      s = { ...s, family: [...s.family, spouse], portraitVariantCycles: cycles };
       events.push(`${spouse.name} joins the household as ${player.name}'s wife.`);
     }
   }

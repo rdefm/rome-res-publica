@@ -241,12 +241,134 @@ regression to the row's existing tap targets.
 - Confirm no regression to Cursus's existing `CandidateHeader`/election
   rival portraits (Chunk 1 changes shared fallback code they already use).
 
+---
+
+## Chunk 6 — Clan archetype-group variant assignment (2026-07-25, own branch)
+
+**Context:** the first real archetype art landed — 3 male "archetypes" for
+Cornelii (12 images: 3 variants × 4 age bands — `child`/`adult`/`midage`/
+`elder`; `baby`/`youth` uncovered). User wants each Cornelii leader
+permanently assigned to one archetype (e.g. Rufus always renders variant B
+as he ages), with no two leaders sharing an archetype until every archetype
+in the group has been handed out once (then a fresh cycle, reshuffled, so
+repeats aren't back-to-back). This is a different unit of work from Chunks
+1–5 (new persisted state + a save-schema addition + hooks into 3 separate
+character/leader creation paths), so it landed on its own branch
+(`portrait-variant-groups`) off `main`, per this repo's one-branch-per-
+plan-doc convention — Chunks 1–5 were already merged to `main` before this
+started.
+
+**Verified findings:**
+1. "Archetype" is exactly the existing **variant** concept
+   (`variantIndexFor`/`portraitKeyFor`'s `{lineage}-{variant}-{gender}-
+   {ageBand}` key) — no new concept needed, just a new *assignment*
+   mechanism (persisted + no-repeat, instead of the existing pure id-hash).
+2. `Math.random()` inside engine functions is already this codebase's norm
+   for "roll once, bake the result into the entity" (`electionEngine.ts`,
+   `inheritanceEngine.ts`'s `suggestChildName`/`generateSpouse`) — using it
+   in `assignPortraitVariant` isn't a new pattern.
+3. `ClanLeader`s are a **fixed static roster** from `data/startingClans.ts`
+   with one real exception: `reputationEngine.generateSuccessor` (called
+   from `ageAndProcessMortality`, wired into `turnSequencer.ts`'s Winter→
+   Spring rollover) procedurally creates a brand new `ClanLeader` when one
+   dies. This is a real runtime creation path that needed its own hook —
+   easy to miss from a `clan.leaders.push` grep alone (it replaces the dead
+   leader in-place via `.map`, never pushes).
+4. Family `Character`s are created at 3 points: `startGame` (initial
+   roster), `gameStore.confirmBirthNaming` (births), and `turnSequencer.ts`'s
+   passive remarriage check (`generateSpouse`) — all 3 needed the hook.
+5. `saveLoad.ts`'s `SaveSchema` validates `family`/`clans` very loosely
+   already (`family` only checks `id`/`name` per entry; `clans` is
+   `z.array(z.any())`), and `SaveSchema.parse()`'s return value is discarded
+   — `load()` returns `parsed as GameState` (the raw JSON) instead. So
+   `Character.portraitVariant`/`ClanLeader.portraitVariant` needed no schema
+   change at all; only the new top-level `portraitVariantCycles` field did
+   (mirroring `familyReputations`'s existing `z.record(...).default({})`
+   shape).
+6. `gameStore.ts` already imports `turnSequencer.processSeason` (for
+   `endSeason`), so `turnSequencer.ts` importing a *value* back from
+   `gameStore.ts` would be circular. The assignment composition helper
+   (`portraitAssets.assignVariant`) therefore lives in `utils/
+   portraitAssets.ts` — already a dependency-free leaf both files can import
+   — not in `gameStore.ts` or `engine/portraitEngine.ts` (which deliberately
+   has no knowledge of which asset files exist).
+
+**Decisions made (user, 2026-07-25):**
+- Reset behavior: once every variant in a lineage+gender group has been
+  assigned, **reshuffle a fresh cycle** (no immediate repeats), not
+  unconstrained random.
+- Scope: applies to **all lineages**, including `house` — any family member
+  without one of the 4 bespoke overrides (a newly-born child, a remarried-in
+  spouse, `altFamilies.ts`'s `npc-brother`) also gets a real, persisted,
+  no-repeat-until-exhausted archetype assignment, not just rival clan
+  leaders. (House lineage has no real archetype art yet, so this is
+  currently inert for house characters — falls to Chunk 1's emoji exactly
+  as before — but the assignment/persistence machinery is identical either
+  way, so it needed no separate code path.)
+- Archetype mapping: **3 archetypes within Cornelii's group** (not 1
+  archetype each across 3 different clans). Valerii/Fabii/Claudii stay on
+  the Chunk 1 emoji fallback until more art lands.
+
+**Fix:**
+1. `models/character.ts` / `models/clan.ts`: added `portraitVariant?:
+   number` to `Character`/`ClanLeader` — absent means "not yet assigned"
+   (old saves), `portraitKeyFor` falls back to the pre-existing id-hash in
+   that case.
+2. `engine/portraitEngine.ts`:
+   - `PortraitSubject`'s both variants gained `portraitVariant?: number`;
+     `characterPortraitSubject`/`leaderPortraitSubject` now pass it through.
+   - `portraitKeyFor` prefers `subject.portraitVariant` over the id-hash
+     when present (signature unchanged otherwise — fully backward
+     compatible with every existing call site/test).
+   - New pure `assignPortraitVariant(usedThisCycle, variantCount)`: picks a
+     variant not yet in `usedThisCycle`; once exhausted, reshuffles fresh
+     (returns just the new pick as the cycle's first entry).
+3. `utils/portraitAssets.ts`:
+   - `VARIANT_COUNTS` map (`'cornelii-m': 3`, default `1` for everything
+     else via `DEFAULT_PORTRAIT_VARIANT_COUNT`) plus `variantCountFor`.
+   - `assignVariant(lineage, gender, cycles)` — the single composition
+     entry point every creation site calls; defaults `cycles` to `{}` since
+     plenty of test fixtures build a partial `GameState` predating this
+     field (a real bug caught by the full suite run — `s.portraitVariantCycles`
+     arriving as `undefined`, not just missing a key, crashed on `cycles[key]`).
+   - The 12 real Cornelii files uncommented in `PORTRAITS`.
+4. `state/gameStore.ts`:
+   - New `portraitVariantCycles: Record<string, number[]>` field (default
+     `{}`), keyed `${lineage}-${gender}`.
+   - `startGame`: assigns a variant to every starting Cornelii leader and
+     any starting-family member without a bespoke override.
+   - `confirmBirthNaming`: assigns a variant to the new child.
+5. `engine/turnSequencer.ts`:
+   - Passive remarriage check: assigns a variant to the new spouse.
+   - Leader-mortality block: after `ageAndProcessMortality`, looks up the
+     newly-generated successor by `death.successorId`/`death.clanId` and
+     assigns it a variant (kept out of `reputationEngine.generateSuccessor`
+     itself, so that engine file stays fully decoupled from the portrait
+     system).
+6. `state/saveLoad.ts`: added `portraitVariantCycles: z.record(z.string(),
+   z.array(z.number())).default({})`.
+7. Tests: `__tests__/portraitEngine.test.ts` (a `portraitKeyFor` case for
+   the stored-variant-wins path, plus a full `assignPortraitVariant`
+   describe block) and a new `__tests__/portraitAssets.test.ts`
+   (`variantCountFor`/`assignVariant`, including the undefined-cycles
+   defensive case).
+
+**Done when:** every starting Cornelii leader shows one of the 3 archetypes
+consistently as they age; no two Cornelii leaders share an archetype until
+all 3 have been used at least once; a newly-generated Cornelii successor
+gets its own assignment; `npx tsc --noEmit` and `npm test` are clean
+(matching Chunks 1–5's pre-existing baseline — 3 unrelated failures in
+`officeAction.test.ts`).
+
+---
+
 ## Explicitly deferred / out of scope
 
-- **Real archetype art** (the ~60-image pool). Placeholders are the
-  deliberate accepted state per the user's 2026-07-24 decision. Revisit as
-  its own follow-up once art is ready — at that point, only
-  `utils/portraitAssets.ts` needs new `require()` lines uncommented, by
-  design.
+- **Remaining archetype art** (Cornelii's male `baby`/`youth` bands; any
+  archetype art for Valerii/Fabii/Claudii/house; female archetypes
+  anywhere). Chunk 6 makes the *assignment system* correct end-to-end for
+  any lineage+gender group — dropping in more art is just more `require()`
+  lines in `portraitAssets.ts` plus a `VARIANT_COUNTS` entry, by design, no
+  further code changes.
 - `genderForLeader`'s "always returns `'m'`" limitation (pre-existing,
   documented in `portraitEngine.ts`) — undisturbed by this plan.

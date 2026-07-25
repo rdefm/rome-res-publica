@@ -7,6 +7,8 @@ import { gatherChance, isDeterred } from '../../engine/secretEngine';
 import { FileProsecutionPickerModal } from './DossierPanel';
 import { BALANCE } from '../../data/balance';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
+import PortraitRoundel from '../shared/PortraitRoundel';
+import { leaderPortraitSubject } from '../../engine/portraitEngine';
 
 // ─── Gather Intelligence family-member picker (Phase 4, P4-A) ────────────────
 // Inline modal list, per the plan's "a simple inline list is fine this
@@ -204,7 +206,9 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
   return (
     <View style={ld.container}>
       <View style={ld.header}>
-        <Text style={ld.emoji}>{leader.emoji}</Text>
+        <View style={ld.portraitWrap}>
+          <PortraitRoundel subject={leaderPortraitSubject(leader, clanId)} size={56} frame="gold" />
+        </View>
         <View style={ld.info}>
           <Text style={ld.name}>{leader.name}</Text>
           <Text style={ld.title}>{leader.title} · Age {leader.age}</Text>
@@ -302,7 +306,7 @@ const ld = StyleSheet.create({
     padding: SPACING.md,
   },
   header: { flexDirection: 'row', marginBottom: SPACING.sm },
-  emoji: { fontSize: 36, marginRight: SPACING.sm },
+  portraitWrap: { marginRight: SPACING.sm },
   info: { flex: 1 },
   name: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 16, fontWeight: '700' },
   title: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, marginTop: 2 },

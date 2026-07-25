@@ -82,6 +82,14 @@ export interface Character {
   // as a change on the first battle). See musterEngine.ts's header comment
   // for the full "commander changed" interpretation.
   lastLoyaltyCommanderId?: string | null;
+
+  // portrait-fixes.md Chunk 6 — assigned once (gameStore.startGame, or at
+  // birth/marriage) via engine/portraitEngine.ts's assignPortraitVariant,
+  // then permanent for this character's lifetime. Absent = not yet assigned
+  // (a bespoke-override character, or an existing save from before this
+  // field existed) — portraitKeyFor falls back to the old id-hash in that
+  // case, so this is safe to add without a migration.
+  portraitVariant?: number;
 }
 
 // ─── Phase 3, Chunk P3-C — Succession ────────────────────────────────────────

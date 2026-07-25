@@ -10,6 +10,7 @@ import {
   variantIndexFor,
   portraitKeyFor,
   placeholderEmojiFor,
+  assignPortraitVariant,
   DEFAULT_PORTRAIT_VARIANT_COUNT,
   type PortraitSubject,
 } from '../src/engine/portraitEngine';
@@ -141,6 +142,50 @@ describe('portraitKeyFor', () => {
     const key = portraitKeyFor(subject, 3);
     expect(key).toMatch(/^house-[1-3]-m-adult$/);
     expect(portraitKeyFor(subject, 3)).toBe(key); // deterministic across calls
+  });
+  test('portrait-fixes.md Chunk 6 — a subject.portraitVariant, when present, always wins over the id-hash', () => {
+    const subject: PortraitSubject = {
+      kind: 'leader', id: 'cornelius-rufus', name: 'Cn. Cornelius Rufus', age: 45, clanId: 'cornelii', portraitVariant: 2,
+    };
+    // variantIndexFor('cornelius-rufus', N) may or may not coincidentally
+    // equal 2 for a given N — this asserts the assigned value is used
+    // regardless of what the hash-fallback path would have picked.
+    expect(portraitKeyFor(subject)).toBe('cornelii-2-m-midage');
+  });
+});
+
+describe('assignPortraitVariant', () => {
+  test('variantCount <= 1 always returns variant 1 with an empty cycle', () => {
+    expect(assignPortraitVariant([], 1)).toEqual({ variant: 1, usedThisCycle: [] });
+    expect(assignPortraitVariant([1], 0)).toEqual({ variant: 1, usedThisCycle: [] });
+  });
+
+  test('picks the one remaining variant when the rest of the cycle is already used', () => {
+    expect(assignPortraitVariant([1, 2], 3)).toEqual({ variant: 3, usedThisCycle: [1, 2, 3] });
+  });
+
+  test('never repeats a variant already in the cycle until the cycle is exhausted', () => {
+    let cycle: number[] = [];
+    const picked = new Set<number>();
+    for (let i = 0; i < 3; i++) {
+      const { variant, usedThisCycle } = assignPortraitVariant(cycle, 3);
+      expect(picked.has(variant)).toBe(false); // no repeat within this cycle
+      picked.add(variant);
+      cycle = usedThisCycle;
+    }
+    expect(picked).toEqual(new Set([1, 2, 3]));
+  });
+
+  test('once every variant in the cycle is used, the next pick starts a fresh cycle (usedThisCycle resets to just the new pick)', () => {
+    const { variant, usedThisCycle } = assignPortraitVariant([1, 2, 3], 3);
+    expect([1, 2, 3]).toContain(variant);
+    expect(usedThisCycle).toEqual([variant]);
+  });
+
+  test('a shrunk variantCount (e.g. after config changes) is treated as an exhausted cycle, not an error', () => {
+    const { variant, usedThisCycle } = assignPortraitVariant([1, 2, 3], 2);
+    expect([1, 2]).toContain(variant);
+    expect(usedThisCycle).toEqual([variant]);
   });
 });
 
