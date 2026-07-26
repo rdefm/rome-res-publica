@@ -17,7 +17,7 @@ const SAVE_KEY = 'rome_save_v1';
 // version-dispatch table. This stamp exists so that logic has something to
 // key off in the future, and so the fixture/migration tests in
 // __tests__/saveLoad.test.ts can assert on it directly.
-export const CURRENT_SAVE_VERSION = 5;
+export const CURRENT_SAVE_VERSION = 6;
 
 // Minimal Zod schema — validates the shape is correct before loading.
 // Exported (Phase 5, Chunk P5-I) so migration-fixture tests can validate
@@ -178,6 +178,23 @@ export const SaveSchema = z.object({
   // validation — gameStore.startGame/loadGame's own INITIAL_STATE spread
   // already backfills a missing key for an actual in-progress save.
   difficulty: z.enum(['clemens', 'aequus', 'ferox']).default('aequus'),
+  // Tutorial redesign (save version 6) — .default() ensures a pre-v6 save
+  // (including any mid-legacy-tutorial-264 save, which used tutorialQueue
+  // instead) loads as the inert value: no active arc, every tab unlocked.
+  // As with gensId/difficulty above, parse()'s result is discarded — the
+  // real backfill is gameStore.loadGame's INITIAL_STATE spread; this default
+  // only matters for validation.
+  tutorial: z.object({
+    activeArc:     z.enum(['prologue', 'embassy', 'war', 'courts']).nullable().default(null),
+    stepId:        z.string().nullable().default(null),
+    completedArcs: z.array(z.string()).default([]),
+    unlockedTabs:  z.array(z.string()).default(['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia']),
+    skipped:       z.boolean().default(false),
+  }).default({
+    activeArc: null, stepId: null, completedArcs: [],
+    unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'],
+    skipped: false,
+  }),
 });
 
 export interface SaveProvider {

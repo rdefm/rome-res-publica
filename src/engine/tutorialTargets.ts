@@ -4,7 +4,8 @@
 // file) and can update on every scroll frame, which would re-render every
 // component subscribed to the store. tutorial-redesign-plan.md §2.4.
 
-export type TutorialTargetId = string;
+import type { TutorialTargetId } from '../models/tutorial';
+export type { TutorialTargetId };
 
 export interface TargetRect {
   x: number;

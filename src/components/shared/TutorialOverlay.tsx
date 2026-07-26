@@ -21,11 +21,8 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { getTarget, subscribeTargets, TargetRect } from '../../engine/tutorialTargets';
-import type { TutorialTargetId } from '../../engine/tutorialTargets';
+import type { TutorialTargetId, TutorialRail } from '../../models/tutorial';
 import { COLORS, RADIUS } from '../../utils/theme';
-
-// Local until T2's models/tutorial.ts lands — swap to the shared import then.
-type TutorialRail = 'hard' | 'guided';
 
 interface TutorialOverlayProps {
   targetId?: TutorialTargetId; // omit for a full-screen narration beat (no cut-out)

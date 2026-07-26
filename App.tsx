@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, StyleSheet, View, AppState } from 'react-native';
+import { Text, StyleSheet, View, AppState, Alert } from 'react-native';
 
 import DomusScreen from './src/screens/DomusScreen';
 import ForumScreen from './src/screens/ForumScreen';
@@ -22,6 +22,14 @@ import EpilogueScreen from './src/screens/EpilogueScreen';
 import TrialSessionModal from './src/components/cursus/TrialSessionModal';
 import EngagementInterstitial from './src/components/provinciae/EngagementInterstitial';
 import AchievementToast from './src/components/shared/AchievementToast';
+import TutorialOverlay, { getCaptionDock } from './src/components/shared/TutorialOverlay';
+import TutorialCaption from './src/components/shared/TutorialCaption';
+import { getTarget, subscribeTargets } from './src/engine/tutorialTargets';
+import {
+  getStep as getTutorialStep,
+  isStepSatisfied as isTutorialStepSatisfied,
+  validateTutorialScript,
+} from './src/engine/tutorialEngine';
 import { generateAgenda } from './src/engine/agendaEngine';
 import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle } from './src/components/shared/TabBar';
 import StartMenuScreen from './src/screens/StartMenuScreen';
@@ -100,6 +108,51 @@ function AppNavigator() {
       <Tab.Screen name="Provinciae" component={ProvinciaeScreen} />
       <Tab.Screen name="Curia"      component={CuriaScreen} />
     </Tab.Navigator>
+  );
+}
+
+// ─── Tutorial layer ───────────────────────────────────────────────────────────
+// Renders the spotlight overlay + Philon caption for the tutorial's current
+// step, if any. Self-gated on tutorial.stepId — a Free Start or a
+// fully-skipped guided start renders nothing.
+
+function confirmSkipTutorialArc() {
+  Alert.alert(
+    'Skip this lesson?',
+    "Philon will stop guiding you — this arc, and everything after it, completes immediately. You can't come back to it.",
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Skip', style: 'destructive', onPress: () => useGameStore.getState().skipTutorialArc() },
+    ],
+  );
+}
+
+function TutorialLayer() {
+  const tutorial = useGameStore(s => s.tutorial);
+  const currentStep = tutorial.stepId ? getTutorialStep(tutorial.stepId) : null;
+
+  const rect = useSyncExternalStore(
+    subscribeTargets,
+    () => (currentStep?.target ? getTarget(currentStep.target) : null),
+  );
+
+  if (!currentStep) return null;
+
+  return (
+    <>
+      <TutorialOverlay targetId={currentStep.target} rail={currentStep.rail} />
+      <TutorialCaption
+        narration={currentStep.narration}
+        actLabel={currentStep.actLabel}
+        dock={getCaptionDock(rect)}
+        onTapAdvance={
+          currentStep.advance.kind === 'tap'
+            ? () => useGameStore.getState().advanceTutorialStep()
+            : undefined
+        }
+        onSkipPress={confirmSkipTutorialArc}
+      />
+    </>
   );
 }
 
@@ -219,6 +272,39 @@ function GameRoot() {
     return unsub; // clean up on unmount
   }, []); // intentionally empty — subscription lives for component lifetime
 
+  // ── Tutorial director ────────────────────────────────────────────────────────
+  // Same subscription idiom as AgendaTablet auto-open above, for the same
+  // reason (finding 30 / tutorial-redesign-plan.md §2.6): a deps-array effect
+  // fires once per render batch and can miss a same-batch state change, a
+  // subscription fires after every store commit and always reads current
+  // state. Only advances predicate-kind steps — tap/eventResolved steps
+  // advance via TutorialCaption's onTapAdvance or the event-resolution path.
+  useEffect(() => {
+    if (__DEV__) {
+      validateTutorialScript();
+    }
+
+    const checkAndMaybeAdvance = () => {
+      const s = useGameStore.getState();
+      if (!s.gameStarted)                                return;
+      if (!s.tutorial.activeArc || !s.tutorial.stepId)   return;
+      if (s.activeEvent)                                 return;
+      if (s.seasonOverlayVisible)                        return;
+      if (s.pendingBirthNaming)                          return;
+      if ((s.pendingAmbitionScopes ?? []).length > 0)    return;
+      if (s.trials.some(t => t.status === 'in_session')) return;
+      if (s.activeBattle)                                return;
+
+      const currentStep = getTutorialStep(s.tutorial.stepId);
+      if (currentStep && isTutorialStepSatisfied(currentStep, s)) {
+        s.advanceTutorialStep();
+      }
+    };
+
+    const unsub = useGameStore.subscribe(checkAndMaybeAdvance);
+    return unsub;
+  }, []); // intentionally empty — subscription lives for component lifetime
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   if (!gameStarted) {
@@ -231,6 +317,14 @@ function GameRoot() {
         <StatusBar style="light" backgroundColor={COLORS.bg} />
         <ResourceBar />
         <AppNavigator />
+        {/* TutorialLayer sits above the navigator but below every modal listed
+            next — a real story event, birth, ambition choice, trial day, or
+            battle must always win over a spotlight/caption (tutorial-redesign
+            -plan.md §2.6). It is a plain absolutely-positioned overlay, not a
+            native Modal, but EventModal etc. are native Modals and therefore
+            paint above it regardless of this ordering anyway; ordered here to
+            keep the JSX itself legible as a priority list. */}
+        <TutorialLayer />
         {/* Modal priority: EventModal → AmbitionSelectionModal → BirthNamingModal → AgendaTablet → WelcomeBackModal.
             BirthNamingModal was imported but never mounted here until this fix — pendingBirthNaming
             was being set correctly by turnSequencer's passive birth check, but with no modal ever

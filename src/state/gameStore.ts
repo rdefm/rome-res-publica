@@ -22,6 +22,16 @@ import type { OfficeActionTargetContext } from '../engine/officeActionEngine';
 import type { StartId, GensId, DifficultyId } from '../models/gameStart';
 import type { AgendaTarget, TabName } from '../models/agenda';
 import type { SeasonLedger } from '../models/ledger';
+// ── Tutorial redesign ──────────────────────────────────────────────────────────
+import type { TutorialState, TutorialArcId } from '../models/tutorial';
+import { TUTORIAL_ARCS } from '../data/tutorialScript';
+import {
+  getStep as getTutorialStep,
+  getNextStep as getNextTutorialStep,
+  applyTutorialEffect,
+  ALL_TABS as ALL_TUTORIAL_TABS,
+  TUTORIAL_ARC_ORDER,
+} from '../engine/tutorialEngine';
 import { calcLevyCost } from '../engine/troopEngine';
 import {
   calcConsularArmyStrength,
@@ -593,6 +603,15 @@ export interface GameState {
   /** Which start configuration launched this game. */
   startId: StartId;
 
+  /**
+   * Tutorial redesign — spotlight-guided arcs (prologue/embassy/war/courts).
+   * Never null; INITIAL_STATE uses the inert value (no active arc, all tabs
+   * unlocked). Distinct from the legacy `tutorialQueue` field below, which
+   * a later chunk retires once this system carries real content.
+   * tutorial-redesign-plan.md §2.3.
+   */
+  tutorial: TutorialState;
+
   // ── Phase 5, Chunk P5-E — gens identity (alternate starting families) ──────
   // Four grammatical forms, all needed somewhere in the codebase's existing
   // flavor text (verified by the P5-E neutrality sweep) — stored explicitly
@@ -1050,6 +1069,24 @@ export interface GameActions {
   /** Clear a consumed navigation request. Called by App.tsx after the nav executes. */
   clearNavRequest: () => void;
 
+  // ── Tutorial redesign ──────────────────────────────────────────────────────
+  /** Enter an arc at its first step. Used at guided-start time and for each
+   *  later arc's kickoff (embassy/war/courts). Does not touch unlockedTabs
+   *  or completedArcs — those evolve as steps are advanced/skipped. */
+  startTutorialArc: (arc: TutorialArcId) => void;
+  /** Resolve the current step's onCompleteEffectId, move to the next step
+   *  (running its onEnterEffectId) or, past the arc's last step, complete
+   *  the arc. Applies any step's unlocksTab the moment it's passed. */
+  advanceTutorialStep: () => void;
+  /** Completes the active arc and every arc after it in TUTORIAL_ARC_ORDER
+   *  (an arc's later beats depend on earlier ones having "happened"), and
+   *  unlocks every tab. No-op if no arc is active. Confirm via dialog before
+   *  calling — this is a one-way action. */
+  skipTutorialArc: () => void;
+  /** Completes all four arcs and unlocks every tab. Confirm via dialog
+   *  before calling. */
+  skipAllTutorials: () => void;
+
   // ── Phase 1 — Season ledger + autosave (P1-D) ─────────────────────────────
   /**
    * Load a saved game. Spreads INITIAL_STATE under savedState so fields added
@@ -1378,6 +1415,11 @@ export const INITIAL_STATE: GameState = {
   difficulty: 'aequus' as DifficultyId,
 
   tutorialQueue: [],
+  tutorial: {
+    activeArc: null, stepId: null, completedArcs: [],
+    unlockedTabs: ALL_TUTORIAL_TABS, // free start / no active script: all open
+    skipped: false,
+  },
   agendaViewedTurn: -1,
   agendaVisible: false,
   lastSeasonLedger: null,
@@ -1639,6 +1681,18 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       debugMode: mode === 'debug',
       startId: startId as StartId,
       tutorialQueue,
+      // Tutorial redesign — a guided start (tutorialScriptId set) begins the
+      // prologue arc hard-railed to Domus only; every other start gets the
+      // inert, fully-unlocked value. tutorial-redesign-plan.md §2.3.
+      tutorial: scriptId
+        ? {
+            activeArc: 'prologue' as TutorialArcId,
+            stepId: TUTORIAL_ARCS.prologue.steps[0]?.id ?? null,
+            completedArcs: [],
+            unlockedTabs: ['Domus'],
+            skipped: false,
+          }
+        : INITIAL_STATE.tutorial,
       pendingEvents: pendingGameStart,
       lastActiveAt: Date.now(),
       log: [mkLog('264 BC · Spring', `The ${gensPlural} begin their ascent.`, 'neutral')],
@@ -3641,6 +3695,86 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   dismissAgenda:     () => set({ agendaVisible: false }),
   requestNavigation: (target) => set({ uiNavRequest: target }),
   clearNavRequest:   () => set({ uiNavRequest: null }),
+
+  // ── Tutorial redesign ──────────────────────────────────────────────────────
+
+  startTutorialArc: (arc) => {
+    const s = get();
+    const firstStep = TUTORIAL_ARCS[arc]?.steps[0] ?? null;
+    const enterPatch = applyTutorialEffect(firstStep?.onEnterEffectId, s);
+    set({
+      ...enterPatch,
+      tutorial: { ...s.tutorial, activeArc: arc, stepId: firstStep?.id ?? null },
+    });
+  },
+
+  advanceTutorialStep: () => {
+    const s = get();
+    const { activeArc, stepId } = s.tutorial;
+    if (!activeArc || !stepId) return;
+    const current = getTutorialStep(stepId);
+    if (!current) return;
+
+    const completePatch = applyTutorialEffect(current.onCompleteEffectId, s);
+    const stateAfterComplete: GameState = { ...s, ...completePatch };
+
+    const unlockedTabs =
+      current.unlocksTab && !s.tutorial.unlockedTabs.includes(current.unlocksTab)
+        ? [...s.tutorial.unlockedTabs, current.unlocksTab]
+        : s.tutorial.unlockedTabs;
+
+    const nextStep = getNextTutorialStep(current, stateAfterComplete);
+
+    if (nextStep) {
+      const enterPatch = applyTutorialEffect(nextStep.onEnterEffectId, stateAfterComplete);
+      set({
+        ...completePatch,
+        ...enterPatch,
+        tutorial: { ...s.tutorial, stepId: nextStep.id, unlockedTabs },
+      });
+    } else {
+      set({
+        ...completePatch,
+        tutorial: {
+          ...s.tutorial,
+          stepId: null,
+          activeArc: null,
+          completedArcs: [...s.tutorial.completedArcs, current.arc],
+          unlockedTabs,
+        },
+      });
+    }
+  },
+
+  skipTutorialArc: () => {
+    const s = get();
+    const { activeArc } = s.tutorial;
+    if (!activeArc) return;
+    const idx = TUTORIAL_ARC_ORDER.indexOf(activeArc);
+    const cascaded = idx === -1 ? [activeArc] : TUTORIAL_ARC_ORDER.slice(idx);
+    set({
+      tutorial: {
+        ...s.tutorial,
+        activeArc: null,
+        stepId: null,
+        completedArcs: Array.from(new Set([...s.tutorial.completedArcs, ...cascaded])),
+        unlockedTabs: ALL_TUTORIAL_TABS,
+        skipped: true,
+      },
+    });
+  },
+
+  skipAllTutorials: () => {
+    set({
+      tutorial: {
+        activeArc: null,
+        stepId: null,
+        completedArcs: [...TUTORIAL_ARC_ORDER],
+        unlockedTabs: ALL_TUTORIAL_TABS,
+        skipped: true,
+      },
+    });
+  },
 
   // ── Phase 1 — Season ledger + autosave (P1-D) ─────────────────────────────
 
