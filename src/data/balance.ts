@@ -69,7 +69,15 @@ export const BALANCE = {
     // gatherIntelligenceFidesCost removed, Phase 4 P4-A — superseded by
     // BALANCE.secrets.gatherCostFides (same seed value, 8); gatherIntelligence
     // is now rewired onto secretEngine.attemptGather.
-    canvassForVotesFidesCost: 12,
+    // canvassForVotesFidesCost removed — canvassForVotes (gameStore.ts) was a
+    // first-draft canvassing action from the repo's very first commit: flat
+    // cost, no relationship gate, no roll, always succeeded. canvassLeader
+    // (electionEngine.ts's calcCanvassRoll/calcOfficeThreshold, added later —
+    // "Fixing bugs in cursus honorum") is the real mechanic every other
+    // canvassing surface uses (ForumScreen's CanvassingPanel, and
+    // canvassForCommand's explicit "same shape as canvassLeader"). Its own
+    // LeaderDetailPanel button was repointed at canvassLeader — this constant
+    // has no remaining call site.
   },
 
   // ─── Senate bill actions (gameStore.ts) ────────────────────────────────────
@@ -883,7 +891,7 @@ export const BALANCE = {
     /** Leverage (player, on a held Secret): consumes it, forces the target
      *  bill's support by leader.votes × this, signed for/against. Election
      *  Leverage is free/instant (reuses campaignVotes, no separate constant
-     *  needed — same mechanism canvassForVotes/canvassLeader already use). */
+     *  needed — same mechanism canvassLeader already uses). */
     leverageBillSupportPerVote: 1.2,
     /** Extort (player, on a held Secret): status -> 'extorting',
      *  +extortIncomePerPotency × potency Denarii/season. Each season,

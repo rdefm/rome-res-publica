@@ -744,7 +744,6 @@ export interface GameActions {
   forgeAlliance: (leaderId: string) => void;
   arrangeMarriageForum: (leaderId: string) => void;
   gatherIntelligence: (leaderId: string, agentId: string) => void;
-  canvassForVotes: (leaderId: string) => void;
 
   // Phase 4, Chunk P4-B — Secret verbs
   leverageSecretForBill: (secretId: string, billId: string, direction: 'for' | 'against') => void;
@@ -2370,19 +2369,6 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       )],
       ...bumpActions(s),
       ...bumpSpend(s, { fides: BALANCE.secrets.gatherCostFides }),
-    });
-  },
-
-  canvassForVotes: (leaderId) => {
-    const s = get();
-    if (s.fides < BALANCE.diplomacy.canvassForVotesFidesCost) return;
-    const label = turnLabel(s);
-    set({
-      fides: s.fides - BALANCE.diplomacy.canvassForVotesFidesCost,
-      campaignVotes: { ...s.campaignVotes, [leaderId]: 'for' },
-      log: [...s.log, mkLog(label, 'Canvassing complete. Clan leader support secured.', 'good')],
-      ...bumpActions(s),
-      ...bumpSpend(s, { fides: BALANCE.diplomacy.canvassForVotesFidesCost }),
     });
   },
 

@@ -4,6 +4,7 @@ import type { ClanLeader } from '../../models/clan';
 import { useGameStore } from '../../state/gameStore';
 import { getUnlockedReputationActions, computeReputationDelta } from '../../engine/reputationEngine';
 import { gatherChance, isDeterred } from '../../engine/secretEngine';
+import { getCanvassFidesCost, CANVASS_MIN_RELATIONSHIP } from '../../engine/electionEngine';
 import { FileProsecutionPickerModal } from './DossierPanel';
 import { BALANCE } from '../../data/balance';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
@@ -162,7 +163,7 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
   const {
     fides, denarii, campaigning, campaignVotes, familyReputations, clans, secrets, trials,
     buyInfluence, inviteToDinner, forgeAlliance, arrangeMarriageForum,
-    gatherIntelligence, canvassForVotes,
+    gatherIntelligence, canvassLeader,
   } = useGameStore();
   const [intelPickerOpen, setIntelPickerOpen] = useState(false);
   const [prosecutionPickerOpen, setProsecutionPickerOpen] = useState(false);
@@ -263,15 +264,23 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
           disabled={fides < BALANCE.secrets.gatherCostFides}
           onPress={() => setIntelPickerOpen(true)}
         />
-        {campaigning && (
-          <ForumActionBtn
-            label={canvassed ? `Canvassed: ${campaignVotes[leader.id]}` : 'Canvass for Votes'}
-            cost="12 Fides"
-            desc="One chance per leader per campaign."
-            disabled={fides < 12 || canvassed}
-            onPress={() => canvassForVotes(leader.id)}
-          />
-        )}
+        {campaigning && (() => {
+          const canvassCost = getCanvassFidesCost(campaigning);
+          const tooLowRel = leader.relationship < CANVASS_MIN_RELATIONSHIP;
+          return (
+            <ForumActionBtn
+              label={canvassed ? `Canvassed: ${campaignVotes[leader.id]}` : 'Canvass for Votes'}
+              cost={`${canvassCost} Fides`}
+              desc={
+                tooLowRel
+                  ? `Requires standing ≥ ${CANVASS_MIN_RELATIONSHIP} (current: ${leader.relationship}).`
+                  : "A real chance to lock this leader's support — scales with your Rhetoric, not guaranteed."
+              }
+              disabled={fides < canvassCost || canvassed || tooLowRel}
+              onPress={() => canvassLeader(leader.id)}
+            />
+          );
+        })()}
         {corruptionFilingEligible && (
           <ForumActionBtn
             label={trialAlreadyActive ? 'The courts are occupied' : 'File Prosecution'}
