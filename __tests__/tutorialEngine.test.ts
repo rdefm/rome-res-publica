@@ -46,7 +46,14 @@ describe('tutorialEngine — pure step resolution', () => {
     delete TUTORIAL_PREDICATES['test.always-true'];
     delete TUTORIAL_PREDICATES['test.always-false'];
     delete TUTORIAL_EFFECTS['test.add-fides'];
-    TUTORIAL_TARGET_IDS.clear();
+    // Not .clear() — TUTORIAL_TARGET_IDS is the real, shared singleton
+    // registry (embassy/war/courts arcs carry real content and real target
+    // references now that T7+ have authored them, unlike when this file was
+    // written in T2 and every non-prologue arc was still an empty array), so
+    // wiping the whole set here would make validateTutorialScript() see
+    // those real steps' real targets as unregistered. Only remove the one
+    // synthetic id a test below actually adds.
+    TUTORIAL_TARGET_IDS.delete('domus.real-button');
   });
 
   it('getStep finds a step by id across arcs; null if absent', () => {
@@ -221,7 +228,13 @@ describe('gameStore tutorial actions', () => {
     expect(tutorial.unlockedTabs).toEqual(['Domus', 'Forum']);
   });
 
-  it('advancing past the arc\'s last step completes the arc and unlocks its tab', () => {
+  it('advancing past the arc\'s last step auto-chains into the next arc in TUTORIAL_ARC_ORDER', () => {
+    // embassy.steps carries real T7 content now (TUTORIAL_ARC_ORDER's next
+    // arc after prologue) — swapped for a controlled synthetic step here so
+    // this test exercises the auto-chain mechanism itself, not embassy's
+    // actual authored content, and won't break if that content changes later.
+    const realEmbassySteps = TUTORIAL_ARCS.embassy.steps;
+    TUTORIAL_ARCS.embassy.steps = [makeStep({ id: 'embassy.s1', arc: 'embassy', requiresTab: 'Provinciae' })];
     TUTORIAL_ARCS.prologue.steps = [makeStep({ id: 's1', unlocksTab: 'Cursus' })];
     useGameStore.setState({
       ...INITIAL_STATE,
@@ -231,10 +244,30 @@ describe('gameStore tutorial actions', () => {
     useGameStore.getState().advanceTutorialStep();
 
     const tutorial = useGameStore.getState().tutorial;
-    expect(tutorial.activeArc).toBeNull();
-    expect(tutorial.stepId).toBeNull();
+    expect(tutorial.activeArc).toBe('embassy');
+    expect(tutorial.stepId).toBe('embassy.s1');
     expect(tutorial.completedArcs).toEqual(['prologue']);
     expect(tutorial.unlockedTabs).toEqual(['Domus', 'Cursus']);
+    expect(useGameStore.getState().uiNavRequest).toEqual({ tab: 'Provinciae' });
+
+    TUTORIAL_ARCS.embassy.steps = realEmbassySteps;
+  });
+
+  it('advancing past the true last arc (courts) in TUTORIAL_ARC_ORDER goes idle, same as before auto-chaining existed', () => {
+    TUTORIAL_ARCS.courts.steps = [makeStep({ id: 'c1', arc: 'courts', unlocksTab: 'Cursus' })];
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      tutorial: { activeArc: 'courts', stepId: 'c1', completedArcs: ['prologue', 'embassy', 'war'], unlockedTabs: ['Domus'], skipped: false },
+    });
+
+    useGameStore.getState().advanceTutorialStep();
+
+    const tutorial = useGameStore.getState().tutorial;
+    expect(tutorial.activeArc).toBeNull();
+    expect(tutorial.stepId).toBeNull();
+    expect(tutorial.completedArcs).toEqual(['prologue', 'embassy', 'war', 'courts']);
+
+    TUTORIAL_ARCS.courts.steps = [];
   });
 
   it('advanceTutorialStep is a no-op when no arc is active', () => {

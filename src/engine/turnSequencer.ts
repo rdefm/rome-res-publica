@@ -73,7 +73,7 @@ import {
 } from './secretEngine';
 import { CLAUDIUS_ARC_SECRET_ID, CLAUDIUS_LEADER_ID, CLAUDIUS_CLAN_ID } from '../data/claudiusArc';
 import { EVENT_DEFS } from '../data/events';
-import { WAR_EVENT_DEFS } from '../data/warEvents';
+import { WAR_EVENT_DEFS, MESSANA_APPEAL_BODY_VIBIUS } from '../data/warEvents';
 import { CADET_EVENT_DEFS } from '../data/cadetEvents';
 import { COMPROMISING_EVENT_DEFS } from '../data/compromisingEvents';
 import { OFFICES } from '../data/offices';
@@ -516,6 +516,13 @@ export function processSeason(state: GameState): {
   const passedBills: Bill[] = [];
   const resolvedLogs: string[] = [];
   const remainingBills: Bill[] = [];
+  // Tutorial redesign, Chunk T7 — Philon's reaction to the Embassy sting's
+  // refuse-branch bill resolving, either way. Not folded into the generic
+  // resolvedLogs string (no per-bill flavour-text field exists on Bill, and
+  // adding one for a single bill isn't worth the plumbing) — instead reuses
+  // the same weight-0/injectNoticeEvent notice idiom as every other
+  // one-off narrative beat in this codebase (evt-war-outcome-*, etc.).
+  const billOutcomeNotices: EventInstance[] = [];
 
   if (!isWorldFrozen(s)) {
     const unrestTier = getTierFromLevel(s.crisis.unrest.level);
@@ -550,10 +557,18 @@ export function processSeason(state: GameState): {
           const patch = applyEffectString(bill.passEffect, s);
           s = { ...s, ...patch };
           resolvedLogs.push(`✓ ${bill.name} passes.`);
+          if (bill.id.startsWith('refuse-mamertines')) {
+            const player = s.family.find(c => c.isPlayer);
+            billOutcomeNotices.push(injectNoticeEvent('evt-refuse-mamertines-passes', s.turnNumber, player?.id ?? 'pc-1'));
+          }
         } else if (turnsLeft <= 0) {
           const patch = applyEffectString(bill.failEffect, s);
           s = { ...s, ...patch };
           resolvedLogs.push(`✗ ${bill.name} expires without passing.`);
+          if (bill.id.startsWith('refuse-mamertines')) {
+            const player = s.family.find(c => c.isPlayer);
+            billOutcomeNotices.push(injectNoticeEvent('evt-refuse-mamertines-fails', s.turnNumber, player?.id ?? 'pc-1'));
+          }
         } else {
           remainingBills.push({ ...bill, turnsLeft });
         }
@@ -587,6 +602,7 @@ export function processSeason(state: GameState): {
           ...(s.activeLaws ?? []).filter(l => !repealedLawIds.includes(l.billId)),
           ...newActiveLaws,
         ],
+        pendingEvents: [...s.pendingEvents, ...billOutcomeNotices],
       };
       events.push(...resolvedLogs);
     }
@@ -1873,12 +1889,23 @@ export function processSeason(state: GameState): {
         : undefined;
 
       const player = s.family.find((c) => c.isPlayer);
+      // Tutorial redesign, Chunk T7 — evt-messana-appeal's envoy is named as
+      // Vibius when the player already holds him (mamertine_captain) as a
+      // client — met during the Embassy arc, or independently recruited by
+      // a non-guided run. Falls back to the def's own generic bodyText
+      // otherwise, same override mechanism EventCard already reads for
+      // every other dynamically-worded event.
+      const messanaAppealBody = chosenDef.id === 'evt-messana-appeal'
+        && s.clients.some(c => (c as any).provincialClientDefId === 'mamertine_captain')
+        ? MESSANA_APPEAL_BODY_VIBIUS
+        : undefined;
       const instance: EventInstance = {
         defId: chosenDef.id,
         firedAtTurn: s.turnNumber,
         targetCharacterId: player?.id ?? 'pc-1',
         clientName: involvedClient?.name,
         clientType: involvedClient?.type,
+        bodyText: messanaAppealBody,
       };
 
       s = { ...s, pendingEvents: [...s.pendingEvents, instance] };

@@ -35,6 +35,7 @@ import type { Bill } from '../../models/bill';
 import type { CampaignAllocation } from '../../engine/campaignEngine';
 import { calcTotalImperium } from '../../engine/troopEngine';
 import { useGameStore } from '../../state/gameStore';
+import { useTutorialTarget } from '../shared/useTutorialTarget';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.72;
@@ -215,8 +216,14 @@ export default function CitySheet({
             declareWarEligible={declareWarEligible}
             declareWarBillPending={declareWarBillPending}
             ambassadorBillPending={ambassadorBillPending}
+            hasPlayerAmbassador={hasPlayerAmbassador}
+            recruitedClientIds={recruitedClientIds}
+            playerFides={playerFides}
+            playerDenarii={playerDenarii}
             onProposeDeclareWar={() => onProposeDeclareWar(province.id)}
             onSeekPosting={() => onSeekPosting(province.id)}
+            onRecruitClient={(clientId) => onRecruitClient(province.id, clientId)}
+            onAmbassadorAction={(actionId) => onAmbassadorAction(province.id, actionId)}
           />
         ) : (
           <>
@@ -528,19 +535,36 @@ function ForeignTerritoryView({
   declareWarEligible,
   declareWarBillPending,
   ambassadorBillPending,
+  hasPlayerAmbassador,
+  recruitedClientIds,
+  playerFides,
+  playerDenarii,
   onProposeDeclareWar,
   onSeekPosting,
+  onRecruitClient,
+  onAmbassadorAction,
 }: {
   def: NonNullable<ReturnType<typeof getCityDefinition>>;
   province: CityState;
   declareWarEligible: boolean;
   declareWarBillPending: boolean;
   ambassadorBillPending: boolean;
+  hasPlayerAmbassador: boolean;
+  recruitedClientIds: string[];
+  playerFides: number;
+  playerDenarii: number;
   onProposeDeclareWar: () => void;
   onSeekPosting: () => void;
+  onRecruitClient: (clientId: string) => void;
+  onAmbassadorAction: (actionId: AmbassadorActionId) => void;
 }) {
   const relLabel = getRelationshipLabel(province.relationshipScore);
   const relColour = getRelColour(province.relationshipScore);
+  // Tutorial redesign, T7 — called unconditionally (every foreign city
+  // renders this view), ref/onLayout only attached when this sheet is
+  // actually Messana's, same "call once, attach conditionally" pattern as
+  // MapView's per-marker targets.
+  const requestPostingTarget = useTutorialTarget('provinciae.foreign.request-posting');
   return (
     <View style={styles.heartlandView}>
       <Text style={styles.heartlandIcon}>{province.owner === 'carthage' ? '⚓' : '🛡'}</Text>
@@ -552,6 +576,8 @@ function ForeignTerritoryView({
       </Text>
       {!province.playerAmbassador && (
         <TouchableOpacity
+          ref={def.id === 'messana' ? requestPostingTarget.ref : undefined}
+          onLayout={def.id === 'messana' ? requestPostingTarget.onLayout : undefined}
           style={[styles.actionButton, ambassadorBillPending && styles.incorporationBannerDisabled]}
           onPress={onSeekPosting}
           disabled={ambassadorBillPending}
@@ -577,6 +603,26 @@ function ForeignTerritoryView({
               : `⚔ Declare War on ${def.name} — relations have soured past restraint`}
           </Text>
         </TouchableOpacity>
+      )}
+      {hasPlayerAmbassador && province.playerAmbassador && (
+        <>
+          <View style={styles.divider} />
+          <Text style={styles.overviewSectionLabel}>AMBASSADOR'S DESK</Text>
+          <DiplomatDesk
+            province={province}
+            ambassador={province.playerAmbassador}
+            playerFides={playerFides}
+            playerDenarii={playerDenarii}
+            onAction={onAmbassadorAction}
+          />
+          <View style={styles.divider} />
+          <Text style={styles.overviewSectionLabel}>PROVINCIAL CLIENTS</Text>
+          <CityClientCard
+            province={province}
+            recruitedClientIds={recruitedClientIds}
+            onRecruit={onRecruitClient}
+          />
+        </>
       )}
     </View>
   );

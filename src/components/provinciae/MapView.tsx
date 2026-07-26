@@ -455,6 +455,8 @@ export default function MapView({
   // its ref/onLayout are then only ATTACHED to the Campania marker, not
   // called conditionally per-city.
   const campaniaTarget = useTutorialTarget('provinciae.map.campania');
+  // Tutorial redesign, T7 — same pattern, Embassy arc's Messana marker.
+  const messanaTarget = useTutorialTarget('provinciae.map.messana');
 
   return (
     <View style={styles.container}>
@@ -510,8 +512,16 @@ export default function MapView({
         return (
           <TouchableOpacity
             key={def.id}
-            ref={def.id === 'campania' ? campaniaTarget.ref : undefined}
-            onLayout={def.id === 'campania' ? campaniaTarget.onLayout : undefined}
+            ref={
+              def.id === 'campania' ? campaniaTarget.ref :
+              def.id === 'messana'  ? messanaTarget.ref :
+              undefined
+            }
+            onLayout={
+              def.id === 'campania' ? campaniaTarget.onLayout :
+              def.id === 'messana'  ? messanaTarget.onLayout :
+              undefined
+            }
             onPress={() => onProvincePress(def.id)}
             style={[styles.nodeWrapper, { left, top }]}
             activeOpacity={0.75}

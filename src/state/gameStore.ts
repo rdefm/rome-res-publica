@@ -3674,16 +3674,42 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         ...(nextStep.requiresTab ? { uiNavRequest: { tab: nextStep.requiresTab } } : {}),
       });
     } else {
-      set({
-        ...completePatch,
-        tutorial: {
-          ...s.tutorial,
-          stepId: null,
-          activeArc: null,
-          completedArcs: [...s.tutorial.completedArcs, current.arc],
-          unlockedTabs,
-        },
-      });
+      // Arc finished — auto-chain into the next arc in TUTORIAL_ARC_ORDER
+      // (mirrors startTutorialArc's own enter logic) rather than going idle,
+      // so the guided run flows prologue -> embassy -> war -> courts without
+      // requiring some other call site to notice completion and re-invoke
+      // startTutorialArc itself. Only truly goes idle once courts finishes.
+      const completedArcs = [...s.tutorial.completedArcs, current.arc];
+      const arcIdx = TUTORIAL_ARC_ORDER.indexOf(current.arc);
+      const nextArc = arcIdx === -1 ? undefined : TUTORIAL_ARC_ORDER[arcIdx + 1];
+      const nextArcFirstStep = nextArc ? TUTORIAL_ARCS[nextArc]?.steps[0] ?? null : null;
+
+      if (nextArc && nextArcFirstStep) {
+        const arcEnterPatch = applyTutorialEffect(nextArcFirstStep.onEnterEffectId, stateAfterComplete);
+        set({
+          ...completePatch,
+          ...arcEnterPatch,
+          tutorial: {
+            ...s.tutorial,
+            activeArc: nextArc,
+            stepId: nextArcFirstStep.id,
+            completedArcs,
+            unlockedTabs,
+          },
+          ...(nextArcFirstStep.requiresTab ? { uiNavRequest: { tab: nextArcFirstStep.requiresTab } } : {}),
+        });
+      } else {
+        set({
+          ...completePatch,
+          tutorial: {
+            ...s.tutorial,
+            stepId: null,
+            activeArc: null,
+            completedArcs,
+            unlockedTabs,
+          },
+        });
+      }
     }
   },
 

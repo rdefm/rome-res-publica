@@ -173,7 +173,7 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     conquestFlag: 'messanaJoinsRome',
     profile: 'Mamertine-held city on the Strait. The flashpoint — appeals to Rome for protection.',
     flavorDescription:
-      'A band of Campanian mercenaries — the Mamertines, "sons of Mars" — seized this city years ago and have held it since, squeezed now between Syracuse and Carthage. They have sent envoys to Rome asking for help. Answering them means a fleet, and likely a war with Carthage none has yet dared to start.',
+      'A band of Campanian mercenaries — the Mamertines, "sons of Mars" — seized this city years ago and have held it since, squeezed now between Syracuse and Carthage. Their captain, Vibius, speaks for them. He has sent envoys to Rome asking for help. Answering them means a fleet, and likely a war with Carthage none has yet dared to start.',
     startingRelationship: 45,
     startingInfrastructure: 35,
     startingLocalSupport: 0,
@@ -183,7 +183,7 @@ export const MEDITERRANEAN_CITIES: CityDefinition[] = [
     nodeY: 0.533,
     clientIds: ['mamertine_captain'],
     npcRoleHolder: {
-      name: 'Mamertine garrison council',
+      name: 'Vibius the Mamertine',
       clanId: '',
       trait: 'negligent',
       policy: { taxation: 'standard', security: 'light_patrol', development: 'neglect' },

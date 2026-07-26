@@ -310,10 +310,10 @@ describe('guided run — Acts I-V end to end', () => {
     useGameStore.getState().advanceTutorialStep(); // audit -> standoff (closing narration)
     expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act5.standoff');
 
-    useGameStore.getState().advanceTutorialStep(); // standoff's own tap -> prologue complete
+    useGameStore.getState().advanceTutorialStep(); // standoff's own tap -> prologue complete, auto-chains into embassy
     s = useGameStore.getState();
-    expect(s.tutorial.activeArc).toBeNull();
-    expect(s.tutorial.stepId).toBeNull();
+    expect(s.tutorial.activeArc).toBe('embassy');
+    expect(s.tutorial.stepId).toBe('embassy.intro');
     expect(s.tutorial.completedArcs).toEqual(['prologue']);
     expect(s.tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia', 'Provinciae', 'Cursus']);
   });

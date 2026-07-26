@@ -15,6 +15,19 @@
 
 import type { EventDef } from '../models/event';
 
+// Tutorial redesign, Chunk T7 — the envoy's identity in evt-messana-appeal
+// depends on whether the player already holds Vibius (mamertine_captain) as
+// a client, which turnSequencer.ts checks at injection time (state, not
+// content, decides this — the event def itself only supplies the fallback).
+// Exported so turnSequencer can select it without duplicating the prose.
+export const MESSANA_APPEAL_BODY_VIBIUS =
+  'Vibius stands before the Senate himself — the Mamertine captain the player has already met, ' +
+  'already courted, already named a client of the house. He does not plead like a stranger. ' +
+  '"You know me, Domine. You know what Messana is worth, and what it costs to lose it. My men ' +
+  'held that city with nothing but our own arms. We ask Rome for what a client asks of his patron — ' +
+  'not charity, but help." Everyone in the Curia understands what answering him means: a fleet ' +
+  'across the strait, and very likely a war with Carthage that no one alive has yet had to fight.';
+
 export const WAR_EVENT_DEFS: EventDef[] = [
 
   // ─── Ignition ────────────────────────────────────────────────────────────
@@ -284,6 +297,44 @@ export const WAR_EVENT_DEFS: EventDef[] = [
     id: 'evt-war-outcome-humbled',
     title: 'Rome Humbled',
     bodyText: 'The war is over. Rome did not win it.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      { id: 'continue', label: 'Continue', successEffect: '', failureEffect: '' },
+    ],
+  },
+
+  // ─── Refuse-branch outcome notices (Chunk T7) ────────────────────────────
+  // weight: 0 — fired only via injectNoticeEvent from turnSequencer.ts's bill
+  // resolution step, the moment 'Do Not Answer the Mamertine Call' (built by
+  // resourceEngine's tableRefuseMamertineBill) resolves either way. Philon
+  // names the lesson the Embassy interlude was staged to teach — that a
+  // vote is only ever as strong as the influence behind it.
+
+  {
+    id: 'evt-refuse-mamertines-fails',
+    title: 'Overruled',
+    bodyText:
+      'The motion dies in the Curia, buried under the votes of leaders you never courted. ' +
+      'Philon: "That is what insufficient influence feels like, Domine. A senator with no clients ' +
+      'owed to him, no favours banked, no rapport built — he may still be right, and still lose ' +
+      'every vote that matters." The fleet sails for Messana regardless.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      { id: 'continue', label: 'Continue', successEffect: '', failureEffect: '' },
+    ],
+  },
+
+  {
+    id: 'evt-refuse-mamertines-passes',
+    title: 'The Senate Holds Back',
+    bodyText:
+      'Against every expectation, the motion carries — the influence you spent courting the ' +
+      'chamber was enough after all. Philon: "Rarely does restraint win a vote, Domine. Remember ' +
+      'what it cost to arrange this one." Rome stays out of Sicily, for now.',
     imageKey: 'portrait-paterfamilias',
     conditions: [],
     weight: 0,

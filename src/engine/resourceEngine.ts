@@ -343,16 +343,21 @@ export function applyEffectString(
 
       // ── tableRefuseMamertineBill ─────────────────────────────────────────
       // Fired by warEvents.ts's evt-messana-appeal 'refuse' choice. Tables a
-      // low-support Senate motion against answering Messana's plea — hard,
-      // not impossible, to pass (support: -20 is a first-pass/unverified
-      // balance call, same convention as every other bill's numbers). If it
-      // passes, Rome stays out of the war; if it fails or expires (the
-      // likelier outcome), the Senate overrules the player and answers the
-      // call anyway (see its own failEffect). Dedup follows
-      // buildWarTriumphBill's id-prefix pattern (checks both queued and
-      // already-resolved bills) since this can only ever fire once per
-      // playthrough anyway (messanaResolved is set the same moment, gating
-      // out any repeat firing of the event itself).
+      // motion against answering Messana's plea, deliberately started deep
+      // underwater (support: -40 is a first-pass/unverified balance call,
+      // same convention as every other bill's numbers) — Chunk T7 tuned this
+      // down from -20 so the Embassy interlude's sting lands decisively
+      // rather than as a coin-flip: this is the vote the player has done
+      // nothing yet to win, and it should read that way. Still not
+      // impossible — three turnsLeft seasons of canvassing/voteBill support
+      // swings can close the gap for a determined player, same mechanism as
+      // any other bill. If it passes, Rome stays out of the war; if it fails
+      // or expires (the likelier and intended outcome), the Senate overrules
+      // the player and answers the call anyway (see its own failEffect).
+      // Dedup follows buildWarTriumphBill's id-prefix pattern (checks both
+      // queued and already-resolved bills) since this can only ever fire
+      // once per playthrough anyway (messanaResolved is set the same
+      // moment, gating out any repeat firing of the event itself).
       if (key === 'tableRefuseMamertineBill') {
         const bills = patch.bills ?? state.bills;
         const alreadyQueued = bills.some(b => b.id.startsWith('refuse-mamertines'))
@@ -363,7 +368,7 @@ export function applyEffectString(
             name: 'Do Not Answer the Mamertine Call',
             desc: 'A motion urging the Senate to leave Messana to its fate rather than risk war with Carthage over a strait none of Rome\'s neighbours will fight for.',
             type: 'military',
-            support: -20,
+            support: -40,
             turnsLeft: 3,
             passEffect: 'fides+5',
             failEffect: 'setFlag:messanaJoinsRome:true|startWar:carthage:major:0|fides-5',

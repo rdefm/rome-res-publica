@@ -422,6 +422,99 @@ const PROLOGUE_ACT5_STEPS: TutorialStep[] = [
   },
 ];
 
+// ─── Arc II — The Embassy ───────────────────────────────────────────────────
+// Guided rail (spotlight hints only — taps pass through; the world freeze
+// lifts the instant this arc becomes active, isWorldFrozen's own gate).
+// One continuous arc, not multiple acts. Completion: the player posts an
+// ambassador to Messana (still status: 'foreign' at this point — finding 9),
+// builds enough Local Support there via the Ambassador's Desk, and recruits
+// Vibius the Mamertine as a provincial client — the same man Rome will later
+// hear from as evt-messana-appeal's envoy (T4's ignition gate waits on this
+// arc's completion flag precisely so that appeal is never a stranger).
+//
+// Messana's relationshipRequired (40) for Vibius is already cleared at game
+// start (startingRelationship: 45) — the real gate the player must clear is
+// Local Support, 0 -> 25 (Vibius's supportRequired), via whichever
+// Ambassador's Desk action(s) they choose. Not prescribed here, same "the
+// choice, again, is yours" treatment as Act II/Act IV of the prologue.
+const EMBASSY_STEPS: TutorialStep[] = [
+  {
+    id: 'embassy.intro',
+    arc: 'embassy',
+    actLabel: 'The Embassy',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    narration:
+      "Domine. The family stands on its own now — I will not walk your hand through every step " +
+      "from here. But one thing wants doing before Rome has any reason to care about it: across " +
+      "the strait from Italy sits Messana, held by Mamertine mercenaries and courted by nobody. " +
+      "Post a man there before Rome ever needs Sicily, and you will know its captain as a friend, " +
+      "not a stranger asking for a fleet.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'embassy.find-messana',
+    arc: 'embassy',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    target: 'provinciae.map.messana',
+    narration: "There, across the water — Messana. Foreign still, and no business of Rome's. Tap it.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'embassy.request-posting',
+    arc: 'embassy',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    target: 'provinciae.foreign.request-posting',
+    narration:
+      "Request the posting. It tables exactly like any bill you passed in the Curia — support " +
+      "carries it, and here, nothing yet stands against it.",
+    advance: { kind: 'predicate', predicateId: 'messanaPostingRequested' },
+  },
+  {
+    id: 'embassy.end-season-for-posting',
+    arc: 'embassy',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    target: 'shared.end-season',
+    narration: "Close the season, and let the Senate's business run its course.",
+    advance: { kind: 'predicate', predicateId: 'messanaAmbassadorPosted' },
+  },
+  {
+    id: 'embassy.ambassador-desk',
+    arc: 'embassy',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    narration:
+      "Your man is posted. Open Messana again — the Ambassador's Desk waits there now. Rapport, " +
+      "grain, exchange: every action spends Fides or gold to buy Local Support, and Messana's " +
+      "garrison will not deal with a house it does not trust. The method is yours to choose.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'embassy.recruit-vibius',
+    arc: 'embassy',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    narration:
+      "Once the garrison trusts your house enough, its captain can be recruited as a client of " +
+      "this family — Vibius, a Mamertine, one of the self-styled \"sons of Mars.\" Recruit him.",
+    advance: { kind: 'predicate', predicateId: 'vibiusRecruited' },
+  },
+  {
+    id: 'embassy.closing',
+    arc: 'embassy',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    narration:
+      "It is done. Vibius owes your house now — not Rome, you. Remember that distinction, Domine. " +
+      "It will matter again, sooner than either of you would like.",
+    advance: { kind: 'tap' },
+    onCompleteEffectId: 'embassySetCompleteFlag',
+  },
+];
+
 export const TUTORIAL_ARCS: Record<TutorialArcId, TutorialArc> = {
   prologue: {
     id: 'prologue',
@@ -431,7 +524,7 @@ export const TUTORIAL_ARCS: Record<TutorialArcId, TutorialArc> = {
       ...PROLOGUE_ACT4_STEPS, ...PROLOGUE_ACT5_STEPS,
     ],
   },
-  embassy:  { id: 'embassy',  title: 'The Embassy',     steps: [] },
+  embassy:  { id: 'embassy',  title: 'The Embassy',     steps: [...EMBASSY_STEPS] },
   war:      { id: 'war',      title: 'The War',         steps: [] },
   courts:   { id: 'courts',   title: 'The Courts',      steps: [] },
 };

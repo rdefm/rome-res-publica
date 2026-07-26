@@ -50,6 +50,16 @@ export const TUTORIAL_TARGET_IDS = new Set<string>([
   'cursus.action.declare',
   'cursus.action.canvass',
   'shared.end-season',
+  // Embassy arc (T7). provinciae.ambassador.* and provinciae.client.recruit-
+  // vibius are NOT here: the Ambassador's Desk offers 5 interchangeable
+  // actions (the plan leaves the method up to the player, same "choice is
+  // yours" treatment as Act II's courting) and the recruit button lives
+  // inside CityClientCard, a component reused by every city's ordinary
+  // Clients tab — spotlighting one recruit row there would mean threading a
+  // ref through a shared component for a single arc's benefit. Both steps
+  // are narration-only, predicate-driven instead.
+  'provinciae.map.messana',
+  'provinciae.foreign.request-posting',
 ]);
 
 // Act III's teaching bill — STARTING_BILLS' 'start-2' (Bellum Punicum), the
@@ -115,6 +125,16 @@ export const TUTORIAL_PREDICATES: Record<string, (s: GameState) => boolean> = {
   // depends on it.
   quaestorWon: (s) => s.heldOffices.includes('quaestor'),
   claudiusDeterred: (s) => isDeterred(CLAUDIUS_LEADER_ID, s.secrets),
+
+  // Embassy arc (T7). Mirrors CitySheet.tsx's own ambassadorBillPending
+  // check exactly (fuzzy name match — the bill embeds the requesting
+  // character, which this predicate has no reason to resolve).
+  messanaPostingRequested: (s) =>
+    s.bills.some(b => b.name.startsWith('Ambassador Posting:') && b.name.endsWith(' to Messana')),
+  messanaAmbassadorPosted: (s) => !!s.cities.find(c => c.id === 'messana')?.playerAmbassador,
+  // Same loose (c as any).provincialClientDefId idiom gameStore.recruitCityClient
+  // itself uses — Client has no such field in its own type today.
+  vibiusRecruited: (s) => s.clients.some(c => (c as any).provincialClientDefId === 'mamertine_captain'),
 };
 
 export const TUTORIAL_EFFECTS: Record<string, (s: GameState) => Partial<GameState>> = {
@@ -141,6 +161,14 @@ export const TUTORIAL_EFFECTS: Record<string, (s: GameState) => Partial<GameStat
   // bill's real effect string keeps the moment thematically honest: this is
   // what the bill would have done had it passed normally.
   act3MoveWarTrack: (s) => applyEffectString('crisis-war-10|fides+4', s),
+
+  // Embassy arc (T7) — fires on the arc's final step's onCompleteEffectId.
+  // Consumed by turnSequencer.ts's evt-messana-appeal ignition gate (T4):
+  // for a guided run, the appeal never fires until this flag is set, so its
+  // envoy is always Vibius, never a stranger.
+  embassySetCompleteFlag: (s) => ({
+    flags: { ...s.flags, 'tutorial-embassy-complete': true },
+  }),
 };
 
 export function getStep(stepId: string): TutorialStep | null {
