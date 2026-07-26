@@ -20,6 +20,7 @@ import {
 import { leaderPortraitSubject } from '../engine/portraitEngine';
 import PortraitRoundel from '../components/shared/PortraitRoundel';
 import type { CanvassingEvent } from '../data/canvassingEvents';
+import { useTutorialTarget } from '../components/shared/useTutorialTarget';
 
 // ─── Canvassing Event Modal ───────────────────────────────────────────────────
 
@@ -141,6 +142,10 @@ function CanvassingPanel() {
   const {
     clans, campaigning, electionRivals, campaignVotes, fides, family, canvassLeader,
   } = state;
+  // Tutorial redesign, T5b — called unconditionally (before the early return
+  // below) so this stays a single, stable hook call; its ref/onLayout are
+  // only ATTACHED to Flaccus's row below, not called conditionally per-leader.
+  const flaccusCanvassTarget = useTutorialTarget('cursus.action.canvass');
 
   if (!campaigning) return null;
 
@@ -208,6 +213,8 @@ function CanvassingPanel() {
                 {leader.relationship >= 0 ? '+' : ''}{leader.relationship}
               </Text>
               <TouchableOpacity
+                ref={leader.id === 'valerius-flaccus' ? flaccusCanvassTarget.ref : undefined}
+                onLayout={leader.id === 'valerius-flaccus' ? flaccusCanvassTarget.onLayout : undefined}
                 style={[cp.canvassBtn, (!canCanvass || pledged) && cp.canvassBtnDisabled]}
                 onPress={() => canvassLeader(leader.id)}
                 disabled={!canCanvass}

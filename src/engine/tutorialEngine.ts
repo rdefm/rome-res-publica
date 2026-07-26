@@ -7,6 +7,8 @@ import type { GameState } from '../state/gameStore';
 import type { TutorialArcId, TutorialStep, TabName } from '../models/tutorial';
 import { TUTORIAL_ARCS } from '../data/tutorialScript';
 import { applyEffectString } from './resourceEngine';
+import { isDeterred } from './secretEngine';
+import { CLAUDIUS_LEADER_ID } from '../data/claudiusArc';
 
 export const ALL_TABS: TabName[] = ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'];
 
@@ -41,6 +43,13 @@ export const TUTORIAL_TARGET_IDS = new Set<string>([
   // confirm button lives inside HoldingsModal, another native Modal — same
   // reasoning as domus.action.train.
   'provinciae.map.campania',
+  // Act V — Cursus. cursus.office-action.audit-rival is NOT here: Audit a
+  // Rival's button lives inside OfficeActionsModal, another native Modal —
+  // same reasoning as domus.action.train.
+  'cursus.office.quaestor',
+  'cursus.action.declare',
+  'cursus.action.canvass',
+  'shared.end-season',
 ]);
 
 // Act III's teaching bill — STARTING_BILLS' 'start-2' (Bellum Punicum), the
@@ -92,6 +101,20 @@ export const TUTORIAL_PREDICATES: Record<string, (s: GameState) => boolean> = {
     const campania = s.cities.find(c => c.id === 'campania');
     return (campania?.ownedAssets.length ?? 0) > 0;
   },
+
+  // Act V — Cursus
+  quaestorCampaignDeclared: (s) => s.campaigning === 'quaestor',
+  flaccusCanvassedForQuaestor: (s) => s.campaignVotes['valerius-flaccus'] === 'for',
+  // Verified via npm run sim:elections-equivalent (a targeted 2000-trial
+  // simulation of this exact scripted sequence — see tutorialScript.ts's
+  // Act V header comment for the derived numbers): quaestorWon fires
+  // reliably. Quaestor's own generosity (8 seats, low rival bar at fresh
+  // game start) guarantees the win regardless of canvassing outcome;
+  // canvassing Flaccus is scripted as a teaching beat (Arc II's Command
+  // election re-tests the same verb, finding 16), not because the win
+  // depends on it.
+  quaestorWon: (s) => s.heldOffices.includes('quaestor'),
+  claudiusDeterred: (s) => isDeterred(CLAUDIUS_LEADER_ID, s.secrets),
 };
 
 export const TUTORIAL_EFFECTS: Record<string, (s: GameState) => Partial<GameState>> = {

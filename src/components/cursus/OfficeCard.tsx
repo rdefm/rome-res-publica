@@ -26,6 +26,7 @@ import InfoTap from '../shared/InfoTap';
 import { cursusAssets } from '../../utils/cursusAssets';
 import { COLORS, FONTS, RADIUS, SPACING } from '../../utils/theme';
 import OfficeActionsModal from './OfficeActionsModal';
+import { useTutorialTarget } from '../shared/useTutorialTarget';
 
 function OfficeCard({
   officeId,
@@ -50,6 +51,12 @@ function OfficeCard({
 
   const office = OFFICES.find((o) => o.id === officeId)!;
   const isPlayer = character.isPlayer;
+
+  // Tutorial redesign, T5b — only the player's own Quaestor card is ever a
+  // spotlight target (both the card itself and its CAMPAIGN button).
+  const isQuaestorCardForPlayer = officeId === 'quaestor' && isPlayer;
+  const cardTarget = useTutorialTarget(isQuaestorCardForPlayer ? 'cursus.office.quaestor' : undefined);
+  const declareTarget = useTutorialTarget(isQuaestorCardForPlayer ? 'cursus.action.declare' : undefined);
 
   const { status, reason } = getOfficeStatus(character, office, {
     currentOffice, heldOffices, campaigning, campaigningCharacterId,
@@ -79,7 +86,12 @@ function OfficeCard({
 
   return (
     <>
-      <TouchableOpacity activeOpacity={0.85} onPress={() => setModalOpen(true)}>
+      <TouchableOpacity
+        ref={cardTarget.ref}
+        onLayout={cardTarget.onLayout}
+        activeOpacity={0.85}
+        onPress={() => setModalOpen(true)}
+      >
         <ParchmentCard style={rung.container} contentStyle={rung.inner}>
           {/* Chunk E follow-up — icon now spans the card's full height (not
               just the top name/latin/meta row) via alignItems: 'stretch' on
@@ -105,6 +117,8 @@ function OfficeCard({
                 </View>
                 {showApplyBtn && (
                   <TouchableOpacity
+                    ref={declareTarget.ref}
+                    onLayout={declareTarget.onLayout}
                     style={[rung.applyBtn, !canApply && rung.applyBtnLocked]}
                     onPress={handleDeclare}
                     disabled={!canApply}

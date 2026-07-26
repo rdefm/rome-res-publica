@@ -301,11 +301,135 @@ const PROLOGUE_ACT4_STEPS: TutorialStep[] = [
   },
 ];
 
+// ── Act V — Cursus: why all of it existed ───────────────────────────────────
+// Completion: Marcus declares for Quaestor, canvasses Flaccus, wins the
+// election, then uses Audit a Rival on Claudius — a mutual standoff
+// (isDeterred), Claudius's blackmail neutralised on screen, mechanically
+// real per the plan's own framing.
+//
+// Guaranteed-win numbers (per the plan's "do not invent numbers" instruction
+// — derived, not assumed): calcOfficeThreshold('quaestor') = 40 + 1*5 = 45
+// (Quaestor is OFFICES[1]). A targeted 2000-trial simulation of this EXACT
+// scripted sequence (fresh guided start -> Invite Flaccus to Dinner (Act II)
+// -> declare Quaestor -> canvass Flaccus, retrying on failure/event up to 3
+// times -> advance to Winter) won 2000/2000 (100%). Canvassing Flaccus
+// itself only actually locks his vote in ~87% of individual trials (roll vs.
+// threshold, retried), yet the election was won 100% of the time regardless
+// — Quaestor's 8 seats and the fresh-game rival pool's low bar guarantee the
+// win on their own; canvassing Flaccus is scripted here as a teaching beat
+// (Arc II's Command election re-tests the same verb — finding 16), not
+// because the win depends on it. No relationship-gain adjustment needed.
+//
+// Audit a Rival's own button lives inside OfficeActionsModal (a native
+// Modal, same as Act I's training and Act IV's asset purchase) — that step
+// is narration-only, predicate-driven, no spotlight cutout.
+const PROLOGUE_ACT5_STEPS: TutorialStep[] = [
+  {
+    id: 'prologue.act5.intro',
+    arc: 'prologue',
+    actLabel: 'Act V — The Cursus',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    narration:
+      "The Cursus Honorum, Domine — why any of it existed. Family, friendships, income, " +
+      "the Curia's patience: every one of them was spent so that a name could climb this ladder.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'prologue.act5.find-quaestor',
+    arc: 'prologue',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    target: 'cursus.office.quaestor',
+    narration:
+      "There: Quaestor. Financial magistrate, and the first rung nearly every serious career " +
+      "climbs. Eight seats stand open this year — generous odds, for a first attempt.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'prologue.act5.declare',
+    arc: 'prologue',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    target: 'cursus.action.declare',
+    narration: "Declare your candidacy.",
+    advance: { kind: 'predicate', predicateId: 'quaestorCampaignDeclared' },
+  },
+  {
+    id: 'prologue.act5.canvass-intro',
+    arc: 'prologue',
+    rail: 'hard',
+    requiresTab: 'Forum',
+    narration:
+      "Every leader you have courted can now be canvassed — locked support, not mere goodwill. " +
+      "Flaccus, whom you already know, is the surest bet in the chamber.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'prologue.act5.canvass',
+    arc: 'prologue',
+    rail: 'hard',
+    requiresTab: 'Forum',
+    target: 'cursus.action.canvass',
+    narration: "Canvass him.",
+    advance: { kind: 'predicate', predicateId: 'flaccusCanvassedForQuaestor' },
+  },
+  {
+    id: 'prologue.act5.end-season-intro',
+    arc: 'prologue',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    narration: "The city votes when Winter comes. Close out the seasons between now and then.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'prologue.act5.wait-for-election',
+    arc: 'prologue',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    target: 'shared.end-season',
+    narration: "End the season, Domine. Rome does not wait, and neither, now, do you.",
+    advance: { kind: 'predicate', predicateId: 'quaestorWon' },
+  },
+  {
+    id: 'prologue.act5.audit-intro',
+    arc: 'prologue',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    narration:
+      "Quaestor. The treasury's ledgers are yours now — and its audit powers. Appius Claudius " +
+      "Pulcher has held something over this family since before you could vote. Return the favour.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'prologue.act5.audit',
+    arc: 'prologue',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    narration: "Open the office, choose Audit a Rival, and name him specifically.",
+    advance: { kind: 'predicate', predicateId: 'claudiusDeterred' },
+  },
+  {
+    id: 'prologue.act5.standoff',
+    arc: 'prologue',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    narration:
+      "It is done. He holds what he held, still — but so, now, do you. Neither of you can move " +
+      "first without losing everything. Philon: \"That, Domine, is what protects a family in " +
+      "Rome. Not virtue. Leverage, and the nerve to hold it.\"",
+    advance: { kind: 'tap' },
+  },
+];
+
 export const TUTORIAL_ARCS: Record<TutorialArcId, TutorialArc> = {
   prologue: {
     id: 'prologue',
     title: 'The First Year',
-    steps: [...PROLOGUE_ACT1_STEPS, ...PROLOGUE_ACT2_STEPS, ...PROLOGUE_ACT3_STEPS, ...PROLOGUE_ACT4_STEPS],
+    steps: [
+      ...PROLOGUE_ACT1_STEPS, ...PROLOGUE_ACT2_STEPS, ...PROLOGUE_ACT3_STEPS,
+      ...PROLOGUE_ACT4_STEPS, ...PROLOGUE_ACT5_STEPS,
+    ],
   },
   embassy:  { id: 'embassy',  title: 'The Embassy',     steps: [] },
   war:      { id: 'war',      title: 'The War',         steps: [] },

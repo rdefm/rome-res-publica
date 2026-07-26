@@ -6,6 +6,7 @@ import { getCriticalItems } from '../../engine/agendaEngine';
 import type { AgendaItem } from '../../models/agenda';
 import ScrollModal, { PARCHMENT } from './ScrollModal';
 import AgendaBadge from './AgendaBadge';
+import { useTutorialTarget } from './useTutorialTarget';
 
 const MARBLE_BG = require('../../assets/images/btn-end-season-bg.png');
 
@@ -16,6 +17,7 @@ const BTN_HEIGHT   = Math.round(BTN_WIDTH * (263 / 949));
 
 export default function EndSeasonButton() {
   const { endSeason, seasonOverlayVisible, showAgenda } = useGameStore();
+  const tutorialTarget = useTutorialTarget('shared.end-season');
 
   const [warningVisible, setWarningVisible] = useState(false);
   const [criticalItems, setCriticalItems]   = useState<AgendaItem[]>([]);
@@ -48,6 +50,8 @@ export default function EndSeasonButton() {
   return (
     <View style={styles.floatWrapper}>
       <TouchableOpacity
+        ref={tutorialTarget.ref}
+        onLayout={tutorialTarget.onLayout}
         style={[styles.button, seasonOverlayVisible && styles.disabled]}
         onPress={handlePress}
         disabled={seasonOverlayVisible}
