@@ -1,5 +1,6 @@
 import type { GameState } from '../state/gameStore';
 import type { SkillCheck } from '../models/event';
+import type { OfficeActionTargetContext } from '../engine/officeActionEngine';
 
 export type OfficeId =
   | 'vigintivirate'
@@ -77,8 +78,19 @@ export interface OfficeAction {
    * New actions use successEffect/failureEffect strings instead.
    * officeActionEngine.resolveOfficeAction routes based on which is present.
    * Optional to support new-style actions that omit it.
+   *
+   * Tutorial redesign, Chunk T6 — widened to also receive targetContext and
+   * the acting character's id, so an effect closure needing a player-chosen
+   * target (Audit a Rival's leaderId) or the acting character's own stats
+   * (its Intrigus) can read them. Backwards-compatible: every existing
+   * `(state) => ...` closure still satisfies this type unchanged — JS
+   * ignores extra call arguments a function doesn't declare.
    */
-  effect?: (state: GameState) => Partial<GameState> & { logMsg: string };
+  effect?: (
+    state: GameState,
+    targetContext?: OfficeActionTargetContext,
+    characterId?: string,
+  ) => Partial<GameState> & { logMsg: string };
 
   // ── New fields (all optional — existing actions need not define them) ────────
 
@@ -105,6 +117,16 @@ export interface OfficeAction {
   failureEffect?: string;
   /** Skill check to roll before applying success/failure effect. */
   skillCheck?: SkillCheck;
+  /**
+   * Tutorial redesign, Chunk T6 — set when this action needs a player-
+   * chosen target (a PLAYER_CHOSEN_* consequence, or an effect closure that
+   * reads targetContext directly, like Audit a Rival). Drives both which
+   * picker OfficeTargetPickerModal renders and whether ActionButton routes
+   * the action through takeOfficeAction (with the resolved targetContext)
+   * instead of the legacy useOfficeAction path, which supports neither
+   * targetContext nor characterId.
+   */
+  targetPicker?: 'leader' | 'clan' | 'province';
 }
 
 // ─── Office ──────────────────────────────────────────────────────────────────

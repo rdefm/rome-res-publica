@@ -30,6 +30,20 @@ export function gatherChance(agentIntrigus: number, groundwork: number): number 
   return Math.min(BALANCE.secrets.gatherChanceCap, raw);
 }
 
+/**
+ * Audit a Rival redesign (tutorial-redesign-plan.md T6) — the number the
+ * leader picker UI shows per candidate, before the player commits.
+ * corruptionScore defaults to 0 (a clean leader) when absent — see
+ * ClanLeader.corruptionScore's own doc comment for why it's optional.
+ */
+export function calcAuditChance(actingIntrigus: number, targetCorruptionScore: number | undefined): number {
+  const raw =
+    BALANCE.secrets.auditRivalChance - 0.20 +
+    actingIntrigus * BALANCE.secrets.auditPerIntrigus +
+    (targetCorruptionScore ?? 0) * BALANCE.secrets.auditPerCorruption;
+  return Math.min(BALANCE.secrets.auditChanceCap, Math.max(BALANCE.secrets.auditChanceFloor, raw));
+}
+
 // ─── Weighted picks ───────────────────────────────────────────────────────────
 
 /** maxPotency renormalizes BALANCE.secrets.potencyWeights over 1..maxPotency

@@ -287,10 +287,18 @@ function applyConsequences(
         if (!provinceId) break;
         patch = {
           ...patch,
+          // Tutorial redesign, Chunk T6 — this wrote to a `relationship`
+          // field that doesn't exist on CityState (the real field is
+          // `relationshipScore`, models/city.ts:93), found while wiring
+          // road-survey's picker: the consequence was silently inert even
+          // once targetContext resolved correctly, since it patched a
+          // phantom prop nobody reads. Fixed here — it's the same one-line
+          // fix for all three provinceRelationship consequences in
+          // offices.ts, not road-survey-specific.
           cities: (patch.cities ?? state.cities).map(p =>
             p.id !== provinceId ? p : {
               ...p,
-              relationship: Math.min(100, Math.max(-100, ((p as any).relationship ?? 0) + delta)),
+              relationshipScore: Math.min(100, Math.max(-100, p.relationshipScore + delta)),
             },
           ),
         };
@@ -470,7 +478,7 @@ export function resolveOfficeAction(
     const effectStr = success ? (action.successEffect ?? '') : (action.failureEffect ?? '');
     if (effectStr) effectPatch = applyEffectString(effectStr, stateAfterCost);
   } else if (action.effect) {
-    const legacyResult = action.effect(stateAfterCost);
+    const legacyResult = action.effect(stateAfterCost, targetContext, characterId);
     const { logMsg: legacyLog, ...legacyPatch } = legacyResult;
     effectPatch = legacyPatch;
     logMsg = legacyLog;

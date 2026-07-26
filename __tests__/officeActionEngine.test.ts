@@ -1,4 +1,4 @@
-import { evaluateGates, evaluateTribuneScaling } from '../src/engine/officeActionEngine';
+import { evaluateGates, evaluateTribuneScaling, resolveOfficeAction } from '../src/engine/officeActionEngine';
 import type { OfficeAction } from '../src/models/office';
 
 // ─── Shared fixtures ──────────────────────────────────────────────────────────
@@ -310,5 +310,128 @@ describe('evaluateTribuneScaling', () => {
     // Plebs 40 → ×0.85, base 10 → 8.5 → rounds to 9
     const state = makeScalingState(40);
     expect(evaluateTribuneScaling(10, state as any)).toBe(9);
+  });
+});
+
+// ─── PLAYER_CHOSEN_* sentinels (T6 — five previously-dead consequences) ─────
+// Each of these five actions had a real targetContext-dependent consequence
+// that silently never applied (finding 26/27): ActionButton always passed
+// targetContext: undefined. These tests confirm each resolves correctly with
+// a supplied context, and still warns-and-skips (no crash, consequence
+// simply doesn't apply) without one — the exact pre-T6 behavior, preserved
+// as a safe fallback rather than a hard error.
+
+describe('resolveOfficeAction — PLAYER_CHOSEN_* sentinels resolve with a supplied context (T6)', () => {
+  function makeLeader(id: string, overrides: Record<string, any> = {}) {
+    return {
+      id, name: `Leader ${id}`, title: 'Senator', age: 40,
+      relationship: 0, votes: 5, favour: 0, bias: 'neutral', sphere: 'political',
+      heldOffices: [], corruptionScore: 0, bio: '',
+      ...overrides,
+    };
+  }
+  function makeClan(id: string, leader: Record<string, any>) {
+    return { id, name: `Gens ${id}`, sigil: '', desc: '', influence: 10, leaders: [leader] };
+  }
+  function makeCity(id: string, relationshipScore = 50) {
+    return { id, map: 'italy', status: 'incorporated', owner: 'rome', relationshipScore,
+      internalStability: 70, infrastructureRating: 30, localSupport: 50,
+      playerGovernor: null, playerAmbassador: null, npcRoleHolder: null,
+      ownedAssets: [], incorporationBillAvailable: false, warDeclarationAvailable: false,
+      revoltActive: false, activeCampaign: null, officerVolunteer: null };
+  }
+
+  test('road-survey: with provinceId, relationshipScore rises; without, unchanged', () => {
+    const withCtx = makeState({
+      fides: 40, cities: [makeCity('prov-1', 50)],
+    });
+    const withResult = resolveOfficeAction('road-survey', 'pc-1', withCtx as any, { provinceId: 'prov-1' });
+    expect(withResult.cities?.find((c: any) => c.id === 'prov-1')?.relationshipScore).toBe(52);
+
+    const withoutCtx = makeState({ fides: 40, cities: [makeCity('prov-1', 50)] });
+    const withoutResult = resolveOfficeAction('road-survey', 'pc-1', withoutCtx as any);
+    expect(withoutResult.blocked).toBeUndefined(); // resolves, doesn't crash or block
+    expect(withoutResult.cities).toBeUndefined(); // but the consequence itself never applied
+  });
+
+  test('blacklist-from-courts: with leaderId, target clan relationship drops -20; without, unchanged', () => {
+    const leader = makeLeader('leader-1', { relationship: 40 });
+    const withCtx = makeState({
+      fides: 40,
+      family: [{ id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 44,
+        skills: { rhetoric: 6, martial: 4, intrigus: 8 }, traits: [], ambition: null,
+        relationship: 100, familyTrust: 100, officeId: 'praetor', corruptionScore: 0,
+        inheritedTraits: [], ambitionIds: [], reputationScores: {}, formalImperium: 0,
+        militaryImperium: 0, raisedLegions: [], veterans: [] }],
+      clans: [makeClan('clan-1', leader)],
+    });
+    const withResult = resolveOfficeAction('blacklist-from-courts', 'pc-1', withCtx as any, { leaderId: 'leader-1' });
+    expect(withResult.clans?.[0]?.leaders?.[0]?.relationship).toBe(20);
+
+    const withoutCtx = makeState({
+      fides: 40,
+      family: withCtx.family,
+      clans: [makeClan('clan-1', makeLeader('leader-1', { relationship: 40 }))],
+    });
+    const withoutResult = resolveOfficeAction('blacklist-from-courts', 'pc-1', withoutCtx as any);
+    expect(withoutResult.blocked).toBeUndefined();
+    expect(withoutResult.clans).toBeUndefined();
+  });
+
+  test('award-contracts: with clanId, that clan relationship rises +15; without, unchanged', () => {
+    const withCtx = makeState({
+      fides: 40,
+      clans: [makeClan('clan-1', makeLeader('leader-1', { relationship: 10 }))],
+    });
+    const withResult = resolveOfficeAction('award-contracts', 'pc-1', withCtx as any, { clanId: 'clan-1' });
+    expect(withResult.clans?.[0]?.leaders?.[0]?.relationship).toBe(25);
+
+    const withoutCtx = makeState({
+      fides: 40,
+      clans: [makeClan('clan-1', makeLeader('leader-1', { relationship: 10 }))],
+    });
+    const withoutResult = resolveOfficeAction('award-contracts', 'pc-1', withoutCtx as any);
+    expect(withoutResult.blocked).toBeUndefined();
+    expect(withoutResult.clans).toBeUndefined();
+  });
+
+  test('purge-conspirators: with leaderId, target clan relationship drops -10; without, unchanged', () => {
+    const withCtx = makeState({
+      fides: 40,
+      clans: [makeClan('clan-1', makeLeader('leader-1', { relationship: 40 }))],
+    });
+    const withResult = resolveOfficeAction('purge-conspirators', 'pc-1', withCtx as any, { leaderId: 'leader-1' });
+    expect(withResult.clans?.[0]?.leaders?.[0]?.relationship).toBe(30);
+
+    const withoutCtx = makeState({
+      fides: 40,
+      clans: [makeClan('clan-1', makeLeader('leader-1', { relationship: 40 }))],
+    });
+    const withoutResult = resolveOfficeAction('purge-conspirators', 'pc-1', withoutCtx as any);
+    expect(withoutResult.blocked).toBeUndefined();
+    expect(withoutResult.clans).toBeUndefined();
+  });
+
+  test('summon-to-account: with leaderId, target clan relationship drops -12; without, unchanged', () => {
+    const withCtx = makeState({
+      fides: 40,
+      family: [{ id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 44,
+        skills: { rhetoric: 6, martial: 4, intrigus: 8 }, traits: [], ambition: null,
+        relationship: 100, familyTrust: 100, officeId: 'tribune', corruptionScore: 0,
+        inheritedTraits: [], ambitionIds: [], reputationScores: {}, formalImperium: 0,
+        militaryImperium: 0, raisedLegions: [], veterans: [] }],
+      clans: [makeClan('clan-1', makeLeader('leader-1', { relationship: 40 }))],
+    });
+    const withResult = resolveOfficeAction('summon-to-account', 'pc-1', withCtx as any, { leaderId: 'leader-1' });
+    expect(withResult.clans?.[0]?.leaders?.[0]?.relationship).toBe(28);
+
+    const withoutCtx = makeState({
+      fides: 40,
+      family: withCtx.family,
+      clans: [makeClan('clan-1', makeLeader('leader-1', { relationship: 40 }))],
+    });
+    const withoutResult = resolveOfficeAction('summon-to-account', 'pc-1', withoutCtx as any);
+    expect(withoutResult.blocked).toBeUndefined();
+    expect(withoutResult.clans).toBeUndefined();
   });
 });

@@ -838,6 +838,18 @@ export const BALANCE = {
     /** Quaestor's Audit a Rival — moved here from the hardcoded 0.6 in
      *  offices.ts's audit-rival action. */
     auditRivalChance: 0.60,
+    /** Audit a Rival redesign (tutorial-redesign-plan.md T6) — player picks
+     *  any leader; chance scales with the acting character's Intrigus and
+     *  the target's corruptionScore instead of a flat roll:
+     *    chance = clamp(auditRivalChance - 0.20 + intrigus×auditPerIntrigus
+     *                    + corruption×auditPerCorruption, floor, cap)
+     *  The -0.20 keeps a mid-Intrigus (~5), mid-corruption (~30) target near
+     *  the old flat 0.60 — a redistribution, not a blanket buff. FIRST-PASS/
+     *  UNVERIFIED, same as the rest of this group — tune once playable. */
+    auditPerIntrigus: 0.03,
+    auditPerCorruption: 0.004,
+    auditChanceFloor: 0.20,
+    auditChanceCap: 0.90,
     /** npcGatherTick — each leader with standing < hostileStandingMax rolls
      *  once per season: npcGatherBase + npcGatherPerCorruption × (highest
      *  corruption among your family) capped at npcGatherCap. Corruption is

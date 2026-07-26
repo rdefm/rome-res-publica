@@ -5,12 +5,14 @@
 // Logic unchanged from the original inline version — evaluates gates,
 // handles extreme styling, routes to the correct store action.
 
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import type { Character } from '../../models/character';
 import type { OfficeAction } from '../../models/office';
+import type { OfficeActionTargetContext } from '../../engine/officeActionEngine';
 import { evaluateGates } from '../../engine/officeActionEngine';
+import OfficeTargetPickerModal from './OfficeTargetPickerModal';
 import { PARCHMENT_TEXT } from '../shared/ParchmentCard';
 import { COLORS, FONTS, RADIUS, SPACING } from '../../utils/theme';
 
@@ -23,6 +25,7 @@ export default function ActionButton({
 }) {
   const state = useGameStore();
   const { useOfficeAction, takeOfficeAction } = state;
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // Gate evaluation — structural requirements (skills, flags, assets, etc.)
   const gateResult = evaluateGates(action, character.id, state as any);
@@ -39,14 +42,25 @@ export default function ActionButton({
 
   function handlePress() {
     if (isDisabled) return;
+    // Tutorial redesign, Chunk T6 — an action needing a player-chosen
+    // target always routes through takeOfficeAction via the picker, whether
+    // it's new-style (successEffect + PLAYER_CHOSEN_* consequences) or
+    // legacy-effect (Audit a Rival, whose effect closure reads
+    // targetContext.leaderId directly) — the picker is what used to be
+    // missing, not the routing.
+    if (action.targetPicker) {
+      setPickerOpen(true);
+      return;
+    }
     if (isNewStyle) {
-      // Target context (province/leader picker) not yet implemented — pass undefined.
-      // Actions requiring PLAYER_CHOSEN_* targets will apply effects but skip
-      // those consequences. Target selection UI is planned for a subsequent chunk.
       (takeOfficeAction as any)(action.id, character.id, undefined);
     } else {
       useOfficeAction(action.id);
     }
+  }
+
+  function handlePick(targetContext: OfficeActionTargetContext) {
+    (takeOfficeAction as any)(action.id, character.id, targetContext);
   }
 
   const blockedReason = !gateResult.allowed
@@ -56,27 +70,40 @@ export default function ActionButton({
       : undefined;
 
   return (
-    <TouchableOpacity
-      style={[
-        ab.btn,
-        isExtreme && ab.btnExtreme,
-        isDisabled && ab.btnDisabled,
-      ]}
-      disabled={isDisabled}
-      onPress={handlePress}
-      activeOpacity={0.75}
-    >
-      <View style={ab.row}>
-        <Text style={[ab.label, isExtreme && ab.labelExtreme]}>
-          {isExtreme ? '⚠ EXTREME  ' : ''}{action.name}
-        </Text>
-        <Text style={ab.cost}>{action.cost}</Text>
-      </View>
-      <Text style={ab.desc}>{action.desc}</Text>
-      {blockedReason !== undefined && (
-        <Text style={ab.blocked}>{blockedReason}</Text>
+    <>
+      <TouchableOpacity
+        style={[
+          ab.btn,
+          isExtreme && ab.btnExtreme,
+          isDisabled && ab.btnDisabled,
+        ]}
+        disabled={isDisabled}
+        onPress={handlePress}
+        activeOpacity={0.75}
+      >
+        <View style={ab.row}>
+          <Text style={[ab.label, isExtreme && ab.labelExtreme]}>
+            {isExtreme ? '⚠ EXTREME  ' : ''}{action.name}
+          </Text>
+          <Text style={ab.cost}>{action.cost}</Text>
+        </View>
+        <Text style={ab.desc}>{action.desc}</Text>
+        {blockedReason !== undefined && (
+          <Text style={ab.blocked}>{blockedReason}</Text>
+        )}
+      </TouchableOpacity>
+
+      {action.targetPicker && (
+        <OfficeTargetPickerModal
+          visible={pickerOpen}
+          kind={action.targetPicker}
+          actionId={action.id}
+          actingCharacterId={character.id}
+          onClose={() => setPickerOpen(false)}
+          onPick={handlePick}
+        />
       )}
-    </TouchableOpacity>
+    </>
   );
 }
 

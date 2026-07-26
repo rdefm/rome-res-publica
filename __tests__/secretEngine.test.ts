@@ -1,5 +1,6 @@
 import {
   gatherChance,
+  calcAuditChance,
   attemptGather,
   npcGatherTick,
   generateSecret,
@@ -91,6 +92,38 @@ describe('gatherChance', () => {
     expect(gatherChance(4, 0)).toBeCloseTo(gatherBaseChance + 4 * gatherPerIntrigus);
     expect(gatherChance(0, 0.2)).toBeCloseTo(gatherBaseChance + 0.2);
     expect(gatherChance(10, 0.3)).toBe(gatherChanceCap); // way over — clamped
+  });
+});
+
+// ─── calcAuditChance (T6 — Audit a Rival redesign) ──────────────────────────
+
+describe('calcAuditChance', () => {
+  const { auditRivalChance, auditPerIntrigus, auditPerCorruption, auditChanceFloor, auditChanceCap } = BALANCE.secrets;
+
+  test('mid-range: a mid-Intrigus, mid-corruption target lands close to the old flat 0.60', () => {
+    const chance = calcAuditChance(5, 30);
+    const expected = auditRivalChance - 0.20 + 5 * auditPerIntrigus + 30 * auditPerCorruption;
+    expect(chance).toBeCloseTo(expected);
+    // "Near" the old flat 0.60 — same neighbourhood, not identical (a real redistribution).
+    expect(chance).toBeGreaterThan(0.5);
+    expect(chance).toBeLessThan(0.75);
+  });
+
+  test('cap: a high-Intrigus auditor against a heavily corrupt target clamps to the cap', () => {
+    expect(calcAuditChance(100, 100)).toBe(auditChanceCap);
+  });
+
+  test('floor: clamps to the floor rather than going negative or near-zero', () => {
+    expect(calcAuditChance(-1000, -1000)).toBe(auditChanceFloor);
+  });
+
+  test('a clean target (corruptionScore undefined) is treated as corruption 0, not NaN', () => {
+    const chance = calcAuditChance(5, undefined);
+    expect(chance).toBeCloseTo(auditRivalChance - 0.20 + 5 * auditPerIntrigus);
+  });
+
+  test('zero Intrigus, zero corruption is still comfortably above the floor (floor is a defensive clamp, not normally reachable)', () => {
+    expect(calcAuditChance(0, 0)).toBeCloseTo(auditRivalChance - 0.20);
   });
 });
 

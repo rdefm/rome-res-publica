@@ -410,3 +410,104 @@ describe('Triumph bill generation', () => {
     expect(triumphBill).toBeUndefined();
   });
 });
+
+// ─── Audit a Rival (T6 — player-picked target, Intrigus/corruption formula) ──
+
+describe('resolveOfficeAction — audit-rival (T6)', () => {
+  function makeLeader(overrides: Record<string, any> = {}) {
+    return {
+      id: 'leader-1', name: 'Test Leader', title: 'Senator', age: 40,
+      relationship: 0, votes: 5, favour: 0, bias: 'neutral', sphere: 'political',
+      heldOffices: [], corruptionScore: 30, bio: '',
+      ...overrides,
+    };
+  }
+  function makeClan(leader: Record<string, any>) {
+    return { id: 'clan-1', name: 'Gens Testia', sigil: '🛡', desc: '', influence: 10, leaders: [leader] };
+  }
+
+  test('no targetContext: warns and skips, no Secret generated', () => {
+    const state = makeState({ fides: 40, secrets: [], clans: [makeClan(makeLeader())] });
+    const result = resolveOfficeAction('audit-rival', 'pc-1', state as any);
+    expect(result.logMsg).toBe('No target selected for the audit.');
+    expect(result.secrets).toBeUndefined();
+  });
+
+  test('unknown leaderId: warns and skips', () => {
+    const state = makeState({ fides: 40, secrets: [], clans: [makeClan(makeLeader())] });
+    const result = resolveOfficeAction('audit-rival', 'pc-1', state as any, { leaderId: 'nonexistent' });
+    expect(result.logMsg).toBe('Target leader not found.');
+    expect(result.secrets).toBeUndefined();
+  });
+
+  test('a leader already carrying a player-held Secret is refused, not re-audited', () => {
+    const state = makeState({
+      fides: 40,
+      secrets: [{ id: 's1', holder: 'player', subject: { kind: 'leader', leaderId: 'leader-1' }, status: 'held' }],
+      clans: [makeClan(makeLeader())],
+    });
+    const result = resolveOfficeAction('audit-rival', 'pc-1', state as any, { leaderId: 'leader-1' });
+    expect(result.logMsg).toBe('You already hold a Secret on Test Leader.');
+    expect(result.secrets).toBeUndefined();
+  });
+
+  test('success roll (mocked) generates a Secret on the chosen leader specifically', () => {
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // always beats any chance > 0
+    try {
+      const state = makeState({ fides: 40, secrets: [], clans: [makeClan(makeLeader({ id: 'leader-1' }))] });
+      const result = resolveOfficeAction('audit-rival', 'pc-1', state as any, { leaderId: 'leader-1' });
+      expect(result.secrets).toHaveLength(1);
+      expect(result.secrets![0].holder).toBe('player');
+      expect((result.secrets![0].subject as any).leaderId).toBe('leader-1');
+      expect(result.logMsg).toContain('Audit complete');
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+
+  test('failure roll (mocked) generates no Secret', () => {
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999); // beats any realistic chance
+    try {
+      const state = makeState({ fides: 40, secrets: [], clans: [makeClan(makeLeader())] });
+      const result = resolveOfficeAction('audit-rival', 'pc-1', state as any, { leaderId: 'leader-1' });
+      expect(result.secrets).toBeUndefined();
+      expect(result.logMsg).toContain('reveals nothing useful');
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+
+  test('a higher-Intrigus acting character and a more corrupt target both raise the actual success rate', () => {
+    // Roll fixed at 0.55: succeeds only when calcAuditChance clears it.
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.55);
+    try {
+      const lowState = makeState({
+        fides: 40, secrets: [],
+        family: [{ id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 44,
+          skills: { rhetoric: 6, martial: 4, intrigus: 0 }, traits: [], ambition: null,
+          relationship: 100, familyTrust: 100, officeId: 'quaestor', corruptionScore: 0,
+          inheritedTraits: [], ambitionIds: [], reputationScores: {}, formalImperium: 0,
+          militaryImperium: 0, raisedLegions: [], veterans: [] }],
+        clans: [makeClan(makeLeader({ corruptionScore: 0 }))],
+      });
+      const lowResult = resolveOfficeAction('audit-rival', 'pc-1', lowState as any, { leaderId: 'leader-1' });
+      // intrigus 0, corruption 0 -> chance 0.40 -> roll 0.55 fails
+      expect(lowResult.secrets).toBeUndefined();
+
+      const highState = makeState({
+        fides: 40, secrets: [],
+        family: [{ id: 'pc-1', name: 'Marcus', role: 'paterfamilias', isPlayer: true, age: 44,
+          skills: { rhetoric: 6, martial: 4, intrigus: 9 }, traits: [], ambition: null,
+          relationship: 100, familyTrust: 100, officeId: 'quaestor', corruptionScore: 0,
+          inheritedTraits: [], ambitionIds: [], reputationScores: {}, formalImperium: 0,
+          militaryImperium: 0, raisedLegions: [], veterans: [] }],
+        clans: [makeClan(makeLeader({ corruptionScore: 80 }))],
+      });
+      const highResult = resolveOfficeAction('audit-rival', 'pc-1', highState as any, { leaderId: 'leader-1' });
+      // intrigus 9, corruption 80 -> chance 0.40 + 0.27 + 0.32 = 0.99 -> clamped to cap 0.90 -> roll 0.55 succeeds
+      expect(highResult.secrets).toHaveLength(1);
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+});

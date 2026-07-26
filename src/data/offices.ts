@@ -1,6 +1,6 @@
 import type { Office, OfficeAction } from '../models/office';
 import { BALANCE } from './balance';
-import { generateSecret } from '../engine/secretEngine';
+import { generateSecret, calcAuditChance } from '../engine/secretEngine';
 
 export const OFFICES: Office[] = [
   // ─── VIGINTIVIRATE ──────────────────────────────────────────────────────────
@@ -38,6 +38,7 @@ export const OFFICES: Office[] = [
         desc: "Commission a survey of roads connecting a province. Improves that province's infrastructure. Requires selecting a target province.",
         spend: { fides: 8 },
         successEffect: '',
+        targetPicker: 'province',
         consequences: [
           { type: 'provinceRelationship', targetId: 'PLAYER_CHOSEN_PROVINCE', delta: 2, description: 'Province infrastructure investment recognised' },
         ],
@@ -90,39 +91,44 @@ export const OFFICES: Office[] = [
         cost: '5 Fides',
         costVal: 5,
         resource: 'fides',
-        // 60% — mirrors BALANCE.secrets.auditRivalChance (the actual value
-        // used below). Kept as a static string rather than computed from
-        // BALANCE at module scope: offices.ts -> balance.ts ->
-        // electionEngine.ts -> offices.ts is an existing circular import
-        // (electionEngine.ts imports OFFICES for prerequisite checks), and
-        // dereferencing BALANCE at OFFICES-array-literal eval time (i.e.
-        // synchronously, not inside a closure) crashes on the partially-
-        // initialized module. The effect closure below is safe: it only
-        // reads BALANCE when the action actually fires, long after every
-        // module has finished loading.
-        desc: '60% chance to uncover a criminal Secret on a hostile clan leader.',
-        // Phase 4, Chunk P4-A — success now yields a real criminal Secret
+        desc: 'Chance to uncover a criminal Secret on a chosen clan leader. Odds scale with your Intrigus and their corruption — the picker shows the number before you commit.',
+        // Tutorial redesign, Chunk T6 — player picks ANY leader now (no more
+        // auto-select / relationship < 30 filter, finding 17); a leader
+        // already carrying a player-held Secret shows disabled in the
+        // picker, with the reason stated (OfficeTargetPickerModal). Chance
+        // scales with the acting character's Intrigus and the target's
+        // corruptionScore (calcAuditChance, secretEngine.ts) instead of a
+        // flat roll — see BALANCE.secrets' auditPerIntrigus/
+        // auditPerCorruption for the formula.
+        targetPicker: 'leader',
+        // Phase 4, Chunk P4-A — success yields a real criminal Secret
         // (embezzlement/electoral_fraud, potency 1–2) instead of the old
         // blackmail:true flag (dropped per plan review — that flag is
         // overloaded three ways elsewhere in the codebase and never
         // consumed beyond a single UI label swap).
-        effect: (state) => {
-          const alreadyTargeted = new Set(
-            (state.secrets ?? [])
-              .filter((s) => s.holder === 'player' && s.subject.kind === 'leader')
-              .map((s) => (s.subject as { kind: 'leader'; leaderId: string }).leaderId)
+        effect: (state, targetContext, characterId) => {
+          const leaderId = targetContext?.leaderId;
+          if (!leaderId) return { logMsg: 'No target selected for the audit.' };
+
+          const target = state.clans.flatMap((c) => c.leaders).find((l) => l.id === leaderId);
+          if (!target) return { logMsg: 'Target leader not found.' };
+
+          const alreadyTargeted = (state.secrets ?? []).some(
+            (s) => s.holder === 'player' && s.subject.kind === 'leader' &&
+              (s.subject as { kind: 'leader'; leaderId: string }).leaderId === leaderId,
           );
-          const hostile = state.clans
-            .flatMap((c) => c.leaders)
-            .find((l) => l.relationship < 30 && !alreadyTargeted.has(l.id));
-          if (!hostile) return { logMsg: 'No suitable target found for audit.' };
-          if (Math.random() < BALANCE.secrets.auditRivalChance) {
+          if (alreadyTargeted) return { logMsg: `You already hold a Secret on ${target.name}.` };
+
+          const actingCharacter = state.family.find((c) => c.id === characterId);
+          const chance = calcAuditChance(actingCharacter?.skills.intrigus ?? 0, target.corruptionScore);
+
+          if (Math.random() < chance) {
             const secret = generateSecret(
-              { kind: 'leader', leaderId: hostile.id },
+              { kind: 'leader', leaderId: target.id },
               'player',
-              hostile.name,
+              target.name,
               state.turnNumber,
-              hostile.heldOffices.length > 0,
+              target.heldOffices.length > 0,
               Math.random,
               { typePool: ['embezzlement', 'electoral_fraud'], maxPotency: 2 }
             );
@@ -131,7 +137,7 @@ export const OFFICES: Office[] = [
               logMsg: `Audit complete. ${secret.flavorText}`,
             };
           }
-          return { logMsg: 'The audit reveals nothing useful this season.' };
+          return { logMsg: `The audit of ${target.name} reveals nothing useful this season.` };
         },
       },
       {
@@ -411,6 +417,7 @@ export const OFFICES: Office[] = [
         spend: { fides: 15 },
         gate: [{ type: 'skill', key: 'intrigus', op: 'gte', value: 5 }],
         successEffect: 'setFlag:blacklist-used:true',
+        targetPicker: 'leader',
         consequences: [
           { type: 'clanRelationship', targetId: 'PLAYER_CHOSEN_LEADER_CLAN', delta: -20, description: 'Target clan goes hostile over judicial abuse' },
           { type: 'crisisTrack', targetId: 'constitution', delta: 4, description: 'Judicial interference noted' },
@@ -619,6 +626,7 @@ export const OFFICES: Office[] = [
         desc: 'Direct lucrative state contracts to a chosen clan. Simple patronage with lasting goodwill. Requires selecting a target clan.',
         spend: { fides: 10 },
         successEffect: 'lifetimeDignitas+4',
+        targetPicker: 'clan',
         consequences: [
           { type: 'clanRelationship', targetId: 'PLAYER_CHOSEN_CLAN', delta: 15, description: 'Contracts cement the relationship' },
         ],
@@ -754,6 +762,7 @@ export const OFFICES: Office[] = [
         desc: 'Use summary authority to eliminate political threats. Clears blackmail and penalises a hostile leader. Requires selecting a target leader.',
         spend: { fides: 10 },
         successEffect: 'setFlag:blackmail-cleared:true',
+        targetPicker: 'leader',
         consequences: [
           { type: 'clanRelationship', targetId: 'PLAYER_CHOSEN_HOSTILE_LEADER_CLAN', delta: -10, description: 'Target clan pushed further into hostility' },
         ],
@@ -872,6 +881,7 @@ export const TRIBUNE_OFFICE: Office = {
       spend: { fides: 10 },
       gate: [{ type: 'skill', key: 'intrigus', op: 'gte', value: 5 }],
       successEffect: 'setFlag:summon-blackmail-pending:true',
+      targetPicker: 'leader',
       consequences: [
         { type: 'clanRelationship', targetId: 'PLAYER_CHOSEN_LEADER_CLAN', delta: -12, description: 'Public humiliation damages relationship' },
       ],
