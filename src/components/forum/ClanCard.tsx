@@ -5,6 +5,7 @@ import { useGameStore } from '../../state/gameStore';
 import LeaderCard from './LeaderCard';
 import LeaderDetailPanel from './LeaderDetailPanel';
 import { getReputationTier, getClanStanding } from '../../engine/reputationEngine';
+import { useTutorialTarget } from '../shared/useTutorialTarget';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 const STANDING_COLORS: Record<string, string> = {
@@ -126,10 +127,18 @@ function ClanCard({ clan }: { clan: Clan }) {
   const selectedLeader = clan.leaders.find((l) => l.id === selectedLeaderId);
   const standing = getClanStanding(clan.id, familyReputations, electionRivals);
   const standingColor = STANDING_COLORS[standing] ?? COLORS.dust;
+  // Tutorial redesign, T5 — only Gens Valeria is ever a spotlight target.
+  const tutorialTarget = useTutorialTarget(clan.id === 'valerii' ? 'forum.clan.valeria' : undefined);
 
   return (
     <View style={cc.container}>
-      <TouchableOpacity style={cc.header} onPress={() => expandClan(clan.id)} activeOpacity={0.7}>
+      <TouchableOpacity
+        ref={tutorialTarget.ref}
+        onLayout={tutorialTarget.onLayout}
+        style={cc.header}
+        onPress={() => expandClan(clan.id)}
+        activeOpacity={0.7}
+      >
         <Text style={cc.sigil}>{clan.sigil}</Text>
         <View style={cc.info}>
           <View style={cc.titleRow}>

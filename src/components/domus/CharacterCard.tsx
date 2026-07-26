@@ -5,6 +5,7 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import { PARCHMENT_TEXT } from '../shared/ParchmentCard';
 import PortraitRoundel from '../shared/PortraitRoundel';
 import { characterPortraitSubject } from '../../engine/portraitEngine';
+import { useTutorialTarget } from '../shared/useTutorialTarget';
 
 const PARCHMENT_IMG = require('../../assets/images/card-parchment-cropped.png');
 
@@ -25,8 +26,14 @@ function traitColor(trait: string): string {
 }
 
 export default function CharacterCard({ character, selected, onPress }: CharacterCardProps) {
+  // Tutorial redesign, T5 — only the player's own card is ever a spotlight
+  // target; every other family member's useTutorialTarget(undefined) is a no-op.
+  const tutorialTarget = useTutorialTarget(character.isPlayer ? 'domus.character-card.marcus' : undefined);
+
   return (
     <TouchableOpacity
+      ref={tutorialTarget.ref}
+      onLayout={tutorialTarget.onLayout}
       onPress={onPress}
       activeOpacity={0.75}
       style={[styles.touchable, selected && styles.selected]}

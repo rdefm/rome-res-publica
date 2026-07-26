@@ -3650,6 +3650,13 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set({
       ...enterPatch,
       tutorial: { ...s.tutorial, activeArc: arc, stepId: firstStep?.id ?? null },
+      // Reuses the existing agenda deep-link mechanism (App.tsx's uiNavRequest
+      // effect) rather than a tutorial-specific nav path — "director
+      // navigates here on enter if not already there" (models/tutorial.ts's
+      // requiresTab doc comment), fired once at the exact moment of entry,
+      // not enforced continuously (that would fight the player's own taps
+      // on any tab already-unlocked from an earlier act).
+      ...(firstStep?.requiresTab ? { uiNavRequest: { tab: firstStep.requiresTab } } : {}),
     });
   },
 
@@ -3676,6 +3683,9 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         ...completePatch,
         ...enterPatch,
         tutorial: { ...s.tutorial, stepId: nextStep.id, unlockedTabs },
+        // See startTutorialArc's identical comment — one-shot nav request,
+        // reusing the existing agenda deep-link mechanism.
+        ...(nextStep.requiresTab ? { uiNavRequest: { tab: nextStep.requiresTab } } : {}),
       });
     } else {
       set({

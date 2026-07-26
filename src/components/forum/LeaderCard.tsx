@@ -5,6 +5,7 @@ import { useGameStore } from '../../state/gameStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import PortraitRoundel from '../shared/PortraitRoundel';
 import { leaderPortraitSubject } from '../../engine/portraitEngine';
+import { useTutorialTarget } from '../shared/useTutorialTarget';
 
 export function RelBar({ value }: { value: number }) {
   const pct = (value + 100) / 200;
@@ -40,8 +41,17 @@ function LeaderCard({ leader, clanId, selected, onPress, campaigning }: {
     s => s.holder === leader.id && s.subject.kind === 'family' && s.discovered && (s.status === 'held' || s.status === 'extorting')
   );
 
+  // Tutorial redesign, T5 — only Valerius Flaccus is ever a spotlight target.
+  // Known limitation: this card sits in ClanCard's horizontal ScrollView, so
+  // a rect measured before the player scrolls that row can go stale — no
+  // re-measure-on-scroll-end wiring yet (would need lifting the target up
+  // to ClanCard to reach the ScrollView's scroll callbacks).
+  const tutorialTarget = useTutorialTarget(leader.id === 'valerius-flaccus' ? 'forum.leader.valerius-flaccus' : undefined);
+
   return (
     <TouchableOpacity
+      ref={tutorialTarget.ref}
+      onLayout={tutorialTarget.onLayout}
       style={[lc.card, { borderColor }]}
       onPress={onPress}
       activeOpacity={0.75}

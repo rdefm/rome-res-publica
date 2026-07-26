@@ -28,6 +28,7 @@ import { getDesperationTier } from '../engine/warEngine';
 import NegotiationScreen from '../components/war/NegotiationScreen';
 import { BALANCE } from '../data/balance';
 import { isEligibleForCommand, isWarActiveForCommand, commandMinAge } from '../engine/commandEngine';
+import { useTutorialTarget } from '../components/shared/useTutorialTarget';
 
 // ─── Crisis track configuration ───────────────────────────────────────────────
 
@@ -65,9 +66,11 @@ function CrisisTrackCell({
 }) {
   const color = CRISIS_TRACK_COLOR[trackId];
   const tierLabel = CRISIS_TIER_LABELS[trackId][track.tier];
+  // Tutorial redesign, T5 — only the War track is ever a spotlight target.
+  const tutorialTarget = useTutorialTarget(trackId === 'war' ? 'curia.crisis-track.war' : undefined);
 
   const cell = (
-    <View style={ctc.cell}>
+    <View ref={tutorialTarget.ref} onLayout={tutorialTarget.onLayout} style={ctc.cell}>
       <View style={ctc.header}>
         <Text style={[ctc.trackName, { color }]}>{CRISIS_TRACK_LABEL[trackId]}</Text>
         <Text style={[ctc.levelNum, { color }]}>{Math.round(track.level)}</Text>
@@ -356,8 +359,15 @@ function BillCard({ bill }: { bill: Bill }) {
   const voteFidesCost = bill.voteGravitasCost ?? 4;
   const speechFidesCost = bill.speechGravitasCost ?? 6;
 
+  // Tutorial redesign, T5 — 'start-2' (Bellum Punicum) is Act III's teaching
+  // bill; see tutorialEngine.ts's ACT3_BILL_ID comment for why it, not
+  // literal array position, is "first."
+  const isTutorialBill = bill.id === 'start-2';
+  const cardTarget = useTutorialTarget(isTutorialBill ? 'curia.bill-list.first' : undefined);
+  const voteForTarget = useTutorialTarget(isTutorialBill ? 'curia.action.vote-for' : undefined);
+
   return (
-    <View style={bstyle.card}>
+    <View ref={cardTarget.ref} onLayout={cardTarget.onLayout} style={bstyle.card}>
       <TouchableOpacity activeOpacity={0.75} onPress={() => setDetailVisible(true)}>
         <View style={bstyle.topRow}>
           <View style={bstyle.nameWrap}>
@@ -410,7 +420,13 @@ function BillCard({ bill }: { bill: Bill }) {
 
       {isExpandedVote && (
         <View style={bstyle.expanded}>
-          <TouchableOpacity style={[bstyle.subBtn, { borderColor: COLORS.laurel }, fides < voteFidesCost && bstyle.actionBtnDisabled]} onPress={() => voteBill(bill.id, 'vote_for')} disabled={fides < voteFidesCost}>
+          <TouchableOpacity
+            ref={voteForTarget.ref}
+            onLayout={voteForTarget.onLayout}
+            style={[bstyle.subBtn, { borderColor: COLORS.laurel }, fides < voteFidesCost && bstyle.actionBtnDisabled]}
+            onPress={() => voteBill(bill.id, 'vote_for')}
+            disabled={fides < voteFidesCost}
+          >
             <Text style={[bstyle.subBtnLabel, { color: COLORS.laurel }]}>Vote For (+{bill.voteForSupport ?? 15} support)</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[bstyle.subBtn, { borderColor: COLORS.crimson }, fides < voteFidesCost && bstyle.actionBtnDisabled]} onPress={() => voteBill(bill.id, 'vote_against')} disabled={fides < voteFidesCost}>

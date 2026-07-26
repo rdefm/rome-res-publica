@@ -20,6 +20,7 @@ import { REGIONS } from '../../data/theatreMap';
 import type { Army } from '../../models/army';
 import type { ReachableDestination } from '../../engine/movementEngine';
 import type { CampaignLog, CampaignLogEntry } from '../../models/campaignLog';
+import { useTutorialTarget } from '../shared/useTutorialTarget';
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 //
@@ -449,6 +450,12 @@ export default function MapView({
   playbackLog,
   onPlaybackComplete,
 }: MapViewProps) {
+  // Tutorial redesign, T5 — called once, unconditionally, here (not inside
+  // the ALL_CITIES.map() below) so this stays a single, stable hook call;
+  // its ref/onLayout are then only ATTACHED to the Campania marker, not
+  // called conditionally per-city.
+  const campaniaTarget = useTutorialTarget('provinciae.map.campania');
+
   return (
     <View style={styles.container}>
       {/* Parchment background fills the transparent border areas in the PNG */}
@@ -503,6 +510,8 @@ export default function MapView({
         return (
           <TouchableOpacity
             key={def.id}
+            ref={def.id === 'campania' ? campaniaTarget.ref : undefined}
+            onLayout={def.id === 'campania' ? campaniaTarget.onLayout : undefined}
             onPress={() => onProvincePress(def.id)}
             style={[styles.nodeWrapper, { left, top }]}
             activeOpacity={0.75}

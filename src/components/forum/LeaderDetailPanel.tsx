@@ -9,6 +9,7 @@ import { BALANCE } from '../../data/balance';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import PortraitRoundel from '../shared/PortraitRoundel';
 import { leaderPortraitSubject } from '../../engine/portraitEngine';
+import { useTutorialTarget } from '../shared/useTutorialTarget';
 
 // ─── Gather Intelligence family-member picker (Phase 4, P4-A) ────────────────
 // Inline modal list, per the plan's "a simple inline list is fine this
@@ -104,7 +105,7 @@ const ip = StyleSheet.create({
 // ─── ForumActionBtn ───────────────────────────────────────────────────────────
 
 export function ForumActionBtn({
-  label, cost, desc, disabled, onPress, locked, lockReason,
+  label, cost, desc, disabled, onPress, locked, lockReason, tutorialTargetId,
 }: {
   label: string;
   cost: string;
@@ -113,11 +114,15 @@ export function ForumActionBtn({
   onPress: () => void;
   locked?: boolean;
   lockReason?: string;
+  tutorialTargetId?: string;
 }) {
   const isDisabled = disabled || !!locked;
+  const tutorialTarget = useTutorialTarget(tutorialTargetId);
 
   return (
     <TouchableOpacity
+      ref={tutorialTarget.ref}
+      onLayout={tutorialTarget.onLayout}
       style={[fab.btn, isDisabled && fab.disabled]}
       onPress={onPress}
       disabled={isDisabled}
@@ -239,6 +244,7 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
           desc={`Relationship +8, Favour +. Reputation +${repFor(8)}.`}
           disabled={denarii < 20}
           onPress={() => inviteToDinner(leader.id)}
+          tutorialTargetId={leader.id === 'valerius-flaccus' ? 'forum.action.invite-dinner' : undefined}
         />
         <ForumActionBtn
           label="Forge Alliance"

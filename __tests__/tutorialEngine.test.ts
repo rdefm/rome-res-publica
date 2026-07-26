@@ -172,6 +172,23 @@ describe('gameStore tutorial actions', () => {
     expect(tutorial.stepId).toBe('s1');
   });
 
+  it('startTutorialArc requests navigation (via the existing uiNavRequest deep-link mechanism) when the first step declares requiresTab', () => {
+    TUTORIAL_ARCS.prologue.steps = [makeStep({ id: 's1', requiresTab: 'Forum' })];
+    useGameStore.setState(INITIAL_STATE);
+    useGameStore.getState().startTutorialArc('prologue');
+    expect(useGameStore.getState().uiNavRequest).toEqual({ tab: 'Forum' });
+  });
+
+  it('advanceTutorialStep requests navigation when the NEXT step declares requiresTab', () => {
+    TUTORIAL_ARCS.prologue.steps = [makeStep({ id: 's1' }), makeStep({ id: 's2', requiresTab: 'Curia' })];
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+    });
+    useGameStore.getState().advanceTutorialStep();
+    expect(useGameStore.getState().uiNavRequest).toEqual({ tab: 'Curia' });
+  });
+
   it('advanceTutorialStep moves to the next step without touching unlockedTabs', () => {
     TUTORIAL_ARCS.prologue.steps = [makeStep({ id: 's1' }), makeStep({ id: 's2' })];
     useGameStore.setState({
