@@ -55,6 +55,24 @@ export function isTabSealed(tab: TabName, s: GameState): boolean {
   return !s.tutorial.unlockedTabs.includes(tab);
 }
 
+/**
+ * True while the guided prologue is hard-railing the world: random events,
+ * ambient crisis drift, war ignition, the Claudius demand block, births, and
+ * the natural-mortality roll all gate on this (turnSequencer.ts,
+ * tutorial-redesign-plan.md §3 T4's six named targets). Also gates passive
+ * bill resolution and auto-bill-injection — found during T4's own
+ * verification, not one of the plan's original six: bills resolving in the
+ * background off NPC-driven support (nothing to do with the player) can
+ * move crisis tracks on their own via passEffect/failEffect, which is both
+ * "not actually frozen" and a confound for Act III's own bill-vote teaching
+ * moment. `?.` guards bespoke test fixtures built via
+ * `as unknown as GameState` that don't set `tutorial` — never null in any
+ * real, INITIAL_STATE-derived GameState.
+ */
+export function isWorldFrozen(s: GameState): boolean {
+  return s.tutorial?.activeArc === 'prologue';
+}
+
 export function applyTutorialEffect(effectId: string | undefined, s: GameState): Partial<GameState> {
   if (!effectId) return {};
   const effect = TUTORIAL_EFFECTS[effectId];

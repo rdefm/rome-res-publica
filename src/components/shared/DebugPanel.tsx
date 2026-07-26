@@ -15,7 +15,6 @@ import { WAR_EVENT_DEFS } from '../../data/warEvents';
 import { SUCCESSION_EVENT_DEFS } from '../../data/successionEvents';
 import { CADET_EVENT_DEFS } from '../../data/cadetEvents';
 import { SECRET_EVENT_DEFS } from '../../data/secretEvents';
-import { TUTORIAL_EVENT_DEFS } from '../../data/tutorialEvents';
 import { CLAUDIUS_ARC_EVENT_DEFS } from '../../data/claudiusArc';
 import { COMPROMISING_EVENT_DEFS } from '../../data/compromisingEvents';
 import { BALANCE } from '../../data/balance';
@@ -224,7 +223,10 @@ function EventsSection() {
   // Phase 5, P5-A — extended to full 8-pool coverage (was missing
   // TUTORIAL_EVENT_DEFS/CLAUDIUS_ARC_EVENT_DEFS/COMPROMISING_EVENT_DEFS),
   // matching eventEngine.getEventDef's combined lookup exactly.
-  const filtered = [...EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS, ...CADET_EVENT_DEFS, ...SECRET_EVENT_DEFS, ...TUTORIAL_EVENT_DEFS, ...CLAUDIUS_ARC_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS].filter(e =>
+  // Tutorial redesign, Chunk T4 — TUTORIAL_EVENT_DEFS/tutorialEvents.ts
+  // retired along with tutorial-264; back to 7 pools until T5+ authors new
+  // arc-opener events (isTutorial: true) into one of the pools below.
+  const filtered = [...EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS, ...CADET_EVENT_DEFS, ...SECRET_EVENT_DEFS, ...CLAUDIUS_ARC_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS].filter(e =>
     e.title.toLowerCase().includes(search.toLowerCase()) ||
     e.id.toLowerCase().includes(search.toLowerCase())
   );

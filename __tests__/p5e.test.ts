@@ -88,7 +88,7 @@ describe('gameStore.startGame — alternate family stateOverrides', () => {
     useGameStore.getState().startGame('guided');
     const s = useGameStore.getState();
     expect(s.gensId).toBe('brutii');
-    expect(s.tutorialQueue.length).toBeGreaterThan(0); // guided script populated
+    expect(s.tutorial.activeArc).toBe('prologue'); // guided start begins the tutorial arc
   });
 
   test('duilia start applies the full stateOverrides bundle', () => {
@@ -324,12 +324,12 @@ describe('Duilia and Manlia — 4 auto-played seasons without crashing', () => {
 // ─── neutrality-sweep regression guard ──────────────────────────────────────
 
 describe('gens-neutrality sweep — repo-wide regression guard', () => {
-  // Legal survivors (per the P5-E plan): the Brutii data itself, the guided
-  // tutorial's authored copy (Brutii-specific by design), and this test file
-  // (which legitimately asserts the ABSENCE of 'Brutia' in fixed strings).
+  // Legal survivors (per the P5-E plan): the Brutii data itself and this
+  // test file (which legitimately asserts the ABSENCE of 'Brutia' in fixed
+  // strings). tutorialEvents.ts (Brutii-specific by design) was a third
+  // survivor until the tutorial redesign retired it in T4.
   const LEGAL_SURVIVORS = [
     path.join('src', 'data', 'startingFamily.ts'),
-    path.join('src', 'data', 'tutorialEvents.ts'),
     path.join('__tests__', 'p5e.test.ts'),
   ];
 

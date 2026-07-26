@@ -124,7 +124,10 @@ export function evalCondition(cond: EventCondition, state: GameState): boolean {
 export function isEventEligible(def: EventDef, state: GameState): boolean {
   // weight: 0 events fire only via injection — never through random selection.
   if (def.weight === 0) return false;
-  // isTutorial events fire only via tutorialQueue — never through random selection (P1-G).
+  // isTutorial events fire only via explicit injection — never through
+  // random selection (P1-G; the tutorialQueue that used to drive this
+  // firing was retired in the tutorial redesign, T4 — isTutorial's
+  // exclusion-from-random-pool contract is unchanged).
   if (def.isTutorial) return false;
   return def.conditions.every(cond => evalCondition(cond, state));
 }
@@ -201,13 +204,15 @@ export function resolveEventChoice(
 }
 
 // ─── P1-G: Unified event definition lookup ───────────────────────────────────
-// Searches both the main pool and the tutorial pool so EventModal and
-// resolveEvent work correctly for tutorial events.
+// Searches every event pool so EventModal and resolveEvent can find any
+// injected/scripted event by id, not just ones eligible for random pick.
+// Tutorial redesign, Chunk T4 — the tutorial-264 pool (TUTORIAL_EVENT_DEFS)
+// was retired along with tutorialEvents.ts/checkTutorialGate; a future
+// arc-opener event (isTutorial: true) just needs its pool added back here.
 
 export function getEventDef(defId: string): EventDef | undefined {
   // Lazy-require to avoid circular dependency and keep HMR working in Expo.
   const { EVENT_DEFS } = require('../data/events');
-  const { TUTORIAL_EVENT_DEFS } = require('../data/tutorialEvents');
   const { WAR_EVENT_DEFS } = require('../data/warEvents');
   const { SUCCESSION_EVENT_DEFS } = require('../data/successionEvents');
   const { CADET_EVENT_DEFS } = require('../data/cadetEvents');
@@ -215,56 +220,10 @@ export function getEventDef(defId: string): EventDef | undefined {
   const { CLAUDIUS_ARC_EVENT_DEFS } = require('../data/claudiusArc');
   const { COMPROMISING_EVENT_DEFS } = require('../data/compromisingEvents');
   return (EVENT_DEFS as EventDef[]).find(d => d.id === defId)
-      ?? (TUTORIAL_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
       ?? (WAR_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
       ?? (SUCCESSION_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
       ?? (CADET_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
       ?? (SECRET_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
       ?? (CLAUDIUS_ARC_EVENT_DEFS as EventDef[]).find(d => d.id === defId)
       ?? (COMPROMISING_EVENT_DEFS as EventDef[]).find(d => d.id === defId);
-}
-
-// ─── P1-G: Tutorial season gate ──────────────────────────────────────────────
-// Called by turnSequencer step 12 when tutorialQueue is non-empty.
-//
-//   fire: true  → pop and fire the event this season
-//   skip: true  → pop WITHOUT firing (conditional failure — e.g. tut-06 with no campaign)
-//   Both false  → leave at head; fire no event this season (season gate unmet)
-
-export function checkTutorialGate(
-  defId: string,
-  state: GameState
-): { fire: boolean; skip: boolean } {
-  switch (defId) {
-    case 'evt-tut-01':
-      return { fire: state.seasonIndex === 0, skip: false };
-
-    case 'evt-tut-02':
-      return { fire: state.seasonIndex === 1, skip: false };
-
-    case 'evt-tut-03':
-      return { fire: state.seasonIndex === 2, skip: false };
-
-    case 'evt-tut-04':
-      return { fire: state.seasonIndex === 3, skip: false };
-
-    case 'evt-tut-05': {
-      // Spring + at least one non-player family member is 18+ with no office
-      if (state.seasonIndex !== 0) return { fire: false, skip: false };
-      const hasEligible = state.family.some(c =>
-        !c.isPlayer && (c.age ?? 0) >= 18 && (c as any).officeId === null
-      );
-      return { fire: hasEligible, skip: false }; // wait if no eligible member yet
-    }
-
-    case 'evt-tut-06':
-      if (state.seasonIndex !== 3) return { fire: false, skip: false }; // wait for Winter
-      // Skip silently if no campaign is active (tut-05 may have been declined)
-      if (state.campaigning === null) return { fire: false, skip: true };
-      return { fire: true, skip: false };
-
-    case 'evt-tut-07':
-    default:
-      return { fire: true, skip: false }; // no season gate; fire whenever reached
-  }
 }

@@ -1,5 +1,5 @@
 import { rollClientBonus, computeTotalClientBonuses } from '../src/engine/clientEngine';
-import { resolveEventChoice, pickRandomEvent, evalCondition, isEventEligible, checkTutorialGate, getEventDef } from '../src/engine/eventEngine';
+import { resolveEventChoice, pickRandomEvent, evalCondition, isEventEligible, getEventDef } from '../src/engine/eventEngine';
 import { applyEffectString } from '../src/engine/resourceEngine';
 import { EVENT_DEFS } from '../src/data/events';
 import type { ClientType, Client } from '../src/models/client';
@@ -484,42 +484,14 @@ describe('pickRandomEvent — isTutorial exclusion', () => {
   });
 });
 
-describe('checkTutorialGate', () => {
-  test('tut-01 fires only in Spring (seasonIndex 0)', () => {
-    expect(checkTutorialGate('evt-tut-01', makeState({ seasonIndex: 0 }) as any)).toEqual({ fire: true, skip: false });
-    expect(checkTutorialGate('evt-tut-01', makeState({ seasonIndex: 1 }) as any)).toEqual({ fire: false, skip: false });
-    expect(checkTutorialGate('evt-tut-01', makeState({ seasonIndex: 2 }) as any)).toEqual({ fire: false, skip: false });
-    expect(checkTutorialGate('evt-tut-01', makeState({ seasonIndex: 3 }) as any)).toEqual({ fire: false, skip: false });
-  });
-
-  test('tut-02 fires only in Summer (seasonIndex 1)', () => {
-    expect(checkTutorialGate('evt-tut-02', makeState({ seasonIndex: 1 }) as any)).toEqual({ fire: true,  skip: false });
-    expect(checkTutorialGate('evt-tut-02', makeState({ seasonIndex: 0 }) as any)).toEqual({ fire: false, skip: false });
-  });
-
-  test('tut-06 is skipped silently in Winter when not campaigning', () => {
-    const winterNoCampaign  = makeState({ seasonIndex: 3, campaigning: null });
-    const winterCampaigning = makeState({ seasonIndex: 3, campaigning: 'quaestor' });
-    const summerNoCampaign  = makeState({ seasonIndex: 1, campaigning: null });
-
-    expect(checkTutorialGate('evt-tut-06', winterNoCampaign  as any)).toEqual({ fire: false, skip: true  });
-    expect(checkTutorialGate('evt-tut-06', winterCampaigning as any)).toEqual({ fire: true,  skip: false });
-    expect(checkTutorialGate('evt-tut-06', summerNoCampaign  as any)).toEqual({ fire: false, skip: false });
-  });
-
-  test('tut-07 fires any season (no gate)', () => {
-    for (const seasonIndex of [0, 1, 2, 3] as const) {
-      expect(checkTutorialGate('evt-tut-07', makeState({ seasonIndex }) as any)).toEqual({ fire: true, skip: false });
-    }
-  });
-
-  test('getEventDef searches both main and tutorial pools', () => {
+describe('getEventDef', () => {
+  test('finds an event by id across every pool it searches', () => {
     expect(getEventDef('evt-client-muscle-offer')).toBeDefined();
     expect(getEventDef('evt-client-muscle-offer')?.id).toBe('evt-client-muscle-offer');
+  });
+
+  test('returns undefined for an unknown id', () => {
     expect(getEventDef('evt-nonexistent-xyz-abc')).toBeUndefined();
-    const tutDef = getEventDef('evt-tut-00');
-    expect(tutDef).toBeDefined();
-    expect(tutDef?.isTutorial).toBe(true);
   });
 });
 

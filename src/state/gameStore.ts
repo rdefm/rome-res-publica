@@ -606,8 +606,9 @@ export interface GameState {
   /**
    * Tutorial redesign — spotlight-guided arcs (prologue/embassy/war/courts).
    * Never null; INITIAL_STATE uses the inert value (no active arc, all tabs
-   * unlocked). Distinct from the legacy `tutorialQueue` field below, which
-   * a later chunk retires once this system carries real content.
+   * unlocked). Replaces the legacy tutorial-264 event-queue system (retired
+   * in the same chunk this comment was written in — see tutorialEngine.ts's
+   * isWorldFrozen and turnSequencer.ts's re-pointed event slot).
    * tutorial-redesign-plan.md §2.3.
    */
   tutorial: TutorialState;
@@ -637,8 +638,6 @@ export interface GameState {
    *  BALANCE.difficulty). Recorded on AncestorRecord at epilogue time. */
   difficulty: DifficultyId;
 
-  /** Ordered defIds remaining in the guided tutorial script. Empty = no active script or standard start. */
-  tutorialQueue: string[];
   /** turnNumber of the last season the tablet auto-opened. −1 = never opened. Prevents re-open within same season. */
   agendaViewedTurn: number;
   /** True while the Agenda Tablet modal is open. */
@@ -1414,7 +1413,6 @@ export const INITIAL_STATE: GameState = {
   // ── Phase 5, Chunk P5-G — Difficulty preset ────────────────────────────────
   difficulty: 'aequus' as DifficultyId,
 
-  tutorialQueue: [],
   tutorial: {
     activeArc: null, stepId: null, completedArcs: [],
     unlockedTabs: ALL_TUTORIAL_TABS, // free start / no active script: all open
@@ -1622,26 +1620,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     // attempt — P5-E, this same function, a few lines below).
     const resolvedDifficulty: DifficultyId = startId === 'guided' ? 'aequus' : difficulty;
 
-    // P1-G: resolve tutorial script for the chosen start
-    const { START_DEFINITIONS, TUTORIAL_SCRIPTS } = require('../data/startDefinitions');
+    // Tutorial redesign, Chunk T4 — tutorialScriptId is now a plain truthy
+    // sentinel (no more TUTORIAL_SCRIPTS registry to resolve against; see
+    // startDefinitions.ts's header comment). Truthy only for 'guided'.
+    const { START_DEFINITIONS } = require('../data/startDefinitions');
     const startDef = (START_DEFINITIONS as any[]).find((d: any) => d.id === startId);
     const scriptId: string | undefined = startDef?.tutorialScriptId;
-    const rawQueue: string[] = scriptId ? [...((TUTORIAL_SCRIPTS as any)[scriptId] ?? [])] : [];
 
-    // tut-00 fires immediately at game start (gameStart timing).
-    // Pop it from the raw queue and push directly into pendingEvents.
-    // All other tutorial events fire through the season slot.
-    let tutorialQueue  = rawQueue;
     let pendingGameStart: import('./gameStore').GameState['pendingEvents'] = [];
-
-    if (rawQueue[0] === 'evt-tut-00') {
-      pendingGameStart = [{
-        defId: 'evt-tut-00',
-        firedAtTurn: 0,
-        targetCharacterId: (INITIAL_STATE as any).family?.find((c: any) => c.isPlayer)?.id ?? 'pc-1',
-      }];
-      tutorialQueue = rawQueue.slice(1);
-    }
 
     // Phase 5, Chunk P5-E — stateOverrides was documented on StartDefinition
     // (models/gameStart.ts) but never actually applied here; this is the
@@ -1680,7 +1666,6 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       gameStarted: true,
       debugMode: mode === 'debug',
       startId: startId as StartId,
-      tutorialQueue,
       // Tutorial redesign — a guided start (tutorialScriptId set) begins the
       // prologue arc hard-railed to Domus only; every other start gets the
       // inert, fully-unlocked value. tutorial-redesign-plan.md §2.3.
@@ -3344,7 +3329,6 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     if (!s.activeEvent) return;
 
     const { EVENT_DEFS }          = require('../data/events');
-    const { TUTORIAL_EVENT_DEFS } = require('../data/tutorialEvents');
     const { WAR_EVENT_DEFS }      = require('../data/warEvents');
     const { SUCCESSION_EVENT_DEFS } = require('../data/successionEvents');
     const { CADET_EVENT_DEFS }    = require('../data/cadetEvents');
@@ -3354,16 +3338,17 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const { applyEffectString }   = require('../engine/resourceEngine');
     const { resolveEventChoice }  = require('../engine/eventEngine');
 
-    // P1-G: search tutorial pool as well as main pool. P3-B added
+    // P1-G: search every pool, not just the main one. P3-B added
     // WAR_EVENT_DEFS, P3-C added SUCCESSION_EVENT_DEFS, P3-D added
     // CADET_EVENT_DEFS, P4-B added SECRET_EVENT_DEFS, P4-G added
     // CLAUDIUS_ARC_EVENT_DEFS. Phase 5, P5-A bugfix: COMPROMISING_EVENT_DEFS
     // was missing here despite being in the random-draw pool (turnSequencer.ts
     // step 12) — any of its 3 events firing meant every choice silently
     // no-opped (def lookup failed, activeEvent cleared with zero effect
-    // applied). eventEngine.getEventDef already had the correct 8-pool list;
-    // this just matches it.
-    const allDefs = [...EVENT_DEFS, ...TUTORIAL_EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS, ...CADET_EVENT_DEFS, ...SECRET_EVENT_DEFS, ...CLAUDIUS_ARC_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS];
+    // applied). eventEngine.getEventDef already had the correct pool list;
+    // this just matches it. Tutorial redesign, Chunk T4 — TUTORIAL_EVENT_DEFS
+    // dropped along with tutorialEvents.ts/tutorial-264.
+    const allDefs = [...EVENT_DEFS, ...WAR_EVENT_DEFS, ...SUCCESSION_EVENT_DEFS, ...CADET_EVENT_DEFS, ...SECRET_EVENT_DEFS, ...CLAUDIUS_ARC_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS];
     const def = allDefs.find((d: any) => d.id === s.activeEvent!.defId);
     if (!def) {
       set({ activeEvent: null });
@@ -3416,53 +3401,13 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
     set({ ...statePatch, activeEvent: nextEvent, pendingEvents: remainingPending });
 
-    // ── P1-G: Tutorial special-case handlers ────────────────────────────────
-    // Three handlers permitted by plan. Fourth would require a generic token.
-    // See Fable-phase1-implementation-plan.md §P1-G cross-chunk notes.
+    // Tutorial redesign, Chunk T4 — the three P1-G tutorial-264 special-case
+    // handlers (tut-00 open-tablet, tut-03 vote-bill, tut-05 declare-Gaius)
+    // are retired along with tutorialEvents.ts. This was the exact "performs
+    // game actions on the player's behalf" pattern the redesign replaces —
+    // the new prologue arc (Act I-V) requires the player to take these
+    // actions through the real UI; the director just spotlights and waits.
     const defId = s.activeEvent.defId;
-
-    // Case 1 — tut-00 "Show me the tablet": open AgendaTablet immediately
-    if (defId === 'evt-tut-00' && choiceId === 'show-tablet') {
-      const curr = get();
-      set({ agendaVisible: true, agendaViewedTurn: curr.turnNumber });
-    }
-
-    // Case 2 — tut-03 "Vote for bill": add +15 support to highest-support live bill
-    if (defId === 'evt-tut-03' && choiceId === 'vote-bill') {
-      const curr = get();
-      if (curr.bills.length > 0) {
-        const topBill = curr.bills.reduce(
-          (best, b) => (b.support > best.support ? b : best),
-          curr.bills[0]
-        );
-        set({
-          bills: curr.bills.map(b =>
-            b.id === topBill.id ? { ...b, support: b.support + 15 } : b
-          ),
-        });
-      }
-    }
-
-    // Case 3 — tut-05 "Declare Gaius": invoke declareFamilyCampaign for eligible member
-    if (defId === 'evt-tut-05' && choiceId === 'declare-gaius') {
-      const curr  = get();
-      const { OFFICES } = require('../data/offices');
-      const eligible = curr.family.find(c =>
-        !c.isPlayer && (c.age ?? 0) >= 18 && (c as any).officeId === null
-      );
-      if (eligible) {
-        const heldOffices: string[] = (eligible as any).heldOffices ?? [];
-        const firstOffice = (OFFICES as any[]).find((o: any) =>
-          o.id !== 'dictator' &&
-          !heldOffices.includes(o.id) &&
-          (eligible.age ?? 0) >= o.minAge
-        );
-        if (firstOffice) {
-          get().declareFamilyCampaign(eligible.id, firstOffice.id);
-        }
-      }
-    }
-    // ── End tutorial special-case handlers ─────────────────────────────────
 
     // ── Phase 4, Chunk P4-B — NPC secret demand: comply/defy ────────────────
     // Not a tutorial special case (separate feature area, doesn't count

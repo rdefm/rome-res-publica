@@ -6,7 +6,8 @@
  * family" extension this type's own comment predicted. `startId` is written
  * to GameState but never read/compared anywhere else in the codebase
  * (verified) beyond the two hooks below, so extending this union is safe:
- *   (1) the new-game store action populates tutorialQueue from TUTORIAL_SCRIPTS
+ *   (1) the new-game store action seeds the tutorial arc slice (or not) via
+ *       StartDefinition.tutorialScriptId
  *   (2) StartMenuScreen renders a picker card per definition.
  */
 export type StartId = 'guided' | 'standard' | 'duilia' | 'manlia';
@@ -55,9 +56,10 @@ export interface StartDefinition {
    */
   stateOverrides?: Record<string, unknown>;
   /**
-   * Key into TUTORIAL_SCRIPTS in startDefinitions.ts.
-   * When set, the new-game action copies the matching script into tutorialQueue.
-   * Only the 'guided' start sets this.
+   * Tutorial redesign, Chunk T4 — no longer a registry key (TUTORIAL_SCRIPTS/
+   * tutorialEvents.ts are retired). A plain truthy sentinel: when set, the
+   * new-game action begins the 'prologue' tutorial arc. Only the 'guided'
+   * start sets this.
    */
   tutorialScriptId?: string;
   /**

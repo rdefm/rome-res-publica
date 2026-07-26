@@ -878,22 +878,59 @@ describe('processWarSeason — sue-for-peace bill (P3-B)', () => {
 });
 
 describe('processSeason — Mamertine ignition (P3-B / MP-E)', () => {
-  test('force-injects evt-messana-appeal once tutorial queue is empty and no carthage war exists', () => {
-    const state = makeState({ tutorialQueue: [] as any, wars: [] });
+  test('force-injects evt-messana-appeal once no carthage war exists (non-guided start, unconditional guard unchanged)', () => {
+    const state = makeState({ wars: [] });
     const { nextState } = processSeason(state as any);
     expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-messana-appeal')).toBe(true);
   });
 
   test('never fires again once a carthage war exists', () => {
-    const state = makeState({ tutorialQueue: [] as any, wars: [makeWar()] });
+    const state = makeState({ wars: [makeWar()] });
     const { nextState } = processSeason(state as any);
     expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-messana-appeal')).toBe(false);
   });
 
   test('never fires again once messanaResolved is set (the "refuse" path can end peacefully without a war)', () => {
-    const state = makeState({ tutorialQueue: [] as any, wars: [], flags: { messanaResolved: true } });
+    const state = makeState({ wars: [], flags: { messanaResolved: true } });
     const { nextState } = processSeason(state as any);
     expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-messana-appeal')).toBe(false);
+  });
+});
+
+describe('processSeason — tutorial redesign ignition re-pointing (T4)', () => {
+  const inertTutorial: any = { activeArc: null, stepId: null, completedArcs: [], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false };
+
+  test('a guided start still mid-prologue does NOT force evt-messana-appeal even with no carthage war', () => {
+    const state = makeState({
+      wars: [], startId: 'guided',
+      tutorial: { ...inertTutorial, activeArc: 'prologue' },
+    });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-messana-appeal')).toBe(false);
+  });
+
+  test('a guided start that has NOT completed the embassy does not force evt-messana-appeal', () => {
+    const state = makeState({
+      wars: [], startId: 'guided', flags: {},
+      tutorial: inertTutorial, // prologue already finished, activeArc back to null
+    });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-messana-appeal')).toBe(false);
+  });
+
+  test('a guided start with tutorial-embassy-complete forces evt-messana-appeal', () => {
+    const state = makeState({
+      wars: [], startId: 'guided', flags: { 'tutorial-embassy-complete': true },
+      tutorial: inertTutorial,
+    });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-messana-appeal')).toBe(true);
+  });
+
+  test('non-guided starts are unaffected by the embassy-complete gate (never set, still force-inject)', () => {
+    const state = makeState({ wars: [], startId: 'standard', flags: {}, tutorial: inertTutorial });
+    const { nextState } = processSeason(state as any);
+    expect(nextState.pendingEvents.some((e: any) => e.defId === 'evt-messana-appeal')).toBe(true);
   });
 });
 

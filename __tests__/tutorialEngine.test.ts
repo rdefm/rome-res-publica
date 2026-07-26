@@ -15,6 +15,7 @@ import {
   getNextStep,
   isStepSatisfied,
   isTabSealed,
+  isWorldFrozen,
   applyTutorialEffect,
   validateTutorialScript,
   TUTORIAL_PREDICATES,
@@ -98,6 +99,32 @@ describe('tutorialEngine — pure step resolution', () => {
     });
     expect(isTabSealed('Domus', s)).toBe(false);
     expect(isTabSealed('Forum', s)).toBe(true);
+  });
+
+  it('isWorldFrozen is true only while the prologue arc is active', () => {
+    expect(isWorldFrozen(makeState({
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+    }))).toBe(true);
+
+    expect(isWorldFrozen(makeState({
+      tutorial: { activeArc: 'embassy', stepId: 's1', completedArcs: ['prologue'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false },
+    }))).toBe(false);
+
+    expect(isWorldFrozen(makeState({
+      tutorial: { activeArc: null, stepId: null, completedArcs: [], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false },
+    }))).toBe(false);
+  });
+
+  it('isWorldFrozen is false once the prologue is skipped (activeArc clears to null)', () => {
+    const s = makeState({
+      tutorial: { activeArc: null, stepId: null, completedArcs: ['prologue', 'embassy', 'war', 'courts'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: true },
+    });
+    expect(isWorldFrozen(s)).toBe(false);
+  });
+
+  it('isWorldFrozen defensively reads undefined tutorial as not frozen (bespoke test fixtures)', () => {
+    const s = { ...makeState(), tutorial: undefined } as any;
+    expect(isWorldFrozen(s)).toBe(false);
   });
 
   it('applyTutorialEffect applies a registered effect and no-ops for undefined/unknown ids', () => {

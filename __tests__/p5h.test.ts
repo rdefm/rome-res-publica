@@ -106,7 +106,19 @@ function driveOneGuidedRun(maxSeasons: number): OhNoSignals {
   return signals;
 }
 
-describe('Target #3 — first "oh no" within 8 seasons on a fresh guided start', () => {
+// Tutorial redesign, Chunk T4 — SKIPPED. This target's entire premise (a
+// guided start driven through the old tutorial-264 event script, on a fixed
+// season timeline) no longer holds: the guided prologue now hard-freezes
+// the world (turnSequencer.ts's isWorldFrozen — random events, crisis
+// drift, bill resolution, the Claudius arc, births, mortality all suppressed)
+// until the player completes Act I-V's real content through the new
+// spotlight-guided arcs (tutorialScript.ts, authored starting T5), which has
+// no fixed season count. driveOneGuidedRun's 8-season auto-play can no
+// longer produce ANY of these signals organically while frozen. Revisit
+// once T5's prologue exists and has a real, playtested pacing target to
+// assert against — this file's evidence stays here as the record of what
+// the OLD system's target was, not a claim the new one meets it.
+describe.skip('Target #3 — first "oh no" within 8 seasons on a fresh guided start', () => {
   test('the plan\'s literal target: every run hits SOME qualifying oh-no by season 8', () => {
     const results = [driveOneGuidedRun(8), driveOneGuidedRun(8), driveOneGuidedRun(8)];
     // eslint-disable-next-line no-console

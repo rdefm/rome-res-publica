@@ -10,15 +10,15 @@
 // eligible to be picked (eventEngine.isEventEligible short-circuits weight
 // 0 to false) — weight-0 entries in those same files are follow-up/notice
 // scenes reached only via nextEventId or force-injection, not the random
-// draw. Scripted/queued-only pools (tutorial, succession, secret, Claudius
-// arc) never enter pickRandomEvent at all and are reported separately for
-// completeness, not folded into the 80–120 count.
+// draw. Scripted/queued-only pools (succession, secret, Claudius arc) never
+// enter pickRandomEvent at all and are reported separately for completeness,
+// not folded into the 80–120 count. (Tutorial redesign, Chunk T4 — the
+// tutorial-264 pool this list used to include is retired.)
 
 import { EVENT_DEFS } from '../src/data/events';
 import { WAR_EVENT_DEFS } from '../src/data/warEvents';
 import { CADET_EVENT_DEFS } from '../src/data/cadetEvents';
 import { COMPROMISING_EVENT_DEFS } from '../src/data/compromisingEvents';
-import { TUTORIAL_EVENT_DEFS } from '../src/data/tutorialEvents';
 import { SUCCESSION_EVENT_DEFS } from '../src/data/successionEvents';
 import { SECRET_EVENT_DEFS } from '../src/data/secretEvents';
 import { CLAUDIUS_ARC_EVENT_DEFS } from '../src/data/claudiusArc';
@@ -37,7 +37,6 @@ const RANDOM_POOLS: Pool[] = [
 ];
 
 const SCRIPTED_POOLS: Pool[] = [
-  { name: 'TUTORIAL_EVENT_DEFS', defs: TUTORIAL_EVENT_DEFS },
   { name: 'SUCCESSION_EVENT_DEFS', defs: SUCCESSION_EVENT_DEFS },
   { name: 'SECRET_EVENT_DEFS', defs: SECRET_EVENT_DEFS },
   { name: 'CLAUDIUS_ARC_EVENT_DEFS', defs: CLAUDIUS_ARC_EVENT_DEFS },

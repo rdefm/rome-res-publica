@@ -59,7 +59,7 @@ export interface EventDef {
   weight: number;
   choices: EventChoice[];
   seasons?: number[];   // 0=Spring 1=Summer 2=Autumn 3=Winter; absent = season-neutral
-  isTutorial?: boolean; // excluded from pickRandomEvent; only fired via tutorialQueue (P1-G)
+  isTutorial?: boolean; // excluded from pickRandomEvent (P1-G); fires only via explicit injection
 }
 
 // ─── Event instance ──────────────────────────────────────────────────────────

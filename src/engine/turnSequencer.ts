@@ -20,7 +20,8 @@ import {
 } from './crisisEngine';
 import { getTierFromLevel } from '../models/crisis';
 import { tickNpcCareers, resolveElection } from './electionEngine';
-import { pickRandomEvent, evalCondition, injectNoticeEvent } from './eventEngine';
+import { pickRandomEvent, evalCondition, injectNoticeEvent, getEventDef } from './eventEngine';
+import { isWorldFrozen } from './tutorialEngine';
 import { applyYearlyRelationshipDecay, ageAndProcessMortality } from './reputationEngine';
 import { genderForCharacter, genderForLeader } from './portraitEngine';
 import { portraitAssets } from '../utils/portraitAssets';
@@ -503,81 +504,92 @@ export function processSeason(state: GameState): {
   }
 
   // 4. Resolve bills
-  const unrestTier = getTierFromLevel(s.crisis.unrest.level);
-  const senateSessionSuspended = unrestTier >= 4 && Math.random() < 0.20;
-  if (senateSessionSuspended) {
-    s = { ...s, flags: { ...s.flags, senateSessionSuspended: true } };
-    events.push('The Senate session has been suspended — popular unrest has overwhelmed the Forum. No legislation advances this season.');
-  } else {
-    s = { ...s, flags: { ...s.flags, senateSessionSuspended: false } };
-  }
-
+  // Tutorial redesign, Chunk T4 — frozen entirely during the guided
+  // prologue. Not one of the plan's original six named freeze targets, but
+  // found during T4's own verification: this passive, NPC-support-driven
+  // resolution runs regardless of any player action and can move crisis
+  // tracks directly via a bill's passEffect/failEffect — undermining both
+  // "world frozen" and Act III's own "the player votes a bill; a track
+  // moves" teaching moment (which lands through a *different*, player-
+  // triggered path, not this ambient one). Bills sit exactly as they are —
+  // no support check, no turnsLeft decrement — until the freeze lifts.
   const passedBills: Bill[] = [];
   const resolvedLogs: string[] = [];
   const remainingBills: Bill[] = [];
 
-  if (!senateSessionSuspended) {
-    const economyTier = getTierFromLevel(s.crisis.economy.level);
-    const austerityActive = economyTier >= 3;
-
-    for (const bill of s.bills) {
-      const turnsLeft = bill.turnsLeft - 1;
-
-      const isSpendingBill = bill.passEffect?.includes('gold-') || bill.passEffect?.includes('treasury-');
-      const effectiveSupport = austerityActive && isSpendingBill
-        ? bill.support - 10
-        : bill.support;
-
-      const constitutionTier = getTierFromLevel(s.crisis.constitution.level);
-      const passThresholdBonus =
-        constitutionTier >= 4 ? 15 :
-        constitutionTier >= 3 ? 10 :
-        constitutionTier >= 2 ? 5  : 0;
-
-      if (effectiveSupport > passThresholdBonus) {
-        passedBills.push(bill);
-        const patch = applyEffectString(bill.passEffect, s);
-        s = { ...s, ...patch };
-        resolvedLogs.push(`✓ ${bill.name} passes.`);
-      } else if (turnsLeft <= 0) {
-        const patch = applyEffectString(bill.failEffect, s);
-        s = { ...s, ...patch };
-        resolvedLogs.push(`✗ ${bill.name} expires without passing.`);
-      } else {
-        remainingBills.push({ ...bill, turnsLeft });
-      }
+  if (!isWorldFrozen(s)) {
+    const unrestTier = getTierFromLevel(s.crisis.unrest.level);
+    const senateSessionSuspended = unrestTier >= 4 && Math.random() < 0.20;
+    if (senateSessionSuspended) {
+      s = { ...s, flags: { ...s.flags, senateSessionSuspended: true } };
+      events.push('The Senate session has been suspended — popular unrest has overwhelmed the Forum. No legislation advances this season.');
+    } else {
+      s = { ...s, flags: { ...s.flags, senateSessionSuspended: false } };
     }
 
-    const newActiveLaws = passedBills
-      .filter(b => b.id && !s.activeLaws?.some(l => l.billId === b.id))
-      .map(b => ({
-        billId: b.id,
-        name: b.name,
-        passedOnTurn: s.turnNumber,
-        expiresOnTurn: b.duration !== undefined ? s.turnNumber + b.duration : undefined,
-        ongoingEffect: b.ongoingEffect,
-        repealable: b.repealable ?? false,
-        renewable: b.renewable ?? false,
-        renewalFlavour: b.renewalFlavour,
-      }));
+    if (!senateSessionSuspended) {
+      const economyTier = getTierFromLevel(s.crisis.economy.level);
+      const austerityActive = economyTier >= 3;
 
-    const repealedLawIds = passedBills
-      .filter(b => b.type === 'repeal' && b.repeals)
-      .map(b => b.repeals!);
+      for (const bill of s.bills) {
+        const turnsLeft = bill.turnsLeft - 1;
 
-    s = {
-      ...s,
-      bills: remainingBills,
-      passedBills: [
-        ...(s.passedBills ?? []),
-        ...passedBills.filter(b => b.type !== 'repeal').map(b => ({ id: b.id, name: b.name, passedOnTurn: s.turnNumber })),
-      ],
-      activeLaws: [
-        ...(s.activeLaws ?? []).filter(l => !repealedLawIds.includes(l.billId)),
-        ...newActiveLaws,
-      ],
-    };
-    events.push(...resolvedLogs);
+        const isSpendingBill = bill.passEffect?.includes('gold-') || bill.passEffect?.includes('treasury-');
+        const effectiveSupport = austerityActive && isSpendingBill
+          ? bill.support - 10
+          : bill.support;
+
+        const constitutionTier = getTierFromLevel(s.crisis.constitution.level);
+        const passThresholdBonus =
+          constitutionTier >= 4 ? 15 :
+          constitutionTier >= 3 ? 10 :
+          constitutionTier >= 2 ? 5  : 0;
+
+        if (effectiveSupport > passThresholdBonus) {
+          passedBills.push(bill);
+          const patch = applyEffectString(bill.passEffect, s);
+          s = { ...s, ...patch };
+          resolvedLogs.push(`✓ ${bill.name} passes.`);
+        } else if (turnsLeft <= 0) {
+          const patch = applyEffectString(bill.failEffect, s);
+          s = { ...s, ...patch };
+          resolvedLogs.push(`✗ ${bill.name} expires without passing.`);
+        } else {
+          remainingBills.push({ ...bill, turnsLeft });
+        }
+      }
+
+      const newActiveLaws = passedBills
+        .filter(b => b.id && !s.activeLaws?.some(l => l.billId === b.id))
+        .map(b => ({
+          billId: b.id,
+          name: b.name,
+          passedOnTurn: s.turnNumber,
+          expiresOnTurn: b.duration !== undefined ? s.turnNumber + b.duration : undefined,
+          ongoingEffect: b.ongoingEffect,
+          repealable: b.repealable ?? false,
+          renewable: b.renewable ?? false,
+          renewalFlavour: b.renewalFlavour,
+        }));
+
+      const repealedLawIds = passedBills
+        .filter(b => b.type === 'repeal' && b.repeals)
+        .map(b => b.repeals!);
+
+      s = {
+        ...s,
+        bills: remainingBills,
+        passedBills: [
+          ...(s.passedBills ?? []),
+          ...passedBills.filter(b => b.type !== 'repeal').map(b => ({ id: b.id, name: b.name, passedOnTurn: s.turnNumber })),
+        ],
+        activeLaws: [
+          ...(s.activeLaws ?? []).filter(l => !repealedLawIds.includes(l.billId)),
+          ...newActiveLaws,
+        ],
+      };
+      events.push(...resolvedLogs);
+    }
   }
 
   if (passedBills.length > 0) {
@@ -588,36 +600,47 @@ export function processSeason(state: GameState): {
   }
 
   // 5. Crisis escalation — four-track model
+  // Tutorial redesign, Chunk T4 — frozen during the guided prologue (one of
+  // the isWorldFrozen call sites). Step 4's passive bill resolution is ALSO
+  // frozen (found during this same chunk — see its own comment), so Act
+  // III's "the player votes a bill; a track moves" moment cannot land
+  // through the ordinary season-end bill pass at all during the prologue —
+  // T5 needs its own explicit, player-triggered resolution path for
+  // whichever bill that Act uses (a dedicated store action, not this
+  // per-season sweep), separate from and unblocked by either freeze here.
   const romeMods = calcRomeStatModifiers(s.rome);
   const prevCrisis = { ...s.crisis };
 
   let updatedCrisis = { ...s.crisis };
-  for (const trackId of ['war', 'unrest', 'constitution', 'economy'] as const) {
-    const delta = calcIndividualEscalation(trackId, s);
-    updatedCrisis = { ...updatedCrisis, [trackId]: applyTrackDelta(updatedCrisis[trackId], delta) };
-  }
 
-  const cascadeDeltas = calcCascadeDeltas(updatedCrisis);
-  for (const trackId of ['war', 'unrest', 'constitution', 'economy'] as const) {
-    if (cascadeDeltas[trackId] !== 0) {
+  if (!isWorldFrozen(s)) {
+    for (const trackId of ['war', 'unrest', 'constitution', 'economy'] as const) {
+      const delta = calcIndividualEscalation(trackId, s);
+      updatedCrisis = { ...updatedCrisis, [trackId]: applyTrackDelta(updatedCrisis[trackId], delta) };
+    }
+
+    const cascadeDeltas = calcCascadeDeltas(updatedCrisis);
+    for (const trackId of ['war', 'unrest', 'constitution', 'economy'] as const) {
+      if (cascadeDeltas[trackId] !== 0) {
+        updatedCrisis = {
+          ...updatedCrisis,
+          [trackId]: applyTrackDelta(updatedCrisis[trackId], cascadeDeltas[trackId]),
+        };
+      }
+    }
+
+    for (const trackId of ['war', 'unrest', 'constitution', 'economy'] as const) {
+      const namedCrisis = getNamedCrisis(trackId, updatedCrisis[trackId].level, s);
       updatedCrisis = {
         ...updatedCrisis,
-        [trackId]: applyTrackDelta(updatedCrisis[trackId], cascadeDeltas[trackId]),
+        [trackId]: { ...updatedCrisis[trackId], namedCrisis },
       };
     }
-  }
 
-  for (const trackId of ['war', 'unrest', 'constitution', 'economy'] as const) {
-    const namedCrisis = getNamedCrisis(trackId, updatedCrisis[trackId].level, s);
-    updatedCrisis = {
-      ...updatedCrisis,
-      [trackId]: { ...updatedCrisis[trackId], namedCrisis },
-    };
-  }
-
-  const militaryPressure = checkMilitaryBillPressure(updatedCrisis, passedBills.map(b => b.id));
-  if (militaryPressure !== 0) {
-    updatedCrisis = { ...updatedCrisis, war: applyTrackDelta(updatedCrisis.war, militaryPressure) };
+    const militaryPressure = checkMilitaryBillPressure(updatedCrisis, passedBills.map(b => b.id));
+    if (militaryPressure !== 0) {
+      updatedCrisis = { ...updatedCrisis, war: applyTrackDelta(updatedCrisis.war, militaryPressure) };
+    }
   }
 
   const newCrisisLevel = Math.round(
@@ -1565,94 +1588,104 @@ export function processSeason(state: GameState): {
     }
 
     // ── Phase 4, Chunk P4-G — the Claudius arc ──────────────────────────────
-    // Patience countdown first — may cancel (deterrence) or auto-resolve to
-    // defiance before the demand-injection check below runs this same
-    // season, so order matters here.
-    if (s.claudiusPatience !== null) {
-      if (isDeterred(CLAUDIUS_LEADER_ID, s.secrets)) {
-        // The standoff itself is a complete resolution of the arc (design
-        // point 1) — cancel the countdown rather than let a frozen Secret
-        // eventually "auto-defy" into a trial that can't actually be filed.
-        s = { ...s, claudiusPatience: null };
-      } else {
-        const remaining = s.claudiusPatience - 1;
-        if (remaining <= 0) {
-          const { patch, logMsg } = resolveClaudiusDefiance(s);
-          s = { ...s, ...patch };
-          events.push(`His patience runs out. ${logMsg}`);
+    // Tutorial redesign, Chunk T4 — the whole arc (countdown + demand
+    // injection) freezes during the guided prologue: finding 19's
+    // isDeterred-consuming sites depend on this NOT ticking ahead of Act V's
+    // audit resolving the standoff on-screen. One of the six isWorldFrozen
+    // call sites (tutorial-redesign-plan.md §3 T4).
+    if (!isWorldFrozen(s)) {
+      // Patience countdown first — may cancel (deterrence) or auto-resolve to
+      // defiance before the demand-injection check below runs this same
+      // season, so order matters here.
+      if (s.claudiusPatience !== null) {
+        if (isDeterred(CLAUDIUS_LEADER_ID, s.secrets)) {
+          // The standoff itself is a complete resolution of the arc (design
+          // point 1) — cancel the countdown rather than let a frozen Secret
+          // eventually "auto-defy" into a trial that can't actually be filed.
+          s = { ...s, claudiusPatience: null };
         } else {
-          s = { ...s, claudiusPatience: remaining };
+          const remaining = s.claudiusPatience - 1;
+          if (remaining <= 0) {
+            const { patch, logMsg } = resolveClaudiusDefiance(s);
+            s = { ...s, ...patch };
+            events.push(`His patience runs out. ${logMsg}`);
+          } else {
+            s = { ...s, claudiusPatience: remaining };
+          }
         }
       }
-    }
 
-    // The demand (evt-claud-01) — condition-gated: the arc Secret still
-    // held and unfrozen, no demand already pending, no active countdown, no
-    // succession/epilogue mid-flight, year 2+ (open-ended rather than a
-    // hard year-3 cutoff — a guided run's tutorial can finish anywhere
-    // around year 2-3 depending on pacing; capping the window risks the arc
-    // never firing at all for a slower run), cooldown respected between
-    // firings, and a live bill to name.
-    //
-    // Phase 5, Chunk P5-H — the `tutorialDone` gate this condition used to
-    // also require is removed. It made the demand wait for the entire
-    // guided tutorialQueue to drain (realistically ~8-9 seasons), which
-    // directly conflicted with the "first oh-no within 8 seasons" target;
-    // confirmed via 3 auto-driven guided runs never reaching a trial/
-    // demand/election-loss oh-no by season 8 under the old gate. Dropping
-    // it still isn't reckless: `yearsSinceStart >= 1` alone means the
-    // earliest possible firing is turn 5 (Spring, Year 2) — after
-    // tut-01..tut-04 (Year 1's script, including tut-04's own "The Claudian
-    // Smile," the tutorial's existing narrative setup for this exact arc)
-    // have already had their season to fire. The demand queues onto
-    // pendingEvents rather than interrupting anything active, so it can
-    // never collide with a tutorial event mid-display — it just takes its
-    // turn in the same queue.
-    if (
-      !s.pendingSecretDemand &&
-      s.claudiusPatience === null &&
-      !s.pendingSuccession &&
-      !s.pendingEpilogue
-    ) {
-      const claudiusSecret = s.secrets.find(sec => sec.id === CLAUDIUS_ARC_SECRET_ID && sec.status === 'held');
-      const yearsSinceStart = s.year - s.gensFoundedYear;
-      const cooldownElapsed = claudiusSecret
-        ? (s.turnNumber - (claudiusSecret.lastActedSeason ?? -Infinity)) >= BALANCE.secrets.npcAi.npcUseCooldownSeasons
-        : false;
-
+      // The demand (evt-claud-01) — condition-gated: the arc Secret still
+      // held and unfrozen, no demand already pending, no active countdown, no
+      // succession/epilogue mid-flight, year 2+ (open-ended rather than a
+      // hard year-3 cutoff — a guided run's tutorial can finish anywhere
+      // around year 2-3 depending on pacing; capping the window risks the arc
+      // never firing at all for a slower run), cooldown respected between
+      // firings, and a live bill to name.
+      //
+      // Phase 5, Chunk P5-H — the `tutorialDone` gate this condition used to
+      // also require is removed. It made the demand wait for the entire
+      // guided tutorialQueue to drain (realistically ~8-9 seasons), which
+      // directly conflicted with the "first oh-no within 8 seasons" target;
+      // confirmed via 3 auto-driven guided runs never reaching a trial/
+      // demand/election-loss oh-no by season 8 under the old gate. Dropping
+      // it still isn't reckless: `yearsSinceStart >= 1` alone means the
+      // earliest possible firing is turn 5 (Spring, Year 2). Tutorial
+      // redesign, T4 — this arc is now frozen entirely during the guided
+      // prologue (see the isWorldFrozen guard above) and only starts ticking
+      // once the player reaches Act V's audit or Free Start's own year 2,
+      // so the "already had their season to fire" reasoning this comment
+      // used to lean on no longer applies to tutorial-264 specifically, but
+      // the underlying yearsSinceStart >= 1 floor is still a safe minimum on
+      // its own. The demand queues onto pendingEvents rather than
+      // interrupting anything active, so it can never collide with another
+      // event mid-display — it just takes its turn in the same queue.
       if (
-        claudiusSecret &&
-        cooldownElapsed &&
-        yearsSinceStart >= 1 &&
-        !isDeterred(CLAUDIUS_LEADER_ID, s.secrets)
+        !s.pendingSecretDemand &&
+        s.claudiusPatience === null &&
+        !s.pendingSuccession &&
+        !s.pendingEpilogue
       ) {
-        const leader = s.clans.flatMap(c => c.leaders).find(l => l.id === CLAUDIUS_LEADER_ID);
-        // Bias-matched bill preferred (same signal npcSecretDecision uses
-        // generically), falling back to whatever's live — the demand's
-        // flavor names a bill, but no SPECIFIC named bill is reliably live
-        // this early (verified: only a "keep >=2 queued" refill exists,
-        // drawing from AUTO_BILL_TEMPLATES in a fixed order, not a
-        // guaranteed-present named bill).
-        const targetBill = s.bills.find(b => b.type === 'optimates') ?? s.bills[0];
-        if (leader && targetBill) {
-          const bodyText =
-            `${leader.name} finds you after the session, unhurried. He has never needed to raise his voice. ` +
-            `"A small matter, between houses that understand each other. Your voice, on the floor, when ` +
-            `‘${targetBill.name}’ is called. Nothing you would not have considered anyway." ` +
-            `He does not name what he holds. He does not need to.`;
-          s = {
-            ...s,
-            pendingEvents: [...s.pendingEvents, injectNoticeEvent('evt-claud-01', s.turnNumber, s.family.find(c => c.isPlayer)?.id ?? 'pc-1', { bodyText })],
-            pendingSecretDemand: {
-              secretId: claudiusSecret.id,
-              leaderId: leader.id,
-              clanId: CLAUDIUS_CLAN_ID,
-              kind: 'leverage_bill',
-              billId: targetBill.id,
-              direction: 'for',
-            },
-          };
-          events.push(`${leader.name} makes his move — a demand awaits your answer.`);
+        const claudiusSecret = s.secrets.find(sec => sec.id === CLAUDIUS_ARC_SECRET_ID && sec.status === 'held');
+        const yearsSinceStart = s.year - s.gensFoundedYear;
+        const cooldownElapsed = claudiusSecret
+          ? (s.turnNumber - (claudiusSecret.lastActedSeason ?? -Infinity)) >= BALANCE.secrets.npcAi.npcUseCooldownSeasons
+          : false;
+
+        if (
+          claudiusSecret &&
+          cooldownElapsed &&
+          yearsSinceStart >= 1 &&
+          !isDeterred(CLAUDIUS_LEADER_ID, s.secrets)
+        ) {
+          const leader = s.clans.flatMap(c => c.leaders).find(l => l.id === CLAUDIUS_LEADER_ID);
+          // Bias-matched bill preferred (same signal npcSecretDecision uses
+          // generically), falling back to whatever's live — the demand's
+          // flavor names a bill, but no SPECIFIC named bill is reliably live
+          // this early (verified: only a "keep >=2 queued" refill exists,
+          // drawing from AUTO_BILL_TEMPLATES in a fixed order, not a
+          // guaranteed-present named bill).
+          const targetBill = s.bills.find(b => b.type === 'optimates') ?? s.bills[0];
+          if (leader && targetBill) {
+            const bodyText =
+              `${leader.name} finds you after the session, unhurried. He has never needed to raise his voice. ` +
+              `"A small matter, between houses that understand each other. Your voice, on the floor, when ` +
+              `‘${targetBill.name}’ is called. Nothing you would not have considered anyway." ` +
+              `He does not name what he holds. He does not need to.`;
+            s = {
+              ...s,
+              pendingEvents: [...s.pendingEvents, injectNoticeEvent('evt-claud-01', s.turnNumber, s.family.find(c => c.isPlayer)?.id ?? 'pc-1', { bodyText })],
+              pendingSecretDemand: {
+                secretId: claudiusSecret.id,
+                leaderId: leader.id,
+                clanId: CLAUDIUS_CLAN_ID,
+                kind: 'leverage_bill',
+                billId: targetBill.id,
+                direction: 'for',
+              },
+            };
+            events.push(`${leader.name} makes his move — a demand awaits your answer.`);
+          }
         }
       }
     }
@@ -1674,7 +1707,11 @@ export function processSeason(state: GameState): {
     const aged = s.family.map((c) => ({ ...c, age: c.age + (crossedNewYear ? 1 : 0) }));
     let family = aged;
 
-    if (crossedNewYear && !s.pendingSuccession) {
+    // Tutorial redesign, Chunk T4 — the death roll itself is frozen during
+    // the guided prologue (one of the six isWorldFrozen call sites); aging
+    // continues regardless, that's cosmetic and expected every Winter→Spring
+    // rollover either way.
+    if (crossedNewYear && !s.pendingSuccession && !isWorldFrozen(s)) {
       const deceased = aged.find(c => rollsDead(c));
       if (deceased) {
         const result = detectPaterfamiliasDeath(aged, deceased.id, s.heldOffices);
@@ -1731,83 +1768,78 @@ export function processSeason(state: GameState): {
   }
 
   // 11. Auto-inject bills
-  {
-    const economyTier = getTierFromLevel(s.crisis.economy.level);
-    const needsVectigalis = s.rome.treasury <= 9 || economyTier >= 2;
-    if (needsVectigalis) {
-      const vectigalisActive = s.bills.some(b => b.name === 'Lex de Vectigalibus') ||
-        (s.activeLaws ?? []).some(l => l.billId === 'lex-de-vectigalibus');
-      if (!vectigalisActive) {
-        const template = HISTORICAL_BILL_TEMPLATES.find(t => t.id === 'lex-de-vectigalibus');
-        if (template) {
-          s = { ...s, bills: [...s.bills, { ...template, id: nextBillId() }] };
-          events.push(s.rome.treasury <= 9
-            ? `Emergency: Treasury is bankrupt — Lex de Vectigalibus has been introduced.`
-            : `Economic pressure: Lex de Vectigalibus has been introduced.`
-          );
+  // Tutorial redesign, Chunk T4 — frozen during the guided prologue, same
+  // reasoning as step 4: new bills (emergency or top-up) appearing in the
+  // background isn't "the world frozen," and every one of these can only
+  // ever be resolved by step 4's own (now-frozen) passive pass.
+  if (!isWorldFrozen(s)) {
+    {
+      const economyTier = getTierFromLevel(s.crisis.economy.level);
+      const needsVectigalis = s.rome.treasury <= 9 || economyTier >= 2;
+      if (needsVectigalis) {
+        const vectigalisActive = s.bills.some(b => b.name === 'Lex de Vectigalibus') ||
+          (s.activeLaws ?? []).some(l => l.billId === 'lex-de-vectigalibus');
+        if (!vectigalisActive) {
+          const template = HISTORICAL_BILL_TEMPLATES.find(t => t.id === 'lex-de-vectigalibus');
+          if (template) {
+            s = { ...s, bills: [...s.bills, { ...template, id: nextBillId() }] };
+            events.push(s.rome.treasury <= 9
+              ? `Emergency: Treasury is bankrupt — Lex de Vectigalibus has been introduced.`
+              : `Economic pressure: Lex de Vectigalibus has been introduced.`
+            );
+          }
         }
       }
     }
-  }
 
-  if (s.rome.stability < 15 && Math.random() < 0.10) {
-    const scuActive = s.bills.some(b => b.name === 'Senatus Consultum Ultimum');
-    if (!scuActive) {
-      const template = AUTO_BILL_TEMPLATES.find(t => t.id === 'senatus-consultum-ultimum');
-      if (template) {
-        s = { ...s, bills: [...s.bills, { ...template, id: nextBillId() }] };
-        events.push(`Crisis: Senate instability forces introduction of Senatus Consultum Ultimum.`);
+    if (s.rome.stability < 15 && Math.random() < 0.10) {
+      const scuActive = s.bills.some(b => b.name === 'Senatus Consultum Ultimum');
+      if (!scuActive) {
+        const template = AUTO_BILL_TEMPLATES.find(t => t.id === 'senatus-consultum-ultimum');
+        if (template) {
+          s = { ...s, bills: [...s.bills, { ...template, id: nextBillId() }] };
+          events.push(`Crisis: Senate instability forces introduction of Senatus Consultum Ultimum.`);
+        }
       }
+    }
+
+    if (s.bills.length < 2) {
+      const existing = new Set(s.bills.map((b) => b.name));
+      const candidates = AUTO_BILL_TEMPLATES.filter((t) => !existing.has(t.name));
+      const toAdd = candidates.slice(0, 2 - s.bills.length);
+      const newBills: Bill[] = toAdd.map((t) => ({ ...t, id: nextBillId() }));
+      s = { ...s, bills: [...s.bills, ...newBills] };
+      for (const b of newBills) events.push(`New bill introduced: ${b.name}.`);
     }
   }
 
-  if (s.bills.length < 2) {
-    const existing = new Set(s.bills.map((b) => b.name));
-    const candidates = AUTO_BILL_TEMPLATES.filter((t) => !existing.has(t.name));
-    const toAdd = candidates.slice(0, 2 - s.bills.length);
-    const newBills: Bill[] = toAdd.map((t) => ({ ...t, id: nextBillId() }));
-    s = { ...s, bills: [...s.bills, ...newBills] };
-    for (const b of newBills) events.push(`New bill introduced: ${b.name}.`);
-  }
-
   // 12. Pick and inject one end-of-season event
-  // P1-G: tutorial queue takes priority over random event pool.
-  // When tutorialQueue is non-empty, pop the head if its season gate is met.
-  // When queue empties on this pop, set flags['tutorial-complete'].
-  // When queue is empty (or tutorial complete), fall through to pickRandomEvent.
-  // See Fable-phase1-implementation-plan.md §P1-G — Firing rules, hook 2.
+  // Tutorial redesign, Chunk T4 — re-points the old tutorialQueue-priority
+  // guard (tutorial-264 is retired). New structure:
+  //   1. World frozen (guided prologue active, not skipped) → no story
+  //      event this season. Arc I is fully scripted via tutorialScript.ts's
+  //      own steps, not the event system.
+  //   2. No Carthage war yet && !messanaResolved && (this run was never
+  //      going to run an embassy arc, OR it already has) → force
+  //      evt-messana-appeal. The embassy-complete gate only applies to the
+  //      guided start — Free Start/Duilia/Manlia never run an Embassy arc,
+  //      so they keep the exact unconditional guard they've always had
+  //      (design decision: no behavior change for non-guided starts).
+  //   3. Otherwise → pickRandomEvent as normal.
   {
-    const { checkTutorialGate, getEventDef } = require('../engine/eventEngine');
     let chosenDef: import('../models/event').EventDef | undefined;
 
-    const tutorialQueue = s.tutorialQueue ?? [];
-
-    if (tutorialQueue.length > 0) {
-      const nextDefId = tutorialQueue[0];
-      const gate = checkTutorialGate(nextDefId, s) as { fire: boolean; skip: boolean };
-
-      if (gate.fire) {
-        chosenDef = getEventDef(nextDefId) as typeof chosenDef;
-        const newQueue = tutorialQueue.slice(1);
-        s = {
-          ...s,
-          tutorialQueue: newQueue,
-          // Queue exhausted: stamp completion flag
-          flags: newQueue.length === 0
-            ? { ...s.flags, 'tutorial-complete': true }
-            : s.flags,
-        };
-      } else if (gate.skip) {
-        // Conditional failure (e.g. tut-06 with no campaign) — pop silently, no event
-        s = { ...s, tutorialQueue: tutorialQueue.slice(1) };
-      }
-      // gate.wait (both false): leave queue intact, no event this season
-    } else if (!(s.wars ?? []).some(w => w.enemyId === 'carthage') && !s.flags['messanaResolved']) {
+    if (isWorldFrozen(s)) {
+      // No story event fires while the prologue hard-rail is active.
+    } else if (
+      !(s.wars ?? []).some(w => w.enemyId === 'carthage') &&
+      !s.flags['messanaResolved'] &&
+      (s.startId !== 'guided' || !!s.flags['tutorial-embassy-complete'])
+    ) {
       // Phase 3, Chunk P3-B — Mamertine ignition: guaranteed once eligible
-      // (tutorial queue empty, per the branch above; no Carthage war yet),
-      // not weighted into the random pool — the plan wants this "fires in
-      // the first or second year", which a competing-on-weight pick can't
-      // promise.
+      // (no Carthage war yet), not weighted into the random pool — the plan
+      // wants this "fires in the first or second year", which a competing-
+      // on-weight pick can't promise.
       //
       // Mediterranean-provinces plan, chunk MP-E: retargeted from the old
       // evt-war-mamertines to evt-messana-appeal (see that event's own
@@ -1820,9 +1852,14 @@ export function processSeason(state: GameState): {
       // season thereafter. messanaResolved is set the instant either choice
       // fires, so it closes the gate immediately regardless of which way
       // the 'refuse' bill eventually resolves.
+      //
+      // Tutorial redesign, Chunk T4 — for a guided run specifically, this
+      // also waits on tutorial-embassy-complete (set by the Embassy arc,
+      // T7), so the appeal's envoy is always someone the player has already
+      // met (Vibius) by the time it fires.
       chosenDef = getEventDef('evt-messana-appeal') as typeof chosenDef;
     } else {
-      // Normal random event — tutorial queue exhausted or standard start
+      // Normal random event
       chosenDef = pickRandomEvent([...EVENT_DEFS, ...WAR_EVENT_DEFS, ...CADET_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS], s);
     }
 
@@ -2123,7 +2160,10 @@ export function processSeason(state: GameState): {
   }
 
   // 17. Passive birth check
-  if (isBirthEligible(s.family) && s.pendingBirthNaming === null) {
+  // Tutorial redesign, Chunk T4 — frozen during the guided prologue (one of
+  // the six isWorldFrozen call sites): a BirthNamingModal mid-hard-rail
+  // would compete with the scripted narration for the same screen.
+  if (isBirthEligible(s.family) && s.pendingBirthNaming === null && !isWorldFrozen(s)) {
     const prob = calcBirthProbability(s.family);
     if (Math.random() < prob) {
       const player  = s.family.find(c => c.isPlayer)!;
