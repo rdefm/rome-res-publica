@@ -30,22 +30,26 @@ export function checkCondition(
 ): boolean {
   switch (condition.type) {
 
+    // Governor-assignment gap fix's sweep: m.officeId is only ever written
+    // by the Tribune path — an ordinary magistracy win only ever sets the
+    // household-wide currentOffice/campaigningCharacterId pair, never
+    // officeId, for EITHER the player or a family member. The old
+    // `state.currentOffice === condition.officeId) return true` branch also
+    // had its own bug: it ignored assignedCharacterId entirely, so a
+    // character-scoped ambition could be satisfied by a DIFFERENT family
+    // member holding the office. Both conditions now check
+    // campaigningCharacterId against assignedCharacterId when one is given
+    // (character-scoped), falling back to "does the household hold it at
+    // all" only when the ambition is family-scoped (no assignedCharacterId).
     case 'hold_office': {
-      // Check player's current office OR any family member's officeId field
-      if (state.currentOffice === condition.officeId) return true;
-      return state.family.some(m =>
-        m.officeId === condition.officeId &&
-        (!assignedCharacterId || m.id === assignedCharacterId)
-      );
+      if (state.currentOffice !== condition.officeId) return false;
+      return !assignedCharacterId || state.campaigningCharacterId === assignedCharacterId;
     }
 
     case 'win_election': {
       // Same as hold_office for now — resolved at election time
-      if (state.currentOffice === condition.officeId) return true;
-      return state.family.some(m =>
-        m.officeId === condition.officeId &&
-        (!assignedCharacterId || m.id === assignedCharacterId)
-      );
+      if (state.currentOffice !== condition.officeId) return false;
+      return !assignedCharacterId || state.campaigningCharacterId === assignedCharacterId;
     }
 
     case 'reach_reputation': {

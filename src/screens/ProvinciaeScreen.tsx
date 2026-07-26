@@ -59,6 +59,8 @@ export default function ProvinciaeScreen() {
   const wars                     = useGameStore(s => s.wars);
   const theatre                  = useGameStore(s => s.theatre);
   const activeCommand            = useGameStore(s => s.activeCommand);
+  const currentOffice            = useGameStore(s => s.currentOffice);
+  const campaigningCharacterId   = useGameStore(s => s.campaigningCharacterId);
   const seasonIndex               = useGameStore(s => s.seasonIndex);
   // Campaign Map plan, Chunk C7 — turn-end playback.
   const campaignLog              = useGameStore(s => s.campaignLog);
@@ -99,8 +101,20 @@ export default function ProvinciaeScreen() {
 
   // Campaign Map plan, Chunk C3 — same "senateAuthorised = holds a formal
   // office" rule gameStore.raiseLevy already uses for personal levies.
+  // Governor-assignment gap fix's sweep: paterfamilias.officeId is only
+  // ever written by the Tribune path — an ordinary magistracy win only
+  // ever sets the household-wide currentOffice/campaigningCharacterId pair,
+  // never officeId, so this always read as unsanctioned for a player
+  // actually holding Quaestor/Aedile/Praetor/Consul. currentOffice alone
+  // isn't enough either — it's a single household-wide slot, so it can be
+  // held by a family member instead of the player; campaigningCharacterId
+  // is what actually names the holder. raiseTroops has no per-character
+  // concept of its own (always the paterfamilias — no characterId param),
+  // so this stays player-specific rather than the fuller per-character
+  // check gameStore.raiseLevy/MusterPickerModal need instead.
   const paterfamilias = family.find(c => c.isPlayer);
-  const playerHoldsOffice = !!paterfamilias?.officeId;
+  const playerHoldsOffice = paterfamilias?.officeId != null
+    || (currentOffice !== null && campaigningCharacterId === paterfamilias?.id);
   // Chunk C4 — holding the theatre command sanctions muster the same way.
   const playerHoldsCommand = activeCommand?.holderOwner === 'player';
 

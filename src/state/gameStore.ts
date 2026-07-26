@@ -3410,8 +3410,11 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     if (defId === 'evt-tut-05' && choiceId === 'declare-gaius') {
       const curr  = get();
       const { OFFICES } = require('../data/offices');
+      // Governor-assignment gap fix's sweep — same fix as checkTutorialGate's
+      // own eligibility check for this same event (eventEngine.ts).
       const eligible = curr.family.find(c =>
         !c.isPlayer && (c.age ?? 0) >= 18 && (c as any).officeId === null
+        && !(curr.currentOffice !== null && curr.campaigningCharacterId === c.id)
       );
       if (eligible) {
         const heldOffices: string[] = (eligible as any).heldOffices ?? [];
@@ -4163,7 +4166,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     if (!region) return;
 
     const paterfamilias = s.family.find(c => c.isPlayer);
-    const playerHoldsOffice = !!paterfamilias?.officeId;
+    // Governor-assignment gap fix's sweep: paterfamilias.officeId is only
+    // ever written by the Tribune path — an ordinary magistracy win only
+    // ever sets the household-wide currentOffice/campaigningCharacterId
+    // pair. currentOffice alone isn't enough either (a family member, not
+    // the player, could hold it) — campaigningCharacterId names the actual
+    // holder. Same fix as ProvinciaeScreen.tsx's identical playerHoldsOffice.
+    const playerHoldsOffice = paterfamilias?.officeId != null
+      || (s.currentOffice !== null && s.campaigningCharacterId === paterfamilias?.id);
     const playerHoldsCommand = s.activeCommand?.holderOwner === 'player';
 
     const quote = quoteMuster(regionId, tier, s.theatre, s.cities, s.armies, s.imperium, playerHoldsOffice, playerHoldsCommand);
@@ -4632,8 +4642,15 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const character = s.family.find(c => c.id === characterId);
     if (!character) return;
 
-    // senateAuthorised = character currently holds a formal office
-    const senateAuthorised = !!character.officeId;
+    // senateAuthorised = character currently holds a formal office.
+    // Governor-assignment gap fix's sweep: character.officeId is only ever
+    // written by the Tribune path — an ordinary magistracy win (player or
+    // family member) only ever sets the household-wide currentOffice/
+    // campaigningCharacterId pair, checked here against this specific
+    // character (not just the player) since raiseLevy can be called for
+    // any family member.
+    const senateAuthorised = character.officeId != null
+      || (s.currentOffice !== null && s.campaigningCharacterId === character.id);
     const cost = calcLevyCost(60, s.crisisLevel, senateAuthorised);
     if (s.denarii < cost) return;
 

@@ -249,10 +249,16 @@ export function checkTutorialGate(
       return { fire: state.seasonIndex === 3, skip: false };
 
     case 'evt-tut-05': {
-      // Spring + at least one non-player family member is 18+ with no office
+      // Spring + at least one non-player family member is 18+ with no office.
+      // Governor-assignment gap fix's sweep: (c as any).officeId is only
+      // ever written by the Tribune path — an ordinary magistracy win only
+      // ever sets the household-wide currentOffice/campaigningCharacterId
+      // pair, so a family member already holding Quaestor/Aedile/Praetor/
+      // Consul read as officeless here too.
       if (state.seasonIndex !== 0) return { fire: false, skip: false };
       const hasEligible = state.family.some(c =>
         !c.isPlayer && (c.age ?? 0) >= 18 && (c as any).officeId === null
+        && !(state.currentOffice !== null && state.campaigningCharacterId === c.id)
       );
       return { fire: hasEligible, skip: false }; // wait if no eligible member yet
     }

@@ -43,14 +43,23 @@ function makeState(overrides: Partial<OfficeStatusGameState> = {}): OfficeStatus
 
 describe('getOfficeStatus', () => {
   test('player currently holding the office → held', () => {
-    const character = makeCharacter({ isPlayer: true });
-    const state = makeState({ currentOffice: 'quaestor' });
+    const character = makeCharacter({ isPlayer: true, id: 'c-1' });
+    const state = makeState({ currentOffice: 'quaestor', campaigningCharacterId: 'c-1' });
     expect(getOfficeStatus(character, QUAESTOR, state)).toEqual({ status: 'held' });
   });
 
-  test('non-player family member currently holding the office (via character.officeId) → held', () => {
-    const character = makeCharacter({ isPlayer: false, officeId: 'quaestor' });
-    const state = makeState({ currentOffice: null });
+  // Governor-assignment gap fix's sweep: character.officeId is only ever
+  // written by the Tribune-of-the-Plebs path — an ordinary magistracy win
+  // (player or family member alike) only ever sets the household-wide
+  // currentOffice/campaigningCharacterId pair. This used to be checked via
+  // character.officeId for non-player characters specifically, which read
+  // 'held' only for Tribune and fell through to 'served' (as if the term had
+  // already ended) for anyone actually serving as Quaestor/Aedile/Praetor/
+  // Consul. Same fix already applied in CandidateHeader.tsx's own
+  // contextLineFor.
+  test('non-player family member currently holding the office (via currentOffice/campaigningCharacterId) → held', () => {
+    const character = makeCharacter({ id: 'son-1', isPlayer: false });
+    const state = makeState({ currentOffice: 'quaestor', campaigningCharacterId: 'son-1' });
     expect(getOfficeStatus(character, QUAESTOR, state)).toEqual({ status: 'held' });
   });
 

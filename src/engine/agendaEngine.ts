@@ -150,10 +150,12 @@ function genElectionAhead(state: GameState): AgendaItem[] {
 // Fires Spring/Summer only. Picks one item: the highest office any family
 // member is currently eligible for and hasn't yet held.
 //
-// Held-offices note: state.heldOffices tracks the PLAYER character's held
-// offices. Non-player family members do not have a heldOffices array in
-// Character (the field lives on ClanLeader, not Character). For non-player
-// members we check age only; prerequisite eligibility is not enforced.
+// Held-offices note: state.heldOffices tracks the household-wide record used
+// for the PLAYER's own prerequisite check. Non-player family members DO now
+// carry their own heldOffices array on Character (added Phase 4, Chunk P4-A —
+// this comment previously said otherwise and was stale); read below via
+// (member as any).heldOffices only because that cast predates the field
+// being added to the Character type, not because the data isn't real.
 
 function genElectionOpportunity(state: GameState): AgendaItem[] {
   if (state.seasonIndex > 1) return [];  // Autumn/Winter — too late to prepare
@@ -185,9 +187,15 @@ function genElectionOpportunity(state: GameState): AgendaItem[] {
         if (isPlayer && !state.heldOffices.includes(office.prerequisite)) continue;
         if (!isPlayer && memberHeld.length > 0 && !memberHeld.includes(office.prerequisite)) continue;
       }
-      // Currently holding an office already (no double-campaigning)
+      // Currently holding an office already (no double-campaigning).
+      // Governor-assignment gap fix's sweep: (member as any).officeId is
+      // only ever written by the Tribune path — an ordinary magistracy
+      // (player or family member) only ever sets the household-wide
+      // currentOffice/campaigningCharacterId pair, so this never actually
+      // excluded a non-player member serving as Quaestor/Aedile/Praetor/
+      // Consul from being suggested for a second, simultaneous campaign.
       if (isPlayer && state.currentOffice) continue;
-      if (!isPlayer && (member as any).officeId) continue;
+      if (!isPlayer && state.currentOffice !== null && state.campaigningCharacterId === member.id) continue;
 
       if (i > bestOfficeIndex) {
         bestOfficeIndex = i;

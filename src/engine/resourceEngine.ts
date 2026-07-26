@@ -155,9 +155,18 @@ export function calcResourceIncome(state: GameState): {
     PATRON_TIER_DEFINITIONS[state.patronTier]?.passiveBonus.fidesMultiplier ?? 1.0;
 
   // Step 3: Office income
-  const officeIncome = state.family
-    .filter(c => c.isPlayer && c.officeId)
-    .reduce((sum, c) => sum + (BALANCE.income.officeFidesBonus[c.officeId!] ?? 0), 0);
+  // Governor-assignment gap fix's sweep: this filtered on c.officeId, which
+  // is only ever written by the Tribune path (gameStore.ts) — an ordinary
+  // magistracy win only ever sets the household-wide currentOffice field
+  // (turnSequencer.ts's Winter election resolution), never officeId, for
+  // EITHER the player or a family member. officeFidesBonus is keyed
+  // quaestor/aedile/praetor/consul specifically (BALANCE.income.officeFidesBonus,
+  // deliberately excluding tribune) — meaning this income term has been
+  // silently zero for the player's entire time in any of those four offices,
+  // for as long as this function has existed.
+  const officeIncome = state.currentOffice
+    ? (BALANCE.income.officeFidesBonus[state.currentOffice] ?? 0)
+    : 0;
 
   // Step 4: Clan leader relationship income
   let clanFidesIncome = 0;

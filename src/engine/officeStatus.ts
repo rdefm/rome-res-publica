@@ -40,9 +40,17 @@ export function getOfficeStatus(
 ): OfficeStatusResult {
   const isPlayer = character.isPlayer;
 
-  const isCurrent = isPlayer
-    ? state.currentOffice === office.id
-    : character.officeId === office.id;
+  // character.officeId is only ever written by the Tribune-of-the-Plebs
+  // path (gameStore.ts) — an ordinary magistracy win only ever sets the
+  // household-wide currentOffice/campaigningCharacterId pair, for the
+  // player or a family member alike (turnSequencer.ts's Winter election
+  // resolution). The old per-character officeId branch here meant a
+  // non-player family member currently serving read as NOT holding their
+  // own office (falling through to 'served', as if the term had already
+  // ended, since heldOffices — the historical record — is set at the same
+  // moment). Same fix already applied in CandidateHeader.tsx's own
+  // contextLineFor.
+  const isCurrent = state.currentOffice === office.id && state.campaigningCharacterId === character.id;
   const isHeld = isPlayer
     ? state.heldOffices.includes(office.id)
     : (character.heldOffices ?? []).includes(office.id);

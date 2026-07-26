@@ -41,7 +41,7 @@ const BASILICA_SHEET_HEIGHT = SCREEN_HEIGHT * 0.72;
 
 function TribunePanel({ character }: { character: Character }) {
   const state = useGameStore();
-  const { tribuneHolder, tribuneImmunity, tribuneSeasonsServed, tribuneCandidateId, family, declareTribuneCandidate, currentOffice } = state as any;
+  const { tribuneHolder, tribuneImmunity, tribuneSeasonsServed, tribuneCandidateId, family, declareTribuneCandidate, currentOffice, campaigningCharacterId } = state as any;
   const [modalOpen, setModalOpen] = useState(false);
 
   const isHolder      = tribuneHolder === character.id;
@@ -55,10 +55,17 @@ function TribunePanel({ character }: { character: Character }) {
     ? (family.find((c: Character) => c.id === tribuneCandidateId)?.name ?? 'Another family member')
     : null;
 
-  // Eligibility: age ok, not already in any office (player uses currentOffice; others use officeId)
+  // Eligibility: age ok, not already in any office. character.officeId is
+  // only ever written by this same Tribune path — an ordinary magistracy
+  // win (player or family member) only ever sets the household-wide
+  // currentOffice/campaigningCharacterId pair, so the old
+  // `character.isPlayer && currentOffice !== null` half of this check left a
+  // real gap: a non-player family member already holding Quaestor/Aedile/
+  // Praetor/Consul read as officeless here too. Same fix as
+  // gameStore.declareTribuneCandidate's own identical guard.
   const ageOk         = character.age >= 30;
   const noOtherOffice = character.officeId === null &&
-    !(character.isPlayer && currentOffice !== null);
+    !(currentOffice !== null && campaigningCharacterId === character.id);
   const tribuneFree   = tribuneHolder === null && tribuneCandidateId === null;
   const isEligible    = ageOk && noOtherOffice && tribuneFree && !isHolder && !isCandidate;
 

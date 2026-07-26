@@ -657,7 +657,17 @@ function VolunteerSection({
   family: Character[];
   onVolunteer: (characterId: string) => void;
 }) {
-  const eligible = family.filter(c => c.age >= 18 && !c.officeId);
+  // Governor-assignment gap fix's sweep: c.officeId is only ever written by
+  // the Tribune path — an ordinary magistracy win only ever sets the
+  // household-wide currentOffice/campaigningCharacterId pair, so a family
+  // member already holding Quaestor/Aedile/Praetor/Consul read as eligible
+  // to volunteer here too (double-duty). Checked per-character since any
+  // family member could hold the one household office.
+  const currentOffice          = useGameStore(s => s.currentOffice);
+  const campaigningCharacterId = useGameStore(s => s.campaigningCharacterId);
+  const eligible = family.filter(c =>
+    c.age >= 18 && c.officeId === null && !(currentOffice !== null && campaigningCharacterId === c.id)
+  );
 
   return (
     <View style={styles.section}>

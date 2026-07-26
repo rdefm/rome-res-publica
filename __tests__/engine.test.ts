@@ -127,8 +127,14 @@ describe('calcResourceIncome', () => {
   });
 
   test('fides income includes office held bonus', () => {
-    const s = makeState();
-    s.family[0].officeId = 'aedile';
+    // Governor-assignment gap fix's sweep: this test previously set
+    // s.family[0].officeId directly, which the real game never does for an
+    // ordinary magistracy (turnSequencer.ts's Winter election resolution
+    // only ever sets the household-wide currentOffice field) — the fixture
+    // exercised a state no real playthrough could reach, and the office
+    // income term (calcResourceIncome's own Step 3) was silently dead ever
+    // since. currentOffice is what a real win actually sets.
+    const s = makeState({ currentOffice: 'aedile' });
     const { fidesIncome } = calcResourceIncome(s as any);
     // base: rhetoric 6 × 2 = 12, aedile office bonus = +5
     expect(fidesIncome).toBe(12 + 5);
