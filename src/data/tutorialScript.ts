@@ -515,6 +515,227 @@ const EMBASSY_STEPS: TutorialStep[] = [
   },
 ];
 
+// ─── Arc II — The War ───────────────────────────────────────────────────────
+// Guided rail throughout (freeze already lifted — isWorldFrozen is prologue-
+// only). One continuous arc. Sequence: wait for Vibius's appeal to actually
+// fire and resolve into a Carthage war (evt-messana-appeal, T7's sting) ->
+// call and win-or-lose a Command election (the Curia's extraordinary
+// assembly, re-testing Act V's canvass verb per finding 16 — CuriaScreen's
+// CommandAssemblyModal, NOT MilitaryTab's now-deleted dead
+// CommanderElectionState block, which this chunk also retired) -> muster in
+// Campania (finding 13, already the player's own ground since Act IV) ->
+// assign a commander (a leaderless army may garrison but never attack) ->
+// march for Sicilia -> one guided engagement against a seeded Carthaginian
+// garrison (warSeedCarthageGarrison — natural Carthage-army generation is
+// real but far too slow/uncertain for a scripted beat; see that effect's
+// own comment).
+//
+// Battle outcome is genuinely open — nothing later depends on winning or
+// losing, same as the Command vote itself. Narration is written to read
+// correctly either way (no per-outcome templating; models/tutorial.ts's
+// TutorialStep.narration supports none in v1).
+const WAR_STEPS: TutorialStep[] = [
+  {
+    id: 'war.intro',
+    arc: 'war',
+    actLabel: 'The War',
+    rail: 'guided',
+    requiresTab: 'Curia',
+    narration:
+      "Domine. Vibius's plea will reach the Senate soon enough — and once Rome answers it, there " +
+      "will be a war to fight, on ground you already hold some standing near. Campania is yours, " +
+      "remember, since the family's very first purchase there.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'war.wait-for-appeal',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Curia',
+    target: 'shared.end-season',
+    narration: "Close the season, Domine, and answer whatever the Curia brings you.",
+    advance: { kind: 'predicate', predicateId: 'warStarted' },
+  },
+  {
+    id: 'war.command-intro',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Curia',
+    narration:
+      "Rome is at war. Someone must hold the Command — an extraordinary assembly, separate from " +
+      "the offices you already know, granting imperium, a state legion, and a war chest for as " +
+      "long as the fighting lasts. Canvass for it exactly as you canvassed for Quaestor.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'war.propose-vote',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Curia',
+    target: 'curia.action.propose-command-vote',
+    narration: "Propose the vote.",
+    advance: { kind: 'predicate', predicateId: 'commandVoteCalled' },
+  },
+  {
+    id: 'war.open-assembly',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Curia',
+    target: 'curia.action.open-assembly',
+    narration: "The assembly stands open. Tap it.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'war.declare-candidate',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Curia',
+    narration: "Stand for it yourself — name Marcus as your candidate.",
+    advance: { kind: 'predicate', predicateId: 'commandCandidateDeclared' },
+  },
+  {
+    id: 'war.canvass-intro',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Curia',
+    narration:
+      "Now canvass the rivals standing against you, exactly as you did in the Cursus. A stranger's " +
+      "door will not open for a bribe alone, though — court one first, if his standing with you is " +
+      "still too low to hear you at all.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'war.court-rival',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Forum',
+    narration:
+      "Open the Forum. Whichever rival stands nearest you already, court him — dinner, favour, " +
+      "alliance, your choice — until his door is open.",
+    advance: { kind: 'predicate', predicateId: 'commandRivalCourted' },
+  },
+  {
+    id: 'war.canvass',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Curia',
+    narration: "Back to the Curia. Canvass him now — he will listen.",
+    advance: { kind: 'predicate', predicateId: 'commandRivalCanvassed' },
+  },
+  {
+    id: 'war.end-season-for-vote',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Curia',
+    target: 'shared.end-season',
+    narration: "Close the season and let the assembly resolve.",
+    advance: { kind: 'predicate', predicateId: 'commandVoteResolved' },
+  },
+  {
+    id: 'war.command-outcome',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Curia',
+    narration:
+      "Whoever holds the Command now, Domine, your own arms are still Rome's to muster — sanctioned " +
+      "by your own office, if not by the Senate's writ. Sicilia does not wait on any one man's title.",
+    advance: { kind: 'tap' },
+    onEnterEffectId: 'warEnsureMusterSanctioned',
+  },
+  {
+    id: 'war.muster-intro',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    narration: "Return to Campania. It is time to raise legions of your own.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'war.find-campania-region',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    target: 'provinciae.map.campania-ground',
+    narration: "Tap the ground itself, not the city — the region beneath it, where armies muster.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'war.muster',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    narration: "Muster a legion here. Any tier will serve to teach the lesson.",
+    advance: { kind: 'predicate', predicateId: 'campaniaArmyMustered' },
+  },
+  {
+    id: 'war.assign-commander-intro',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    narration: "A leaderless army may garrison, Domine, but it may never attack. Give it a commander.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'war.assign-commander',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    target: 'provinciae.army.assign-commander',
+    narration: "Name Marcus its commander.",
+    advance: { kind: 'predicate', predicateId: 'campaniaArmyCommanderAssigned' },
+  },
+  {
+    id: 'war.move-intro',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    narration: "Now march it for Sicilia. The strait costs more to cross than open ground — expect it.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'war.issue-order',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    target: 'provinciae.army.move',
+    narration: "Tap Move.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'war.select-sicilia',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    target: 'provinciae.map.order-sicilia',
+    narration: "Sicilia, there, across the strait. Order the march.",
+    advance: { kind: 'predicate', predicateId: 'campaniaArmyOrdered' },
+    onEnterEffectId: 'warSeedCarthageGarrison',
+  },
+  {
+    id: 'war.end-season-for-engagement',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    target: 'shared.end-season',
+    narration:
+      "Close the season, Domine. Carthage holds Lilybaeum still, and your legion is marching " +
+      "straight for it.",
+    advance: { kind: 'predicate', predicateId: 'engagementResolved' },
+  },
+  {
+    id: 'war.closing',
+    arc: 'war',
+    rail: 'guided',
+    requiresTab: 'Provinciae',
+    narration:
+      "Whatever the field decided, Domine, it decided something real — no dice loaded, no outcome " +
+      "written in advance. That is the whole of war: you commit, and Rome finds out what you're " +
+      "worth. Philon: \"There is a third lesson still owed you. It will not be so honest as this one.\"",
+    advance: { kind: 'tap' },
+    onCompleteEffectId: 'warSetCompleteFlag',
+  },
+];
+
 export const TUTORIAL_ARCS: Record<TutorialArcId, TutorialArc> = {
   prologue: {
     id: 'prologue',
@@ -525,6 +746,6 @@ export const TUTORIAL_ARCS: Record<TutorialArcId, TutorialArc> = {
     ],
   },
   embassy:  { id: 'embassy',  title: 'The Embassy',     steps: [...EMBASSY_STEPS] },
-  war:      { id: 'war',      title: 'The War',         steps: [] },
+  war:      { id: 'war',      title: 'The War',         steps: [...WAR_STEPS] },
   courts:   { id: 'courts',   title: 'The Courts',      steps: [] },
 };

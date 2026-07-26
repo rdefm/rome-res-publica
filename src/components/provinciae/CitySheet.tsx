@@ -16,7 +16,6 @@ import type {
   CityState,
   GovernorPolicy,
   CampaignState,
-  CommanderElectionState,
   OfficerVolunteerState,
 } from '../../models/city';
 import { getRelationshipLabel, getRelationshipTier } from '../../models/city';
@@ -52,9 +51,7 @@ interface CitySheetProps {
   playerImperium: number;
   playerGoverningMartial: number;
   recruitedClientIds: string[];
-  commanderElection: CommanderElectionState | null;
   officerVolunteer: OfficerVolunteerState | null;
-  campaignVotes: Record<string, 'for' | 'against' | 'neutral'>;
   bills: Bill[];
   onClose: () => void;
   onPolicyChange: (provinceId: string, policy: GovernorPolicy) => void;
@@ -66,9 +63,6 @@ interface CitySheetProps {
   onStartCampaign: (provinceId: string, type: CampaignState['type']) => void;
   onCommitCampaignSeason: (provinceId: string, allocation: CampaignAllocation) => void;
   onResolveCampaignEvent: (provinceId: string, eventId: string, optionId: string) => void;
-  onNominateCommander: (provinceId: string, candidateId: string) => void;
-  onVoteCommander: (leaderId: string, vote: 'for' | 'against') => void;
-  onSpeechCommander: (provinceId: string) => void;
   onVolunteerOfficer: (provinceId: string, characterId: string) => void;
   onResolveOfficerDecision: (provinceId: string, decisionIndex: number, tookRisk: boolean) => void;
 }
@@ -83,9 +77,7 @@ export default function CitySheet({
   playerImperium,
   playerGoverningMartial,
   recruitedClientIds,
-  commanderElection,
   officerVolunteer,
-  campaignVotes,
   bills,
   onClose,
   onPolicyChange,
@@ -97,9 +89,6 @@ export default function CitySheet({
   onStartCampaign,
   onCommitCampaignSeason,
   onResolveCampaignEvent,
-  onNominateCommander,
-  onVoteCommander,
-  onSpeechCommander,
   onVolunteerOfficer,
   onResolveOfficerDecision,
 }: CitySheetProps) {
@@ -136,7 +125,6 @@ export default function CitySheet({
   // Military tab badge — show dot if active campaign or pending election
   const hasMilitaryActivity =
     !!province.activeCampaign ||
-    !!commanderElection ||
     !!officerVolunteer ||
     province.revoltActive;
 
@@ -271,15 +259,10 @@ export default function CitySheet({
                   playerFides={playerFides}
                   playerDenarii={playerDenarii}
                   playerImperium={playerImperium}
-                  commanderElection={commanderElection}
                   officerVolunteer={officerVolunteer}
-                  campaignVotes={campaignVotes}
                   onStartCampaign={(pid, type) => onStartCampaign(pid, type)}
                   onCommitCampaignSeason={(pid, alloc) => onCommitCampaignSeason(pid, alloc)}
                   onResolveCampaignEvent={(pid, eid, oid) => onResolveCampaignEvent(pid, eid, oid)}
-                  onNominateCommander={(pid, cid) => onNominateCommander(pid, cid)}
-                  onVoteCommander={(lid, vote) => onVoteCommander(lid, vote)}
-                  onSpeechCommander={(pid) => onSpeechCommander(pid)}
                   onVolunteerOfficer={(pid, charId) => onVolunteerOfficer(pid, charId)}
                   onResolveOfficerDecision={(pid, idx, risk) => onResolveOfficerDecision(pid, idx, risk)}                />
 

@@ -343,7 +343,11 @@ export function shouldReinforceCarthage(turnNumber: number): boolean {
   return turnNumber % BALANCE.campaign.ai.reinforcementInterval === 0;
 }
 
-function buildCarthageReinforcementUnits(turnNumber: number): ArmyUnit[] {
+// Exported (Chunk T8) so tutorialEngine.ts's war arc can seed a real,
+// same-shaped Carthage garrison army at Lilybaeum without inventing new
+// unit numbers — reuses the exact composition the live reinforcement AI
+// already produces, just placed directly rather than accumulated over time.
+export function buildCarthageReinforcementUnits(turnNumber: number): ArmyUnit[] {
   const { reinforcementCohorts } = BALANCE.campaign.ai;
   return Array.from({ length: reinforcementCohorts }, (_, i) => ({
     id: `carthage-reinforcement-${turnNumber}-${i}`,

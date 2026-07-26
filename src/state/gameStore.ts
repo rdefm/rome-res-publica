@@ -31,6 +31,7 @@ import {
   applyTutorialEffect,
   ALL_TABS as ALL_TUTORIAL_TABS,
   TUTORIAL_ARC_ORDER,
+  TUTORIAL_CARTHAGE_GARRISON_ID,
 } from '../engine/tutorialEngine';
 import { calcLevyCost } from '../engine/troopEngine';
 import {
@@ -4211,7 +4212,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     if (!region) return;
 
     const paterfamilias = s.family.find(c => c.isPlayer);
-    const playerHoldsOffice = !!paterfamilias?.officeId;
+    // Tutorial redesign, T8 — see ProvinciaeScreen.tsx's identical fix for
+    // why this can't be paterfamilias?.officeId alone (always null for any
+    // ordinary magistracy — only Tribune ever sets that field).
+    const playerHoldsOffice = paterfamilias?.officeId != null || (!!paterfamilias?.isPlayer && s.currentOffice !== null);
     const playerHoldsCommand = s.activeCommand?.holderOwner === 'player';
 
     const quote = quoteMuster(regionId, tier, s.theatre, s.cities, s.armies, s.imperium, playerHoldsOffice, playerHoldsCommand);
@@ -4435,9 +4439,26 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const engagement = s.pendingEngagements.find(e => e.id === engagementId);
     if (!engagement) return;
 
-    const result = resolveEngagement(engagement, s.armies, s.theatre, s.family, s.clans);
+    let result = resolveEngagement(engagement, s.armies, s.theatre, s.family, s.clans);
     const label = turnLabel(s);
     const playerId = s.family.find(c => c.isPlayer)?.id ?? '';
+
+    // Tutorial redesign, T8 — the war arc's single scripted engagement
+    // (against warSeedCarthageGarrison's seeded 'tutorial-carthage-garrison-
+    // lilybaeum') is a genuinely open fight, but the player's own commander
+    // can't be allowed to die in it: T9 (the courts arc) is already planned
+    // around "defendant = Marcus." A real commanderFateRoll can still land
+    // 'wounded'/'captured' here — only 'killed' is downgraded, and only for
+    // this one named engagement. No effect on any other battle, tutorial or
+    // otherwise.
+    if (engagement.attackerArmyId === TUTORIAL_CARTHAGE_GARRISON_ID || engagement.defenderArmyId === TUTORIAL_CARTHAGE_GARRISON_ID) {
+      result = {
+        ...result,
+        commanderFateRolls: result.commanderFateRolls.map(roll =>
+          roll.result === 'killed' ? { ...roll, result: 'wounded' as const } : roll
+        ),
+      };
+    }
 
     let { family, flags, pendingEvents, pendingSuccession, cadetBranch, pendingEpilogue } = s;
     const fateNotes: string[] = [];
@@ -4588,8 +4609,21 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const enemyArmy = s.armies.find(a => a.id === ctx.enemyArmyId) ?? null;
     const playerId = s.family.find(c => c.isPlayer)?.id ?? '';
 
+    // Tutorial redesign, T8 — same shield as resolveEngagementAbstract's
+    // identical comment, for whichever engagement the player chose to take
+    // the field for instead of resolving abstractly. Only downgrades
+    // Rome-side captainOutcomes (romeArmy.commanderId / its captains) —
+    // Carthage's general isn't a Character, so its own 'killed' entries
+    // (if any) are irrelevant and left untouched.
+    const outcomeForRome = ctx.enemyArmyId === TUTORIAL_CARTHAGE_GARRISON_ID
+      ? {
+          ...outcome,
+          captainOutcomes: outcome.captainOutcomes.map(co => co.result === 'killed' ? { ...co, result: 'wounded' as const } : co),
+        }
+      : outcome;
+
     const romeResult = applyArmyBattleOutcome({
-      army: romeArmy, battleState, romeSide: 'attacker', outcome,
+      army: romeArmy, battleState, romeSide: 'attacker', outcome: outcomeForRome,
       turnNumber: ctx.turnNumber, playerCharacterId: playerId, gensName: s.gensName,
       enemyFieldedElephants: ctx.enemyFieldedElephants, activeCommand: s.activeCommand,
       family: s.family, flags: s.flags, pendingEvents: s.pendingEvents,
@@ -4680,8 +4714,12 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const character = s.family.find(c => c.id === characterId);
     if (!character) return;
 
-    // senateAuthorised = character currently holds a formal office
-    const senateAuthorised = !!character.officeId;
+    // senateAuthorised = character currently holds a formal office.
+    // Tutorial redesign, T8 — see ProvinciaeScreen.tsx's identical fix;
+    // character.officeId is only ever written by the Tribune path, so a
+    // player (or family member) holding an ordinary magistracy always read
+    // as unauthorised here until now.
+    const senateAuthorised = character.officeId != null || (character.isPlayer && s.currentOffice !== null);
     const cost = calcLevyCost(60, s.crisisLevel, senateAuthorised);
     if (s.denarii < cost) return;
 

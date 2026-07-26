@@ -140,20 +140,12 @@ export interface NpcRoleHolder {
 }
 
 // ─── Governor Assignment ──────────────────────────────────────────────────────
-
-/**
- * A character (player family OR NPC clan leader) eligible to be assigned
- * a governorship after completing a praetor or consul term.
- */
-export interface GovernorCandidate {
-  characterId: string;
-  characterName: string;
-  clanId: string;
-  clanName: string;
-  isPlayerFamily: boolean;
-  martialSkill: number; // 0–10
-  eligibleOffices: string[];
-}
+// GovernorCandidate (a same-purpose type once declared here) was deleted in
+// Chunk T8 — it was used only by the dead CommanderElectionState/
+// generateCommanderCandidates/resolveCommanderElection system (see
+// campaignEngine.ts's own T8 header note). PendingGovernorAssignment below
+// has zero call sites of its own either (grepped repo-wide) — flagged, not
+// touched, since removing it isn't required for T8's own work.
 
 /**
  * Pending governor assignment — set when a character's term ends.
@@ -168,21 +160,6 @@ export interface PendingGovernorAssignment {
   rigAttempted: boolean;
   rigSucceeded: boolean;
   assignedProvinceId: string | null; // null until drawn or chosen
-}
-
-// ─── Commander Election ───────────────────────────────────────────────────────
-
-/**
- * Active senate vote to elect a campaign commander.
- * Fires at end-of-season when a campaign is triggered without a commander.
- */
-export interface CommanderElectionState {
-  provinceId: string;
-  campaignType: CampaignState['type'];
-  candidates: GovernorCandidate[];
-  playerSupportedCandidateId: string | null;
-  playerSpeechBonus: number; // accumulated from speech actions
-  resolved: boolean;
 }
 
 // ─── Officer Volunteer ────────────────────────────────────────────────────────

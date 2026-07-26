@@ -181,11 +181,26 @@ function regionTapRadiusPx(region: (typeof REGIONS)[number], centroid: { x: numb
  *  order, so a tap landing on a city pin is claimed by that pin first (RN's
  *  default overlapping-touch resolution favours the later-rendered/topmost
  *  view); only a tap that misses every pin falls through to this. */
-function RegionTapTarget({ region, onPress }: { region: (typeof REGIONS)[number]; onPress: () => void }) {
+function RegionTapTarget({
+  region,
+  onPress,
+  targetRef,
+  targetOnLayout,
+}: {
+  region: (typeof REGIONS)[number];
+  onPress: () => void;
+  // Tutorial redesign, T8 — the war arc spotlights Campania's region-ground
+  // tap (opens RegionSheet/Muster) — a different control than the city
+  // node's own 'provinciae.map.campania' target (opens CitySheet instead).
+  targetRef?: (node: View | null) => void;
+  targetOnLayout?: () => void;
+}) {
   const centroid = regionCentroidPx(region);
   const radius = regionTapRadiusPx(region, centroid);
   return (
     <TouchableOpacity
+      ref={targetRef}
+      onLayout={targetOnLayout}
       onPress={onPress}
       activeOpacity={1}
       style={{
@@ -247,16 +262,24 @@ function OrderHighlight({
   region,
   destination,
   onPress,
+  targetRef,
+  targetOnLayout,
 }: {
   region: (typeof REGIONS)[number];
   destination: ReachableDestination;
   onPress: () => void;
+  // Tutorial redesign, T8 — the war arc spotlights Sicilia's specific
+  // destination highlight; every other call site omits these.
+  targetRef?: (node: View | null) => void;
+  targetOnLayout?: () => void;
 }) {
   const centroid = regionCentroidPx(region);
   const blocked = !!destination.blockedReason;
   const color = blocked ? COLORS.dust : destination.intent === 'attack' ? COLORS.crimson : COLORS.laurel;
   return (
     <TouchableOpacity
+      ref={targetRef}
+      onLayout={targetOnLayout}
       onPress={blocked ? undefined : onPress}
       disabled={blocked}
       activeOpacity={0.7}
@@ -457,6 +480,14 @@ export default function MapView({
   const campaniaTarget = useTutorialTarget('provinciae.map.campania');
   // Tutorial redesign, T7 — same pattern, Embassy arc's Messana marker.
   const messanaTarget = useTutorialTarget('provinciae.map.messana');
+  // Tutorial redesign, T8 — the war arc needs the REGION-ground tap (opens
+  // RegionSheet, where Muster lives), a different physical control than
+  // campaniaTarget above (the city node, which opens CitySheet instead) —
+  // hence a distinct target id rather than reusing 'provinciae.map.campania'.
+  const campaniaRegionTarget = useTutorialTarget('provinciae.map.campania-ground');
+  // War arc's destination-tap during order mode, attached to whichever
+  // OrderHighlight is Sicilia's — only relevant while order mode is active.
+  const orderSiciliaTarget = useTutorialTarget('provinciae.map.order-sicilia');
 
   return (
     <View style={styles.container}>
@@ -485,11 +516,19 @@ export default function MapView({
                 region={region}
                 destination={dest}
                 onPress={() => onOrderRegionPress?.(dest.regionId)}
+                targetRef={dest.regionId === 'sicilia' ? orderSiciliaTarget.ref : undefined}
+                targetOnLayout={dest.regionId === 'sicilia' ? orderSiciliaTarget.onLayout : undefined}
               />
             );
           })
         : REGIONS.map(region => (
-            <RegionTapTarget key={region.id} region={region} onPress={() => onRegionPress(region.id)} />
+            <RegionTapTarget
+              key={region.id}
+              region={region}
+              onPress={() => onRegionPress(region.id)}
+              targetRef={region.id === 'campania' ? campaniaRegionTarget.ref : undefined}
+              targetOnLayout={region.id === 'campania' ? campaniaRegionTarget.onLayout : undefined}
+            />
           ))}
 
       {REGIONS.map(region => (

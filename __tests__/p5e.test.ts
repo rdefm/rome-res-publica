@@ -3,8 +3,7 @@
 // (the previously-documented-but-unused mechanism) for all four StartIds,
 // the Claudius starting Secret's universality, the gensId/gensName/
 // gensSurname/gensPlural threading through generateCadet/resolveDeathNotice/
-// promoteCadetToParterfamilias/generateCommanderCandidates/
-// tickSenateResponse, the new 'brother'/'sister' Character.role (and its
+// promoteCadetToParterfamilias/tickSenateResponse, the new 'brother'/'sister' Character.role (and its
 // correct exclusion from heir order), and save-load's gensId default-spread.
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -18,7 +17,6 @@ import * as path from 'path';
 import { ALT_FAMILIES } from '../src/data/altFamilies';
 import { getHeirOrder, generateCadet, promoteCadetToParterfamilias } from '../src/engine/inheritanceEngine';
 import { resolveDeathNotice } from '../src/data/cadetEvents';
-import { generateCommanderCandidates } from '../src/engine/campaignEngine';
 import { tickSenateResponse } from '../src/engine/senateResponseEngine';
 import { buildAncestorRecord } from '../src/engine/epilogueEngine';
 import { assembleHistorianParagraph } from '../src/data/epilogueText';
@@ -228,16 +226,12 @@ describe('gens-neutrality sweep — spot checks on previously-hardcoded function
     expect(spouse?.name).toContain('Duilia');
   });
 
-  test('generateCommanderCandidates reads clan identity from state.gensId/gensPlural', () => {
-    const state = {
-      ...INITIAL_STATE, gensId: 'manlia', gensPlural: 'Manlii',
-      clans: [], family: [{ id: 'pc-1', name: 'Titus Manlius', isPlayer: true, age: 45, officeId: null, skills: { martial: 7 } }],
-    } as any;
-    const candidates = generateCommanderCandidates('some-province', state);
-    const familyCandidate = candidates.find(c => c.isPlayerFamily);
-    expect(familyCandidate?.clanId).toBe('manlia');
-    expect(familyCandidate?.clanName).toBe('Manlii');
-  });
+  // generateCommanderCandidates's own gens-neutrality coverage was removed
+  // in tutorial redesign Chunk T8 — the function itself (and the whole
+  // CommanderElectionState system it belonged to) was deleted as confirmed
+  // dead code: zero real callers, fed a permanently-null province-scoped
+  // election from ProvinciaeScreen.tsx, superseded by the live Curia-level
+  // Command system (models/command.ts) years ago and never wired back.
 
   test('tickSenateResponse\'s censure bill description reads state.gensPlural', () => {
     const state = {

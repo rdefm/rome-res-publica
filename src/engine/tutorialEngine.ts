@@ -5,12 +5,23 @@
 
 import type { GameState } from '../state/gameStore';
 import type { TutorialArcId, TutorialStep, TabName } from '../models/tutorial';
+import type { Army } from '../models/army';
 import { TUTORIAL_ARCS } from '../data/tutorialScript';
 import { applyEffectString } from './resourceEngine';
 import { isDeterred } from './secretEngine';
 import { CLAUDIUS_LEADER_ID } from '../data/claudiusArc';
+import { buildCarthageReinforcementUnits } from './campaignAi';
+import { COMMAND_CANVASS_MIN_RELATIONSHIP } from './commandEngine';
+import { BALANCE } from '../data/balance';
 
 export const ALL_TABS: TabName[] = ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'];
+
+// War arc (T8) — stable id for the scripted Lilybaeum garrison
+// (warSeedCarthageGarrison below). Exported so gameStore.ts's battle-
+// resolution actions can recognise this ONE specific engagement and shield
+// the player's commander from death in it (see resolveEngagementAbstract's
+// own comment) without a duplicated string literal drifting between files.
+export const TUTORIAL_CARTHAGE_GARRISON_ID = 'tutorial-carthage-garrison-lilybaeum';
 
 /** Order arcs resolve in — used by skipTutorialArc to cascade downstream arcs. */
 export const TUTORIAL_ARC_ORDER: TutorialArcId[] = ['prologue', 'embassy', 'war', 'courts'];
@@ -60,6 +71,16 @@ export const TUTORIAL_TARGET_IDS = new Set<string>([
   // are narration-only, predicate-driven instead.
   'provinciae.map.messana',
   'provinciae.foreign.request-posting',
+  // War arc (T8). curia.action.declare-command-candidate and
+  // curia.action.canvass-command are NOT here: both live inside
+  // CommandAssemblyModal (a native RN Modal, via ScrollModal) — same
+  // reasoning as domus.action.train. Narration-only, predicate-driven.
+  'curia.action.propose-command-vote',
+  'curia.action.open-assembly',
+  'provinciae.map.campania-ground',
+  'provinciae.army.assign-commander',
+  'provinciae.army.move',
+  'provinciae.map.order-sicilia',
 ]);
 
 // Act III's teaching bill — STARTING_BILLS' 'start-2' (Bellum Punicum), the
@@ -135,6 +156,50 @@ export const TUTORIAL_PREDICATES: Record<string, (s: GameState) => boolean> = {
   // Same loose (c as any).provincialClientDefId idiom gameStore.recruitCityClient
   // itself uses — Client has no such field in its own type today.
   vibiusRecruited: (s) => s.clients.some(c => (c as any).provincialClientDefId === 'mamertine_captain'),
+
+  // War arc (T8). warStarted covers both evt-messana-appeal branches: the
+  // 'answer' choice starts the war immediately; 'refuse' tables a bill
+  // (resourceEngine's tableRefuseMamertineBill, tuned T7 to fail decisively)
+  // whose failEffect starts it a few seasons later instead. A patient wait
+  // either way — see this chunk's own accepted edge case if that bill were
+  // ever to pass instead (a real, if vanishingly rare, possibility).
+  warStarted: (s) => s.wars.some(w => w.enemyId === 'carthage' && w.active),
+  commandVoteCalled: (s) => !!s.commandElection?.active,
+  commandCandidateDeclared: (s) => !!s.commandElection?.candidateCharacterId,
+  // Found while authoring this arc: generateCommandRivals (commandEngine.ts)
+  // picks purely by clan influence, with no relationship floor — a fresh
+  // game's top-2 rival clans are rarely ones the player has ever courted, and
+  // canvassForCommand silently no-ops below COMMAND_CANVASS_MIN_RELATIONSHIP
+  // (25). Real players hit the same wall Act V's script never has to (Flaccus
+  // is already courted by then) — so this arc adds one courting beat first.
+  // "At least one rival" (not a specific id) keeps the same "your choice"
+  // flexibility Act II's courting step has.
+  commandRivalCourted: (s) => {
+    const rivalIds = new Set((s.commandElection?.rivals ?? []).map(r => r.id));
+    return s.clans.some(c => c.leaders.some(l => rivalIds.has(l.id) && l.relationship >= COMMAND_CANVASS_MIN_RELATIONSHIP));
+  },
+  // At least one rival successfully canvassed — same "retry until it lands"
+  // teaching parallel as Act V's flaccusCanvassedForQuaestor, re-testing the
+  // canvass verb per the plan's own finding 16. Not a win requirement — see
+  // commandVoteResolved below, which advances on EITHER outcome ("battle
+  // outcome is genuinely open" extends to this vote too, by design).
+  commandRivalCanvassed: (s) => Object.values(s.commandElection?.votes ?? {}).some(v => v === 'for'),
+  commandVoteResolved: (s) => !s.commandElection?.active,
+  campaniaArmyMustered: (s) => s.armies.some(a => a.owner === 'player' && a.location === 'campania'),
+  // Exactly one player army exists at this point in the scripted arc (a
+  // single fresh muster) — these three don't need to track a specific
+  // army id.
+  campaniaArmyCommanderAssigned: (s) => s.armies.some(a => a.owner === 'player' && !!a.commanderId),
+  campaniaArmyOrdered: (s) => s.armies.some(a => a.owner === 'player' && !!a.ordersThisSeason),
+  // Found while testing: a WIN requirement here (army.location === 'sicilia')
+  // would softlock this step on a loss — a losing army falls back to
+  // campania (campaignResolver.ts's own resolution), which is exactly the
+  // "genuinely open, nothing depends on the outcome" result the plan wants.
+  // ordersThisSeason clearing to null (campaignResolver's clearSpentOrder,
+  // on arrival OR bounce-back alike) plus no outstanding pendingEngagements
+  // is the real outcome-agnostic "this engagement is over" signal.
+  engagementResolved: (s) =>
+    s.armies.some(a => a.owner === 'player' && !a.ordersThisSeason) && s.pendingEngagements.length === 0,
 };
 
 export const TUTORIAL_EFFECTS: Record<string, (s: GameState) => Partial<GameState>> = {
@@ -168,6 +233,78 @@ export const TUTORIAL_EFFECTS: Record<string, (s: GameState) => Partial<GameStat
   // envoy is always Vibius, never a stranger.
   embassySetCompleteFlag: (s) => ({
     flags: { ...s.flags, 'tutorial-embassy-complete': true },
+  }),
+
+  // War arc (T8) — fires on 'war.select-sicilia's onEnterEffectId, the
+  // moment the player is about to pick Sicilia as their army's destination.
+  // Guarantees "one guided engagement" actually happens: natural Carthage-
+  // army generation (campaignAi.ts's shouldReinforceCarthage/
+  // applyCarthageReinforcement) only founds a fresh army at 'africa' every
+  // BALANCE.campaign.ai.reinforcementInterval seasons, then takes further
+  // AI-driven seasons to reach Sicily — far too slow/uncertain for a
+  // scripted beat. Seeded directly at Lilybaeum (Carthage's real Sicilian
+  // fortress per theatreMap.ts) instead, with the SAME unit composition the
+  // live reinforcement AI already uses (buildCarthageReinforcementUnits,
+  // reused not reinvented) and a real named general (hanno_cautious,
+  // data/enemyGenerals.ts) so it resolves through the ordinary abstract-
+  // battle/EngagementInterstitial pipeline exactly like any other fight.
+  // Fired this late (not at arc-entry) to minimise the window where
+  // campaignAi's per-season Carthaginian order logic could relocate it
+  // before the player's own order arrives — only one endSeason() call
+  // (the march itself) happens between this effect and the encounter.
+  // Idempotent: no-ops if a seed with this id already exists (defensive
+  // only — onEnterEffectId fires once per real playthrough, this step
+  // having no "re-enter" path).
+  warSeedCarthageGarrison: (s) => {
+    const seedId = TUTORIAL_CARTHAGE_GARRISON_ID;
+    if (s.armies.some(a => a.id === seedId)) return {};
+    const garrison: Army = {
+      id: seedId,
+      name: 'Lilybaeum Garrison',
+      owner: 'carthage',
+      commanderId: 'hanno_cautious',
+      location: 'sicilia',
+      stationedCityId: 'lilybaeum',
+      units: buildCarthageReinforcementUnits(s.turnNumber),
+      stance: 'give_battle',
+      ordersThisSeason: null,
+      fatigued: false,
+      unpaidSeasons: 0,
+    };
+    return { armies: [...s.armies, garrison] };
+  },
+
+  // War arc (T8) — fires on 'war.command-outcome's onEnterEffectId, right
+  // after the Command vote resolves either way. musterEngine.quoteMuster
+  // sanctions a muster via holding a magistracy, holding the Command, OR
+  // (the fallback) enough personal imperium — a real, non-scripted player
+  // builds that up over several seasons via provincial assets like the
+  // Garrison Contract (data/cityAssets.ts, +2-7 imperium/season). The
+  // scripted arc doesn't have that many seasons to spend, and the Command
+  // vote's outcome is deliberately left open (win or lose, same as the
+  // battle itself) — so if the player didn't win it, this tops up personal
+  // imperium to exactly the unsanctioned-muster threshold, standing in for
+  // what time alone would have granted. No-ops if the player is already
+  // sanctioned (won the Command, or — after this chunk's officeId fix —
+  // still holds a magistracy) or already has enough imperium.
+  warEnsureMusterSanctioned: (s) => {
+    const player = s.family.find(c => c.isPlayer);
+    const sanctioned =
+      (player?.officeId != null) ||
+      (!!player?.isPlayer && s.currentOffice !== null) ||
+      s.activeCommand?.holderOwner === 'player';
+    if (sanctioned) return {};
+    const required = BALANCE.campaign.muster.imperiumThresholdBase;
+    return s.imperium < required ? { imperium: required } : {};
+  },
+
+  // War arc (T8) — fires on the arc's final step's onCompleteEffectId, same
+  // pattern as embassySetCompleteFlag. Not yet consumed anywhere (T9/the
+  // courts arc hasn't been authored), but sets the precedent up now rather
+  // than requiring a T9 change to gameStore/turnSequencer for a flag this
+  // arc's own completion should obviously record.
+  warSetCompleteFlag: (s) => ({
+    flags: { ...s.flags, 'tutorial-war-complete': true },
   }),
 };
 

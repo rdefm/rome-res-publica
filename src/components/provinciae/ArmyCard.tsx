@@ -18,6 +18,7 @@ import type { CityState } from '../../models/city';
 import { armyStrength, upkeepFor } from '../../engine/armyEngine';
 import { trueIntentFor, type CampaignIntent } from '../../engine/campaignAi';
 import InfoTap from '../shared/InfoTap';
+import { useTutorialTarget } from '../shared/useTutorialTarget';
 
 const VET_TIER_INDEX: Record<ArmyUnit['veterancy'], number> = { raw: 1, trained: 2, veteran: 3, legendary: 4 };
 
@@ -87,6 +88,17 @@ export default function ArmyCard({
   const canManage = army.owner === 'player' || army.owner === 'rome_state';
   const intent = trueIntentFor(army.ordersThisSeason);
 
+  // Tutorial redesign, T8 — one ArmyCard instance per Army (not a bare JSX
+  // element inside a shared .map()), so calling these hooks unconditionally
+  // here is a normal per-instance hook call, not a rules-of-hooks violation.
+  // Assumes exactly one player-owned army exists at a time during the
+  // scripted war arc (true by construction — a single fresh muster) — if
+  // several ever rendered simultaneously, both would fight over the same
+  // global target id, same accepted-scope tradeoff as CityClientCard's
+  // single-Messana-client assumption (T7).
+  const assignCommanderTarget = useTutorialTarget('provinciae.army.assign-commander');
+  const moveTarget = useTutorialTarget('provinciae.army.move');
+
   function toggleUnit(unitId: string) {
     setPickedUnitIds(ids => ids.includes(unitId) ? ids.filter(id => id !== unitId) : [...ids, unitId]);
   }
@@ -126,6 +138,8 @@ export default function ArmyCard({
 
       {/* Commander */}
       <TouchableOpacity
+        ref={canManage ? assignCommanderTarget.ref : undefined}
+        onLayout={canManage ? assignCommanderTarget.onLayout : undefined}
         style={styles.commanderRow}
         onPress={() => canManage && setCommanderPickerOpen(true)}
         activeOpacity={canManage ? 0.7 : 1}
@@ -188,6 +202,8 @@ export default function ArmyCard({
       {canManage && (
         <View style={styles.actionsRow}>
           <TouchableOpacity
+            ref={moveTarget.ref}
+            onLayout={moveTarget.onLayout}
             style={styles.actionBtn}
             onPress={onOrderPress}
             activeOpacity={0.75}

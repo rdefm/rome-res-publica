@@ -860,6 +860,15 @@ export default function CuriaScreen() {
   const [commandModalVisible, setCommandModalVisible] = useState(false);
   const romeMods = calcRomeStatModifiers(rome);
 
+  // Tutorial redesign, T8 — same "call unconditionally, target id conditional
+  // on the relevant state" pattern already used above for bill-list/vote-for.
+  const proposeCommandVoteTarget = useTutorialTarget(
+    !activeCommand && !commandElection?.active ? 'curia.action.propose-command-vote' : undefined,
+  );
+  const openAssemblyTarget = useTutorialTarget(
+    commandElection?.active ? 'curia.action.open-assembly' : undefined,
+  );
+
   // Military Overhaul M10 — any active war that's reached the sue threshold
   // unlocks the negotiation entry point (agendaEngine's generator #18 also
   // points here — see its target: { tab: 'Curia' }).
@@ -964,7 +973,12 @@ export default function CuriaScreen() {
               <Text style={styles.panelTitle}>THE COMMAND</Text>
             </InfoTap>
             {commandElection?.active ? (
-              <TouchableOpacity style={styles.warRow} onPress={() => setCommandModalVisible(true)}>
+              <TouchableOpacity
+                ref={openAssemblyTarget.ref}
+                onLayout={openAssemblyTarget.onLayout}
+                style={styles.warRow}
+                onPress={() => setCommandModalVisible(true)}
+              >
                 <View style={{ flex: 1 }}>
                   <Text style={styles.warRowLabel}>
                     {commandElection.isProrogation ? 'Prorogation vote open' : 'Extraordinary assembly open'}
@@ -986,6 +1000,8 @@ export default function CuriaScreen() {
               </View>
             ) : (
               <TouchableOpacity
+                ref={proposeCommandVoteTarget.ref}
+                onLayout={proposeCommandVoteTarget.onLayout}
                 style={[styles.submitBtn, fides < BALANCE.campaign.command.callVoteFidesCost && styles.submitBtnDisabled]}
                 onPress={() => callCommandVote(null)}
                 disabled={fides < BALANCE.campaign.command.callVoteFidesCost}

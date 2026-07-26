@@ -1,8 +1,18 @@
 // ─── Campaign Engine ──────────────────────────────────────────────────────────
 // Handles military campaign resolution for both the Medium (Commander) system
-// and the Light (Officer volunteer) system, plus commander election logic.
+// and the Light (Officer volunteer) system.
+//
+// Chunk T8 (tutorial redesign) removed this file's old commander-election
+// pair (generateCommanderCandidates/resolveCommanderElection, CommanderElectionResult)
+// — confirmed zero callers repo-wide (MilitaryTab.tsx's UI for it was fed a
+// permanently-null province-scoped CommanderElectionState from
+// ProvinciaeScreen.tsx and never actually rendered). The REAL, live command
+// mechanic is a Curia-level "extraordinary assembly" — see models/command.ts's
+// CommandElectionState, engine/commandEngine.ts, and CuriaScreen.tsx's
+// CommandAssemblyModal — built later (Campaign Map plan Chunk C4) as a
+// deliberate parallel track and never wired back to replace this one.
 
-import type { CampaignState, CommanderElectionState, GovernorCandidate } from '../models/city';
+import type { CampaignState } from '../models/city';
 import type { GameState } from '../state/gameStore';
 import type { Character } from '../models/character';
 import type { TroopUnit } from '../models/troop';
@@ -46,14 +56,6 @@ export interface OfficerRollResult {
   martialXpGain: number;
   traitUnlocked: string | null;
   imperiumGained: number;
-  logMsg: string;
-}
-
-export interface CommanderElectionResult {
-  winnerId: string;
-  winnerName: string;
-  playerSupported: boolean;
-  playerWon: boolean;
   logMsg: string;
 }
 
@@ -358,117 +360,6 @@ export function resolveOfficerOutcome(
     imperiumGained,
     logMsg: logParts,
     campaignOutcome,
-  };
-}
-
-// ─── Commander Election ───────────────────────────────────────────────────────
-
-/**
- * Generates the list of NPC candidates competing to command a campaign.
- * Picks from clan leaders who have a 'military' bias or high influence,
- * plus any eligible family members from other gens.
- */
-export function generateCommanderCandidates(
-  provinceId: string,
-  state: GameState,
-): GovernorCandidate[] {
-  // ── NPC candidates: clan leaders with military bias or influence ≥ 50 ────
-  const npcCandidates: GovernorCandidate[] = [];
-  for (const clan of state.clans) {
-    for (const leader of clan.leaders) {
-      if (leader.bias === 'military' || clan.influence >= 50) {
-        npcCandidates.push({
-          characterId: leader.id,
-          characterName: leader.name,
-          clanId: clan.id,
-          clanName: clan.name,
-          isPlayerFamily: false,
-          martialSkill: clamp(0, 10, Math.round(3 + clan.influence * 0.06)),
-          eligibleOffices: ['praetor', 'consul'],
-        });
-      }
-    }
-  }
-
-  // ── Player family candidates: any adult not currently in office ──────────
-  // Eligibility: age ≥ 18. No martial minimum — the player can nominate anyone.
-  const familyCandidates: GovernorCandidate[] = state.family
-    .filter(c => c.age >= 18 && !c.officeId)
-    .map(c => ({
-      characterId: c.id,
-      characterName: c.name,
-      // Phase 5, Chunk P5-E — was hardcoded 'brutii'/'Brutii', found during
-      // the gens-neutrality sweep.
-      clanId: state.gensId,
-      clanName: state.gensPlural,
-      isPlayerFamily: true,
-      martialSkill: c.skills.martial,
-      eligibleOffices: ['praetor', 'consul'],
-    }));
-
-  // ── Combine: shuffle NPC pool, cap at 3, then append ALL family candidates
-  // This guarantees family members always appear in the list regardless of the cap.
-  const shuffledNpc = npcCandidates.sort(() => Math.random() - 0.5).slice(0, 3);
-  return [...shuffledNpc, ...familyCandidates];
-}
-
-/**
- * Resolves a commander senate vote.
- * The winning candidate is the one with the most weighted support.
- * Player votes/speeches/canvassing shift support toward their preferred candidate.
- */
-export function resolveCommanderElection(
-  election: CommanderElectionState,
-  state: GameState,
-): CommanderElectionResult {
-  // Build score for each candidate
-  const scores: Record<string, number> = {};
-
-  for (const candidate of election.candidates) {
-    let score = 30; // base
-
-    // NPC clan influence
-    if (!candidate.isPlayerFamily) {
-      const clan = state.clans.find(c => c.id === candidate.clanId);
-      score += (clan?.influence ?? 0) * 0.3;
-    }
-
-    // Martial skill bonus
-    score += candidate.martialSkill * 3;
-
-    // Player support actions — if they voted/canvassed for this candidate
-    if (election.playerSupportedCandidateId === candidate.characterId) {
-      // Locked votes from campaign votes (re-use existing system)
-      let lockedFor = 0;
-      state.clans.flatMap(c => c.leaders).forEach(l => {
-        const cv = state.campaignVotes[l.id];
-        if (cv === 'for') lockedFor += l.votes;
-      });
-      score += lockedFor * 0.5;
-      score += election.playerSpeechBonus;
-    }
-
-    // Slight randomness
-    score += Math.random() * 15;
-
-    scores[candidate.characterId] = score;
-  }
-
-  // Find winner
-  const winnerId = Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0];
-  const winner = election.candidates.find(c => c.characterId === winnerId)!;
-  const playerWon = election.playerSupportedCandidateId === winnerId;
-
-  const logMsg = playerWon
-    ? `Senate votes ${winner.characterName} as commander of the ${election.provinceId} campaign. Your candidate prevails.`
-    : `Senate votes ${winner.characterName} as commander. Your preferred candidate was not chosen.`;
-
-  return {
-    winnerId,
-    winnerName: winner.characterName,
-    playerSupported: !!election.playerSupportedCandidateId,
-    playerWon,
-    logMsg,
   };
 }
 

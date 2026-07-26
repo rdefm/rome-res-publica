@@ -17,9 +17,7 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import type {
   CityState,
   CampaignState,
-  CommanderElectionState,
   OfficerVolunteerState,
-  GovernorCandidate,
 } from '../../models/city';
 import type { Character } from '../../models/character';
 import type { TroopUnit } from '../../models/troop';
@@ -42,16 +40,11 @@ interface MilitaryTabProps {
   playerFides: number;
   playerDenarii: number;
   playerImperium: number;
-  commanderElection: CommanderElectionState | null;
   officerVolunteer: OfficerVolunteerState | null;
-  campaignVotes: Record<string, 'for' | 'against' | 'neutral'>;
 
   onStartCampaign: (provinceId: string, type: CampaignState['type']) => void;
   onCommitCampaignSeason: (provinceId: string, allocation: CampaignAllocation) => void;
   onResolveCampaignEvent: (provinceId: string, eventId: string, optionId: string) => void;
-  onNominateCommander: (provinceId: string, candidateId: string) => void;
-  onVoteCommander: (leaderId: string, vote: 'for' | 'against') => void;
-  onSpeechCommander: (provinceId: string) => void;
   onVolunteerOfficer: (provinceId: string, characterId: string) => void;
   onResolveOfficerDecision: (provinceId: string, decisionIndex: number, tookRisk: boolean) => void;
 }
@@ -64,15 +57,10 @@ export default function MilitaryTab({
   playerFides,
   playerDenarii,
   playerImperium,
-  commanderElection,
   officerVolunteer,
-  campaignVotes,
   onStartCampaign,
   onCommitCampaignSeason,
   onResolveCampaignEvent,
-  onNominateCommander,
-  onVoteCommander,
-  onSpeechCommander,
   onVolunteerOfficer,
   onResolveOfficerDecision,
 }: MilitaryTabProps) {
@@ -80,7 +68,6 @@ export default function MilitaryTab({
   const [manpower, setManpower] = useState<CampaignAllocation['manpower']>('standard');
   const [strategy, setStrategy] = useState<CampaignAllocation['strategy']>('probe');
   const [morale, setMorale] = useState<CampaignAllocation['morale']>('pay');
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [selectedVolunteerId, setSelectedVolunteerId] = useState<string | null>(null);
 
   // Military Overhaul M8 — army roster (units stationed in THIS province).
@@ -97,7 +84,7 @@ export default function MilitaryTab({
     : null;
 
   // ── No military activity ───────────────────────────────────────────────────
-  if (!campaign && !commanderElection && !officerVolunteer && !province.revoltActive && rosterOwners.length === 0) {
+  if (!campaign && !officerVolunteer && !province.revoltActive && rosterOwners.length === 0) {
     return (
       <View style={styles.emptyState}>
         <Text style={styles.emptyIcon}>🕊</Text>
@@ -191,24 +178,6 @@ export default function MilitaryTab({
             </>
           )}
         </View>
-      )}
-
-      {/* ── Commander Election ────────────────────────────────────────────── */}
-      {commanderElection && !commanderElection.resolved && (
-        <CommanderElectionPanel
-          election={commanderElection}
-          campaignVotes={campaignVotes}
-          playerFides={playerFides}
-          selectedCandidateId={selectedCandidateId}
-          onSelectCandidate={setSelectedCandidateId}
-          onNominate={() => {
-            if (selectedCandidateId) {
-              onNominateCommander(province.id, selectedCandidateId);
-            }
-          }}
-          onVote={(leaderId, vote) => onVoteCommander(leaderId, vote)}
-          onSpeech={() => onSpeechCommander(province.id)}
-        />
       )}
 
       {/* ── Active Campaign — Commander (Medium System) ───────────────────── */}
@@ -368,116 +337,6 @@ function TroopRow({ troop, onDisband }: { troop: TroopUnit; onDisband: () => voi
       <TouchableOpacity style={styles.disbandBtn} onPress={onDisband} activeOpacity={0.75}>
         <Text style={styles.disbandBtnText}>Disband</Text>
       </TouchableOpacity>
-    </View>
-  );
-}
-
-function CommanderElectionPanel({
-  election,
-  campaignVotes,
-  playerFides,
-  selectedCandidateId,
-  onSelectCandidate,
-  onNominate,
-  onVote,
-  onSpeech,
-}: {
-  election: CommanderElectionState;
-  campaignVotes: Record<string, 'for' | 'against' | 'neutral'>;
-  playerFides: number;
-  selectedCandidateId: string | null;
-  onSelectCandidate: (id: string) => void;
-  onNominate: () => void;
-  onVote: (leaderId: string, vote: 'for' | 'against') => void;
-  onSpeech: () => void;
-}) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>⚖ COMMANDER ELECTION</Text>
-      <Text style={styles.sectionDesc}>
-        The Senate must vote on who commands the {election.provinceId.replace('_', ' ')} campaign.
-        Support your preferred candidate with speeches and canvassing.
-      </Text>
-
-      {/* Candidate list */}
-      {election.candidates.map(candidate => (
-        <TouchableOpacity
-          key={candidate.characterId}
-          style={[
-            styles.candidateCard,
-            selectedCandidateId === candidate.characterId && styles.candidateCardSelected,
-          ]}
-          onPress={() => onSelectCandidate(candidate.characterId)}
-          activeOpacity={0.75}
-        >
-          <View style={styles.candidateRow}>
-            <Text style={styles.candidateName}>
-              {candidate.isPlayerFamily ? '⭐ ' : ''}{candidate.characterName}
-            </Text>
-            <Text style={styles.candidateClan}>{candidate.clanName}</Text>
-          </View>
-          <Text style={styles.candidateStats}>
-            Martial {candidate.martialSkill}/10
-          </Text>
-        </TouchableOpacity>
-      ))}
-
-      {/* Action buttons */}
-      <View style={styles.electionActions}>
-        <TouchableOpacity
-          style={[styles.electionBtn, !selectedCandidateId && styles.btnDisabled]}
-          onPress={onNominate}
-          disabled={!selectedCandidateId}
-          activeOpacity={0.75}
-        >
-          <Text style={styles.electionBtnText}>Support Candidate</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.electionBtn, playerFides < 10 && styles.btnDisabled]}
-          onPress={onSpeech}
-          disabled={playerFides < 10}
-          activeOpacity={0.75}
-        >
-          <Text style={styles.electionBtnText}>Give Speech (10 Fides)</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Family nomination — shown when no family member is yet in the candidate list */}
-      {!election.candidates.some(c => c.isPlayerFamily) && (
-        <FamilyNominationSection
-          election={election}
-          onSelectCandidate={onSelectCandidate}
-        />
-      )}
-
-      <Text style={styles.electionHint}>
-        Also use Forum → Canvass for Votes to build support for your preferred commander.
-        Senate votes at end of season.
-      </Text>
-    </View>
-  );
-}
-
-function FamilyNominationSection({
-  election,
-  onSelectCandidate,
-}: {
-  election: CommanderElectionState;
-  onSelectCandidate: (id: string) => void;
-}) {
-  // This panel is only shown if generateCommanderCandidates returned no family members
-  // (edge case: all family members are currently in office). Shouldn't normally appear
-  // since the fixed generateCommanderCandidates always appends family candidates,
-  // but kept as a fallback UI safety net.
-  return (
-    <View style={styles.familyNomBox}>
-      <Text style={styles.familyNomTitle}>No family candidate in the running</Text>
-      <Text style={styles.familyNomDesc}>
-        None of your family members appear among the Senate's candidates.
-        You may still support an NPC candidate above, or use Forum → Canvass for Votes
-        to shift senate opinion toward them.
-      </Text>
     </View>
   );
 }
@@ -884,60 +743,6 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginBottom: SPACING.sm,
   },
-  // Commander election
-  candidateCard: {
-    backgroundColor: COLORS.panelElevated,
-    borderRadius: RADIUS.md,
-    padding: SPACING.sm,
-    marginBottom: SPACING.xs,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  candidateCardSelected: {
-    borderColor: COLORS.gold,
-    backgroundColor: COLORS.gold + '15',
-  },
-  candidateRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  candidateName: {
-    fontFamily: FONTS.body,
-    fontSize: 13,
-    color: COLORS.marble,
-    fontWeight: '600',
-  },
-  candidateClan: {
-    fontFamily: FONTS.body,
-    fontSize: 12,
-    color: COLORS.dust,
-  },
-  candidateStats: {
-    fontFamily: FONTS.body,
-    fontSize: 12,
-    color: COLORS.goldDim,
-  },
-  electionActions: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
-  },
-  electionBtn: {
-    flex: 1,
-    backgroundColor: COLORS.gold + '22',
-    borderWidth: 1,
-    borderColor: COLORS.gold,
-    borderRadius: RADIUS.md,
-    padding: SPACING.sm,
-    alignItems: 'center',
-  },
-  electionBtnText: {
-    fontFamily: FONTS.body,
-    fontSize: 12,
-    color: COLORS.gold,
-    fontWeight: '600',
-  },
   electionHint: {
     fontFamily: FONTS.body,
     fontSize: 11,
@@ -945,28 +750,6 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     lineHeight: 16,
     fontStyle: 'italic',
-  },
-  familyNomBox: {
-    backgroundColor: COLORS.panelElevated,
-    borderRadius: RADIUS.md,
-    padding: SPACING.sm,
-    marginTop: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.goldDim,
-    borderStyle: 'dashed',
-  },
-  familyNomTitle: {
-    fontFamily: FONTS.body,
-    fontSize: 12,
-    color: COLORS.goldDim,
-    fontWeight: '600',
-    marginBottom: 3,
-  },
-  familyNomDesc: {
-    fontFamily: FONTS.body,
-    fontSize: 11,
-    color: COLORS.dust,
-    lineHeight: 16,
   },
   btnDisabled: {
     opacity: 0.4,

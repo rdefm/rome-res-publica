@@ -52,7 +52,7 @@ export default function ProvinciaeScreen() {
   const denarii                  = useGameStore(s => s.denarii);
   const family                   = useGameStore(s => s.family);
   const clients                  = useGameStore(s => s.clients);
-  const campaignVotes            = useGameStore(s => s.campaignVotes);
+  const currentOffice            = useGameStore(s => s.currentOffice);
   const selectedCharacterId      = useGameStore(s => s.selectedCharacterId);
   const bills                    = useGameStore(s => s.bills);
   const armies                   = useGameStore(s => s.armies);
@@ -99,8 +99,18 @@ export default function ProvinciaeScreen() {
 
   // Campaign Map plan, Chunk C3 — same "senateAuthorised = holds a formal
   // office" rule gameStore.raiseLevy already uses for personal levies.
+  // Tutorial redesign, T8 — character.officeId is only ever written by the
+  // Tribune-of-the-Plebs path (gameStore.ts); every ordinary magistracy win
+  // (turnSequencer.ts's Winter election resolution) only sets the global
+  // currentOffice/heldOffices — officeId stays permanently null for a
+  // player holding Quaestor, Aedile, Praetor, or Consul. This left
+  // muster/levy sanctioning silently broken for every ordinary office the
+  // whole time (found while testing the war arc's own scripted muster step —
+  // a real, previously-silent gap, not new behavior). Mirrors the correct,
+  // already-established pattern gameStore.declareTribuneCandidate uses for
+  // exactly this same "does this character hold ANY office" question.
   const paterfamilias = family.find(c => c.isPlayer);
-  const playerHoldsOffice = !!paterfamilias?.officeId;
+  const playerHoldsOffice = paterfamilias?.officeId != null || (!!paterfamilias?.isPlayer && currentOffice !== null);
   // Chunk C4 — holding the theatre command sanctions muster the same way.
   const playerHoldsCommand = activeCommand?.holderOwner === 'player';
 
@@ -374,10 +384,7 @@ export default function ProvinciaeScreen() {
               playerImperium={imperium}
               playerGoverningMartial={governorMartial}
               recruitedClientIds={recruitedClientIds}
-              // Military/governor system not yet implemented — pass null/empty stubs
-              commanderElection={null}
               officerVolunteer={selectedProvince?.officerVolunteer ?? null}
-              campaignVotes={campaignVotes}
               bills={bills}
               onClose={closeSheet}
               onPolicyChange={(provinceId, policy) => updateProvincePolicy(provinceId, policy)}
@@ -389,9 +396,6 @@ export default function ProvinciaeScreen() {
               onStartCampaign={(provinceId, type) => startCampaign(provinceId, type)}
               onCommitCampaignSeason={() => {}}
               onResolveCampaignEvent={() => {}}
-              onNominateCommander={() => {}}
-              onVoteCommander={() => {}}
-              onSpeechCommander={() => {}}
               onVolunteerOfficer={(provinceId, charId) => volunteerOfficer(provinceId, charId)}
               onResolveOfficerDecision={(provinceId, idx, risk) => resolveOfficerDecision(provinceId, idx, risk)}
             />

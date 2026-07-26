@@ -161,6 +161,7 @@ export default function MusterPickerModal({
   const provinces   = useGameStore(s => s.cities);
   const family      = useGameStore(s => s.family);
   const crisisLevel = useGameStore(s => s.crisisLevel);
+  const currentOffice = useGameStore(s => s.currentOffice);
 
   // @ts-ignore — raiseLevy is added to GameActions in Chunk M
   const raiseLevy = useGameStore(s => s.raiseLevy);
@@ -169,7 +170,10 @@ export default function MusterPickerModal({
 
   // Determine levy cost for display.
   // senateAuthorised = character currently holds a formal office.
-  const senateAuthorised = !!(character?.officeId);
+  // Tutorial redesign, T8 — character.officeId is only ever written by the
+  // Tribune path; an ordinary magistracy only sets the global currentOffice.
+  // Mirrors gameStore.raiseLevy's own (matching) fix.
+  const senateAuthorised = character?.officeId != null || (!!character?.isPlayer && currentOffice !== null);
   const levyCost = calcLevyCost(60, crisisLevel, senateAuthorised);
 
   // Provinces the character has previously raised troops in.
