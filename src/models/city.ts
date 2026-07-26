@@ -156,9 +156,19 @@ export interface GovernorCandidate {
 }
 
 /**
- * Pending governor assignment — set when a character's term ends.
- * If rigSucceeded, the player may choose the province.
- * Otherwise the province is drawn at random and stored in assignedProvinceId.
+ * Pending governor assignment — set by turnSequencer.ts's "tick office term"
+ * step when a Praetor or Consul's term ends (whoever actually held it,
+ * player or family member). Governor-assignment gap fix — this type,
+ * drawGovernorLot, and attemptRigLot (campaignEngine.ts) previously had zero
+ * real callers: nothing anywhere ever set CityState.playerGovernor to a real
+ * value, so a player could never actually become governor. Now wired: if
+ * 'governorship-rig-guaranteed' was set (via Praetor's "Recommend a
+ * Governorship" or Consul's "Distribute Consular Provinces" office action
+ * during the term) or attemptRigLot's own intrigus-scaled roll succeeds,
+ * this is set with assignedProvinceId still null and GovernorshipPickerModal
+ * lets the player choose; otherwise drawGovernorLot picks one and
+ * playerGovernor is set directly the same season — this type is never even
+ * created for that path.
  */
 export interface PendingGovernorAssignment {
   characterId: string;

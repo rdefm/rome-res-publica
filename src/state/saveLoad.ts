@@ -137,6 +137,12 @@ export const SaveSchema = z.object({
   pendingEpilogue: z.enum(['victory', 'exhaustion', 'humbled', 'republic_falls', 'gens_ends']).nullable().default(null),
   // Phase 3, Chunk P3-C — .default(null) ensures pre-P3-C saves load cleanly.
   pendingSuccession: z.any().nullable().default(null),
+  // Governor-assignment gap fix — .default(null) ensures pre-existing saves
+  // load cleanly (this field didn't exist before). Non-null only between a
+  // Praetor/Consul term ending with the rig succeeded and the player
+  // choosing a province via GovernorshipPickerModal — see that field's own
+  // GameState doc comment.
+  pendingGovernorAssignment: z.any().nullable().default(null),
   // Campaign Map plan, Chunk C7 — .default()s ensure pre-C7 saves (every one
   // with no campaignLog/pendingEngagements key at all) load cleanly.
   campaignLog: z.any().nullable().default(null),

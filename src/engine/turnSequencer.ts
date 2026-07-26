@@ -56,6 +56,8 @@ import { BALANCE } from '../data/balance';
 import { computeTotalAssetBonuses } from './assetEngine';
 import { computeHouseBonuses } from './houseEngine';
 import { tickAllCities } from './cityEngine';
+import { drawGovernorLot, attemptRigLot } from './campaignEngine';
+import type { GovernorState } from '../models/city';
 import { applyTroopAttrition, calcMilitaryImperium } from './troopEngine';
 import { processWarSeason, classifyTerminalOutcome, computeRipeness } from './warEngine';
 import { tickSenateResponse } from './senateResponseEngine';
@@ -473,6 +475,58 @@ export function processSeason(state: GameState): {
     if (newOfficeSeasons === 0) {
       const officeName = OFFICES.find((o) => o.id === s.currentOffice)?.name ?? '';
       events.push(`Your term as ${officeName} has ended.`);
+
+      // Governor-assignment gap fix — models/city.ts's PendingGovernorAssignment
+      // doc comment ("set when a character's term ends") names this exact
+      // hook. Praetor/Consul only (the two offices whose own inOfficeActions
+      // already reference "governorship" — see offices.ts). Whoever actually
+      // held the office (campaigningCharacterId persists past the win for
+      // both the player and a family member) is the one considered, not
+      // just the player. 'governorship-rig-guaranteed' is set by using
+      // either office's own governorship action during the term (see
+      // resourceEngine's setFlag handling); consumed (cleared) here either
+      // way, once per term.
+      if (s.currentOffice === 'praetor' || s.currentOffice === 'consul') {
+        const departingCharacter = s.family.find(c => c.id === s.campaigningCharacterId);
+        const eligibleCities = s.cities.filter(c => c.status === 'incorporated' && c.playerGovernor === null);
+        if (departingCharacter && eligibleCities.length > 0) {
+          const rigGuaranteed = !!s.flags['governorship-rig-guaranteed'];
+          const rigSucceeded = rigGuaranteed || attemptRigLot(departingCharacter.skills.intrigus);
+          if (rigSucceeded) {
+            s = {
+              ...s,
+              pendingGovernorAssignment: {
+                characterId: departingCharacter.id,
+                characterName: departingCharacter.name,
+                isPlayerFamily: true,
+                clanId: s.gensId,
+                rigAttempted: true,
+                rigSucceeded: true,
+                assignedProvinceId: null,
+              },
+            };
+            events.push(`${departingCharacter.name}'s influence secures a choice of governorship. A province awaits your decision.`);
+          } else {
+            const drawnCityId = drawGovernorLot(eligibleCities.map(c => c.id));
+            const cityName = getCityDefinition(drawnCityId)?.name ?? drawnCityId;
+            const governor: GovernorState = {
+              characterId: departingCharacter.id,
+              policy: { taxation: 'standard', security: 'light_patrol', development: 'neglect' },
+              corruptionAccrued: 0,
+              turnsServed: 0,
+            };
+            s = {
+              ...s,
+              cities: s.cities.map(c => c.id === drawnCityId ? { ...c, playerGovernor: governor } : c),
+            };
+            events.push(`${departingCharacter.name} is dispatched to govern ${cityName}.`);
+          }
+        }
+        if (s.flags['governorship-rig-guaranteed']) {
+          s = { ...s, flags: { ...s.flags, 'governorship-rig-guaranteed': false } };
+        }
+      }
+
       s = { ...s, currentOffice: null, officeSeasons: 0 };
     } else {
       s = { ...s, officeSeasons: newOfficeSeasons };

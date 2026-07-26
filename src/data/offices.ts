@@ -365,9 +365,9 @@ export const OFFICES: Office[] = [
         cost: '12 Fides',
         costVal: 12,
         resource: 'fides',
-        desc: "Use praetorian influence to support a family member's appointment to a province.",
+        desc: "Use praetorian influence to guarantee a province of your choosing once this term ends, rather than leaving it to the lot.",
         spend: { fides: 12 },
-        successEffect: '',
+        successEffect: 'setFlag:governorship-rig-guaranteed:true',
         isExtreme: false,
       },
       {
@@ -520,9 +520,9 @@ export const OFFICES: Office[] = [
         cost: '8 Fides',
         costVal: 8,
         resource: 'fides',
-        desc: 'Assign prestigious governorships as diplomatic currency. Reward an ally or keep the prize for your family.',
+        desc: 'Assign prestigious governorships as diplomatic currency — keep the prize for your family, guaranteeing a choice of province once this term ends.',
         spend: { fides: 8 },
-        successEffect: 'lifetimeDignitas+4',
+        successEffect: 'lifetimeDignitas+4|setFlag:governorship-rig-guaranteed:true',
         isExtreme: false,
       },
       {

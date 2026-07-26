@@ -12,7 +12,7 @@ import type { LegacyObjective } from '../models/legacyObjective';
 import type { PatronTier } from '../models/patronLadder';
 import type { TrialState, TrialApproach, ChargeId, ChargeSource } from '../models/trial';
 import type { Secret, PendingSecretDemand, LatentSecret } from '../models/secret';
-import type { CityState, GovernorPolicy, CampaignState, OfficerVolunteerState } from '../models/city';
+import type { CityState, GovernorPolicy, GovernorState, CampaignState, OfficerVolunteerState, PendingGovernorAssignment } from '../models/city';
 import { getRelationshipTier } from '../models/city';
 import type { TroopUnit } from '../models/troop';
 import type { SenateResponseState } from '../engine/senateResponseEngine';
@@ -357,6 +357,15 @@ export interface GameState {
   campaignVotes: Record<string, 'for' | 'against' | 'neutral'>;
   electionRivals: ElectionRival[];
   pendingAmbitionScopes: ('family' | 'character')[];
+  /** Governor-assignment gap fix — set by turnSequencer.ts's term-end tick
+   *  whenever a Praetor or Consul's term ends (models/city.ts's own doc
+   *  comment on PendingGovernorAssignment). Only non-null while
+   *  assignedProvinceId is still null AND rigSucceeded is true — the player
+   *  rigged the lot and must choose a province (GovernorshipPickerModal);
+   *  an unrigged (or never-rigged) term-end resolves immediately instead
+   *  (drawGovernorLot, playerGovernor set directly), so this field never
+   *  goes visibly "pending" for that path. */
+  pendingGovernorAssignment: PendingGovernorAssignment | null;
 
   // Clientela Network
   clients: Client[];
@@ -841,6 +850,13 @@ export interface GameActions {
   seekAmbassadorPosting: (provinceId: string) => void;
   recruitCityClient: (cityId: string, clientId: string) => void;
   updateCities: (cities: CityState[]) => void;
+  /** Governor-assignment gap fix — resolves a rigged pendingGovernorAssignment
+   *  by posting its character as governor of the chosen city. No-ops if no
+   *  assignment is pending, the city isn't currently a valid choice
+   *  (re-checked at resolve time — status/ownership can shift between the
+   *  term ending and the player opening the picker), or it already has a
+   *  player governor. */
+  chooseGovernorship: (cityId: string) => void;
 
   // ── Campaign Map plan, Chunk C2 — armies ────────────────────────────────
   /** Debug-only entry point (per C2's "creatable in debug" goal) — C3 adds
@@ -1276,6 +1292,7 @@ export const INITIAL_STATE: GameState = {
   campaignVotes: {},
   electionRivals: [],
   pendingAmbitionScopes: ['family', 'character'],
+  pendingGovernorAssignment: null,
 
   clients: [],
 
@@ -3590,10 +3607,21 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     }
 
     // Block: character already holds another office.
-    // For the player, office is tracked in state.currentOffice (not character.officeId).
-    // For non-player family members, it's on character.officeId.
+    // character.officeId is only ever written by this Tribune path itself —
+    // an ordinary magistracy win (turnSequencer.ts's Winter election
+    // resolution) only ever sets the global currentOffice/campaigningCharacterId
+    // pair (a single household-wide slot; see models/command.ts's header
+    // comment on why), never officeId, for EITHER the player or a non-player
+    // family member. The old `character.isPlayer && s.currentOffice !== null`
+    // half of this check left a real gap: a non-player family member already
+    // holding Quaestor/Aedile/Praetor/Consul read as officeless and could
+    // still be declared a Tribune candidate. campaigningCharacterId persists
+    // past the winning season (cleared only at succession) and correctly
+    // names the holder for both player and family wins, so checking it
+    // against this specific character (instead of character.isPlayer) covers
+    // both cases uniformly.
     const holdsAnyOffice = character.officeId !== null ||
-      (character.isPlayer && s.currentOffice !== null);
+      (s.currentOffice !== null && s.campaigningCharacterId === character.id);
     if (holdsAnyOffice) {
       console.warn(`[declareTribuneCandidate] ${character.name} already holds an office.`);
       return;
@@ -4047,6 +4075,31 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   },
 
   updateCities: (cities) => set({ cities }),
+
+  chooseGovernorship: (cityId) => {
+    const s = get();
+    const assignment = s.pendingGovernorAssignment;
+    if (!assignment) return;
+    const city = s.cities.find(c => c.id === cityId);
+    if (!city || city.status !== 'incorporated' || city.playerGovernor !== null) return;
+
+    const label = turnLabel(s);
+    const cityName = getCityDefinition(cityId)?.name ?? cityId;
+    const governor: GovernorState = {
+      characterId: assignment.characterId,
+      // Same fallback default policy every other "no governor yet" read
+      // site in cityEngine.ts already uses.
+      policy: { taxation: 'standard', security: 'light_patrol', development: 'neglect' },
+      corruptionAccrued: 0,
+      turnsServed: 0,
+    };
+
+    set({
+      cities: s.cities.map(c => c.id === cityId ? { ...c, playerGovernor: governor } : c),
+      pendingGovernorAssignment: null,
+      log: [...s.log, mkLog(label, `${assignment.characterName} is posted to govern ${cityName}.`, 'good')],
+    });
+  },
 
   // ── Campaign Map plan, Chunk C2 — armies ──────────────────────────────────
 

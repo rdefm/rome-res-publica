@@ -21,6 +21,7 @@ import BattleScreen from './src/screens/BattleScreen';
 import EpilogueScreen from './src/screens/EpilogueScreen';
 import TrialSessionModal from './src/components/cursus/TrialSessionModal';
 import EngagementInterstitial from './src/components/provinciae/EngagementInterstitial';
+import GovernorshipPickerModal from './src/components/provinciae/GovernorshipPickerModal';
 import AchievementToast from './src/components/shared/AchievementToast';
 import { generateAgenda } from './src/engine/agendaEngine';
 import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle } from './src/components/shared/TabBar';
@@ -264,6 +265,11 @@ function GameRoot() {
         />
         <TrialSessionModal />
         <EngagementInterstitial />
+        {/* GovernorshipPickerModal — governor-assignment gap fix. Same
+            self-gated full-screen-Modal idiom, self-gated on
+            pendingGovernorAssignment (only visible once rigSucceeded and
+            still unassigned — see that component's own header comment). */}
+        <GovernorshipPickerModal />
         <BattleScreen />
         <EpilogueScreen />
         <AchievementToast />
