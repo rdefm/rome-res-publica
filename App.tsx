@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
@@ -24,14 +24,17 @@ import EngagementInterstitial from './src/components/provinciae/EngagementInters
 import AchievementToast from './src/components/shared/AchievementToast';
 import TutorialOverlay, { getCaptionDock } from './src/components/shared/TutorialOverlay';
 import TutorialCaption from './src/components/shared/TutorialCaption';
+import TutorialDeflectionToast, { pingSealedTabDeflection } from './src/components/shared/TutorialDeflectionToast';
 import { getTarget, subscribeTargets } from './src/engine/tutorialTargets';
 import {
   getStep as getTutorialStep,
   isStepSatisfied as isTutorialStepSatisfied,
+  isTabSealed,
   validateTutorialScript,
 } from './src/engine/tutorialEngine';
+import type { TabName } from './src/models/agenda';
 import { generateAgenda } from './src/engine/agendaEngine';
-import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle } from './src/components/shared/TabBar';
+import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle, SEAL_CEREMONY_MS } from './src/components/shared/TabBar';
 import StartMenuScreen from './src/screens/StartMenuScreen';
 import { COLORS } from './src/utils/theme';
 import { useGameStore } from './src/state/gameStore';
@@ -71,9 +74,31 @@ const eb = StyleSheet.create({
 // Campaign Map plan, Chunk C7 — Provinciae's tab-icon badge (unseen campaign
 // activity) needs a live store subscription; the plain renderTabIcon
 // function screenOptions otherwise calls has no React context to read from.
-function ProvinciaeTabIcon({ focused }: { focused: boolean }) {
-  const hasCampaignActivity = useGameStore(s => s.campaignLog !== null);
-  return renderTabIcon('Provinciae', focused, hasCampaignActivity);
+// Tutorial redesign, Chunk T3 — generalised to every tab: also computes the
+// sealed/ceremony treatment from tutorial.unlockedTabs, so this one component
+// now covers what ProvinciaeTabIcon used to plus the seal.
+function TabIcon({ tab, focused }: { tab: TabName; focused: boolean }) {
+  const hasCampaignActivity = useGameStore(s => tab === 'Provinciae' && s.campaignLog !== null);
+  const unlockedTabs = useGameStore(s => s.tutorial.unlockedTabs);
+  const isUnlocked = unlockedTabs.includes(tab);
+  const sealed = !isUnlocked;
+
+  // Detects the sealed→unsealed transition to fire the ceremony exactly
+  // once, without adding a transient field to persisted TutorialState.
+  const wasUnlockedRef = useRef(isUnlocked);
+  const [ceremonyActive, setCeremonyActive] = useState(false);
+
+  useEffect(() => {
+    if (isUnlocked && !wasUnlockedRef.current) {
+      setCeremonyActive(true);
+      const timer = setTimeout(() => setCeremonyActive(false), SEAL_CEREMONY_MS);
+      wasUnlockedRef.current = true;
+      return () => clearTimeout(timer);
+    }
+    wasUnlockedRef.current = isUnlocked;
+  }, [isUnlocked]);
+
+  return renderTabIcon(tab, focused, hasCampaignActivity, sealed, ceremonyActive);
 }
 
 function AppNavigator() {
@@ -84,8 +109,7 @@ function AppNavigator() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarIcon: ({ focused }) =>
-          route.name === 'Provinciae' ? <ProvinciaeTabIcon focused={focused} /> : renderTabIcon(route.name, focused),
+        tabBarIcon: ({ focused }) => <TabIcon tab={route.name as TabName} focused={focused} />,
         tabBarLabel: () => null,
         // Single Image covers the full bar — no per-item background needed
         tabBarBackground: () => <TabBarBackground height={barHeight} />,
@@ -99,6 +123,18 @@ function AppNavigator() {
           paddingHorizontal: 0,
           flex: 1,
           backgroundColor: 'transparent',
+        },
+      })}
+      screenListeners={({ route }) => ({
+        // Tutorial redesign, Chunk T3 — block the tap, not the screen: all
+        // five Tab.Screens stay registered (uiNavRequest deep-linking and
+        // navigation state both depend on that), only the bottom-bar gesture
+        // is intercepted for a sealed tab.
+        tabPress: (e) => {
+          if (isTabSealed(route.name as TabName, useGameStore.getState())) {
+            e.preventDefault();
+            pingSealedTabDeflection();
+          }
         },
       })}
     >
@@ -325,6 +361,7 @@ function GameRoot() {
             paint above it regardless of this ordering anyway; ordered here to
             keep the JSX itself legible as a priority list. */}
         <TutorialLayer />
+        <TutorialDeflectionToast />
         {/* Modal priority: EventModal → AmbitionSelectionModal → BirthNamingModal → AgendaTablet → WelcomeBackModal.
             BirthNamingModal was imported but never mounted here until this fix — pendingBirthNaming
             was being set correctly by turnSequencer's passive birth check, but with no modal ever
