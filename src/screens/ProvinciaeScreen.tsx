@@ -53,6 +53,7 @@ export default function ProvinciaeScreen() {
   const family                   = useGameStore(s => s.family);
   const clients                  = useGameStore(s => s.clients);
   const currentOffice            = useGameStore(s => s.currentOffice);
+  const campaigningCharacterId   = useGameStore(s => s.campaigningCharacterId);
   const selectedCharacterId      = useGameStore(s => s.selectedCharacterId);
   const bills                    = useGameStore(s => s.bills);
   const armies                   = useGameStore(s => s.armies);
@@ -102,15 +103,19 @@ export default function ProvinciaeScreen() {
   // Tutorial redesign, T8 — character.officeId is only ever written by the
   // Tribune-of-the-Plebs path (gameStore.ts); every ordinary magistracy win
   // (turnSequencer.ts's Winter election resolution) only sets the global
-  // currentOffice/heldOffices — officeId stays permanently null for a
-  // player holding Quaestor, Aedile, Praetor, or Consul. This left
-  // muster/levy sanctioning silently broken for every ordinary office the
-  // whole time (found while testing the war arc's own scripted muster step —
-  // a real, previously-silent gap, not new behavior). Mirrors the correct,
-  // already-established pattern gameStore.declareTribuneCandidate uses for
-  // exactly this same "does this character hold ANY office" question.
+  // currentOffice/campaigningCharacterId pair (a single household-wide
+  // slot) — officeId stays permanently null for a player holding Quaestor,
+  // Aedile, Praetor, or Consul. This left muster/levy sanctioning silently
+  // broken for every ordinary office the whole time (found while testing
+  // the war arc's own scripted muster step — a real, previously-silent
+  // gap, not new behavior). currentOffice alone isn't enough either: it's a
+  // single slot that could be held by a family member instead of the
+  // player, so campaigningCharacterId (which actually names the holder) is
+  // what confirms it's the player specifically — the original T8 fix missed
+  // this half, found in a later sweep on a sibling branch.
   const paterfamilias = family.find(c => c.isPlayer);
-  const playerHoldsOffice = paterfamilias?.officeId != null || (!!paterfamilias?.isPlayer && currentOffice !== null);
+  const playerHoldsOffice = paterfamilias?.officeId != null
+    || (currentOffice !== null && campaigningCharacterId === paterfamilias?.id);
   // Chunk C4 — holding the theatre command sanctions muster the same way.
   const playerHoldsCommand = activeCommand?.holderOwner === 'player';
 

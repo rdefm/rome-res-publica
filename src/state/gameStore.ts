@@ -4214,8 +4214,13 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const paterfamilias = s.family.find(c => c.isPlayer);
     // Tutorial redesign, T8 — see ProvinciaeScreen.tsx's identical fix for
     // why this can't be paterfamilias?.officeId alone (always null for any
-    // ordinary magistracy — only Tribune ever sets that field).
-    const playerHoldsOffice = paterfamilias?.officeId != null || (!!paterfamilias?.isPlayer && s.currentOffice !== null);
+    // ordinary magistracy — only Tribune ever sets that field). currentOffice
+    // alone isn't enough either — it's a single household-wide slot that
+    // could be held by a family member instead — so campaigningCharacterId
+    // (the actual holder) must match the player specifically. The original
+    // T8 fix missed this half; found in a later sweep on a sibling branch.
+    const playerHoldsOffice = paterfamilias?.officeId != null
+      || (s.currentOffice !== null && s.campaigningCharacterId === paterfamilias?.id);
     const playerHoldsCommand = s.activeCommand?.holderOwner === 'player';
 
     const quote = quoteMuster(regionId, tier, s.theatre, s.cities, s.armies, s.imperium, playerHoldsOffice, playerHoldsCommand);
@@ -4715,11 +4720,18 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     if (!character) return;
 
     // senateAuthorised = character currently holds a formal office.
-    // Tutorial redesign, T8 — see ProvinciaeScreen.tsx's identical fix;
-    // character.officeId is only ever written by the Tribune path, so a
-    // player (or family member) holding an ordinary magistracy always read
-    // as unauthorised here until now.
-    const senateAuthorised = character.officeId != null || (character.isPlayer && s.currentOffice !== null);
+    // Tutorial redesign, T8 — character.officeId is only ever written by
+    // the Tribune path, so a player (or family member) holding an ordinary
+    // magistracy always read as unauthorised here until now. The original
+    // T8 fix gated this on character.isPlayer, which meant a non-player
+    // family member holding the household's one office (currentOffice)
+    // could NEVER read as authorised at all, regardless of who actually
+    // held it — raiseLevy takes any family member's characterId, so this
+    // checks campaigningCharacterId (the real holder) against THIS
+    // character specifically, not just whether they're the player. Found in
+    // a later sweep on a sibling branch.
+    const senateAuthorised = character.officeId != null
+      || (s.currentOffice !== null && s.campaigningCharacterId === character.id);
     const cost = calcLevyCost(60, s.crisisLevel, senateAuthorised);
     if (s.denarii < cost) return;
 

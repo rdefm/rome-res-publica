@@ -161,7 +161,8 @@ export default function MusterPickerModal({
   const provinces   = useGameStore(s => s.cities);
   const family      = useGameStore(s => s.family);
   const crisisLevel = useGameStore(s => s.crisisLevel);
-  const currentOffice = useGameStore(s => s.currentOffice);
+  const currentOffice          = useGameStore(s => s.currentOffice);
+  const campaigningCharacterId = useGameStore(s => s.campaigningCharacterId);
 
   // @ts-ignore — raiseLevy is added to GameActions in Chunk M
   const raiseLevy = useGameStore(s => s.raiseLevy);
@@ -171,9 +172,16 @@ export default function MusterPickerModal({
   // Determine levy cost for display.
   // senateAuthorised = character currently holds a formal office.
   // Tutorial redesign, T8 — character.officeId is only ever written by the
-  // Tribune path; an ordinary magistracy only sets the global currentOffice.
-  // Mirrors gameStore.raiseLevy's own (matching) fix.
-  const senateAuthorised = character?.officeId != null || (!!character?.isPlayer && currentOffice !== null);
+  // Tribune path; an ordinary magistracy only sets the global currentOffice/
+  // campaigningCharacterId pair. The original T8 fix gated this on
+  // character.isPlayer, which meant a non-player family member holding the
+  // household's one office could never read as authorised regardless of who
+  // actually held it — this modal can be opened for any family member, so
+  // campaigningCharacterId (the real holder) is checked against THIS
+  // character specifically. Mirrors gameStore.raiseLevy's own (matching)
+  // fix, found in a later sweep on a sibling branch.
+  const senateAuthorised = character?.officeId != null
+    || (currentOffice !== null && campaigningCharacterId === character?.id);
   const levyCost = calcLevyCost(60, crisisLevel, senateAuthorised);
 
   // Provinces the character has previously raised troops in.
