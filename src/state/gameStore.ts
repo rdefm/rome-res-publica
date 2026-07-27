@@ -321,7 +321,10 @@ export interface GameState {
   // Senate (Curia)
   bills: Bill[];
   _expandedBill: string | null;
-  _expandedType: 'vote' | 'speech' | null;
+  /** Curia Tab Redesign, Chunk C3, Delta 6 — widened to include 'filibuster'
+   *  so FILIBUSTER gets the same tap-to-confirm expand step as the other
+   *  two verbs (previously fired filibusterBill on a single tap). */
+  _expandedType: 'vote' | 'speech' | 'filibuster' | null;
   /** Monotonic sequence for auto-generated bill ids (turnSequencer.nextBillId). Lives in state, not a module
    *  singleton, so it survives being duplicated across Metro's per-route lazy web bundles. */
   billIdSeq: number;
@@ -758,7 +761,7 @@ export interface GameActions {
   arrangeMarriageDomus: () => void;
 
   // Curia
-  expandBill: (billId: string, type: 'vote' | 'speech') => void;
+  expandBill: (billId: string, type: 'vote' | 'speech' | 'filibuster') => void;
   collapseBill: () => void;
   voteBill: (billId: string, vote: 'vote_for' | 'vote_against') => void;
   speechBill: (billId: string, direction: 'for' | 'against') => void;
