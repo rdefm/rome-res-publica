@@ -17,6 +17,26 @@ export interface TargetRect {
 const targets = new Map<TutorialTargetId, TargetRect>();
 const listeners = new Set<() => void>();
 
+// Remeasure callbacks, one per currently-mounted target — registered
+// automatically by useTutorialTarget. A ScrollView containing a spotlightable
+// target should call remeasureAllTargets() on scroll-end: RN's onLayout only
+// fires when a view's own frame changes, never from its ancestor ScrollView
+// scrolling, so a target's rect otherwise goes stale (and, worse, can end up
+// pointing off-screen) the moment the user scrolls after the initial layout.
+const remeasurers = new Map<TutorialTargetId, () => void>();
+
+export function registerRemeasurer(id: TutorialTargetId, remeasure: () => void): void {
+  remeasurers.set(id, remeasure);
+}
+
+export function unregisterRemeasurer(id: TutorialTargetId): void {
+  remeasurers.delete(id);
+}
+
+export function remeasureAllTargets(): void {
+  remeasurers.forEach(fn => fn());
+}
+
 function rectsEqual(a: TargetRect, b: TargetRect): boolean {
   return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 }

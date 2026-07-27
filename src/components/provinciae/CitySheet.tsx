@@ -36,6 +36,7 @@ import type { CampaignAllocation } from '../../engine/campaignEngine';
 import { calcTotalImperium } from '../../engine/troopEngine';
 import { useGameStore } from '../../state/gameStore';
 import { useTutorialTarget } from '../shared/useTutorialTarget';
+import { remeasureAllTargets } from '../../engine/tutorialTargets';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.72;
@@ -193,6 +194,8 @@ export default function CitySheet({
         style={styles.content}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.contentInner}
+        onScrollEndDrag={remeasureAllTargets}
+        onMomentumScrollEnd={remeasureAllTargets}
       >
         {isHeartland ? (
           <HeartlandView def={def} />

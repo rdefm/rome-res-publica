@@ -11,7 +11,6 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import type {
@@ -30,6 +29,7 @@ import { getOfficerDecisions } from '../../engine/campaignEngine';
 import { useGameStore } from '../../state/gameStore';
 import { BALANCE } from '../../data/balance';
 import InfoTap from '../shared/InfoTap';
+import ConfirmModal from '../shared/ConfirmModal';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -262,6 +262,13 @@ function LegionRosterSection({
   onPayDonative: (characterId: string) => void;
   onDisband: (characterId: string, troopIds: string[]) => void;
 }) {
+  // Alert.alert is a no-op on react-native-web (silently unusable there), so
+  // the disband confirm is a real ConfirmModal instead — one shared instance
+  // here rather than one per TroopRow, keyed on whichever troop was tapped.
+  const [pendingDisband, setPendingDisband] = useState<{
+    characterId: string; troopId: string; label: string;
+  } | null>(null);
+
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>⚔ LEGIONS STATIONED HERE</Text>
@@ -294,19 +301,32 @@ function LegionRosterSection({
               <TroopRow
                 key={troop.id}
                 troop={troop}
-                onDisband={() => Alert.alert(
-                  'Disband Unit',
-                  `Disband this ${(troop.unitClass ?? 'legionary').replace('_', ' ')} unit? Its veterancy and loyalty are lost — this cannot be undone. Retaining it instead keeps both, at the cost of ongoing upkeep.`,
-                  [
-                    { text: 'Retain', style: 'cancel' },
-                    { text: 'Disband', style: 'destructive', onPress: () => onDisband(character.id, [troop.id]) },
-                  ],
-                )}
+                onDisband={() => setPendingDisband({
+                  characterId: character.id,
+                  troopId: troop.id,
+                  label: (troop.unitClass ?? 'legionary').replace('_', ' '),
+                })}
               />
             ))}
           </View>
         );
       })}
+
+      <ConfirmModal
+        visible={!!pendingDisband}
+        title="Disband Unit"
+        message={pendingDisband
+          ? `Disband this ${pendingDisband.label} unit? Its veterancy and loyalty are lost — this cannot be undone. Retaining it instead keeps both, at the cost of ongoing upkeep.`
+          : ''}
+        confirmLabel="Disband"
+        cancelLabel="Retain"
+        destructive
+        onConfirm={() => {
+          if (pendingDisband) onDisband(pendingDisband.characterId, [pendingDisband.troopId]);
+          setPendingDisband(null);
+        }}
+        onCancel={() => setPendingDisband(null)}
+      />
     </View>
   );
 }

@@ -418,15 +418,20 @@ export const TUTORIAL_EFFECTS: Record<string, (s: GameState) => Partial<GameStat
     return { trials: [...s.trials, newTrial] };
   },
 
-  // Courts arc (T9) — fires on the arc's final step's onCompleteEffectId,
-  // same pattern as embassySetCompleteFlag/warSetCompleteFlag. Nothing
-  // consumes this yet (courts is the last arc T9 authors), but it's the same
-  // "set the precedent up now" call T8 made for warSetCompleteFlag before
-  // this arc existed — a natural hook for T10's just-in-time lessons to gate
-  // "the guided tutorial has fully finished" on, without re-deriving it from
-  // tutorial.completedArcs.
+  // Courts arc (T9) — fires on the arc's final step's onCompleteEffectId
+  // (courts.philon-handoff, not courts.closing — see that step's own
+  // comment), same pattern as embassySetCompleteFlag/warSetCompleteFlag.
+  // Nothing consumes the flag itself yet (courts is the last arc T9
+  // authors), but it's the same "set the precedent up now" call T8 made for
+  // warSetCompleteFlag before this arc existed — a natural hook for T10's
+  // just-in-time lessons to gate "the guided tutorial has fully finished"
+  // on, without re-deriving it from tutorial.completedArcs. Also unlocks
+  // philonAdvisoryUnlocked — this is the literal hand-off moment the step's
+  // narration describes, so Ambitions/Ex Tabulis Philonis start surfacing
+  // from exactly here.
   courtsSetCompleteFlag: (s) => ({
     flags: { ...s.flags, 'tutorial-courts-complete': true },
+    philonAdvisoryUnlocked: true,
   }),
 
   // T10 — just-in-time lessons. Each just marks itself taught; the

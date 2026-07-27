@@ -204,12 +204,21 @@ describe('guided run — courts arc end to end', () => {
     expect(useGameStore.getState().tutorial.stepId).toBe('courts.closing');
     expect(useGameStore.getState().flags['tutorial-courts-complete']).toBeUndefined();
 
-    // Closing beat's own tap fires courtsSetCompleteFlag. courts is the last
-    // arc in TUTORIAL_ARC_ORDER, so the auto-chain goes idle rather than
-    // entering a fifth arc.
+    // courts.closing's own tap moves to the real final step, the hand-off
+    // beat — philonAdvisoryUnlocked is still false here (guided start's own
+    // startGame() default), matching what a fresh guided run holds through
+    // the entire tutorial.
+    useGameStore.getState().advanceTutorialStep();
+    expect(useGameStore.getState().tutorial.stepId).toBe('courts.philon-handoff');
+    expect(useGameStore.getState().philonAdvisoryUnlocked).toBe(false);
+
+    // Hand-off beat's own tap fires courtsSetCompleteFlag, which also flips
+    // philonAdvisoryUnlocked. courts is the last arc in TUTORIAL_ARC_ORDER,
+    // so the auto-chain goes idle rather than entering a fifth arc.
     useGameStore.getState().advanceTutorialStep();
     const s = useGameStore.getState();
     expect(s.flags['tutorial-courts-complete']).toBe(true);
+    expect(s.philonAdvisoryUnlocked).toBe(true);
     expect(s.tutorial.completedArcs).toEqual(['courts']);
     expect(s.tutorial.activeArc).toBeNull();
   });

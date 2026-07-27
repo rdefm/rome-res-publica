@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal,
-  ActivityIndicator, Alert, ScrollView, Platform,
+  ActivityIndicator, ScrollView, Platform,
 } from 'react-native';
 import { useGameStore, INITIAL_STATE } from '../../state/gameStore';
 import { saveProvider, exportSave, importSave } from '../../state/saveLoad';
 import { GLOSSARY_TERMS } from '../../data/glossaryTerms';
 import GlossaryPopup from './GlossaryPopup';
 import InfoTap from './InfoTap';
+import ConfirmModal from './ConfirmModal';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import ScrollModal, { PARCHMENT } from './ScrollModal';
 
@@ -24,6 +25,7 @@ export default function SettingsModal({ visible, onClose }: Props) {
   const [statusMsg, setStatusMsg] = useState('');
   const [tabulariumOpen, setTabulariumOpen] = useState(false);
   const [selectedTermId, setSelectedTermId] = useState<string | null>(null);
+  const [newGameConfirmOpen, setNewGameConfirmOpen] = useState(false);
 
   function flash(msg: string, isError = false) {
     setStatus(isError ? 'error' : 'done');
@@ -65,20 +67,13 @@ export default function SettingsModal({ visible, onClose }: Props) {
   }
 
   function handleNewGame() {
-    Alert.alert(
-      'New Game',
-      'This will erase your current game. Are you sure?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'New Game', style: 'destructive',
-          onPress: () => {
-            useGameStore.setState(INITIAL_STATE);
-            onClose();
-          },
-        },
-      ]
-    );
+    setNewGameConfirmOpen(true);
+  }
+
+  function confirmNewGame() {
+    setNewGameConfirmOpen(false);
+    useGameStore.setState(INITIAL_STATE);
+    onClose();
   }
 
   const busy = status === 'saving' || status === 'loading';
@@ -194,6 +189,17 @@ export default function SettingsModal({ visible, onClose }: Props) {
           onClose={() => setSelectedTermId(null)}
         />
       )}
+
+      <ConfirmModal
+        visible={newGameConfirmOpen}
+        title="New Game"
+        message="This will erase your current game. Are you sure?"
+        confirmLabel="New Game"
+        cancelLabel="Cancel"
+        destructive
+        onConfirm={confirmNewGame}
+        onCancel={() => setNewGameConfirmOpen(false)}
+      />
     </Modal>
   );
 }

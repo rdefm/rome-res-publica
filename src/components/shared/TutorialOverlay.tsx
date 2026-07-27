@@ -63,6 +63,27 @@ export default function TutorialOverlay({ targetId, rail }: TutorialOverlayProps
   if (!rect) return null;
 
   const { width: screenW, height: screenH } = Dimensions.get('window');
+
+  // A target inside a ScrollView is measured once on mount/layout — its
+  // measureInWindow result reflects wherever it happened to sit at that
+  // moment, below-the-fold included, and RN's onLayout does not refire from
+  // scrolling alone (useTutorialTarget's own comment). If the cutout ends up
+  // (partly or fully) outside the viewport, the four bands below still
+  // render around it — and since the cutout itself is off-screen, the "top"
+  // band alone stretches past the whole visible area, an opaque,
+  // pointerEvents-'auto' scrim covering literally everything the player can
+  // see or touch, including the ScrollView they'd need to scroll to reach
+  // the real target. That was a genuine unrecoverable softlock (Act II's
+  // "Court Flaccus" step, target forum.action.invite-dinner, whenever the
+  // Invite to Dinner button happened to land below the fold). Bailing here
+  // exactly like the `!rect` case above trades the spotlight cutout for
+  // "never block the screen" — the step still advances on its predicate (or
+  // stays tappable/scrollable) regardless of whether the ring is visible.
+  const targetOffscreen =
+    rect.y + rect.height <= 0 || rect.y >= screenH ||
+    rect.x + rect.width <= 0 || rect.x >= screenW;
+  if (targetOffscreen) return null;
+
   const cutout = {
     x: Math.max(0, rect.x - CUTOUT_PADDING),
     y: Math.max(0, rect.y - CUTOUT_PADDING),

@@ -17,6 +17,7 @@ import { isWarActiveForCommand } from '../engine/commandEngine';
 import DragSheet from '../components/shared/DragSheet';
 import BasilicaSheet from '../components/curia/BasilicaSheet';
 import AlertStrip from '../components/curia/AlertStrip';
+import { remeasureAllTargets } from '../engine/tutorialTargets';
 
 // ─── CuriaScreen ──────────────────────────────────────────────────────────────
 
@@ -102,7 +103,13 @@ export default function CuriaScreen() {
         negotiaCount={negotiaCount}
         negotiaCritical={negotiaCritical}
       />
-      <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scroll}
+        contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}
+        onScrollEndDrag={remeasureAllTargets}
+        onMomentumScrollEnd={remeasureAllTargets}
+      >
         {activeSubTab === 'leges' && <LegesView scrollRef={scrollRef} />}
         {activeSubTab === 'negotia' && <NegotiaView />}
         {activeSubTab === 'munificentia' && <MunificentiaView />}

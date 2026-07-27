@@ -62,7 +62,15 @@ function AmbitionCard({
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 export default function AmbitionSelectionModal() {
-  const { pendingAmbitionScopes, ambitions, family, selectAmbition, dismissAmbitionSelection } = useGameStore();
+  // Field-level selectors, not a bare useGameStore() call — CLAUDE.md's
+  // store-subscription rule; this modal was re-rendering on every store
+  // write anywhere in the app before this pass.
+  const pendingAmbitionScopes = useGameStore(s => s.pendingAmbitionScopes);
+  const philonAdvisoryUnlocked = useGameStore(s => s.philonAdvisoryUnlocked);
+  const ambitions = useGameStore(s => s.ambitions);
+  const family = useGameStore(s => s.family);
+  const selectAmbition = useGameStore(s => s.selectAmbition);
+  const dismissAmbitionSelection = useGameStore(s => s.dismissAmbitionSelection);
   const player = family.find(c => c.isPlayer);
 
   const excludeIds = ambitions.map(a => a.definitionId);
@@ -74,7 +82,12 @@ export default function AmbitionSelectionModal() {
   const [selectedFamily, setSelectedFamily] = useState<string | null>(null);
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
 
-  if (pendingAmbitionScopes.length === 0) return null;
+  // Tutorial redesign — held back for a guided run until Philon's explicit
+  // hand-off (courts.philon-handoff); see philonAdvisoryUnlocked's own doc
+  // comment on GameState. pendingAmbitionScopes stays populated the whole
+  // time (nothing else consumes it), so this simply shows the moment the
+  // flag flips rather than needing its own re-trigger.
+  if (pendingAmbitionScopes.length === 0 || !philonAdvisoryUnlocked) return null;
 
   const needsFamily = pendingAmbitionScopes.includes('family');
   const needsCharacter = pendingAmbitionScopes.includes('character');

@@ -21,7 +21,6 @@ import {
   StyleSheet,
   Platform,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
@@ -34,6 +33,7 @@ import type { DifficultyId } from '../models/gameStart';
 import { COLORS, FONTS, SPACING, RADIUS } from '../utils/theme';
 import HallOfAncestorsScreen from './HallOfAncestorsScreen';
 import InfoTap from '../components/shared/InfoTap';
+import ConfirmModal from '../components/shared/ConfirmModal';
 
 const BG = (() => {
   try { return require('../assets/images/menu-bg.png'); } catch { return null; }
@@ -52,6 +52,10 @@ export default function StartMenuScreen() {
   // Phase 5, Chunk P5-G — the difficulty-picker step. Set once a non-guided
   // family card is tapped; startGame doesn't fire until the picker confirms.
   const [pendingStart, setPendingStart] = useState<{ def: typeof START_DEFINITIONS[number]; mode: 'senator' | 'debug' } | null>(null);
+  // Alert.alert no-ops on react-native-web, so these single-button info
+  // alerts route through a real ConfirmModal instead (see ConfirmModal's
+  // own header comment).
+  const [infoModal, setInfoModal] = useState<{ title: string; message: string } | null>(null);
 
   useEffect(() => {
     hasSave().then(setSaveExists).catch(() => setSaveExists(false));
@@ -82,10 +86,10 @@ export default function StartMenuScreen() {
       if (saved) {
         useGameStore.getState().loadGame(saved);
       } else {
-        Alert.alert('No save found', 'No saved game was found on this device.');
+        setInfoModal({ title: 'No save found', message: 'No saved game was found on this device.' });
       }
     } catch {
-      Alert.alert('Load failed', 'Could not load save file.');
+      setInfoModal({ title: 'Load failed', message: 'Could not load save file.' });
     } finally {
       setLoading(false);
     }
@@ -97,7 +101,7 @@ export default function StartMenuScreen() {
       const saved = await importSave();
       if (saved) useGameStore.getState().loadGame(saved);
     } catch {
-      Alert.alert('Import failed', 'Could not import save file.');
+      setInfoModal({ title: 'Import failed', message: 'Could not import save file.' });
     } finally {
       setLoading(false);
     }
@@ -208,6 +212,13 @@ export default function StartMenuScreen() {
         </View>
 
       </SafeAreaView>
+
+      <ConfirmModal
+        visible={!!infoModal}
+        title={infoModal?.title ?? ''}
+        message={infoModal?.message ?? ''}
+        onConfirm={() => setInfoModal(null)}
+      />
     </ImageBackground>
   );
 }

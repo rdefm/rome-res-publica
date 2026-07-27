@@ -381,7 +381,7 @@ const PROLOGUE_ACT5_STEPS: TutorialStep[] = [
     arc: 'prologue',
     rail: 'hard',
     requiresTab: 'Cursus',
-    narration: "The city votes when Winter comes. Close out the seasons between now and then.",
+    narration: "The city votes when Winter comes — and Winter is close now. Close out the season.",
     advance: { kind: 'tap' },
   },
   {
@@ -881,6 +881,28 @@ const COURTS_STEPS: TutorialStep[] = [
       "family without losing it himself — so he tried a lie instead, and the lie stood or fell on " +
       "its own. Not virtue, and not leverage alone, either. Preparation, met honestly. Philon's part " +
       "in this ends here, Domine. The rest of the history is yours to write.",
+    advance: { kind: 'tap' },
+  },
+  // Tutorial redesign — the actual hand-off beat. Distinct from courts.closing
+  // on purpose: that step's "Philon's part in this ends here" closes the
+  // courts drama specifically, not Philon's ongoing presence, and cramming
+  // this practical note into the same caption made an already-long beat
+  // unwieldy. Firing philonAdvisoryUnlocked here (not earlier) means neither
+  // AmbitionSelectionModal nor the Agenda Tablet has been able to surface
+  // ANYTHING throughout the entire guided run until Philon says so himself —
+  // see philonAdvisoryUnlocked's own doc comment on GameState. This is now
+  // the arc's real last step (courtsCourtsArc.test.ts's "arc's last step
+  // carries courtsSetCompleteFlag" moved onto it, not courts.closing).
+  {
+    id: 'courts.philon-handoff',
+    arc: 'courts',
+    rail: 'guided',
+    requiresTab: 'Cursus',
+    narration:
+      "One thing more before I truly step back, Domine. Twice more Rome will want your attention " +
+      "unprompted: an ambition worth chasing — yours to choose, starting now — and, each season " +
+      "after, a tablet of my own notes, Ex Tabulis Philonis, whenever something demands it. I " +
+      "merely surface them from here on. The choosing, as ever, is yours.",
     advance: { kind: 'tap' },
     onCompleteEffectId: 'courtsSetCompleteFlag',
   },

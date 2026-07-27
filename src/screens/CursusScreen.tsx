@@ -22,6 +22,7 @@ import PortraitRoundel from '../components/shared/PortraitRoundel';
 import { characterPortraitSubject, leaderPortraitSubject } from '../engine/portraitEngine';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 import InfoTap from '../components/shared/InfoTap';
+import { remeasureAllTargets } from '../engine/tutorialTargets';
 
 // ─── Action button + Office card ───────────────────────────────────────────────
 // Chunk C4 of cursus-visual-redesign-plan.md — both extracted to
@@ -466,7 +467,12 @@ export default function CursusScreen() {
 
         <CandidateHeader selected={selectedCharId} onSelect={setSelectedCharId} />
 
-        <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}
+          onScrollEndDrag={remeasureAllTargets}
+          onMomentumScrollEnd={remeasureAllTargets}
+        >
           {selectedChar && <ElectionPanel character={selectedChar} />}
 
           <Text style={styles.sectionLabel}>OFFICES</Text>

@@ -3,7 +3,7 @@ import { NavigationContainer, useNavigationContainerRef } from '@react-navigatio
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, StyleSheet, View, AppState, Alert } from 'react-native';
+import { Text, StyleSheet, View, AppState } from 'react-native';
 
 import DomusScreen from './src/screens/DomusScreen';
 import ForumScreen from './src/screens/ForumScreen';
@@ -25,6 +25,7 @@ import AchievementToast from './src/components/shared/AchievementToast';
 import TutorialOverlay, { getCaptionDock } from './src/components/shared/TutorialOverlay';
 import TutorialCaption from './src/components/shared/TutorialCaption';
 import TutorialDeflectionToast, { pingSealedTabDeflection } from './src/components/shared/TutorialDeflectionToast';
+import ConfirmModal from './src/components/shared/ConfirmModal';
 import { getTarget, subscribeTargets } from './src/engine/tutorialTargets';
 import {
   getStep as getTutorialStep,
@@ -153,19 +154,38 @@ function AppNavigator() {
 // step, if any. Self-gated on tutorial.stepId — a Free Start or a
 // fully-skipped guided start renders nothing.
 
-function confirmSkipTutorialArc() {
-  Alert.alert(
-    'Skip this lesson?',
-    "Philon will stop guiding you — this arc, and everything after it, completes immediately. You can't come back to it.",
-    [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Skip', style: 'destructive', onPress: () => useGameStore.getState().skipTutorialArc() },
-    ],
-  );
-}
-
 function TutorialLayer() {
   const tutorial = useGameStore(s => s.tutorial);
+  const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
+  // Same blocking conditions as the advance-checker effect below (App.tsx's
+  // tutorial director) — that effect already refuses to advance the step
+  // while any of these hold, but nothing gated the OVERLAY ITSELF, so a
+  // `rail: 'hard'` step's swallowing bands stayed mounted (against a target
+  // that's still technically on-screen, just visually buried) and painted
+  // OVER whichever of these took priority. Every other one here is a native
+  // <Modal> that already wins regardless of this component's paint order
+  // (see the comment below), but SeasonOverlay is a plain absolutely-
+  // positioned View rendered inside each screen, not a Modal — with no gate
+  // here, its "Continue" button sat directly under an opaque hard-rail band
+  // with pointerEvents 'auto', unreachable, softlocking Act V's
+  // prologue.act5.end-season step (and every other `shared.end-season` step
+  // in the later arcs) the instant the season-end recap appeared.
+  const blocked = useGameStore(s =>
+    !!s.activeEvent ||
+    s.seasonOverlayVisible ||
+    !!s.pendingBirthNaming ||
+    // Not a bare pendingAmbitionScopes.length check — mirror
+    // AmbitionSelectionModal's own render gate exactly. During a guided run
+    // pendingAmbitionScopes stays non-empty for the ENTIRE tutorial by
+    // design (philonAdvisoryUnlocked's hold-back), so treating any pending
+    // scope as "the modal is covering the screen" made this permanently
+    // true from the very first step — Philon's caption never rendered at
+    // all, even though tabs still locked correctly (a separate gate). Only
+    // actually blocking once the modal would actually show.
+    (s.pendingAmbitionScopes.length > 0 && s.philonAdvisoryUnlocked) ||
+    s.trials.some(t => t.status === 'in_session') ||
+    !!s.activeBattle
+  );
   const currentStep = tutorial.stepId ? getTutorialStep(tutorial.stepId) : null;
 
   const rect = useSyncExternalStore(
@@ -173,7 +193,7 @@ function TutorialLayer() {
     () => (currentStep?.target ? getTarget(currentStep.target) : null),
   );
 
-  if (!currentStep) return null;
+  if (!currentStep || blocked) return null;
 
   return (
     <>
@@ -187,7 +207,20 @@ function TutorialLayer() {
             ? () => useGameStore.getState().advanceTutorialStep()
             : undefined
         }
-        onSkipPress={confirmSkipTutorialArc}
+        onSkipPress={() => setSkipConfirmOpen(true)}
+      />
+      <ConfirmModal
+        visible={skipConfirmOpen}
+        title="Skip this lesson?"
+        message="Philon will stop guiding you — this arc, and everything after it, completes immediately. You can't come back to it."
+        confirmLabel="Skip"
+        cancelLabel="Cancel"
+        destructive
+        onConfirm={() => {
+          setSkipConfirmOpen(false);
+          useGameStore.getState().skipTutorialArc();
+        }}
+        onCancel={() => setSkipConfirmOpen(false)}
       />
     </>
   );
@@ -295,6 +328,10 @@ function GameRoot() {
     const checkAndMaybeOpen = () => {
       const s = useGameStore.getState();
       if (!s.gameStarted)                              return;
+      // Tutorial redesign — held back for a guided run until Philon's
+      // explicit hand-off (courts.philon-handoff); see
+      // philonAdvisoryUnlocked's own doc comment on GameState.
+      if (!s.philonAdvisoryUnlocked)                   return;
       if (s.agendaVisible)                             return;
       if (s.seasonOverlayVisible)                      return;
       if (s.activeEvent)                               return;
@@ -331,7 +368,15 @@ function GameRoot() {
       if (s.activeEvent)                                 return;
       if (s.seasonOverlayVisible)                        return;
       if (s.pendingBirthNaming)                          return;
-      if ((s.pendingAmbitionScopes ?? []).length > 0)    return;
+      // See TutorialLayer's `blocked` comment — only actually blocking once
+      // AmbitionSelectionModal would render (its own gate), not just
+      // whenever a scope is pending. A guided run holds scopes pending for
+      // its entire duration by design (philonAdvisoryUnlocked), so the bare
+      // length check here would have permanently frozen every predicate-
+      // driven step (skill trained, Flaccus courted, election won, ...) for
+      // the whole tutorial — this subscription would never get past this
+      // line.
+      if ((s.pendingAmbitionScopes ?? []).length > 0 && s.philonAdvisoryUnlocked) return;
       if (s.trials.some(t => t.status === 'in_session')) return;
       if (s.activeBattle)                                return;
 

@@ -1,6 +1,7 @@
 import type { Office, OfficeAction } from '../models/office';
 import { BALANCE } from './balance';
 import { generateSecret, calcAuditChance } from '../engine/secretEngine';
+import { CLAUDIUS_LEADER_ID } from './claudiusArc';
 
 export const OFFICES: Office[] = [
   // ─── VIGINTIVIRATE ──────────────────────────────────────────────────────────
@@ -122,7 +123,19 @@ export const OFFICES: Office[] = [
           const actingCharacter = state.family.find((c) => c.id === characterId);
           const chance = calcAuditChance(actingCharacter?.skills.intrigus ?? 0, target.corruptionScore);
 
-          if (Math.random() < chance) {
+          // Tutorial redesign, Act V's audit step (prologue.act5.audit) — a
+          // real roll here would let Philon's scripted "standoff" beat
+          // (claudiusDeterred) simply not happen on an unlucky roll, with no
+          // retry taught and no other way to progress. Guaranteed only for
+          // this exact step, against this exact leader — every other audit,
+          // including a later free-play audit of Claudius himself outside
+          // this step, still rolls for real.
+          const tutorialGuaranteed =
+            state.tutorial?.activeArc === 'prologue' &&
+            state.tutorial?.stepId === 'prologue.act5.audit' &&
+            leaderId === CLAUDIUS_LEADER_ID;
+
+          if (tutorialGuaranteed || Math.random() < chance) {
             const secret = generateSecret(
               { kind: 'leader', leaderId: target.id },
               'player',

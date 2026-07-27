@@ -59,7 +59,17 @@ export default function TutorialCaption({
           {content}
         </TouchableOpacity>
       ) : (
-        <View style={styles.card}>{content}</View>
+        // A predicate-advance step (no onTapAdvance) has nothing that needs
+        // this card itself to be tappable — only its "Philon, I know this"
+        // skip link does. Without box-none, this plain View's default
+        // pointerEvents ('auto') claims any touch landing on it regardless
+        // of handlers, so a narration-only step (no `target`, hence
+        // getCaptionDock's 'bottom' default below) sitting over real,
+        // reachable UI — e.g. embassy.recruit-vibius's Recruit button,
+        // wherever it happens to scroll to — silently ate the tap. box-none
+        // lets everything but the skip TouchableOpacity pass through to
+        // whatever's actually underneath.
+        <View style={styles.card} pointerEvents="box-none">{content}</View>
       )}
     </View>
   );

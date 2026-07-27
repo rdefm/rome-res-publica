@@ -20,6 +20,7 @@ import FamilyHousePanel from '../components/domus/FamilyHousePanel';
 import DebugPanel from '../components/shared/DebugPanel';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
+import { remeasureAllTargets } from '../engine/tutorialTargets';
 
 const BG_DOMUS = require('../assets/images/bg-domus.png');
 
@@ -65,6 +66,8 @@ export default function DomusScreen() {
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
+          onScrollEndDrag={remeasureAllTargets}
+          onMomentumScrollEnd={remeasureAllTargets}
         >
           {SECTIONS.map(({ key, label }) => {
             const isOpen = openSection === key;

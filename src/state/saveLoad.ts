@@ -184,6 +184,14 @@ export const SaveSchema = z.object({
   // As with gensId/difficulty above, parse()'s result is discarded — the
   // real backfill is gameStore.loadGame's INITIAL_STATE spread; this default
   // only matters for validation.
+  // Tutorial redesign — .default(true) ensures every pre-existing save (and
+  // every non-guided start) reads as unlocked; a guided start's startGame
+  // call is the only writer of `false`, flipped back by
+  // courts.philon-handoff's onCompleteEffectId (or immediately by
+  // skipTutorialArc/skipAllTutorials). parse()'s result is discarded here,
+  // same as gensId/difficulty above — this default only matters for
+  // validation, not migration.
+  philonAdvisoryUnlocked: z.boolean().default(true),
   tutorial: z.object({
     activeArc:     z.enum([
       'prologue', 'embassy', 'war', 'courts',

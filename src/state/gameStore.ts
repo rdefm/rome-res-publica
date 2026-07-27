@@ -654,6 +654,18 @@ export interface GameState {
   agendaViewedTurn: number;
   /** True while the Agenda Tablet modal is open. */
   agendaVisible: boolean;
+  /**
+   * Gates the Agenda Tablet (Ex Tabulis Philonis, auto-open + badge) and
+   * AmbitionSelectionModal. True for every start except guided, where both
+   * would otherwise surface within the first turn or two — before the
+   * player has any context for either — on top of Philon's own scripted
+   * beats. Set false at guided-start time (startGame), flipped true by
+   * courts.philon-handoff's onCompleteEffectId (the arc's actual last step)
+   * once Philon explicitly hands off — and unconditionally by
+   * skipTutorialArc/skipAllTutorials, so skipping never leaves a save
+   * permanently unable to reach either system.
+   */
+  philonAdvisoryUnlocked: boolean;
   /** Snapshot of the last completed season's resource/crisis/rome deltas. Displayed in SeasonOverlay and welcome-back recap (P1-D). */
   lastSeasonLedger: SeasonLedger | null;
   /** Epoch ms; updated on endSeason and app background. Used for the welcome-back 12-hour threshold (P1-D). */
@@ -1434,6 +1446,7 @@ export const INITIAL_STATE: GameState = {
   },
   agendaViewedTurn: -1,
   agendaVisible: false,
+  philonAdvisoryUnlocked: true,
   lastSeasonLedger: null,
   lastActiveAt: Date.now(),
   uiNavRequest: null,
@@ -1692,9 +1705,26 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
             skipped: false,
           }
         : INITIAL_STATE.tutorial,
+      // Tutorial redesign — a guided start begins in Autumn (seasonIndex 2),
+      // not Spring. Acts I-IV never end a season (everything happens within
+      // the same turn while the world is frozen — isWorldFrozen's own
+      // comment), so Act V's single `shared.end-season` tap is the guided
+      // run's first-ever season-end. resolveElection only fires when the
+      // POST-increment season is Winter (turnSequencer.ts, `newSeasonIndex
+      // === 3`) — starting one season early means that first tap lands
+      // directly on Winter and resolves the Quaestor race immediately,
+      // instead of requiring several taps against a caption
+      // (prologue.act5.wait-for-election) that reads identically every
+      // season and gives no sign anything is progressing. Every other start
+      // is unaffected (INITIAL_STATE.seasonIndex, i.e. Spring).
+      seasonIndex: scriptId ? 2 : INITIAL_STATE.seasonIndex,
+      // Held back for a guided start until Philon's explicit hand-off
+      // (courts.philon-handoff, the arc's actual last step) — see this
+      // field's own doc comment on GameState.
+      philonAdvisoryUnlocked: scriptId ? false : INITIAL_STATE.philonAdvisoryUnlocked,
       pendingEvents: pendingGameStart,
       lastActiveAt: Date.now(),
-      log: [mkLog('264 BC · Spring', `The ${gensPlural} begin their ascent.`, 'neutral')],
+      log: [mkLog(`264 BC · ${scriptId ? 'Autumn' : 'Spring'}`, `The ${gensPlural} begin their ascent.`, 'neutral')],
       // P3-D — generated once per run, every start.
       cadetBranch: generateCadet(gensName),
       clans: startingClans,
@@ -3758,6 +3788,13 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         unlockedTabs: ALL_TUTORIAL_TABS,
         skipped: true,
       },
+      // Skipping cascades past courts.philon-handoff too — its own unlock
+      // (courtsSetCompleteFlag) never fires, so without this a skipped
+      // guided run would leave Ambitions/Ex Tabulis Philonis permanently
+      // dark for that save. Skipping is an explicit "I don't need this
+      // explained" signal either way, so unlocking silently (no hand-off
+      // narration) is correct here.
+      philonAdvisoryUnlocked: true,
     });
   },
 
@@ -3770,6 +3807,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         unlockedTabs: ALL_TUTORIAL_TABS,
         skipped: true,
       },
+      philonAdvisoryUnlocked: true,
     });
   },
 

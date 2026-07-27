@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { View } from 'react-native';
-import { registerTarget, clearTarget } from '../../engine/tutorialTargets';
+import {
+  registerTarget, clearTarget, registerRemeasurer, unregisterRemeasurer,
+} from '../../engine/tutorialTargets';
 import type { TutorialTargetId } from '../../engine/tutorialTargets';
 
 // Ref + onLayout pair for a spotlightable control. Spread both onto the
-// target View: `<View ref={ref} onLayout={onLayout}>`. For a target inside a
-// ScrollView, also call `remeasure()` on scroll-end — onLayout alone won't
-// fire when the view moves without resizing.
+// target View: `<View ref={ref} onLayout={onLayout}>`. `measure` also
+// self-registers as this id's remeasurer (see tutorialTargets.ts), so any
+// ancestor ScrollView calling remeasureAllTargets() on scroll-end keeps this
+// rect in sync automatically — callers don't need to reach for `remeasure`
+// themselves; it's returned mainly for a one-off manual remeasure need.
 export function useTutorialTarget(id: TutorialTargetId | undefined) {
   const nodeRef = useRef<View | null>(null);
 
@@ -23,10 +27,14 @@ export function useTutorialTarget(id: TutorialTargetId | undefined) {
   }, []);
 
   useEffect(() => {
+    if (id) registerRemeasurer(id, measure);
     return () => {
-      if (id) clearTarget(id);
+      if (id) {
+        clearTarget(id);
+        unregisterRemeasurer(id);
+      }
     };
-  }, [id]);
+  }, [id, measure]);
 
   return { ref, onLayout: measure, remeasure: measure };
 }

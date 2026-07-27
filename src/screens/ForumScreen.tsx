@@ -21,6 +21,7 @@ import { leaderPortraitSubject } from '../engine/portraitEngine';
 import PortraitRoundel from '../components/shared/PortraitRoundel';
 import type { CanvassingEvent } from '../data/canvassingEvents';
 import { useTutorialTarget } from '../components/shared/useTutorialTarget';
+import { remeasureAllTargets } from '../engine/tutorialTargets';
 
 // ─── Canvassing Event Modal ───────────────────────────────────────────────────
 
@@ -361,7 +362,12 @@ export default function ForumScreen() {
         </Text>
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}
+        onScrollEndDrag={remeasureAllTargets}
+        onMomentumScrollEnd={remeasureAllTargets}
+      >
         <PatronLadderPanel />
 
         {/* Phase 4, Chunk P4-B — self-hides when there's nothing to show */}
