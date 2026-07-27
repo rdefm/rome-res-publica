@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
-import { COLORS, FONTS, RADIUS, SPACING } from '../../utils/theme';
+import { COLORS, FONTS, RADIUS, SPACING, withAlpha } from '../../utils/theme';
 
 interface GildedPanelProps {
   children: React.ReactNode;
@@ -37,7 +37,7 @@ const styles = StyleSheet.create({
     // rgba, not the `opacity` style prop — opacity cascades to children
     // (text/rivets), which we don't want translucent, only the field itself
     // (so the fresco behind it, once C5 lands, ghosts through the panel).
-    backgroundColor: 'rgba(42,10,10,0.92)', // COLORS.panelWood at ~0.92 alpha
+    backgroundColor: withAlpha(COLORS.panelWood, 0.92),
     borderWidth: 2,
     borderColor: COLORS.gildFrame,
     borderRadius: RADIUS.lg,

@@ -1,0 +1,23 @@
+#!/bin/sh
+# QA Audit Fix Plan, Chunk F — blocks a push if the test suite or tsc
+# --noEmit baseline regresses. Local, solo-dev-appropriate enforcement
+# (chosen over standing up GitHub Actions CI, which this repo has never
+# had) for the exact failure mode that let 45+ tsc errors accumulate
+# silently over several weeks before this plan's own audit caught them —
+# see CLAUDE.md's "Commands" section.
+#
+# Installed via `git config core.hooksPath scripts/hooks` — done
+# automatically by `npm install`'s "prepare" script (package.json), or run
+# that command yourself once if you're on a clone that predates this.
+#
+# Bypass only when you know exactly why: `git push --no-verify`.
+
+set -e
+
+echo "[pre-push] Running npx tsc --noEmit..."
+npx tsc --noEmit
+echo "[pre-push] tsc clean."
+
+echo "[pre-push] Running npm test..."
+npm test
+echo "[pre-push] Tests clean."

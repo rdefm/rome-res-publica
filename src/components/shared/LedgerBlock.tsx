@@ -34,8 +34,13 @@ function DeltaRow({ label, value }: { label: string; value: number }) {
 // ─── Section ──────────────────────────────────────────────────────────────────
 
 function Section({ children }: { children: React.ReactNode }) {
-  // Only render if at least one child is non-null (i.e. has a non-zero delta)
-  const hasContent = React.Children.toArray(children).some(c => c !== null && c !== false);
+  // Only render if at least one child is non-null (i.e. has a non-zero delta).
+  // QA Audit Fix Plan, Chunk D — React.Children.toArray already strips
+  // null/undefined/boolean children as part of its own flattening, so the
+  // `c !== false` half of this check compared a type that structurally
+  // excludes booleans to a boolean literal (dead code, and the source of
+  // the resulting tsc error).
+  const hasContent = React.Children.toArray(children).length > 0;
   if (!hasContent) return null;
   return <View style={styles.section}>{children}</View>;
 }

@@ -131,7 +131,7 @@ function evaluateGateItem(
 
   switch (gate.type) {
     case 'skill': {
-      const skillVal = (character.skills as Record<string, number>)[gate.key] ?? 0;
+      const skillVal = (character.skills as unknown as Record<string, number>)[gate.key] ?? 0;
       const pass = evaluateOp(skillVal, gate.op, numVal);
       return { pass, reason: `Requires ${gate.key} ${gate.op} ${numVal} (current: ${skillVal})` };
     }
@@ -471,7 +471,7 @@ export function resolveOfficeAction(
       const char = sc.characterId === 'player'
         ? state.family.find(c => c.isPlayer)
         : state.family.find(c => c.id === sc.characterId);
-      const skillVal = char ? ((char.skills as Record<string, number>)[sc.skill] ?? 0) : 0;
+      const skillVal = char ? ((char.skills as unknown as Record<string, number>)[sc.skill] ?? 0) : 0;
       const roll = Math.floor(Math.random() * 10) + 1;
       success = roll + skillVal >= sc.difficulty;
     }

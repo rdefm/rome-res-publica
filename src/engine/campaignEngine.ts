@@ -160,7 +160,17 @@ export function resolveCampaignSeason(
   }
 
   // ── Event card ────────────────────────────────────────────────────────────
-  // ~30% chance per season; weight table handled in data/campaignEvents.ts
+  // QA Audit Fix Plan, Chunk D — data/campaignEvents.ts (the event-card
+  // CONTENT this id was meant to look up) is deleted: confirmed dead,
+  // MilitaryTab.tsx's card UI could never render (CampaignState.activeEventId,
+  // this function's only real write target, was never actually wired to any
+  // caller — resolveCampaignSeason itself has zero call sites repo-wide,
+  // superseded by campaignResolver.ts's newer, differently-named function of
+  // the same name). eventCardId is computed and returned below but nothing
+  // reads it. Left in place rather than also deleted — that's a materially
+  // bigger, unapproved excision of this file's whole "Medium (Commander)
+  // campaign" resolution path, flagged separately, not this chunk's call.
+  // ~30% chance per season.
   const eventCardId = Math.random() < 0.30 ? pickCampaignEventId(campaign.type) : null;
 
   const logParts: string[] = [];

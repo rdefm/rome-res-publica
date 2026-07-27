@@ -7,8 +7,9 @@ React Native / Expo mobile grand-strategy game. TypeScript throughout. Single Zu
 ## Commands
 
 - Run tests: `npm test` (**not** bare `npx jest`) (run affected test file(s) after any engine change; run full suite before finishing a task). `npm test` sets `NODE_OPTIONS='--experimental-vm-modules'` — some tests use a dynamic `import()` inside the test body, which fails with a false-negative error under bare `npx jest`. If you need to run a single file directly with `npx jest <path>`, prefix the same env var.
-- Type check: `npx tsc --noEmit` (run after any multi-file change). **This must show zero errors before a task is done.** If it doesn't, on a fresh checkout, that's a regression to fix or flag immediately — don't assume the errors are pre-existing noise (see the July 2026 QA audit, `qa-audit-fix-plan.md`, for a case where 25+ accumulated pre-existing errors made this command useless as a signal for weeks).
+- Type check: `npx tsc --noEmit` (run after any multi-file change). **This must show zero errors before a task is done.** If it doesn't, on a fresh checkout, that's a regression to fix or flag immediately — don't assume the errors are pre-existing noise (see the July 2026 QA audit, `qa-audit-fix-plan.md`, for a case where 25+ accumulated pre-existing errors made this command useless as a signal for weeks — the plan's Chunks A–E brought that baseline to zero).
 - Dev server: `npx expo start`
+- **Pre-push hook:** `scripts/hooks/pre-push` runs `tsc --noEmit` + `npm test` and blocks the push on failure — this is what now keeps the zero-error baseline above from silently regressing. `npm install` wires it up automatically (`"prepare"` script sets `core.hooksPath`); on a clone that predates this, run `npm install` once or `git config core.hooksPath scripts/hooks` directly. Bypass only when you know exactly why: `git push --no-verify`.
 
 ## Architecture — the rules that matter
 

@@ -4,6 +4,15 @@
 // reference it, not restate the literal).
 const waxFrame = '#5a3c1a';
 
+// QA Audit Fix Plan, Chunk A — same reasoning as waxFrame above: gildFrame/
+// panelWood/lockedText (Cursus Tab Visual Redesign, Chunk C1) need to
+// reference dust/goldBorder/crimsonBlack directly rather than restating
+// their literals (a documented-but-unenforced equivalence until now — a
+// future retune of one could silently desync the other).
+const dust = '#9c8e7e';
+const goldBorder = '#8B6914';
+const crimsonBlack = '#2a0a0a';
+
 export const COLORS = {
   bg:            '#1a1714',
   panelSurface:  '#2e2a24',
@@ -12,7 +21,7 @@ export const COLORS = {
   gold:          '#c9a84c',
   goldDim:       '#7a6230',
   marble:        '#f0ebe0',
-  dust:          '#9c8e7e',
+  dust,
   laurel:        '#3d6b4f',
   crimson:       '#8b1a1a',
   senatBlue:     '#a8c4d4',   // original (typo preserved — do not rename, breaks other files)
@@ -46,19 +55,19 @@ export const COLORS = {
   parchmentDark:   '#4a3a22',
   portraitPlaceholder: '#c8b890',
   terracotta:      '#8B3A2A',
-  goldBorder:      '#8B6914',
+  goldBorder,
   crimsonDeep:     '#4a1a1a',
-  crimsonBlack:    '#2a0a0a',
+  crimsonBlack,
   // Cursus Tab Visual Redesign plan, Chunk C1 — gilded-panel tokens.
   // Finding 5 audit: gildFrame/panelWood/lockedText reuse existing Domus
   // tokens (goldBorder/crimsonBlack/dust) rather than minting near-dupes;
   // rivet/gildFrameDark/sealWaxGrey/scrim* have no existing equivalent.
-  gildFrame:       '#8B6914',   // = goldBorder — reused, not duplicated
+  gildFrame:       goldBorder,
   gildFrameDark:   '#6E5426',
   rivet:           '#D9B45C',
-  panelWood:       '#2a0a0a',   // = crimsonBlack — reused, not duplicated
+  panelWood:       crimsonBlack,
   sealWaxGrey:     '#8E8A82',
-  lockedText:      '#9c8e7e',   // = dust — reused, not duplicated
+  lockedText:      dust,
   // Retuned post-launch — the original 0.35 top alpha read as "a dark
   // filter over the whole image" rather than "clearly visible behind the
   // title" (design delta 6's actual intent); 0.1 keeps gold title text
@@ -71,6 +80,17 @@ export const COLORS = {
   // keeps office-list text legible while leaving the image visible.
   scrimBottom:     'rgba(20,14,8,0.58)',
 };
+
+// QA Audit Fix Plan, Chunk A — a `#rrggbb` COLORS token at an alpha other
+// than 1, computed from the token rather than a hand-typed `rgba(r,g,b,a)`
+// literal with a comment merely claiming the equivalence (GildedPanel.tsx's
+// prior background-color value, since fixed to call this).
+export function withAlpha(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 // ─── Typography ───────────────────────────────────────────────────────────────
 // Cinzel loaded via useFonts in App.tsx.

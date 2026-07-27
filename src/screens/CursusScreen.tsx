@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useGameStore } from '../state/gameStore';
+import type { GameState } from '../state/gameStore';
 import { OFFICES, TRIBUNE_OFFICE } from '../data/offices';
 import type { Character } from '../models/character';
 import { calcPlayerElectionScore, calcNpcElectionScore, PLAYER_BASE_SCORE } from '../engine/electionEngine';
@@ -92,7 +93,7 @@ function TribunePanel({ character }: { character: Character }) {
   return (
     <>
       <TouchableOpacity activeOpacity={0.85} onPress={() => setModalOpen(true)}>
-        <ParchmentCard style={[tp.container]} contentStyle={tp.inner}>
+        <ParchmentCard style={tp.container} contentStyle={tp.inner}>
           <View style={tp.header}>
             <Text style={tp.icon}>✊</Text>
             <View style={tp.info}>
@@ -225,15 +226,26 @@ const tp = StyleSheet.create({
 // ─── Election panel ───────────────────────────────────────────────────────────
 
 function ElectionPanel({ character }: { character: Character }) {
-  const state = useGameStore();
-  const { campaigning, campaigningCharacterId, electionRivals, seasonIndex, clans } = state;
+  // QA Audit Fix Plan, Chunk A — was `const state = useGameStore();`, a
+  // full-store subscription re-rendering this panel on every write anywhere
+  // in the app. Field-level selectors instead; calcPlayerElectionScore only
+  // ever reads clients/clans/campaignVotes off the state object it's given
+  // (electionEngine.ts), so those three are selected separately and passed
+  // as a minimal stand-in rather than widening the engine's own signature.
+  const campaigning = useGameStore(s => s.campaigning);
+  const campaigningCharacterId = useGameStore(s => s.campaigningCharacterId);
+  const electionRivals = useGameStore(s => s.electionRivals);
+  const seasonIndex = useGameStore(s => s.seasonIndex);
+  const clans = useGameStore(s => s.clans);
+  const clients = useGameStore(s => s.clients);
+  const campaignVotes = useGameStore(s => s.campaignVotes);
 
   if (!campaigning || campaigningCharacterId !== character.id) return null;
 
   const office          = OFFICES.find((o) => o.id === campaigning);
   const seats           = office?.seats ?? 1;
   const seasonsToWinter = (3 - seasonIndex + 4) % 4;
-  const playerScore     = calcPlayerElectionScore(state);
+  const playerScore     = calcPlayerElectionScore({ clients, clans, campaignVotes } as unknown as GameState);
 
   const leaderById = new Map(clans.flatMap(c => c.leaders.map(l => [l.id, l] as const)));
 
@@ -306,7 +318,7 @@ function ElectionPanel({ character }: { character: Character }) {
               </View>
               <View style={ep.voteBarTrack}>
                 <View style={[ep.voteBarFill, {
-                  width: `${(c.votes / maxVotes) * 100}%` as any,
+                  width: `${(c.votes / maxVotes) * 100}%`,
                   backgroundColor: barColor,
                 }]} />
               </View>

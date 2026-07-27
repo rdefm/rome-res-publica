@@ -63,7 +63,6 @@ interface CitySheetProps {
   onProposeDeclareWar: (provinceId: string) => void;
   onStartCampaign: (provinceId: string, type: CampaignState['type']) => void;
   onCommitCampaignSeason: (provinceId: string, allocation: CampaignAllocation) => void;
-  onResolveCampaignEvent: (provinceId: string, eventId: string, optionId: string) => void;
   onVolunteerOfficer: (provinceId: string, characterId: string) => void;
   onResolveOfficerDecision: (provinceId: string, decisionIndex: number, tookRisk: boolean) => void;
 }
@@ -89,7 +88,6 @@ export default function CitySheet({
   onProposeDeclareWar,
   onStartCampaign,
   onCommitCampaignSeason,
-  onResolveCampaignEvent,
   onVolunteerOfficer,
   onResolveOfficerDecision,
 }: CitySheetProps) {
@@ -263,7 +261,6 @@ export default function CitySheet({
                   officerVolunteer={officerVolunteer}
                   onStartCampaign={(pid, type) => onStartCampaign(pid, type)}
                   onCommitCampaignSeason={(pid, alloc) => onCommitCampaignSeason(pid, alloc)}
-                  onResolveCampaignEvent={(pid, eid, oid) => onResolveCampaignEvent(pid, eid, oid)}
                   onVolunteerOfficer={(pid, charId) => onVolunteerOfficer(pid, charId)}
                   onResolveOfficerDecision={(pid, idx, risk) => onResolveOfficerDecision(pid, idx, risk)}                />
 

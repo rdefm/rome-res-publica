@@ -1572,8 +1572,10 @@ export const BALANCE = {
 //     content, not registry tunables).
 //   - assetDefinitions.ts / cityAssets.ts: asset costs and bonuses
 //     (content).
-//   - trialActions.ts, campaignEvents.ts, canvassingEvents.ts,
-//     cityEvents.ts: content, not balance-registry tunables. Note:
+//   - canvassingEvents.ts, cityEvents.ts: content, not balance-registry
+//     tunables. (trialActions.ts and campaignEvents.ts, formerly also
+//     listed here, are both deleted — Phase 4 P4-D and QA Audit Fix Plan
+//     Chunk D respectively, both confirmed dead before removal.) Note:
 //     cityEvents.ts's CITY_EVENTS array is currently unwired to any
 //     resolver (dead content, confirmed during P2-A) — its costs/effects
 //     were still corrected to valid resource names for consistency, but

@@ -66,12 +66,20 @@ function makeState(overrides: Record<string, any> = {}) {
     npcConsul: null,
     activeCampaignExists: false,
     familyHasTroops: false,
-    anyProvinceHasRoads: false,
+    anyCityHasRoads: false,
     triumphBillInQueue: false,
     npcConsulExists: false,
     consultatumUsedThisTerm: false,
     senatePacked: false,
     dictatorOverstaySeasons: 0,
+    // QA Audit Fix Plan, Chunk E — a real GameState field (gameStore.ts's
+    // INITIAL_STATE default), unconditionally spread by turnSequencer.ts's
+    // step (`Array.from(new Set([...s.pendingAmbitionScopes, ...]))`).
+    // Missing here, every processSeason() call through this fixture threw
+    // TypeError: undefined is not iterable — not a type error, a currently-
+    // failing runtime bug the three "Triumph bill generation" tests below
+    // (and this file's own NPC Tribune veto tests) all depend on.
+    pendingAmbitionScopes: ['family', 'character'],
     ...overrides,
   };
 }
@@ -146,7 +154,7 @@ describe('tickNpcConsul — antagonism level 3 reduces player bill support', () 
       const playerBill = {
         id: 'player-bill-1',
         name: 'Test Bill',
-        playerProposed: true,
+        playerSubmitted: true,
         support: 50,
         passEffect: '',
         failEffect: '',
@@ -184,7 +192,7 @@ describe('tickNpcConsul — antagonism level 3 reduces player bill support', () 
       const playerBill = {
         id: 'player-bill-1',
         name: 'Test Bill',
-        playerProposed: true,
+        playerSubmitted: true,
         support: 50,
         passEffect: '',
         failEffect: '',
@@ -223,6 +231,81 @@ describe('tickNpcConsul — antagonism level 3 reduces player bill support', () 
 });
 
 // ─── Triumph bill generated at threshold ─────────────────────────────────────
+// QA Audit Fix Plan, Chunk C — the NPC Tribune veto (turnSequencer.ts step
+// 7c) has been unconditionally dead since it was written: it filtered
+// `b.playerProposed`, a field that never existed on Bill (the real field is
+// `playerSubmitted`). This test constructs a real player-submitted bill and
+// confirms the veto now actually fires — the highest-value regression this
+// plan exists to lock in. Unlike the NPC Consul's antagonism-scaled
+// sabotage (probabilistic), the Tribune veto is unconditional whenever
+// npcTribuneActive is true and at least one player bill exists, so no
+// Math.random seeding is needed here.
+describe('NPC Tribune veto (QA Audit Fix Plan, Chunk C)', () => {
+  test('vetoes a player-submitted bill for -25 support when npcTribuneActive is true', async () => {
+    const { processSeason } = await import('../src/engine/turnSequencer');
+
+    const state = makeState({
+      npcTribuneActive: true,
+      bills: [
+        // support: 0, not 50 — step 4 (Resolve bills) runs BEFORE step 7c's
+        // veto, and would auto-pass a bill with support > 0 against this
+        // fixture's zeroed crisis/passThresholdBonus before the veto ever
+        // gets a chance to fire on it. turnsLeft: 3 so the same step's
+        // expiry branch (turnsLeft <= 0 after decrement) doesn't remove it
+        // either — the bill needs to survive into step 7c untouched.
+        {
+          id: 'player-bill-1', name: 'Test Bill', playerSubmitted: true,
+          support: 0, passEffect: '', failEffect: '', turnsLeft: 3, type: 'optimates',
+        },
+      ],
+      // Ensure turnSequencer doesn't crash on minimal state (same list the
+      // Triumph bill tests below use).
+      ambitions: [], legacyObjectives: [], patronTier: 0, trialQueue: [],
+      selectedCharacterId: 'pc-1', expandedClanId: null, selectedLeaderId: null,
+      currentOffice: 'consul', officeSeasons: 2,
+      heldOffices: ['quaestor', 'aedile', 'praetor', 'consul'],
+      campaigning: null, campaignVotes: {}, electionRivals: [],
+      pendingBirthNaming: null, activeLaws: [], log: [], cursusLog: [],
+      seasonOverlayVisible: false, seasonOverlayEvents: [],
+      _expandedBill: null, _expandedType: null, familyReputations: {},
+    });
+
+    const { nextState } = processSeason(state as any);
+
+    const vetoedBill = nextState.bills.find((b: any) => b.id === 'player-bill-1');
+    expect(vetoedBill).toBeDefined();
+    expect(vetoedBill!.support).toBe(-25); // 0 - 25
+  });
+
+  test('does not veto when npcTribuneActive is false', async () => {
+    const { processSeason } = await import('../src/engine/turnSequencer');
+
+    const state = makeState({
+      npcTribuneActive: false,
+      bills: [
+        {
+          id: 'player-bill-1', name: 'Test Bill', playerSubmitted: true,
+          support: 0, passEffect: '', failEffect: '', turnsLeft: 3, type: 'optimates',
+        },
+      ],
+      ambitions: [], legacyObjectives: [], patronTier: 0, trialQueue: [],
+      selectedCharacterId: 'pc-1', expandedClanId: null, selectedLeaderId: null,
+      currentOffice: 'consul', officeSeasons: 2,
+      heldOffices: ['quaestor', 'aedile', 'praetor', 'consul'],
+      campaigning: null, campaignVotes: {}, electionRivals: [],
+      pendingBirthNaming: null, activeLaws: [], log: [], cursusLog: [],
+      seasonOverlayVisible: false, seasonOverlayEvents: [],
+      _expandedBill: null, _expandedType: null, familyReputations: {},
+    });
+
+    const { nextState } = processSeason(state as any);
+
+    const bill = nextState.bills.find((b: any) => b.id === 'player-bill-1');
+    expect(bill).toBeDefined();
+    expect(bill!.support).toBe(0); // unchanged
+  });
+});
+
 // The Triumph trigger runs in turnSequencer.processSeason (step 9h).
 // We test the preconditions by constructing state that meets all requirements
 // and running processSeason, then verifying a Triumph bill appears.
@@ -290,8 +373,8 @@ describe('Triumph bill generation', () => {
 
     const triumphBill = nextState.bills.find((b: any) => b.id.startsWith('triumph-pc-1'));
     expect(triumphBill).toBeDefined();
-    expect(triumphBill.name).toContain('Marcus');
-    expect(triumphBill.playerProposed).toBe(false);
+    expect(triumphBill!.name).toContain('Marcus');
+    expect(triumphBill!.playerSubmitted).toBe(false);
   });
 
   test('No Triumph bill when lifetimeImperium < 50', async () => {

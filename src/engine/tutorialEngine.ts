@@ -145,12 +145,17 @@ export const TUTORIAL_PREDICATES: Record<string, (s: GameState) => boolean> = {
   },
 
   // Act III — Curia: the teaching bill's support differs from its snapshot
-  // at act entry. Not keyed on Bill.playerVote — found during this chunk
-  // that voteBill/speechBill/filibusterBill never actually set that field
-  // (CuriaScreen.tsx reads and displays it, nothing writes it — a
-  // pre-existing dead field, flagged separately, not fixed here) — support
-  // deltas are the reliable signal voteBill/speechBill/filibusterBill all
-  // genuinely produce.
+  // at act entry. Not keyed on Bill.playerVote — at the time this act was
+  // authored, voteBill/speechBill/filibusterBill never actually set that
+  // field (a pre-existing dead field, flagged separately, not fixed there).
+  // QA Audit Fix Plan, Chunk C fixed voteBill/filibusterBill to set it for
+  // real, but speechBill deliberately still doesn't (a persuasion speech
+  // isn't a formal vote, and its 'for'/'against' direction has no lossless
+  // mapping onto playerVote's vote_for/vote_against/filibuster union) — so
+  // this predicate still can't rely on playerVote alone (Act II's own
+  // "any real courting action counts" flexibility means the player may
+  // legitimately advance this act via a speech). Support deltas remain the
+  // one signal all three actions genuinely produce.
   billVotedThisSeason: (s) => {
     const bill = s.bills.find(b => b.id === ACT3_BILL_ID);
     if (!bill) return false;

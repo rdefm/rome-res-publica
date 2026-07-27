@@ -138,7 +138,11 @@ export function buildTriumphBill(
     failEffect: `fides-5|setFlag:triumph-denied-${characterId}:true`,
     turnsLeft: 4,
     support: baseSupport,
-    playerProposed: false,
+    // QA Audit Fix Plan, Chunk C — was `playerProposed`, never a real Bill
+    // field (models/bill.ts's field is `playerSubmitted`) — the NPC
+    // Tribune's per-season veto filter below matched nothing, ever, since
+    // this system was written.
+    playerSubmitted: false,
     type: 'military',
     repealable: false,
     renewable: false,
@@ -972,7 +976,7 @@ export function processSeason(state: GameState): {
   // When an NPC tribune is active, they veto one player-sponsored bill per season
   // (reduces support by 25). Cleared by the "Depose Fellow Tribune" extreme action.
   if (s.npcTribuneActive) {
-    const playerBills = s.bills.filter(b => b.playerProposed);
+    const playerBills = s.bills.filter(b => b.playerSubmitted);
     if (playerBills.length > 0) {
       const target = playerBills[Math.floor(Math.random() * playerBills.length)];
       s = {

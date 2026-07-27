@@ -239,7 +239,7 @@ describe('gens-neutrality sweep — spot checks on previously-hardcoded function
       senateResponse: { active: true, phase: null, debateSuppressed: false, ignoredLevies: 0 },
       consulAuthorityActive: false,
     } as any;
-    const patch: any = tickSenateResponse(state);
+    const patch: any = tickSenateResponse(state, 'pc-1');
     const bill = (patch.bills ?? []).find((b: any) => b?.type === 'censure');
     if (bill) {
       expect(bill.description).toContain('Duilii');

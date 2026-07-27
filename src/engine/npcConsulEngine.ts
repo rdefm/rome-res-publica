@@ -178,7 +178,13 @@ export function tickNpcConsul(state: GameState): Partial<StateWithNpcConsul> {
       const newBill = {
         ...template,
         id: `npc-consul-bill-${state.turnNumber}-${Math.floor(Math.random() * 9000) + 1000}`,
-        playerProposed: false,
+        // QA Audit Fix Plan, Chunk C — was `playerProposed`, a field that
+        // never existed on Bill (models/bill.ts's real field is
+        // `playerSubmitted`). Silently tolerated by the `as any` cast right
+        // below, which meant the "sabotage a random player bill" filter two
+        // lines down never matched anything, ever, since this system was
+        // written — playerBills was always [].
+        playerSubmitted: false,
       };
       patch.bills = [...state.bills, newBill as any];
     }
@@ -189,7 +195,7 @@ export function tickNpcConsul(state: GameState): Partial<StateWithNpcConsul> {
   const supportReductionAmount  = [0, 10,   15,   20  ][antagonism] ?? 0;
 
   if (supportReductionAmount > 0 && Math.random() < supportReductionChance) {
-    const playerBills = state.bills.filter(b => b.playerProposed);
+    const playerBills = state.bills.filter(b => b.playerSubmitted);
     if (playerBills.length > 0) {
       const target = playerBills[Math.floor(Math.random() * playerBills.length)];
       const billsBase = patch.bills ?? state.bills;

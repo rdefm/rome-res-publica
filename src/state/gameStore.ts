@@ -3,7 +3,7 @@ import type { Character, PendingSuccession, Regency, CadetBranch } from '../mode
 import type { Bill, ActiveLaw } from '../models/bill';
 import type { Clan } from '../models/clan';
 import type { OfficeId, ElectionRival } from '../models/office';
-import type { Client } from '../models/client';
+import type { Client, ClientType } from '../models/client';
 import type { EventInstance, EventChoice } from '../models/event';
 import type { OwnedAsset } from '../models/asset';
 import type { OwnedHouse, RoomType, BusinessType } from '../models/house';
@@ -555,8 +555,6 @@ export interface GameState {
    * When a clan's debt ≥ 20, turnSequencer fires evt-tribune-veto-retaliation.
    */
   tribuneHostilityDebt: Record<string, number>;
-  /** Populated after any office action resolves. Drives the result modal in CursusScreen. Cleared by clearOfficeActionResult. */
-  lastOfficeActionResult: { actionName: string; text: string } | null;
 
   // ── Consul authority / NPC Tribune (Chunk 1B) ────────────────────────────
   /** True when invoke-consular-authority action is active. Caps Senate Response at censure. */
@@ -1398,7 +1396,6 @@ export const INITIAL_STATE: GameState = {
   senatePacked: false,
   dictatorOverstaySeasons: 0,
 
-  tribuneCandidateId: null,
   lastOfficeActionResult: null,
 
   // ── Phase 1 — Agenda tablet + tutorial (P1-A) ──────────────────────────────
@@ -2084,8 +2081,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const label = turnLabel(s);
     set({
       fides: s.fides - voteFidesCost,
+      // QA Audit Fix Plan, Chunk C — Bill.playerVote (models/bill.ts) is a
+      // real field CuriaScreen.tsx already reads to show a vote badge, but
+      // nothing ever wrote it. Set here to the same literal the model
+      // expects — this action's own `vote` param is already typed
+      // 'vote_for' | 'vote_against', matching two of playerVote's three
+      // union members exactly.
       bills: s.bills.map((b) =>
-        b.id === billId ? { ...b, support: b.support + delta } : b
+        b.id === billId ? { ...b, support: b.support + delta, playerVote: vote } : b
       ),
       _expandedBill: null,
       _expandedType: null,
@@ -2143,8 +2146,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const label = turnLabel(s);
     set({
       fides: s.fides - BALANCE.senate.filibusterFidesCost,
+      // QA Audit Fix Plan, Chunk C — see voteBill's identical comment on
+      // Bill.playerVote.
       bills: s.bills.map((b) =>
-        b.id === billId ? { ...b, turnsLeft: b.turnsLeft + 1 } : b
+        b.id === billId ? { ...b, turnsLeft: b.turnsLeft + 1, playerVote: 'filibuster' } : b
       ),
       _expandedBill: null,
       _expandedType: null,
@@ -5256,7 +5261,6 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       localSupportBonus: city.localSupport >= 40,
       resolved:          false,
       outcome:           null,
-      activeEventId:     null,
     };
 
     const label = turnLabel(s);
@@ -5341,7 +5345,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       log: [...s.log, mkLog(
         label,
         `${volunteer.characterName} — officer decision ${newDecisionsResolved}/3: ${success ? 'success' : 'failed'}.`,
-        success ? 'positive' : 'negative',
+        success ? 'good' : 'bad',
       )],
       ...bumpActions(s),
     });
@@ -5400,7 +5404,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         success
           ? `${foundLeader.name} pledges their support to your campaign.`
           : `${foundLeader.name} was not persuaded.${clanHasRival ? ' Their gens backs a rival candidate.' : ''}`,
-        success ? 'positive' : 'neutral',
+        success ? 'good' : 'neutral',
       )],
       ...bumpActions(s),
       ...bumpSpend(s, { fides: canvassCost }),
@@ -5465,7 +5469,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       log: [...s.log, mkLog(
         label,
         `${foundLeader.name}: ${flavour}${success ? ' They pledge their support.' : ''}`,
-        success ? 'positive' : 'neutral',
+        success ? 'good' : 'neutral',
       )],
     });
   },

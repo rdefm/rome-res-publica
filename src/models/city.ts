@@ -78,7 +78,6 @@ export interface CampaignState {
   localSupportBonus: boolean; // true if family Local Support ≥ 40 in province
   resolved: boolean;
   outcome: 'victory' | 'strategic_win' | 'stalemate' | 'defeat' | null;
-  activeEventId: string | null; // ID of a pending campaign event card, if any
 }
 
 export interface CityState {

@@ -252,7 +252,18 @@ export function tickCity(
 
   // ── Player governor ticking ──────────────────────────────────────────────
   if (p.playerGovernor) {
-    const policy = p.playerGovernor.policy;
+    // QA Audit Fix Plan, Chunk D — captured once so the several `p =
+    // {...p, playerGovernor: {...}}` reassignments below don't each
+    // invalidate TS's narrowing of p.playerGovernor from this outer `if`
+    // (every reassignment explicitly keeps it non-null, but TS can't see
+    // that through a fresh object literal). `turnsServed` is computed
+    // explicitly rather than re-read post-reassignment, since the term
+    // checks below need the POST-increment value the reassignment just
+    // wrote — re-reading `governor.turnsServed` there would silently go
+    // back to the pre-increment number.
+    const governor = p.playerGovernor;
+    const policy = governor.policy;
+    const turnsServed = governor.turnsServed + 1;
 
     // Gold
     goldDelta += calcCityGoldOutput(p, policy, governorMartial);
@@ -266,9 +277,9 @@ export function tickCity(
     p = {
       ...p,
       playerGovernor: {
-        ...p.playerGovernor,
-        corruptionAccrued: p.playerGovernor.corruptionAccrued + corruptionAccrual,
-        turnsServed: p.playerGovernor.turnsServed + 1,
+        ...governor,
+        corruptionAccrued: governor.corruptionAccrued + corruptionAccrual,
+        turnsServed,
       },
     };
 
@@ -288,11 +299,11 @@ export function tickCity(
     };
 
     // Governor term check (4 turns = 1 year term)
-    if (p.playerGovernor.turnsServed >= 3) {
+    if (turnsServed >= 3) {
       events.push(`⚖ ${def.name}: your governor's term ends this season. A new lot will be drawn after your next office concludes.`);
     }
-    if (p.playerGovernor.turnsServed >= 4) {
-      const exGovernorId = p.playerGovernor.characterId;
+    if (turnsServed >= 4) {
+      const exGovernorId = governor.characterId;
       p = {
         ...p,
         playerGovernor: null,

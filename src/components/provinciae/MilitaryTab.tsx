@@ -22,7 +22,6 @@ import type {
 import type { Character } from '../../models/character';
 import type { TroopUnit } from '../../models/troop';
 import type { Veterancy } from '../../models/battle';
-import { getCampaignEventDef } from '../../data/campaignEvents';
 import type { CampaignAllocation } from '../../engine/campaignEngine';
 import { getOfficerDecisions } from '../../engine/campaignEngine';
 // Military Overhaul M8 — pulled directly via useGameStore rather than
@@ -44,7 +43,6 @@ interface MilitaryTabProps {
 
   onStartCampaign: (provinceId: string, type: CampaignState['type']) => void;
   onCommitCampaignSeason: (provinceId: string, allocation: CampaignAllocation) => void;
-  onResolveCampaignEvent: (provinceId: string, eventId: string, optionId: string) => void;
   onVolunteerOfficer: (provinceId: string, characterId: string) => void;
   onResolveOfficerDecision: (provinceId: string, decisionIndex: number, tookRisk: boolean) => void;
 }
@@ -60,7 +58,6 @@ export default function MilitaryTab({
   officerVolunteer,
   onStartCampaign,
   onCommitCampaignSeason,
-  onResolveCampaignEvent,
   onVolunteerOfficer,
   onResolveOfficerDecision,
 }: MilitaryTabProps) {
@@ -194,9 +191,6 @@ export default function MilitaryTab({
           onSetStrategy={setStrategy}
           onSetMorale={setMorale}
           onCommit={() => onCommitCampaignSeason(province.id, { manpower, strategy, morale })}
-          onResolveEvent={(eventId, optionId) =>
-            onResolveCampaignEvent(province.id, eventId, optionId)
-          }
         />
       )}
 
@@ -353,7 +347,6 @@ function WarRoom({
   onSetStrategy,
   onSetMorale,
   onCommit,
-  onResolveEvent,
 }: {
   campaign: CampaignState;
   family: Character[];
@@ -366,10 +359,8 @@ function WarRoom({
   onSetStrategy: (v: CampaignAllocation['strategy']) => void;
   onSetMorale: (v: CampaignAllocation['morale']) => void;
   onCommit: () => void;
-  onResolveEvent: (eventId: string, optionId: string) => void;
 }) {
   const commander = family.find(c => c.id === campaign.commanderCharacterId);
-  const eventDef = campaign.activeEventId ? getCampaignEventDef(campaign.activeEventId) : null;
 
   return (
     <View style={styles.section}>
@@ -398,63 +389,49 @@ function WarRoom({
         />
       </View>
 
-      {/* Active event card */}
-      {eventDef && (
-        <View style={styles.eventCard}>
-          <Text style={styles.eventTitle}>📜 {eventDef.title}</Text>
-          <Text style={styles.eventDesc}>{eventDef.description}</Text>
-          {eventDef.options.map(opt => (
-            <TouchableOpacity
-              key={opt.id}
-              style={styles.eventOption}
-              onPress={() => onResolveEvent(eventDef.id, opt.id)}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.eventOptionText}>{opt.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-
       {/* Allocation decisions */}
-      {!eventDef && (
-        <>
-          <AllocationRow
-            label="MANPOWER"
-            options={[
-              { id: 'press',    label: 'Press (free)' },
-              { id: 'standard', label: 'Levy (20g)' },
-              { id: 'elite',    label: 'Elite (50g)' },
-            ]}
-            selected={manpower}
-            onSelect={(v) => onSetManpower(v as CampaignAllocation['manpower'])}
-          />
-          <AllocationRow
-            label="STRATEGY"
-            options={[
-              { id: 'advance',  label: 'Advance' },
-              { id: 'probe',    label: 'Probe' },
-              { id: 'fortify',  label: 'Fortify' },
-            ]}
-            selected={strategy}
-            onSelect={(v) => onSetStrategy(v as CampaignAllocation['strategy'])}
-          />
-          <AllocationRow
-            label="MORALE"
-            options={[
-              { id: 'pay',   label: 'Pay (30g)' },
-              { id: 'rally', label: 'Rally (10 Grav)' },
-              { id: 'loot',  label: 'Let Loot' },
-            ]}
-            selected={morale}
-            onSelect={(v) => onSetMorale(v as CampaignAllocation['morale'])}
-          />
+      {/* QA Audit Fix Plan, Chunk D — was gated on `!eventDef`; eventDef
+          could never be truthy (CampaignState.activeEventId was never set
+          to anything but null anywhere in the codebase — the "active event
+          card" block above this was confirmed dead and removed). This
+          block always rendered in practice; the condition is gone, not
+          the content. */}
+      <>
+        <AllocationRow
+          label="MANPOWER"
+          options={[
+            { id: 'press',    label: 'Press (free)' },
+            { id: 'standard', label: 'Levy (20g)' },
+            { id: 'elite',    label: 'Elite (50g)' },
+          ]}
+          selected={manpower}
+          onSelect={(v) => onSetManpower(v as CampaignAllocation['manpower'])}
+        />
+        <AllocationRow
+          label="STRATEGY"
+          options={[
+            { id: 'advance',  label: 'Advance' },
+            { id: 'probe',    label: 'Probe' },
+            { id: 'fortify',  label: 'Fortify' },
+          ]}
+          selected={strategy}
+          onSelect={(v) => onSetStrategy(v as CampaignAllocation['strategy'])}
+        />
+        <AllocationRow
+          label="MORALE"
+          options={[
+            { id: 'pay',   label: 'Pay (30g)' },
+            { id: 'rally', label: 'Rally (10 Grav)' },
+            { id: 'loot',  label: 'Let Loot' },
+          ]}
+          selected={morale}
+          onSelect={(v) => onSetMorale(v as CampaignAllocation['morale'])}
+        />
 
-          <TouchableOpacity style={styles.commitBtn} onPress={onCommit} activeOpacity={0.75}>
-            <Text style={styles.commitBtnText}>COMMIT SEASON</Text>
-          </TouchableOpacity>
-        </>
-      )}
+        <TouchableOpacity style={styles.commitBtn} onPress={onCommit} activeOpacity={0.75}>
+          <Text style={styles.commitBtnText}>COMMIT SEASON</Text>
+        </TouchableOpacity>
+      </>
 
       <Text style={styles.turnCounter}>Season {campaign.turnsElapsed + 1}</Text>
     </View>
@@ -809,41 +786,6 @@ const styles = StyleSheet.create({
   progressBarFill: {
     height: '100%',
     borderRadius: 4,
-  },
-  // Event card
-  eventCard: {
-    backgroundColor: COLORS.parchment + '18',
-    borderWidth: 1,
-    borderColor: COLORS.goldDim,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-  },
-  eventTitle: {
-    fontFamily: FONTS.display,
-    fontSize: 14,
-    color: COLORS.gold,
-    marginBottom: 4,
-  },
-  eventDesc: {
-    fontFamily: FONTS.body,
-    fontSize: 12,
-    color: COLORS.dust,
-    lineHeight: 17,
-    marginBottom: SPACING.sm,
-  },
-  eventOption: {
-    backgroundColor: COLORS.panelElevated,
-    borderRadius: RADIUS.md,
-    padding: SPACING.sm,
-    marginBottom: SPACING.xs,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  eventOptionText: {
-    fontFamily: FONTS.body,
-    fontSize: 12,
-    color: COLORS.marble,
   },
   // Allocation rows
   allocationRow: {

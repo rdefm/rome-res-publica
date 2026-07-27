@@ -5,6 +5,15 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
-    }
+    },
+    // QA Audit Fix Plan, Chunk F — neither this file nor the extended
+    // expo/tsconfig.base sets `module` explicitly; with `target: "ESNext"`
+    // and no explicit `module`, TS's own default lands on "ES2015" (not
+    // "ESNext" — TS does not infer a matching `module` from `target`),
+    // which predates dynamic `import()` support in TS's module-flag
+    // allowlist. Fixes TS1323 on officeAction.test.ts's three dynamic
+    // imports (done "to avoid top-level side effects" per that file's own
+    // comment) without touching Jest/Babel config at all.
+    "module": "esnext"
   }
 }

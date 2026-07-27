@@ -28,6 +28,15 @@ export interface CanvassingEvent {
   options: CanvassingEventOption[];
 }
 
+// QA Audit Fix Plan, Chunk D — gameStore.ts constructs a value of this exact
+// shape (resolveCanvassingEventOption's result) and imports the type name
+// from here, but it was never actually exported from this file.
+export interface CanvassingEventResult {
+  success: boolean;
+  leaderName: string;
+  flavour: string;
+}
+
 export const CANVASSING_EVENTS: CanvassingEvent[] = [
   {
     id: 'tribune_demand',

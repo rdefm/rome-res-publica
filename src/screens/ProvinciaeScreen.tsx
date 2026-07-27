@@ -400,7 +400,6 @@ export default function ProvinciaeScreen() {
               onProposeDeclareWar={(provinceId) => proposeDeclareWarBill(provinceId)}
               onStartCampaign={(provinceId, type) => startCampaign(provinceId, type)}
               onCommitCampaignSeason={() => {}}
-              onResolveCampaignEvent={() => {}}
               onVolunteerOfficer={(provinceId, charId) => volunteerOfficer(provinceId, charId)}
               onResolveOfficerDecision={(provinceId, idx, risk) => resolveOfficerDecision(provinceId, idx, risk)}
             />

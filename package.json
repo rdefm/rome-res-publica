@@ -8,7 +8,8 @@
     "ios": "expo run:ios",
     "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
     "audit:events": "tsx scripts/eventAudit.ts",
-    "sim:elections": "tsx scripts/electionSim.ts"
+    "sim:elections": "tsx scripts/electionSim.ts",
+    "prepare": "git config core.hooksPath scripts/hooks || true"
   },
   "dependencies": {
     "@expo/metro-runtime": "~3.2.3",

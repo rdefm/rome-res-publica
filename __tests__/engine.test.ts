@@ -9,11 +9,13 @@ import { BALANCE } from '../src/data/balance';
 import { getCrisisStatusEffects } from '../src/engine/crisisEngine';
 import { scoreAction, chooseAction } from '../src/engine/aiScoring';
 import { parseEffect } from '../src/models/bill';
-import type { CrisisState } from '../src/models/crisis';
+import type { CrisisState, CrisisTrackId } from '../src/models/crisis';
+import type { GameState } from '../src/state/gameStore';
+import type { Character } from '../src/models/character';
 
 // ─── Shared fixtures ──────────────────────────────────────────────────────────
 
-function makeCrisisTrack(id: string, level: number) {
+function makeCrisisTrack(id: CrisisTrackId, level: number) {
   const tier =
     level < 20 ? 0 :
     level < 40 ? 1 :
@@ -85,7 +87,7 @@ const makeState = (overrides: Record<string, any> = {}) => ({
   _expandedBill: null,
   _expandedType: null,
   ...overrides,
-});
+} as unknown as GameState);
 
 // ─── Resource Engine ─────────────────────────────────────────────────────────
 
@@ -364,7 +366,7 @@ describe('scoreAction', () => {
     inheritedTraits: [],
     ambitionIds: [],
     reputationScores: {},
-  };
+  } as unknown as Character;
   test('aggressive character scores filibuster above vote_for on average', () => {
     let filibusterWins = 0;
     const trials = 200;
