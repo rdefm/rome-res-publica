@@ -4,13 +4,24 @@
 // to a confirm tablet instead of firing on a single tap (Delta 6) — the
 // store's _expandedType union was widened to include 'filibuster' for
 // exactly this (gameStore.ts).
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+//
+// Chunk C6 — floating cost text (local RN Animated, no store field, no new
+// engine) on a committed tablet tap, plus haptics: light impact on a coin
+// tap, medium on a committed tablet. Haptics guarded for web, where
+// expo-haptics has no native implementation.
+import React, { useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { COLORS, FONTS, RADIUS, SPACING } from '../../utils/theme';
 import { useGameStore } from '../../state/gameStore';
 import { useTutorialTarget } from '../shared/useTutorialTarget';
 import Tabella from './Tabella';
 import type { Bill } from '../../models/bill';
+
+function hapticImpact(style: Haptics.ImpactFeedbackStyle) {
+  if (Platform.OS === 'web') return;
+  Haptics.impactAsync(style);
+}
 
 interface ActionClusterProps {
   bill: Bill;
@@ -38,30 +49,64 @@ export default function ActionCluster({ bill, isTutorialBill }: ActionClusterPro
   const speechFidesCost = bill.speechGravitasCost ?? 6;
   const filibusterFidesCost = 8;
 
+  // Floating "−N Fides" label — drifts up and fades on a committed tablet tap.
+  const [floatingCost, setFloatingCost] = useState<string | null>(null);
+  const floatAnim = useRef(new Animated.Value(0)).current;
+
+  function showFloatingCost(cost: number) {
+    hapticImpact(Haptics.ImpactFeedbackStyle.Medium);
+    setFloatingCost(`−${cost} Fides`);
+    floatAnim.setValue(0);
+    Animated.timing(floatAnim, {
+      toValue: 1,
+      duration: 900,
+      useNativeDriver: true,
+    }).start(() => setFloatingCost(null));
+  }
+
+  function onCoinPress(verb: 'vote' | 'speech' | 'filibuster') {
+    hapticImpact(Haptics.ImpactFeedbackStyle.Light);
+    expandBill(bill.id, verb);
+  }
+
   return (
     <View>
       <View style={styles.coins}>
         <TouchableOpacity
           style={[styles.coin, isExpandedVote && styles.coinActive]}
-          onPress={() => expandBill(bill.id, 'vote')}
+          onPress={() => onCoinPress('vote')}
         >
           <Text style={styles.coinLabel}>VOTE</Text>
           <Text style={styles.coinCost}>−{voteFidesCost} 🤝</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.coin, isExpandedSpeech && styles.coinActive]}
-          onPress={() => expandBill(bill.id, 'speech')}
+          onPress={() => onCoinPress('speech')}
         >
           <Text style={styles.coinLabel}>SPEECH</Text>
           <Text style={styles.coinCost}>−{speechFidesCost} 🤝</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.coin, isExpandedFilibuster && styles.coinActive]}
-          onPress={() => expandBill(bill.id, 'filibuster')}
+          onPress={() => onCoinPress('filibuster')}
         >
           <Text style={styles.coinLabel}>FILIBUSTER</Text>
           <Text style={styles.coinCost}>−{filibusterFidesCost} 🤝</Text>
         </TouchableOpacity>
+
+        {floatingCost && (
+          <Animated.Text
+            style={[
+              styles.floatingCost,
+              {
+                opacity: floatAnim.interpolate({ inputRange: [0, 0.7, 1], outputRange: [1, 1, 0] }),
+                transform: [{ translateY: floatAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -28] }) }],
+              },
+            ]}
+          >
+            {floatingCost}
+          </Animated.Text>
+        )}
       </View>
 
       {isExpandedVote && (
@@ -70,14 +115,14 @@ export default function ActionCluster({ bill, isTutorialBill }: ActionClusterPro
             <Tabella
               label={`V·R  Vote For (+${bill.voteForSupport ?? 15} support)`}
               color={COLORS.laurel}
-              onPress={() => voteBill(bill.id, 'vote_for')}
+              onPress={() => { showFloatingCost(voteFidesCost); voteBill(bill.id, 'vote_for'); }}
               disabled={fides < voteFidesCost}
             />
           </View>
           <Tabella
             label={`A  Vote Against (−${Math.abs(bill.voteAgainstSupport ?? 15)} support)`}
             color={COLORS.crimson}
-            onPress={() => voteBill(bill.id, 'vote_against')}
+            onPress={() => { showFloatingCost(voteFidesCost); voteBill(bill.id, 'vote_against'); }}
             disabled={fides < voteFidesCost}
           />
         </View>
@@ -88,13 +133,13 @@ export default function ActionCluster({ bill, isTutorialBill }: ActionClusterPro
           <Tabella
             label="V·R  Speak in Favour"
             color={COLORS.laurel}
-            onPress={() => speechBill(bill.id, 'for')}
+            onPress={() => { showFloatingCost(speechFidesCost); speechBill(bill.id, 'for'); }}
             disabled={fides < speechFidesCost}
           />
           <Tabella
             label="A  Speak Against"
             color={COLORS.crimson}
-            onPress={() => speechBill(bill.id, 'against')}
+            onPress={() => { showFloatingCost(speechFidesCost); speechBill(bill.id, 'against'); }}
             disabled={fides < speechFidesCost}
           />
         </View>
@@ -105,7 +150,7 @@ export default function ActionCluster({ bill, isTutorialBill }: ActionClusterPro
           <Tabella
             label={`CONFIRM · −${filibusterFidesCost} 🤝`}
             color={COLORS.crimson}
-            onPress={() => filibusterBill(bill.id)}
+            onPress={() => { showFloatingCost(filibusterFidesCost); filibusterBill(bill.id); }}
             disabled={fides < filibusterFidesCost}
           />
         </View>
@@ -145,6 +190,16 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.ui,
     fontSize: 9,
     marginTop: 1,
+  },
+  floatingCost: {
+    position: 'absolute',
+    top: -4,
+    pointerEvents: 'none',
+    alignSelf: 'center',
+    color: COLORS.gold,
+    fontFamily: FONTS.ui,
+    fontSize: 12,
+    fontWeight: '700',
   },
   expanded: {
     marginTop: 8,

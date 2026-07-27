@@ -42,6 +42,7 @@ React Native / Expo mobile grand-strategy game. TypeScript throughout. Single Zu
 | Resource/stat visual | `components/shared/ResourceBar.tsx` + `utils/theme.ts` |
 | Agenda/to-do rule | `engine/agendaEngine.ts` |
 | New tutorial arc/lesson content | `data/tutorialScript.ts` (predicates/effects in `engine/tutorialEngine.ts`) |
+| Curia UI / sub-tab (LEGES/NEGOTIA/MUNIFICENTIA) | `screens/CuriaScreen.tsx` (shell only) + `components/curia/` (all real content) |
 
 ## Large files — edit surgically
 

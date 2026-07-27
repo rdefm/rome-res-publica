@@ -1,12 +1,19 @@
 // Curia Tab Redesign, Chunk C3, Delta 4 — two-sided support meter with a
 // centre tick at zero. No third "undecided" segment and no "Non Liquet"
 // (Finding 6 — that's a juror's formula from criminal trials, not a
-// legislative abstention). Static here; C6 is the animation pass — the
-// value flows straight from a prop into a width percentage, so C6 can wrap
-// this in an Animated.Value later without restructuring.
-import React from 'react';
+// legislative abstention).
+//
+// Chunk C6 — fill widths animate on support change (300ms ease) instead of
+// jumping, via react-native-reanimated (~3.10.1, already a dependency —
+// Finding 12). Skipped while the SeasonOverlay is up: applyNpcBillReactions
+// also moves support at season end, so an unconditional animation would
+// fire during that transition and visibly fight it.
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
+import { useGameStore } from '../../state/gameStore';
+import InfoTap from '../shared/InfoTap';
 
 interface VoteBarProps {
   /** -100..+100. Positive = passes at season end. */
@@ -17,21 +24,44 @@ export default function VoteBar({ effectiveSupport }: VoteBarProps) {
   const clamped = Math.max(-100, Math.min(100, effectiveSupport));
   const leftPct = clamped < 0 ? Math.min(100, -clamped) : 0;
   const rightPct = clamped > 0 ? Math.min(100, clamped) : 0;
+  const seasonOverlayVisible = useGameStore(s => s.seasonOverlayVisible);
+
+  const leftWidth = useSharedValue(leftPct);
+  const rightWidth = useSharedValue(rightPct);
+
+  useEffect(() => {
+    if (seasonOverlayVisible) {
+      // Season-end resolution already changed support; don't animate a
+      // value change that's fighting the SeasonOverlay's own transition.
+      leftWidth.value = leftPct;
+      rightWidth.value = rightPct;
+    } else {
+      leftWidth.value = withTiming(leftPct, { duration: 300 });
+      rightWidth.value = withTiming(rightPct, { duration: 300 });
+    }
+  }, [leftPct, rightPct, seasonOverlayVisible]);
+
+  const leftFillStyle = useAnimatedStyle(() => ({ width: `${leftWidth.value}%` }));
+  const rightFillStyle = useAnimatedStyle(() => ({ width: `${rightWidth.value}%` }));
 
   return (
     <View style={styles.wrap}>
       <View style={styles.track}>
         <View style={[styles.half, styles.halfLeft]}>
-          <View style={[styles.fillLeft, { width: `${leftPct}%` }]} />
+          <Animated.View style={[styles.fillLeft, leftFillStyle]} />
         </View>
         <View style={styles.centreTick} />
         <View style={[styles.half, styles.halfRight]}>
-          <View style={[styles.fillRight, { width: `${rightPct}%` }]} />
+          <Animated.View style={[styles.fillRight, rightFillStyle]} />
         </View>
       </View>
       <View style={styles.labelsRow}>
-        <Text style={[styles.label, styles.labelLeft]}>A · ANTIQUO</Text>
-        <Text style={[styles.label, styles.labelRight]}>VTI ROGAS · V·R</Text>
+        <InfoTap termId="antiquo">
+          <Text style={[styles.label, styles.labelLeft]}>A · ANTIQUO</Text>
+        </InfoTap>
+        <InfoTap termId="uti-rogas">
+          <Text style={[styles.label, styles.labelRight]}>VTI ROGAS · V·R</Text>
+        </InfoTap>
       </View>
     </View>
   );

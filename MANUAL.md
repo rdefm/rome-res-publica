@@ -218,6 +218,16 @@ The Curia is where Rome's laws are made, its four crises are watched, and — on
 ### Bills, Munificence, and Crisis
 Submit and vote on bills, give speeches, filibuster; passed bills with lasting effects become Active Laws. The **Munificence** panel buys public goodwill through feasts, games, temple restoration, and endowments. The four crisis tracks (**War, Unrest, Constitution, Economy**) escalate, cascade into each other, and carry a real cost to your income the higher they climb — and, if their combined average ever tops out completely, they end the Republic outright.
 
+### Curia Vocabulary
+The Senate does business in Latin. A quick glossary:
+- **Aerarium** — the state treasury, shown as a health index (0–100), not a coin balance.
+- **Rogationes** — bills currently before the Senate, awaiting a vote, speech, or filibuster.
+- **Leges in Vigore** — laws already enacted and still in force, each with its own ongoing effect.
+- **Negotia** — the Senate's non-legislative business: treaties, extraordinary commands, and the courts.
+- **Uti Rogas** (inscribed **V·R**) — the "yes" vote: "as you ask."
+- **Antiquo** (inscribed **A**) — the "no" vote: "for the old way."
+- **Mos Maiorum** — ancestral custom; the Constitution crisis track measures its erosion.
+
 ### War and Peace
 Once Rome's war with Carthage has run long enough to reach a real breaking point, a **"War & Peace"** panel appears here, opening the negotiation table — see §9 for the whole arc.
 

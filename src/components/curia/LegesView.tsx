@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, findNodeHandle } from 'react-native';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
 import { useGameStore } from '../../state/gameStore';
+import InfoTap from '../shared/InfoTap';
 import BillCard from './BillCard';
 import LawCard from './LawCard';
 import SubmitBillModal from './SubmitBillModal';
@@ -49,7 +50,9 @@ export default function LegesView({ scrollRef }: LegesViewProps) {
   return (
     <View style={styles.wrap}>
       <View style={styles.headerRow}>
-        <Text style={styles.sectionLabel}>ROGATIONES · ACTIVE BILLS</Text>
+        <InfoTap termId="rogatio">
+          <Text style={styles.sectionLabel}>ROGATIONES · ACTIVE BILLS</Text>
+        </InfoTap>
         <TouchableOpacity
           style={[styles.submitBtn, fides < 10 && styles.submitBtnDisabled]}
           onPress={() => setSubmitVisible(true)}
@@ -80,7 +83,9 @@ export default function LegesView({ scrollRef }: LegesViewProps) {
             onPress={() => setActiveLawsExpanded(e => !e)}
             activeOpacity={0.75}
           >
-            <Text style={styles.sectionLabel}>LEGES IN VIGORE · ACTIVE LAWS ({activeLaws.length})</Text>
+            <InfoTap termId="leges-in-vigore">
+              <Text style={styles.sectionLabel}>LEGES IN VIGORE · ACTIVE LAWS ({activeLaws.length})</Text>
+            </InfoTap>
             <Text style={styles.chevron}>{activeLawsExpanded ? '▲' : '▼'}</Text>
           </TouchableOpacity>
           {activeLawsExpanded && activeLaws.map(law => <LawCard key={law.billId} law={law} />)}

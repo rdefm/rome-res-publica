@@ -22,6 +22,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Cursus',
   },
   {
+    id: 'aerarium',
+    term: 'Aerarium',
+    definition: 'The state treasury, shown as a 0–100 health index rather than a coin balance. Below 10 it becomes Bankrupt, imposing −3 Denarii per season and triggering automatic crisis legislation.',
+    relatedTab: 'Curia',
+  },
+  {
     id: 'ambition',
     term: 'Ambitions',
     definition: 'Medium-term goals for your family (Family scope) or a specific character (Character scope), each with a time limit. Meet the condition to earn a reward; fail and consequences apply.',
@@ -32,6 +38,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: 'Ambassador',
     definition: 'A family member posted to a province without governor authority. Ambassadors build rapport, gather intelligence, recruit provincial clients, and arrange cultural exchanges — one action per season.',
     relatedTab: 'Provinciae',
+  },
+  {
+    id: 'antiquo',
+    term: 'Antiquo',
+    definition: 'The "no" vote on a bill, inscribed A on the voting tablet — "for the old way." The two-sided vote bar fills toward this side as opposition grows.',
+    relatedTab: 'Curia',
   },
   {
     id: 'approach',
@@ -224,6 +236,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Domus',
   },
   {
+    id: 'leges-in-vigore',
+    term: 'Leges in Vigore',
+    definition: 'Laws already enacted and still in force, each with its own ongoing per-season effect. Some expire on a fixed timer; others are permanent until repealed.',
+    relatedTab: 'Curia',
+  },
+  {
     id: 'levy-tiers',
     term: 'Levy Tiers',
     definition: 'Three ways to muster a cohort from a theatre region: an Emergency Levy (cheap, whoever\'s on hand), a Standard Levy, or Picked Men (a smaller, selective muster — priced for that selectivity, but reliably the better soldier). Good relations with the region\'s cities improve quality further on all three.',
@@ -260,9 +278,21 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Domus',
   },
   {
+    id: 'mos-maiorum',
+    term: 'Mos Maiorum',
+    definition: 'Ancestral custom — the unwritten rules Roman politics is expected to follow. The Constitution crisis track measures its erosion; the track abbreviates to MOS in the pinned header.',
+    relatedTab: 'Curia',
+  },
+  {
     id: 'munificence',
     term: 'Munificence',
     definition: 'Public acts of wealth-to-standing conversion — feasts, games, temple restorations, endowments — available from the Curia screen. Costs Denarii (and sometimes Fides) for Lifetime Dignitas, plebs goodwill, and crisis relief; grander acts require a minimum Patron Tier.',
+    relatedTab: 'Curia',
+  },
+  {
+    id: 'negotia',
+    term: 'Negotia',
+    definition: "The Senate's non-legislative business, gathered in one sub-tab: peace negotiations, extraordinary military commands, and criminal trials.",
     relatedTab: 'Curia',
   },
   {
@@ -350,6 +380,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Domus',
   },
   {
+    id: 'rogatio',
+    term: 'Rogationes',
+    definition: 'Bills currently before the Senate, awaiting a vote, speech, or filibuster. Each carries a support meter that decides whether it passes when its seasons run out.',
+    relatedTab: 'Curia',
+  },
+  {
     id: 'rome-plebs',
     term: 'Rome — Plebs',
     definition: 'A macro stat (0–100) tracking the urban population\'s mood. Low Plebs accelerates Unrest crisis and reduces Fides income; raised by grain distributions and populist legislation.',
@@ -359,12 +395,6 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     id: 'rome-stability',
     term: 'Rome — Stability',
     definition: 'A macro stat (0–100) that amplifies crisis escalation when low and reduces Fides income. Raised primarily by passing legislation and maintaining public order.',
-    relatedTab: 'Curia',
-  },
-  {
-    id: 'aerarium',
-    term: 'Rome — Treasury',
-    definition: 'A macro stat (0–100) affecting bill support and Denarii income. Below 10 it becomes Bankrupt, imposing −3 Denarii per season and triggering automatic crisis legislation.',
     relatedTab: 'Curia',
   },
   {
@@ -418,6 +448,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: 'Tribune of the Plebs',
     definition: 'A parallel office outside the Cursus Honorum providing sacrosanctity (trial immunity) and veto power over Senate proceedings. Compatible with holding a Cursus office simultaneously.',
     relatedTab: 'Cursus',
+  },
+  {
+    id: 'uti-rogas',
+    term: 'Uti Rogas',
+    definition: 'The "yes" vote on a bill, inscribed V·R on the voting tablet — "as you ask." The two-sided vote bar fills toward this side as support grows.',
+    relatedTab: 'Curia',
   },
   {
     id: 'veterancy',

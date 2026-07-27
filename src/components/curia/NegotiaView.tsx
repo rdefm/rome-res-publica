@@ -9,6 +9,7 @@ import { COLORS, FONTS, SPACING } from '../../utils/theme';
 import { useGameStore } from '../../state/gameStore';
 import { getDesperationTier } from '../../engine/warEngine';
 import { isWarActiveForCommand } from '../../engine/commandEngine';
+import InfoTap from '../shared/InfoTap';
 import TrialBanner from './TrialBanner';
 import WarPeaceRow from './WarPeaceRow';
 import CommandPanel from './CommandPanel';
@@ -29,6 +30,9 @@ export default function NegotiaView() {
   if (!trialsLive && !warsLive && !commandLive) {
     return (
       <View style={styles.empty}>
+        <InfoTap termId="negotia">
+          <Text style={styles.sectionLabel}>NEGOTIA</Text>
+        </InfoTap>
         <Text style={styles.emptyText}>Rome is at peace, and no cases stand before the courts.</Text>
       </View>
     );
@@ -36,6 +40,9 @@ export default function NegotiaView() {
 
   return (
     <View style={styles.wrap}>
+      <InfoTap termId="negotia" style={styles.heading}>
+        <Text style={styles.sectionLabel}>NEGOTIA</Text>
+      </InfoTap>
       <TrialBanner />
       <WarPeaceRow />
       <CommandPanel />
@@ -45,6 +52,8 @@ export default function NegotiaView() {
 
 const styles = StyleSheet.create({
   wrap: { padding: SPACING.md },
+  heading: { marginBottom: SPACING.sm },
+  sectionLabel: { color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' },
   empty: { padding: SPACING.md, alignItems: 'center', marginTop: SPACING.lg },
-  emptyText: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 13, textAlign: 'center' },
+  emptyText: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 13, textAlign: 'center', marginTop: SPACING.sm },
 });

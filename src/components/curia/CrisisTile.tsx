@@ -2,10 +2,17 @@
 // Tier drives the frame (tint/border/glow, from CRISIS_TIER_VISUAL); the
 // track's own icon/abbreviation carries identity. No StatBar here (Delta 8)
 // — the old CrisisTrackCell's StatBar doesn't fit this tile's budget.
-import React from 'react';
+//
+// Chunk C6, Delta 10 — a one-shot opacity/scale pulse on the damage overlay
+// when track.tier increases (compared against a ref, not looping, no
+// particle system — the crisis worsening is the event worth animating, the
+// crisis being bad is a state).
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withSequence, withTiming } from 'react-native-reanimated';
 import { COLORS, FONTS, SPACING, RADIUS, CRISIS_TIER_VISUAL, emberGlow } from '../../utils/theme';
 import { curiaAssets } from '../../utils/curiaAssets';
+import InfoTap from '../shared/InfoTap';
 import type { CrisisTrackId, CrisisTrack } from '../../models/crisis';
 
 // Lifted out of CuriaScreen.tsx:49-54 (Finding — CRISIS_TIER_LABELS/TIER_NAMES
@@ -53,10 +60,28 @@ export default function CrisisTile({ trackId, track, onPress }: CrisisTileProps)
   const icon = curiaAssets.crisisIcon(trackId);
   const overlay = visual.overlay !== null ? curiaAssets.damageOverlay(visual.overlay) : undefined;
 
+  const prevTierRef = useRef(track.tier);
+  const flareOpacity = useSharedValue(0);
+  const flareScale = useSharedValue(1);
+
+  useEffect(() => {
+    if (track.tier > prevTierRef.current) {
+      flareOpacity.value = withSequence(withTiming(1, { duration: 150 }), withTiming(0, { duration: 450 }));
+      flareScale.value = withSequence(withTiming(1.4, { duration: 150 }), withTiming(1, { duration: 450 }));
+    }
+    prevTierRef.current = track.tier;
+  }, [track.tier]);
+
+  const flareStyle = useAnimatedStyle(() => ({
+    opacity: flareOpacity.value,
+    transform: [{ scale: flareScale.value }],
+  }));
+
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={styles.tile}>
       <View style={[styles.iconWrap, { backgroundColor: visual.tint, borderColor: visual.border }]}>
         {visual.glow && <View style={[styles.glow, { backgroundColor: emberGlow }]} pointerEvents="none" />}
+        <Animated.View style={[styles.flare, { backgroundColor: emberGlow }, flareStyle]} pointerEvents="none" />
         {icon ? (
           <>
             <Image source={icon} style={styles.iconImage} />
@@ -66,7 +91,13 @@ export default function CrisisTile({ trackId, track, onPress }: CrisisTileProps)
           <Text style={styles.iconFallback}>{CRISIS_TRACK_EMOJI[trackId]}</Text>
         )}
       </View>
-      <Text style={styles.abbr}>{CRISIS_TRACK_ABBR[trackId]}</Text>
+      {trackId === 'constitution' ? (
+        <InfoTap termId="mos-maiorum">
+          <Text style={styles.abbr}>{CRISIS_TRACK_ABBR[trackId]}</Text>
+        </InfoTap>
+      ) : (
+        <Text style={styles.abbr}>{CRISIS_TRACK_ABBR[trackId]}</Text>
+      )}
       <Text style={styles.level}>{Math.round(track.level)}</Text>
     </TouchableOpacity>
   );
@@ -91,6 +122,12 @@ const styles = StyleSheet.create({
     top: -6, left: -6, right: -6, bottom: -6,
     borderRadius: RADIUS.lg + 6,
     opacity: 0.35,
+  },
+  flare: {
+    position: 'absolute',
+    top: -6, left: -6, right: -6, bottom: -6,
+    borderRadius: RADIUS.lg + 6,
+    opacity: 0,
   },
   iconImage: {
     width: 24,
