@@ -7,6 +7,21 @@ import type { TabName } from './agenda';
 export type { TabName };
 
 export type TutorialArcId = 'prologue' | 'embassy' | 'war' | 'courts';
+
+/** T10 — standalone just-in-time micro-lessons, on the same arc/step engine
+ *  as the four main arcs above but deliberately NOT part of
+ *  `tutorialEngine.TUTORIAL_ARC_ORDER`: each fires as a one-off (via
+ *  `startTutorialArc`, entered by `tutorialEngine.getEligibleLesson` rather
+ *  than the main chain's auto-advance), completes, and goes idle again —
+ *  `TUTORIAL_ARC_ORDER.indexOf` already returns -1 for these ids, which
+ *  `advanceTutorialStep`'s existing "no next arc" branch treats correctly
+ *  as "just finish, don't chain into anything." Fire on Free Start too,
+ *  per the plan — unlike the four main arcs, entry never depends on
+ *  `tutorial.activeArc` having been 'prologue' at game start. */
+export type TutorialLessonId = 'lesson-trial' | 'lesson-battle' | 'lesson-death' | 'lesson-succession';
+
+export type TutorialAnyArcId = TutorialArcId | TutorialLessonId;
+
 export type TutorialRail = 'hard' | 'guided';
 
 /** Stable ids for spotlightable UI. Namespaced <area>.<thing>. */
@@ -19,7 +34,7 @@ export type TutorialAdvance =
 
 export interface TutorialStep {
   id: string;                        // globally unique, e.g. 'prologue.act2.court-flaccus'
-  arc: TutorialArcId;
+  arc: TutorialAnyArcId;
   actLabel?: string;                 // display only, e.g. 'Act II — The Forum'
   rail: TutorialRail;
   requiresTab?: TabName;             // director navigates here on enter if not already there
@@ -32,15 +47,15 @@ export interface TutorialStep {
 }
 
 export interface TutorialArc {
-  id: TutorialArcId;
+  id: TutorialAnyArcId;
   title: string;
   steps: TutorialStep[];
 }
 
 export interface TutorialState {
-  activeArc: TutorialArcId | null;
+  activeArc: TutorialAnyArcId | null;
   stepId: string | null;
-  completedArcs: TutorialArcId[];
+  completedArcs: TutorialAnyArcId[];
   unlockedTabs: TabName[];
   skipped: boolean;
 }

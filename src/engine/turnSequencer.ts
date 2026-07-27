@@ -38,6 +38,7 @@ import {
   detectPaterfamiliasDeath,
 } from './inheritanceEngine';
 import { resolveDeathNotice } from '../data/cadetEvents';
+import { buildFamilyDeathBody } from '../data/successionEvents';
 import {
   shouldTriggerTrial,
   buildTrialState,
@@ -1744,8 +1745,26 @@ export function processSeason(state: GameState): {
           };
           events.push(`${p.deceasedName} has died.`);
         } else {
+          // Tutorial redesign, T10 — a non-paterfamilias death previously
+          // produced only the events.push line below (silent otherwise, no
+          // notice/modal — a real gap, not just a tutorial-lesson
+          // dependency). Fixed with the same minimal one-choice notice
+          // shape as evt-succession-death, via the new
+          // evt-family-death-natural (data/successionEvents.ts).
           events.push(`${deceased.name} has died.`);
+          s = {
+            ...s,
+            pendingEvents: [...s.pendingEvents, injectNoticeEvent(
+              'evt-family-death-natural', s.turnNumber, deceased.id,
+              { bodyText: buildFamilyDeathBody(deceased.name, deceased.age) },
+            )],
+          };
         }
+        // Tutorial redesign, T10 — durable, unconditional on which branch
+        // ran: reaching this point at all means someone in the family died
+        // this season, one way or the other. Consumed by
+        // tutorialEngine.getEligibleLesson; cleared once lesson-death fires.
+        s = { ...s, flags: { ...s.flags, 'pending-lesson-death': true } };
       }
     }
 

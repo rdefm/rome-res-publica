@@ -4,7 +4,7 @@
 // logic in src/data/.
 
 import type { GameState } from '../state/gameStore';
-import type { TutorialArcId, TutorialStep, TabName } from '../models/tutorial';
+import type { TutorialArcId, TutorialLessonId, TutorialStep, TabName } from '../models/tutorial';
 import type { Army } from '../models/army';
 import { TUTORIAL_ARCS } from '../data/tutorialScript';
 import { applyEffectString } from './resourceEngine';
@@ -423,6 +423,25 @@ export const TUTORIAL_EFFECTS: Record<string, (s: GameState) => Partial<GameStat
   courtsSetCompleteFlag: (s) => ({
     flags: { ...s.flags, 'tutorial-courts-complete': true },
   }),
+
+  // T10 — just-in-time lessons. Each just marks itself taught; the
+  // corresponding 'pending-lesson-*' flag (stamped at the real trigger's
+  // source — turnSequencer.ts / inheritanceEngine.ts, see getEligibleLesson's
+  // own comment) is cleared in the same edit, standard flag-hygiene
+  // convention already used elsewhere in this codebase (aftermath events
+  // clearing the flag they consumed).
+  lessonTrialSetTaught: (s) => ({
+    flags: { ...s.flags, 'lesson-trial-taught': true },
+  }),
+  lessonBattleSetTaught: (s) => ({
+    flags: { ...s.flags, 'lesson-battle-taught': true },
+  }),
+  lessonDeathSetTaught: (s) => ({
+    flags: { ...s.flags, 'lesson-death-taught': true, 'pending-lesson-death': false },
+  }),
+  lessonSuccessionSetTaught: (s) => ({
+    flags: { ...s.flags, 'lesson-succession-taught': true, 'pending-lesson-succession': false },
+  }),
 };
 
 export function getStep(stepId: string): TutorialStep | null {
@@ -473,6 +492,56 @@ export function isTabSealed(tab: TabName, s: GameState): boolean {
  */
 export function isWorldFrozen(s: GameState): boolean {
   return s.tutorial?.activeArc === 'prologue';
+}
+
+/**
+ * T10 — just-in-time lessons. The single place all four lessons' entry
+ * conditions live (called by App.tsx's tutorial director, the same
+ * subscription that drives the main arc chain). Returns the first eligible
+ * lesson id, or null. Checked only while `!tutorial.activeArc` — never
+ * interrupts the four main arcs, another lesson, or a `skipped` run's own
+ * "everything already unlocked" state (a skipped run still WANTS these,
+ * since skipping is exactly "no hand-holding from here," and Free Start
+ * never had `activeArc` set in the first place — both cases pass this
+ * check identically).
+ *
+ * Priority order (trial, battle, death, succession) only matters on the
+ * rare tick where more than one condition is simultaneously true; each
+ * fires independently afterward once `!activeArc` again, since every
+ * trigger below is a durable flag/field, not a transient one.
+ *
+ * - lesson-trial: `!completedArcs.includes('courts')` covers both Free
+ *   Start and a guided run that skipped ahead — either way, the player
+ *   never got the courts arc's Basilica walkthrough.
+ * - lesson-battle: `activeBattleSetup` truthy. Deliberately doesn't special-
+ *   case the war arc's own scripted engagement — `!activeArc` already
+ *   excludes it, since tutorial.activeArc is still 'war' at the moment that
+ *   fight's own deployment board would open.
+ * - lesson-death / lesson-succession: driven by 'pending-lesson-death'/
+ *   'pending-lesson-succession', stamped at their real source
+ *   (turnSequencer.ts's natural-mortality step; inheritanceEngine.ts's
+ *   applySuccession) rather than diffed here — a closure over "the previous
+ *   render's state" has no precedent in this codebase and is fragile across
+ *   an arc boundary (see this function's own PR discussion); a durable flag
+ *   set once at the true trigger, cleared once consumed, is the same idiom
+ *   `defeatedGeneral-<id>`/`secret-burned-ever` already use.
+ */
+export function getEligibleLesson(s: GameState): TutorialLessonId | null {
+  if (s.tutorial?.activeArc) return null;
+
+  if (!s.flags['lesson-trial-taught'] && !s.tutorial.completedArcs.includes('courts') && s.trials.length > 0) {
+    return 'lesson-trial';
+  }
+  if (!s.flags['lesson-battle-taught'] && !!s.activeBattleSetup) {
+    return 'lesson-battle';
+  }
+  if (!s.flags['lesson-death-taught'] && s.flags['pending-lesson-death']) {
+    return 'lesson-death';
+  }
+  if (!s.flags['lesson-succession-taught'] && s.flags['pending-lesson-succession']) {
+    return 'lesson-succession';
+  }
+  return null;
 }
 
 export function applyTutorialEffect(effectId: string | undefined, s: GameState): Partial<GameState> {

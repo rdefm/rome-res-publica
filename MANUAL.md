@@ -16,8 +16,8 @@ The game is played in **seasons** (Spring, Summer, Autumn, Winter — four to a 
 
 When you begin, you choose a path:
 
-- **The Guided Path** (recommended) — your household secretary, **Philon**, walks you through your first two years, introducing one system at a time. By the end, Philon hands you the full ledger — the **Agenda Tablet** — and you're on your own.
-- **Free Start** — no hand-holding. Every system is open to you from turn one.
+- **The Guided Path** (recommended) — your household secretary, **Philon**, walks you through the family's first year one tab at a time: the Domus is open from the start, and the Forum, the Curia, Provinciae, and the Cursus Honorum each unseal — with a small ceremony on its tab icon — only once you've learned the one before it. Once all five are open, Philon steps back to a lighter hand for three further beats: an embassy to a foreign city, the war it leads to, and a courtroom fight — narrated, but never taking your hand off the wheel. You can always tell Philon "I know this" to skip ahead a lesson, or skip the whole Guided Path at once, from any of these screens.
+- **Free Start** — no hand-holding from turn one. Philon still speaks up, once, the first time you meet something genuinely new regardless of which path you chose — your first trial, your first set-piece battle, a death in the family — a single aside, not a lesson plan.
 - **Gens Duilia** and **Gens Manlia** — two unlockable free-start families (see below).
 
 The Guided Path always begins with the same family, the **Brutii**: Marcus Brutus (you, 42, a capable speaker), his wife Livia (a sharp intriguer), and two grown children, Gaius (aggressive, martially inclined) and Julia (cautious, quietly gifted). You begin with no offices, no provinces, four rival clans watching you, one clan leader already holding something over your family's head — and, within your first year or two, a war you never asked for. Free Start can begin as the Brutii too, or as one of the unlocked alternate families below.

@@ -41,6 +41,16 @@ export function buildNoHeirBody(p: PendingSuccession, gensName: string): string 
     `of the Gens ${gensName} fit to take up the name.`;
 }
 
+/** evt-family-death-natural's dynamic bodyText — see that EventDef's own
+ *  comment. Deliberately not PendingSuccession-shaped (no succession, no
+ *  heir order, no "remembered detail" derived from held office) since a
+ *  non-paterfamilias character's own held offices/traits aren't tracked the
+ *  same way `detectPaterfamiliasDeath` reads them for the outgoing head of
+ *  house. */
+export function buildFamilyDeathBody(name: string, age: number): string {
+  return `${name}, ${age} — has died. The household mourns, but Rome does not pause for grief.`;
+}
+
 export const SUCCESSION_EVENT_DEFS: EventDef[] = [
 
   {
@@ -57,6 +67,27 @@ export const SUCCESSION_EVENT_DEFS: EventDef[] = [
         successEffect: 'nextEvent:evt-succession-funeral',
         failureEffect: '',
       },
+    ],
+  },
+
+  // T10 (tutorial redesign) — a NON-paterfamilias family member's natural
+  // death (spouse, sibling, child) previously produced nothing but a plain
+  // log line (turnSequencer.ts's step 10, `events.push` only) — no notice,
+  // no modal, easy to miss entirely in the season-end log feed. Fixed here
+  // as a real, standalone gameplay gap (not just a tutorial-lesson
+  // dependency): a minimal one-choice notice, same shape as
+  // evt-succession-death, injected from the same step whenever
+  // detectPaterfamiliasDeath's target wasn't the player. No succession, no
+  // funeral choice, no chaining — the family simply continues.
+  {
+    id: 'evt-family-death-natural',
+    title: 'A Death in the House',
+    bodyText: 'A family member has died.',
+    imageKey: 'portrait-paterfamilias',
+    conditions: [],
+    weight: 0,
+    choices: [
+      { id: 'continue', label: 'Continue', successEffect: '', failureEffect: '' },
     ],
   },
 

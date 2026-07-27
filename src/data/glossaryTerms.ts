@@ -236,6 +236,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Forum',
   },
   {
+    id: 'local-support',
+    term: 'Local Support',
+    definition: 'A province\'s trust in your family (0–100), built through Ambassador\'s Desk actions — rapport, grain, cultural exchange. Gates recruiting a provincial client as your own and, at 30+, reveals intelligence on an NPC governor.',
+    relatedTab: 'Provinciae',
+  },
+  {
     id: 'loyalty',
     term: 'Loyalty',
     definition: "A unit's bond to its commander (0–100). It rises on campaign and after shared victories, falls after defeats or a change of command, and can be topped up with a Donative — low loyalty risks desertion.",

@@ -185,7 +185,11 @@ export const SaveSchema = z.object({
   // real backfill is gameStore.loadGame's INITIAL_STATE spread; this default
   // only matters for validation.
   tutorial: z.object({
-    activeArc:     z.enum(['prologue', 'embassy', 'war', 'courts']).nullable().default(null),
+    activeArc:     z.enum([
+      'prologue', 'embassy', 'war', 'courts',
+      // T10 — standalone just-in-time lessons (models/tutorial.ts's TutorialLessonId).
+      'lesson-trial', 'lesson-battle', 'lesson-death', 'lesson-succession',
+    ]).nullable().default(null),
     stepId:        z.string().nullable().default(null),
     completedArcs: z.array(z.string()).default([]),
     unlockedTabs:  z.array(z.string()).default(['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia']),

@@ -10,7 +10,7 @@
 import {
   mortalityChance, rollsDead, getHeirOrder, detectPaterfamiliasDeath,
   generateCadet, promoteCadetToParterfamilias, needsSpouse, generateSpouse,
-  isBirthEligible,
+  isBirthEligible, applySuccession,
 } from '../src/engine/inheritanceEngine';
 import { resolveDeathNotice } from '../src/data/cadetEvents';
 import { BALANCE } from '../src/data/balance';
@@ -193,6 +193,26 @@ describe('promoteCadetToParterfamilias', () => {
     expect(patch.pendingSuccession).toBeNull();
     expect(patch.regency).toBeNull();
     expect(patch.paterfamiliasGenerations).toBe(2);
+    // Tutorial redesign, T10 — durable trigger for the lesson-succession
+    // just-in-time lesson.
+    expect(patch.flags?.['pending-lesson-succession']).toBe(true);
+  });
+});
+
+describe('applySuccession', () => {
+  test('stamps pending-lesson-succession (T10 just-in-time lesson trigger)', () => {
+    const heir = makeCharacter({ id: 'heir-1', isPlayer: false, age: 25 });
+    const stateStub = {
+      family: [heir],
+      highestOfficeEverHeld: null,
+      heldOffices: [],
+      paterfamiliasGenerations: 1,
+      flags: { 'some-other-flag': true },
+    } as any;
+
+    const patch = applySuccession(stateStub, 'heir-1', false);
+    expect(patch.flags).toEqual({ 'some-other-flag': true, 'pending-lesson-succession': true });
+    expect(patch.family!.find(c => c.id === 'heir-1')!.isPlayer).toBe(true);
   });
 });
 

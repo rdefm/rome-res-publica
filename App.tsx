@@ -31,6 +31,7 @@ import {
   isStepSatisfied as isTutorialStepSatisfied,
   isTabSealed,
   validateTutorialScript,
+  getEligibleLesson,
 } from './src/engine/tutorialEngine';
 import type { TabName } from './src/models/agenda';
 import { generateAgenda } from './src/engine/agendaEngine';
@@ -323,13 +324,22 @@ function GameRoot() {
     const checkAndMaybeAdvance = () => {
       const s = useGameStore.getState();
       if (!s.gameStarted)                                return;
-      if (!s.tutorial.activeArc || !s.tutorial.stepId)   return;
       if (s.activeEvent)                                 return;
       if (s.seasonOverlayVisible)                        return;
       if (s.pendingBirthNaming)                          return;
       if ((s.pendingAmbitionScopes ?? []).length > 0)    return;
       if (s.trials.some(t => t.status === 'in_session')) return;
       if (s.activeBattle)                                return;
+
+      // T10 — just-in-time lessons. Only ever considered while no arc/lesson
+      // is already active (getEligibleLesson's own guard); same blocking
+      // conditions above apply so a lesson never starts on top of a modal.
+      if (!s.tutorial.activeArc) {
+        const lesson = getEligibleLesson(s);
+        if (lesson) s.startTutorialArc(lesson);
+        return;
+      }
+      if (!s.tutorial.stepId) return;
 
       const currentStep = getTutorialStep(s.tutorial.stepId);
       if (currentStep && isTutorialStepSatisfied(currentStep, s)) {

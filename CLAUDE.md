@@ -40,6 +40,7 @@ React Native / Expo mobile grand-strategy game. TypeScript throughout. Single Zu
 | Save file shape | `state/saveLoad.ts` (Zod schema too) |
 | Resource/stat visual | `components/shared/ResourceBar.tsx` + `utils/theme.ts` |
 | Agenda/to-do rule | `engine/agendaEngine.ts` |
+| New tutorial arc/lesson content | `data/tutorialScript.ts` (predicates/effects in `engine/tutorialEngine.ts`) |
 
 ## Large files — edit surgically
 

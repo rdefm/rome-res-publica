@@ -22,6 +22,8 @@ import { getEligibleFamilyCaptains } from '../engine/battle/musterEngine';
 import { chooseOrders, chooseBreakDecision, deriveAiRng } from '../engine/battle/battleAi';
 import { ENEMY_GENERALS } from '../data/enemyGenerals';
 import type { LaneId, BattleState } from '../models/battle';
+import { getStep as getTutorialStep } from '../engine/tutorialEngine';
+import TutorialCaption from '../components/shared/TutorialCaption';
 
 /** M7: the enemy general profile driving the defender side this battle —
  *  falls back to Hanno if the sandbox somehow didn't stamp a generalProfileId. */
@@ -42,6 +44,21 @@ export default function BattleScreen() {
   const submitBattleOrders = useGameStore(s => s.submitBattleOrders);
   const submitBattleBreakDecision = useGameStore(s => s.submitBattleBreakDecision);
   const returnFromBattle = useGameStore(s => s.returnFromBattle);
+
+  // T10 — the lesson-battle just-in-time lesson lives entirely in here, not
+  // the global TutorialLayer (App.tsx): BattleScreen is a native `Modal`,
+  // same precedence problem as every other modal-housed tutorial step, but
+  // here there's no "outside" screen to spotlight from instead — the whole
+  // lesson happens inside the modal, so it mounts its own TutorialCaption
+  // reading the SAME tutorial.stepId, gated locally on which phase is
+  // actually on screen (data/tutorialScript.ts's LESSON_BATTLE_STEPS header
+  // comment has the full design note). No spotlight cutout: DeploymentBoard/
+  // OrdersPanel are unfamiliar UI this chunk doesn't risk mis-instrumenting.
+  const tutorial = useGameStore(s => s.tutorial);
+  const advanceTutorialStep = useGameStore(s => s.advanceTutorialStep);
+  const lessonStep = tutorial.activeArc === 'lesson-battle' && tutorial.stepId
+    ? getTutorialStep(tutorial.stepId)
+    : null;
 
   const captainOptions = useMemo(() => {
     if (!activeBattleSetup) return [];
@@ -89,6 +106,23 @@ export default function BattleScreen() {
             outcome={activeBattle.outcome}
             characterName={characterName}
             onReturn={returnFromBattle}
+          />
+        )}
+
+        {lessonStep?.id === 'lesson-battle.deployment' && activeBattleSetup && !activeBattle && (
+          <TutorialCaption
+            narration={lessonStep.narration}
+            actLabel={lessonStep.actLabel}
+            dock="top"
+            onTapAdvance={() => advanceTutorialStep()}
+          />
+        )}
+        {lessonStep?.id === 'lesson-battle.orders' && activeBattle?.phase === 'orders' && (
+          <TutorialCaption
+            narration={lessonStep.narration}
+            actLabel={lessonStep.actLabel}
+            dock="top"
+            onTapAdvance={() => advanceTutorialStep()}
           />
         )}
       </SafeAreaView>

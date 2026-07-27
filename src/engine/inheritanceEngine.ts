@@ -298,6 +298,11 @@ export function applySuccession(state: GameState, heirId: string, isAlternative:
       [state.highestOfficeEverHeld, ...state.heldOffices].filter((id): id is string => !!id)
     ),
     paterfamiliasGenerations: state.paterfamiliasGenerations + 1,
+    // Tutorial redesign, T10 — durable trigger for the lesson-succession
+    // just-in-time lesson (tutorialEngine.getEligibleLesson). Also stamped
+    // by promoteCadetToParterfamilias below, this function's own sibling
+    // succession path. Cleared once the lesson fires.
+    flags: { ...state.flags, 'pending-lesson-succession': true },
   };
 
   if (heir.age < r.regencyMinorAge) {
@@ -436,5 +441,7 @@ export function promoteCadetToParterfamilias(cadet: CadetBranch, state: GameStat
       [state.highestOfficeEverHeld, ...state.heldOffices].filter((id): id is string => !!id)
     ),
     paterfamiliasGenerations: state.paterfamiliasGenerations + 1,
+    // Tutorial redesign, T10 — see applySuccession's identical comment.
+    flags: { ...state.flags, 'pending-lesson-succession': true },
   };
 }

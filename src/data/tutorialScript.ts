@@ -1,13 +1,15 @@
-// The four tutorial arcs as static content. No logic — see engine/tutorialEngine.ts
-// for step resolution and engine/tutorialTargets.ts for the spotlight registry.
+// The four tutorial arcs, plus T10's standalone just-in-time lessons, as
+// static content. No logic — see engine/tutorialEngine.ts for step
+// resolution and engine/tutorialTargets.ts for the spotlight registry.
 // tutorial-redesign-plan.md §2.1/§2.5.
 //
 // Steps were authored incrementally per the plan's chunk order: T5 (prologue),
-// T7 (embassy), T8 (war), T9 (courts) — all four now landed. All four arcs
-// were declared here from the start so each chunk only ever appended to
-// `steps`, never touched this file's structure.
+// T7 (embassy), T8 (war), T9 (courts), T10 (the four lessons) — all landed.
+// All four main arcs were declared here from the start so each chunk only
+// ever appended to `steps`, never touched this file's structure; the four
+// lesson arcs are new additions (models/tutorial.ts's TutorialLessonId).
 
-import type { TutorialArc, TutorialArcId, TutorialStep } from '../models/tutorial';
+import type { TutorialArc, TutorialAnyArcId, TutorialStep } from '../models/tutorial';
 
 // ─── Arc I — The Prologue ───────────────────────────────────────────────────
 // Hard rail throughout. One act, one tab, per plan §1. Each act's last step
@@ -884,7 +886,121 @@ const COURTS_STEPS: TutorialStep[] = [
   },
 ];
 
-export const TUTORIAL_ARCS: Record<TutorialArcId, TutorialArc> = {
+// ─── T10 — Just-in-time micro-lessons ───────────────────────────────────────
+// Standalone one-off arcs (models/tutorial.ts's TutorialLessonId), NOT part
+// of TUTORIAL_ARC_ORDER's main chain. Each is entered by
+// tutorialEngine.getEligibleLesson (via the App.tsx director, same
+// subscription as the main chain) the first time its own condition holds
+// AND no arc/lesson is already active, and fires exactly once per save
+// (flag-gated) — including on Free Start, which never runs the four main
+// arcs at all. All `rail: 'guided'` (never hard-rails a tab or the world).
+
+// Fires the first time a trial exists that the player was never taught
+// about — i.e. they never completed the courts arc (Free Start, or a
+// guided run that skipped ahead). Reuses curia.trial-banner, the SAME
+// target T9's courts arc already instruments — no new spotlight wiring.
+const LESSON_TRIAL_STEPS: TutorialStep[] = [
+  {
+    id: 'lesson-trial.intro',
+    arc: 'lesson-trial',
+    rail: 'guided',
+    requiresTab: 'Curia',
+    target: 'curia.trial-banner',
+    narration:
+      "Domine — a charge has been brought against the family. That banner tracks it: your strength " +
+      "against theirs, and the seasons remaining to prepare. Open the Basilica from Cursus and " +
+      "answer it there — Logos, Pathos, and Ethos, whichever mix you judge the case needs.",
+    advance: { kind: 'tap' },
+    onCompleteEffectId: 'lessonTrialSetTaught',
+  },
+];
+
+// Delivered entirely inside BattleScreen.tsx itself, not the global
+// TutorialLayer (App.tsx) — BattleScreen is a native `Modal`, same
+// precedence problem as every other modal-housed step in this file, except
+// here there's no "outside" screen to spotlight from: the whole lesson
+// happens inside the modal. BattleScreen.tsx mounts its own TutorialCaption
+// reading this SAME tutorial.stepId, gated locally on which phase is
+// actually on screen (deployment vs. live orders) — see that file's own
+// comment. No `target`: DeploymentBoard/OrdersPanel are unfamiliar UI this
+// chunk doesn't risk mis-instrumenting for a cutout: two plain captions.
+//
+// Entry condition (tutorialEngine.getEligibleLesson) is `activeBattleSetup`
+// truthy AND no arc/lesson already active — which excludes the war arc's
+// OWN scripted engagement automatically: if the player "Takes the Field" on
+// that fight, tutorial.activeArc is still 'war' at that moment, so this
+// lesson never fires mid-Arc-II. It only ever fires on a LATER, real
+// set-piece battle — the interactive deployment/orders/wings flow the
+// tutorial otherwise never explains at all (Arc II only ever taught the
+// abstract "Trust the Legate" resolution).
+const LESSON_BATTLE_STEPS: TutorialStep[] = [
+  {
+    id: 'lesson-battle.deployment',
+    arc: 'lesson-battle',
+    rail: 'guided',
+    narration:
+      "A real field of battle, Domine — not a season-end abstraction. Assign your commander a wing, " +
+      "read the ground and the stratagem hand you've drawn, then give battle when you're ready. " +
+      "Nothing here is decided until you commit.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'lesson-battle.orders',
+    arc: 'lesson-battle',
+    rail: 'guided',
+    narration:
+      "Each round, issue orders for all three wings — hold, advance, or commit a stratagem — then " +
+      "watch it resolve. A broken wing forces a choice: pursue the routers, or wheel the victors onto " +
+      "the fight beside them. Toggle Dispatches for the full written account of a round.",
+    advance: { kind: 'tap' },
+    onCompleteEffectId: 'lessonBattleSetTaught',
+  },
+];
+
+// Delivered as a single beat AFTER the death notice closes (EventModal
+// always wins over a spotlight — same rule as every native-Modal-housed
+// step elsewhere in this file). Fires on EITHER the paterfamilias's own
+// death (evt-succession-death) or, since this chunk, any other family
+// member's (the new evt-family-death-natural, data/successionEvents.ts) —
+// turnSequencer.ts's natural-mortality step stamps
+// flags['pending-lesson-death'] unconditionally whenever either fires.
+// Battle/trial-execution deaths of the paterfamilias are NOT wired to this
+// flag (scope call — see tutorialEngine.ts's getEligibleLesson comment):
+// natural aging is by far the common case this early in a run, and a player
+// whose first death happens to be a battle casualty still gets the lesson
+// on whichever natural death follows.
+const LESSON_DEATH_STEPS: TutorialStep[] = [
+  {
+    id: 'lesson-death.intro',
+    arc: 'lesson-death',
+    rail: 'guided',
+    narration:
+      "Death visits every house, Domine — not only the ones the histories remember. Mourn if you " +
+      "must, but Rome does not pause for grief, and neither, in time, will you.",
+    advance: { kind: 'tap' },
+    onCompleteEffectId: 'lessonDeathSetTaught',
+  },
+];
+
+// Fires once the paterfamilias actually changes — inheritanceEngine.ts's
+// applySuccession stamps flags['pending-lesson-succession'] at its one call
+// site, regardless of what killed the previous paterfamilias (natural,
+// battle, or a trial's Exiled/Executed verdict all funnel through it).
+const LESSON_SUCCESSION_STEPS: TutorialStep[] = [
+  {
+    id: 'lesson-succession.intro',
+    arc: 'lesson-succession',
+    rail: 'guided',
+    narration:
+      "The name on the house changes, Domine, not the house itself. A fresh Cursus Honorum, a clean " +
+      "slate of offices — and, if the new head of the family is still a boy, a regent governs in his " +
+      "name until he comes of age. The family goes on. See to it that it's worth going on for.",
+    advance: { kind: 'tap' },
+    onCompleteEffectId: 'lessonSuccessionSetTaught',
+  },
+];
+
+export const TUTORIAL_ARCS: Record<TutorialAnyArcId, TutorialArc> = {
   prologue: {
     id: 'prologue',
     title: 'The First Year',
@@ -896,4 +1012,10 @@ export const TUTORIAL_ARCS: Record<TutorialArcId, TutorialArc> = {
   embassy:  { id: 'embassy',  title: 'The Embassy',     steps: [...EMBASSY_STEPS] },
   war:      { id: 'war',      title: 'The War',         steps: [...WAR_STEPS] },
   courts:   { id: 'courts',   title: 'The Courts',      steps: [...COURTS_STEPS] },
+
+  // T10 — just-in-time lessons, standalone (see the header comment above).
+  'lesson-trial':      { id: 'lesson-trial',      title: 'The Charge',        steps: [...LESSON_TRIAL_STEPS] },
+  'lesson-battle':     { id: 'lesson-battle',     title: 'The Field',         steps: [...LESSON_BATTLE_STEPS] },
+  'lesson-death':      { id: 'lesson-death',      title: 'A Death',          steps: [...LESSON_DEATH_STEPS] },
+  'lesson-succession': { id: 'lesson-succession', title: 'A New Head',       steps: [...LESSON_SUCCESSION_STEPS] },
 };

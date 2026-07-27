@@ -23,7 +23,7 @@ import type { StartId, GensId, DifficultyId } from '../models/gameStart';
 import type { AgendaTarget, TabName } from '../models/agenda';
 import type { SeasonLedger } from '../models/ledger';
 // ── Tutorial redesign ──────────────────────────────────────────────────────────
-import type { TutorialState, TutorialArcId } from '../models/tutorial';
+import type { TutorialState, TutorialArcId, TutorialAnyArcId } from '../models/tutorial';
 import { TUTORIAL_ARCS } from '../data/tutorialScript';
 import {
   getStep as getTutorialStep,
@@ -1072,7 +1072,7 @@ export interface GameActions {
   /** Enter an arc at its first step. Used at guided-start time and for each
    *  later arc's kickoff (embassy/war/courts). Does not touch unlockedTabs
    *  or completedArcs — those evolve as steps are advanced/skipped. */
-  startTutorialArc: (arc: TutorialArcId) => void;
+  startTutorialArc: (arc: TutorialAnyArcId) => void;
   /** Resolve the current step's onCompleteEffectId, move to the next step
    *  (running its onEnterEffectId) or, past the arc's last step, complete
    *  the arc. Applies any step's unlocksTab the moment it's passed. */
@@ -3681,7 +3681,13 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       // requiring some other call site to notice completion and re-invoke
       // startTutorialArc itself. Only truly goes idle once courts finishes.
       const completedArcs = [...s.tutorial.completedArcs, current.arc];
-      const arcIdx = TUTORIAL_ARC_ORDER.indexOf(current.arc);
+      // TUTORIAL_ARC_ORDER only ever lists the four main arcs (T10's
+      // standalone lessons are deliberately excluded — see its own header
+      // comment); .indexOf's signature wants a TutorialArcId, but a lesson
+      // id compares safely against it at runtime (=== comparisons, -1 for
+      // any lesson id), which is exactly the "just finish, don't chain"
+      // behavior a lesson's own arc completion wants.
+      const arcIdx = TUTORIAL_ARC_ORDER.indexOf(current.arc as TutorialArcId);
       const nextArc = arcIdx === -1 ? undefined : TUTORIAL_ARC_ORDER[arcIdx + 1];
       const nextArcFirstStep = nextArc ? TUTORIAL_ARCS[nextArc]?.steps[0] ?? null : null;
 
@@ -3718,7 +3724,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const s = get();
     const { activeArc } = s.tutorial;
     if (!activeArc) return;
-    const idx = TUTORIAL_ARC_ORDER.indexOf(activeArc);
+    const idx = TUTORIAL_ARC_ORDER.indexOf(activeArc as TutorialArcId);
     const cascaded = idx === -1 ? [activeArc] : TUTORIAL_ARC_ORDER.slice(idx);
     set({
       tutorial: {

@@ -23,6 +23,7 @@ import { getCityDefinition } from '../../data/cityDefinitions';
 import PolicyBoard from './PolicyBoard';
 import DiplomatDesk from './DiplomatDesk';
 import HoldingsPanel from './HoldingsPanel';
+import InfoTap from '../shared/InfoTap';
 import CityClientCard from './CityClientCard';
 import MilitaryTab from './MilitaryTab';
 import MusterPickerModal from './MusterPickerModal';
@@ -327,7 +328,9 @@ function PersonalMilitarySection({
       </View>
 
       {/* Local Support stat bar */}
-      <Text style={milStyles.statLabel}>LOCAL SUPPORT</Text>
+      <InfoTap termId="local-support">
+        <Text style={milStyles.statLabel}>LOCAL SUPPORT</Text>
+      </InfoTap>
       <View style={milStyles.barTrack}>
         <View
           style={[
