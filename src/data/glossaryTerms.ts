@@ -37,19 +37,19 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     id: 'approach',
     term: 'Approach',
     definition: "A trial's free, adjustable stance — Ferocity, Procedure, or Sympathy — re-weighting how Logos/Pathos/Ethos preparation counts and which beats the trial-day session draws. Changeable any time until the trial begins, then locked.",
-    relatedTab: 'Cursus',
+    relatedTab: 'Curia',
   },
   {
     id: 'basilica',
     term: 'The Basilica',
     definition: "The screen where you prepare either side of a trial — Logos, Pathos, and Ethos sections, an Approach selector, and a speaker picker — opened from an active trial's card or an agenda item.",
-    relatedTab: 'Cursus',
+    relatedTab: 'Curia',
   },
   {
     id: 'calumnia',
     term: 'Calumnia',
     definition: 'The penalty for a clearly-lost prosecution you filed: Dignitas and standing with the target\'s clan both suffer, and the target may file a counter-suit against your speaker within two seasons.',
-    relatedTab: 'Cursus',
+    relatedTab: 'Curia',
   },
   {
     id: 'cadet-branch',
@@ -174,7 +174,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     id: 'ethos',
     term: 'Ethos',
     definition: "The Basilica's third preparation section — character and standing: invoking your ancestors' record, and (its corrupt shadow) bribing jurors or the presiding Praetor.",
-    relatedTab: 'Cursus',
+    relatedTab: 'Curia',
   },
   {
     id: 'fides',
@@ -251,7 +251,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     id: 'logos',
     term: 'Logos',
     definition: "The Basilica's evidence section — gathering evidence over time, or presenting a matching criminal Secret directly as damning proof.",
-    relatedTab: 'Cursus',
+    relatedTab: 'Curia',
   },
   {
     id: 'martial',
@@ -287,7 +287,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     id: 'pathos',
     term: 'Pathos',
     definition: "The Basilica's persuasion section — securing named witnesses and rehearsing the speaker's oration. Witnesses are attackable at trial.",
-    relatedTab: 'Cursus',
+    relatedTab: 'Curia',
   },
   {
     id: 'peace-negotiation',
@@ -341,7 +341,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     id: 'quaestio',
     term: 'Quaestio',
     definition: "Rome's standing criminal court — in game terms, any trial: a corruption charge, a hostile clan's accusation, or a prosecution you file yourself, all resolved through the same Basilica pipeline.",
-    relatedTab: 'Cursus',
+    relatedTab: 'Curia',
   },
   {
     id: 'rhetoric',
@@ -410,8 +410,8 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   {
     id: 'trial',
     term: 'Trial',
-    definition: 'A legal proceeding — brought by a hostile clan, triggered by corruption, or filed by you against a leader — prepared in the Basilica (Cursus) over several seasons. Outcomes range from Acquitted/Dismissed to Fined, Exiled, or Executed.',
-    relatedTab: 'Cursus',
+    definition: 'A legal proceeding — brought by a hostile clan, triggered by corruption, or filed by you against a leader — prepared in the Basilica over several seasons. Outcomes range from Acquitted/Dismissed to Fined, Exiled, or Executed.',
+    relatedTab: 'Curia',
   },
   {
     id: 'tribune',

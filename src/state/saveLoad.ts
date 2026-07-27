@@ -226,7 +226,6 @@ export class LocalSaveProvider implements SaveProvider {
       activeBattleSetup: _abs,
       activeBattleBridgeCtx: _abbc,
       selectedTrialId: _sti,
-      basilicaReturnTab: _brt,
       curiaSubTabRequest: _cstr,
       curiaBillTargetRequest: _cbtr,
       ...persistedState

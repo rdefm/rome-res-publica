@@ -19,8 +19,7 @@
 // when the close animation (however it was triggered: the `visible` prop
 // going false, OR an internal drag-dismiss) finishes. This matches the
 // original code's `Animated.timing(...).start(callback)` ordering exactly,
-// which callers (CursusScreen's `basilicaReturnTab` navigation, in
-// particular) depend on.
+// which some callers depend on for post-close navigation side effects.
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, PanResponder, StyleSheet } from 'react-native';
 

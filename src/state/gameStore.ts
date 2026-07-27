@@ -20,7 +20,7 @@ import type { CrisisState, CrisisTrackId } from '../models/crisis';
 import type { OfficeActionTargetContext } from '../engine/officeActionEngine';
 // ── Phase 1 (P1-A) ────────────────────────────────────────────────────────────
 import type { StartId, GensId, DifficultyId } from '../models/gameStart';
-import type { AgendaTarget, TabName } from '../models/agenda';
+import type { AgendaTarget } from '../models/agenda';
 import type { CuriaSubTab } from '../models/curia';
 import type { SeasonLedger } from '../models/ledger';
 // ── Tutorial redesign ──────────────────────────────────────────────────────────
@@ -400,19 +400,14 @@ export interface GameState {
   trials: TrialState[];
   /** Phase 4, Chunk P4-D — transient UI field, same pattern as
    *  selectedCharacterId/uiNavRequest: set by an agenda deep-link
-   *  (target.trialId) or CuriaScreen's "Open the Basilica" button via
-   *  requestNavigation; CursusScreen watches it to open the sheet, then
-   *  clears it. Excluded from persistence (see saveLoad.ts's transient list). */
+   *  (target.trialId) or TrialBanner's own "open the Basilica" button (via
+   *  selectTrialForBasilica directly — Curia Tab Redesign, Chunk C4).
+   *  CuriaScreen watches it to open the Basilica sheet in place, then
+   *  clears it. Excluded from persistence (see saveLoad.ts's transient list).
+   *  Chunk C4 also retired the sibling basilicaReturnTab field — trials now
+   *  live in Curia, where every deep-link already lands, so there is
+   *  nothing left to un-strand (Finding 13). */
   selectedTrialId: string | null;
-  /** The tab the player was actually on right before a `requestNavigation`
-   *  with a `trialId` payload switched them to Cursus to open the Basilica
-   *  (App.tsx's uiNavRequest effect sets this — null if they were already
-   *  on Cursus). CursusScreen's closeBasilica reads it to return the player
-   *  to where they came from instead of stranding them on Cursus — e.g.
-   *  CuriaScreen's "Open the Basilica" button used to leave the player on
-   *  the Cursus tab even after dismissing the sheet. Transient UI field,
-   *  excluded from persistence. */
-  basilicaReturnTab: TabName | null;
   /** Curia Tab Redesign, Chunk C2 — same transient-UI pattern as
    *  selectedTrialId above: set by App.tsx's uiNavRequest effect (a
    *  billId/trialId deep-link picks the sub-tab) or CuriaScreen itself;
@@ -837,7 +832,6 @@ export interface GameActions {
   bribeTrialPraetor: (trialId: string) => void;
   intimidateTrialWitness: (trialId: string) => void;
   selectTrialForBasilica: (trialId: string | null) => void;
-  setBasilicaReturnTab: (tab: TabName | null) => void;
   /** Curia Tab Redesign, Chunk C2 — see curiaSubTabRequest's field comment. */
   requestCuriaSubTab: (tab: CuriaSubTab | null) => void;
   /** Curia Tab Redesign, Chunk C2 — see curiaBillTargetRequest's field comment. */
@@ -1283,7 +1277,6 @@ export const INITIAL_STATE: GameState = {
   family: STARTING_FAMILY,
   selectedCharacterId: 'pc-1',
   selectedTrialId: null,
-  basilicaReturnTab: null,
   curiaSubTabRequest: null,
   curiaBillTargetRequest: null,
   trainedThisSeason: [],
@@ -3241,7 +3234,6 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   },
 
   selectTrialForBasilica: (trialId) => set({ selectedTrialId: trialId }),
-  setBasilicaReturnTab: (tab) => set({ basilicaReturnTab: tab }),
   requestCuriaSubTab: (tab) => set({ curiaSubTabRequest: tab }),
   requestCuriaBillTarget: (billId) => set({ curiaBillTargetRequest: billId }),
 
@@ -3931,7 +3923,6 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     agendaVisible: false,
     uiNavRequest:  null,
     selectedTrialId: null,
-    basilicaReturnTab: null,
     curiaSubTabRequest: null,
     curiaBillTargetRequest: null,
     activeEvent:   null,

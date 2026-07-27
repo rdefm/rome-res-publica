@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
 import { useGameStore } from '../state/gameStore';
 import type { GameState } from '../state/gameStore';
 import { OFFICES, TRIBUNE_OFFICE } from '../data/offices';
@@ -11,8 +10,6 @@ import type { Character } from '../models/character';
 import { calcPlayerElectionScore, calcNpcElectionScore, PLAYER_BASE_SCORE } from '../engine/electionEngine';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
-import BasilicaSheet from '../components/cursus/BasilicaSheet';
-import DragSheet from '../components/shared/DragSheet';
 import CandidateHeader from '../components/cursus/CandidateHeader';
 import OfficeCard from '../components/cursus/OfficeCard';
 import OfficeActionsModal from '../components/cursus/OfficeActionsModal';
@@ -444,51 +441,6 @@ export default function CursusScreen() {
   const [selectedCharId, setSelectedCharId] = useState(player?.id ?? '');
   const selectedChar = family.find(c => c.id === selectedCharId) ?? player;
 
-  // ── The Basilica (Phase 4, Chunk P4-D) — full-screen sheet, opened from
-  // CuriaScreen's TrialBanner (requestNavigation) or an agenda deep-link.
-  // Curia Tab Redesign, Chunk C0 — now DragSheet's shared shell instead of
-  // an inline Animated/PanResponder duplicate (Finding 5). Note: visibility
-  // and content-id are deliberately two separate pieces of state — see
-  // DragSheet.tsx's own header comment for why conflating them (as this
-  // screen originally did via `basilicaTrialId !== null`) breaks the close
-  // animation.
-  const navigation = useNavigation();
-  const selectedTrialId = useGameStore(s => s.selectedTrialId);
-  const selectTrialForBasilica = useGameStore(s => s.selectTrialForBasilica);
-  const basilicaReturnTab = useGameStore(s => s.basilicaReturnTab);
-  const setBasilicaReturnTab = useGameStore(s => s.setBasilicaReturnTab);
-  const [basilicaTrialId, setBasilicaTrialId] = useState<string | null>(null);
-  const [basilicaVisible, setBasilicaVisible] = useState(false);
-
-  function closeBasilica() {
-    setBasilicaVisible(false);
-  }
-
-  // Called by DragSheet once the close animation (drag-dismiss or the
-  // Basilica's own close button, both routed through closeBasilica above)
-  // actually finishes — matches the original code's post-animation
-  // `Animated.timing(...).start(callback)` ordering exactly.
-  function handleBasilicaClosed() {
-    setBasilicaVisible(false);
-    setBasilicaTrialId(null);
-    // Send the player back to whichever tab they were actually on before
-    // a deep-link (e.g. CuriaScreen's "Open the Basilica" button) switched
-    // them to Cursus — otherwise closing the sheet just stranded them
-    // here. null (they were already on Cursus) means stay put.
-    if (basilicaReturnTab) {
-      navigation.navigate(basilicaReturnTab as never);
-      setBasilicaReturnTab(null);
-    }
-  }
-
-  useEffect(() => {
-    if (selectedTrialId) {
-      setBasilicaTrialId(selectedTrialId);
-      setBasilicaVisible(true);
-      selectTrialForBasilica(null);
-    }
-  }, [selectedTrialId]);
-
   return (
     // FrescoBackground is the outermost element (mirrors DomusScreen's own
     // ImageBackground-then-SafeAreaView pattern) — padding for the resource
@@ -538,10 +490,6 @@ export default function CursusScreen() {
             </>
           )}
         </ScrollView>
-
-        <DragSheet visible={basilicaVisible} onClose={handleBasilicaClosed}>
-          {basilicaTrialId && <BasilicaSheet trialId={basilicaTrialId} onClose={closeBasilica} />}
-        </DragSheet>
 
         <SeasonOverlay />
         <OfficeActionResultModal />

@@ -248,7 +248,6 @@ function GameRoot() {
   const clearNavRequest = useGameStore(s => s.clearNavRequest);
   const selectCharacter = useGameStore(s => s.selectCharacter);
   const selectTrialForBasilica = useGameStore(s => s.selectTrialForBasilica);
-  const setBasilicaReturnTab = useGameStore(s => s.setBasilicaReturnTab);
   const requestCuriaSubTab = useGameStore(s => s.requestCuriaSubTab);
   const requestCuriaBillTarget = useGameStore(s => s.requestCuriaBillTarget);
 
@@ -256,39 +255,28 @@ function GameRoot() {
     if (!uiNavRequest) return;
     if (!navRef.isReady()) return;
 
-    // Basilica deep-link (trialId payload) — remember whichever tab the
-    // player was actually on before this switches them to Cursus, so
-    // CursusScreen's closeBasilica can send them back instead of stranding
-    // them on Cursus once the sheet is dismissed (e.g. CuriaScreen's "Open
-    // the Basilica" button). null when they were already on Cursus.
-    if (uiNavRequest.trialId) {
-      const currentTab = navRef.getCurrentRoute()?.name ?? null;
-      setBasilicaReturnTab(currentTab && currentTab !== uiNavRequest.tab ? (currentTab as any) : null);
-    }
-
     // Navigate to the target tab
     navRef.navigate(uiNavRequest.tab as never);
 
     // Apply payload — selectedCharacterId and trialId (Phase 4, P4-D) are the
-    // only confirmed store fields so far. provinceId / billId: tab landing
-    // only per plan §P1-C v1 scope.
+    // only confirmed store fields so far. provinceId: tab landing only per
+    // plan §P1-C v1 scope.
     // TODO (P1-C+): add selectedLeaderId, expandedClanId, provinceId deep-links
     //               once the relevant screen store fields are confirmed.
     if (uiNavRequest.selectedCharacterId) {
       selectCharacter(uiNavRequest.selectedCharacterId);
     }
     if (uiNavRequest.trialId) {
+      // Curia Tab Redesign, Chunk C4 — trials live in Curia now (NEGOTIA),
+      // where this deep-link already lands, so CuriaScreen's own effect on
+      // selectedTrialId opens the Basilica sheet in place; there is nothing
+      // left to un-strand (Finding 13 — basilicaReturnTab retired).
       selectTrialForBasilica(uiNavRequest.trialId);
     }
 
     // Curia Tab Redesign, Chunk C2 — a Curia deep-link also picks the right
-    // sub-tab. billId also carries a specific bill to scroll to/highlight
-    // (Chunk C3's real LegesView reads and clears curiaBillTargetRequest;
-    // C2's stub just clears it — see that field's gameStore.ts comment).
-    // trialId's Basilica open above still fires unchanged: until Chunk C4
-    // moves the Basilica's content into NEGOTIA, the only place a trial can
-    // actually be seen is Cursus, so it opens there in the background while
-    // this navigates the player to Curia's (stub, for now) NEGOTIA tab.
+    // sub-tab. billId also carries a specific bill to scroll to/highlight,
+    // consumed and cleared by Chunk C3's real LegesView.
     if (uiNavRequest.tab === 'Curia') {
       if (uiNavRequest.billId)  requestCuriaSubTab('leges');
       if (uiNavRequest.trialId) requestCuriaSubTab('negotia');
