@@ -244,13 +244,14 @@ describe('guided run — war arc end to end', () => {
     expect(useGameStore.getState().tutorial.stepId).toBe('war.closing');
     expect(useGameStore.getState().flags['tutorial-war-complete']).toBeUndefined();
 
-    // Closing beat's own tap fires warSetCompleteFlag. courts.steps is still
-    // empty (T9 not yet authored), so the auto-chain (gameStore's
-    // advanceTutorialStep) falls through to idle rather than entering courts.
+    // Closing beat's own tap fires warSetCompleteFlag, then auto-chains
+    // (gameStore's advanceTutorialStep) into the courts arc (T9) — the first
+    // step in TUTORIAL_ARC_ORDER after 'war' that actually has content.
     useGameStore.getState().advanceTutorialStep();
     const s = useGameStore.getState();
     expect(s.flags['tutorial-war-complete']).toBe(true);
     expect(s.tutorial.completedArcs).toEqual(['war']);
-    expect(s.tutorial.activeArc).toBeNull();
+    expect(s.tutorial.activeArc).toBe('courts');
+    expect(s.tutorial.stepId).toBe('courts.intro');
   });
 });

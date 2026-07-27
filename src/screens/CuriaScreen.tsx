@@ -261,6 +261,7 @@ const OUTCOME_COLORS: Record<string, string> = {
 function TrialBanner() {
   const { trials, turnNumber, family, clans, requestNavigation } = useGameStore();
   const activeTrial = trials.find(t => t.status !== 'resolved');
+  const trialBannerTarget = useTutorialTarget('curia.trial-banner');
 
   if (!activeTrial) {
     const resolved = trials.filter(t => t.status === 'resolved' && t.outcome);
@@ -291,7 +292,7 @@ function TrialBanner() {
   const playerStrength = computeTotalPrepStrength(activeTrial.playerPrep, activeTrial.approach);
 
   return (
-    <View style={tb.container}>
+    <View ref={trialBannerTarget.ref} onLayout={trialBannerTarget.onLayout} style={tb.container}>
       <View style={tb.header}>
         <View style={tb.headerLeft}>
           <InfoTap termId="trial">

@@ -12,6 +12,8 @@ import { isDeterred } from './secretEngine';
 import { CLAUDIUS_LEADER_ID } from '../data/claudiusArc';
 import { buildCarthageReinforcementUnits } from './campaignAi';
 import { COMMAND_CANVASS_MIN_RELATIONSHIP } from './commandEngine';
+import { buildTrialState } from './trialEngine';
+import { TRIAL_PREP_VERBS } from '../data/trialPrep';
 import { BALANCE } from '../data/balance';
 
 export const ALL_TABS: TabName[] = ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'];
@@ -22,6 +24,12 @@ export const ALL_TABS: TabName[] = ['Domus', 'Forum', 'Cursus', 'Provinciae', 'C
 // the player's commander from death in it (see resolveEngagementAbstract's
 // own comment) without a duplicated string literal drifting between files.
 export const TUTORIAL_CARTHAGE_GARRISON_ID = 'tutorial-carthage-garrison-lilybaeum';
+
+// Courts arc (T9) — stable id for the one forced trial this arc ever files,
+// so predicates can look it up directly rather than snapshotting a flag (the
+// entry gate guarantees at most one trial is active at a time while this arc
+// runs, and this id is only ever used by this one call site).
+export const TUTORIAL_COURTS_TRIAL_ID = 'tutorial-courts-repetundae';
 
 /** Order arcs resolve in — used by skipTutorialArc to cascade downstream arcs. */
 export const TUTORIAL_ARC_ORDER: TutorialArcId[] = ['prologue', 'embassy', 'war', 'courts'];
@@ -81,6 +89,17 @@ export const TUTORIAL_TARGET_IDS = new Set<string>([
   'provinciae.army.assign-commander',
   'provinciae.army.move',
   'provinciae.map.order-sicilia',
+  // Courts arc (T9). curia.trial-banner is CuriaScreen's own TrialBanner —
+  // a real, always-mounted (when a trial exists) View, not inside any Modal,
+  // so it gets a genuine spotlight cutout rather than narration-only
+  // treatment. Basilica prep (approach/speaker/logos/pathos/ethos) and trial
+  // day itself are NOT here: BasilicaSheet's own actions live behind further
+  // native Modals (agent/bribe/speaker pickers) nested inside an Animated
+  // bottom sheet — the exact "measurement inside animated bottom sheets"
+  // risk the plan's own §4 flags — and TrialSessionModal/VerdictScene are a
+  // native Modal outright (same reasoning as domus.action.train). All of
+  // those steps are narration-only, predicate-driven instead.
+  'curia.trial-banner',
 ]);
 
 // Act III's teaching bill — STARTING_BILLS' 'start-2' (Bellum Punicum), the
@@ -92,6 +111,20 @@ const ACT3_BILL_ID = 'start-2';
 
 function findFlaccus(s: GameState) {
   return s.clans.flatMap(c => c.leaders).find(l => l.id === 'valerius-flaccus');
+}
+
+// Courts arc (T9) — has this trial's playerPrep recorded any verb tagged to
+// `section` (data/trialPrep.ts)? Existence-on-actionsUsed, not "section total
+// > 0": Invoke the Ancestors' bonus is Math.floor(lifetimeDignitas / divisor)
+// (trialEngine.invokeAncestorsBonus) — genuinely 0 at a fresh game's starting
+// Dignitas, so a raw ethos>0 check would silently refuse to advance for a
+// player who took the free Ethos action first. actionsUsed records the verb
+// regardless of the bonus it happened to roll.
+function trialUsedSection(s: GameState, trialId: string, section: 'logos' | 'pathos' | 'ethos'): boolean {
+  const trial = s.trials.find(t => t.id === trialId);
+  if (!trial) return false;
+  const idsInSection = new Set(TRIAL_PREP_VERBS.filter(v => v.section === section).map(v => v.id));
+  return trial.playerPrep.actionsUsed.some(a => idsInSection.has(a));
 }
 
 export const TUTORIAL_PREDICATES: Record<string, (s: GameState) => boolean> = {
@@ -200,6 +233,46 @@ export const TUTORIAL_PREDICATES: Record<string, (s: GameState) => boolean> = {
   // is the real outcome-agnostic "this engagement is over" signal.
   engagementResolved: (s) =>
     s.armies.some(a => a.owner === 'player' && !a.ordersThisSeason) && s.pendingEngagements.length === 0,
+
+  // Courts arc (T9). Mirrors shouldTriggerTrial's own two ambient-filing
+  // invariants (trialEngine.ts) — one active trial system-wide, no filing
+  // while a Tribune is held — so courtsFileFalseCharge below never violates
+  // either one. True the overwhelming majority of the time (this is Year
+  // 1-2 of a guided run; nothing else scripts a Tribune bid, and the only
+  // realistic way a trial is already active is the war arc's own scripted
+  // engagement having set a defeatedGeneral flag that then actually fired) —
+  // when it's already true at step entry the director's per-commit check
+  // advances past this step before it's ever rendered; when it isn't, the
+  // step's own narration is worded to be true whether it shows for one tick
+  // or lingers for real seasons.
+  courtsEntryClear: (s) => !s.tribuneHolder && !(s.trials ?? []).some(t => t.status !== 'resolved'),
+
+  // The next three are existence-based on actionsUsed (see trialUsedSection's
+  // own comment for why NOT a raw section-total check) — any real Basilica
+  // verb under that heading counts, same "the choice is yours" flexibility
+  // as Act II's courting.
+  courtsLogosPrepared: (s) => trialUsedSection(s, TUTORIAL_COURTS_TRIAL_ID, 'logos'),
+  courtsPathosPrepared: (s) => trialUsedSection(s, TUTORIAL_COURTS_TRIAL_ID, 'pathos'),
+  courtsEthosPrepared: (s) => trialUsedSection(s, TUTORIAL_COURTS_TRIAL_ID, 'ethos'),
+
+  // 'preparing' -> ('in_session' | 'resolved') is turnSequencer's own step-15
+  // transition, drawn automatically once turnNumber reaches startsSeason —
+  // no separate "trial day" action exists to gate on beyond closing seasons.
+  // Explicit existence check first: an absent trial must never read as
+  // "day arrived" (undefined !== 'preparing' would otherwise be true).
+  courtsTrialDayArrived: (s) => {
+    const trial = s.trials.find(t => t.id === TUTORIAL_COURTS_TRIAL_ID);
+    return !!trial && trial.status !== 'preparing';
+  },
+  // Genuinely open on purpose (per design decision — courts is the LAST
+  // tutorial arc, so nothing downstream needs Marcus, specifically, to have
+  // survived a bad verdict; a loss triggers Rome's ordinary funeral/
+  // succession event chain exactly as free play would, and the director
+  // already bails on `s.activeEvent` while that plays out). No death shield,
+  // unlike the war arc's one scripted engagement (which DID need the
+  // player's commander alive, to stand as this arc's defendant).
+  courtsVerdictReached: (s) =>
+    s.trials.find(t => t.id === TUTORIAL_COURTS_TRIAL_ID)?.status === 'resolved',
 };
 
 export const TUTORIAL_EFFECTS: Record<string, (s: GameState) => Partial<GameState>> = {
@@ -305,6 +378,50 @@ export const TUTORIAL_EFFECTS: Record<string, (s: GameState) => Partial<GameStat
   // arc's own completion should obviously record.
   warSetCompleteFlag: (s) => ({
     flags: { ...s.flags, 'tutorial-war-complete': true },
+  }),
+
+  // Courts arc (T9) — fires on 'courts.charge-filed's onEnterEffectId, only
+  // reachable once 'courts.charge-gate' (courtsEntryClear) has confirmed no
+  // trial is active and no Tribune is held. Claudius, deterred from ever
+  // using the real secret (Act V's audit — isDeterred), files a fabricated
+  // repetundae charge instead: chargeSource 'accusation', not 'secret' —
+  // this is a lie, not the blackmail. initialNpcStrength/startsSeason reuse
+  // BALANCE.secrets.claudius's own trialSeed/startsDelaySeasons (0 / 1
+  // season) rather than the generic NPC-initiated formula or a new constant
+  // — see tutorialScript.ts's Courts arc header comment for why those two
+  // numbers, already tuned and simulated for a Claudius-filed trial, are the
+  // right ones to reuse rather than restate. No playerPrep override (all
+  // three sections start at 0), same as resolveClaudiusDefiance's own
+  // buildTrialState call. Idempotent: no-ops if the trial already exists
+  // (defensive only, same convention as warSeedCarthageGarrison).
+  courtsFileFalseCharge: (s) => {
+    if (s.trials.some(t => t.id === TUTORIAL_COURTS_TRIAL_ID)) return {};
+    const player = s.family.find(c => c.isPlayer);
+    if (!player) return {};
+    const newTrial = buildTrialState({
+      id: TUTORIAL_COURTS_TRIAL_ID,
+      seat: 'defense',
+      charge: 'repetundae',
+      chargeSource: 'accusation',
+      prosecutor: { kind: 'leader', leaderId: CLAUDIUS_LEADER_ID },
+      defendant: { kind: 'family', characterId: player.id },
+      filedSeason: s.turnNumber,
+      startsSeason: s.turnNumber + BALANCE.secrets.claudius.startsDelaySeasons,
+      initialNpcStrength: BALANCE.secrets.claudius.trialSeed,
+      speakerId: player.id,
+    });
+    return { trials: [...s.trials, newTrial] };
+  },
+
+  // Courts arc (T9) — fires on the arc's final step's onCompleteEffectId,
+  // same pattern as embassySetCompleteFlag/warSetCompleteFlag. Nothing
+  // consumes this yet (courts is the last arc T9 authors), but it's the same
+  // "set the precedent up now" call T8 made for warSetCompleteFlag before
+  // this arc existed — a natural hook for T10's just-in-time lessons to gate
+  // "the guided tutorial has fully finished" on, without re-deriving it from
+  // tutorial.completedArcs.
+  courtsSetCompleteFlag: (s) => ({
+    flags: { ...s.flags, 'tutorial-courts-complete': true },
   }),
 };
 

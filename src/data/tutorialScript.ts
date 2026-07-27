@@ -2,10 +2,10 @@
 // for step resolution and engine/tutorialTargets.ts for the spotlight registry.
 // tutorial-redesign-plan.md §2.1/§2.5.
 //
-// Steps are authored incrementally per the plan's chunk order: T5 (prologue),
-// T7 (embassy), T8 (war), T9 (courts). All four arcs are declared here from
-// the start so downstream chunks only ever append to `steps`, never touch
-// this file's structure.
+// Steps were authored incrementally per the plan's chunk order: T5 (prologue),
+// T7 (embassy), T8 (war), T9 (courts) — all four now landed. All four arcs
+// were declared here from the start so each chunk only ever appended to
+// `steps`, never touched this file's structure.
 
 import type { TutorialArc, TutorialArcId, TutorialStep } from '../models/tutorial';
 
@@ -736,6 +736,154 @@ const WAR_STEPS: TutorialStep[] = [
   },
 ];
 
+// ─── Arc IV — The Courts ────────────────────────────────────────────────────
+// Guided rail throughout. One continuous arc, the final one — nothing in this
+// codebase runs after it (T10 is flag-gated just-in-time lessons layered on
+// top of BOTH guided and free starts, not a fifth arc). Sequence: a gate that
+// waits for the one-active-trial/no-Tribune invariants to be free (courts
+// arc.charge-gate) -> Claudius files a fabricated repetundae charge the
+// instant he can (courts.charge-filed, tutorialEngine's
+// courtsFileFalseCharge) -> Basilica prep across all three fronts -> trial
+// day -> verdict, whatever it is.
+//
+// The verdict is left genuinely real (trialEngine.resolveTrialOutcome is
+// never touched) — including its OUTCOME_CONSEQUENCES.removeCharacter effect
+// on Exiled/Executed. War arc's own battle-death shield
+// (gameStore.resolveEngagementAbstract's TUTORIAL_CARTHAGE_GARRISON_ID
+// comment) was necessary because T9 needed Marcus alive to BE the defendant;
+// nothing downstream needs him alive AFTER the verdict, since courts is the
+// last arc — a loss triggers Rome's ordinary funeral/succession event chain
+// exactly as it would in free play, and the tutorial director already bails
+// on `s.activeEvent`, so that chain plays out before the closing beat's
+// caption reappears. Closing narration (courts.closing) is written to read
+// correctly under any of the five outcomes, same discipline as war.closing's
+// win/loss-agnostic phrasing.
+//
+// courtsFileFalseCharge reuses BALANCE.secrets.claudius's trialSeed/
+// startsDelaySeasons (0 / 1 season) rather than inventing new numbers or
+// copying the generic NPC-initiated formula (accuserIntrigus*2 +
+// corruption/2) — those two constants are Claudius's own, already tuned and
+// simulated (__tests__/p5h.test.ts's "Claudius trial" test) for exactly this
+// design goal: a Claudius-filed trial a clean defendant can comfortably win
+// with a handful of real prep actions. Same antagonist, same "weak by
+// construction, do not additionally rig it" goal (plan finding 24) — a new,
+// separately-tuned constant would just restate the same value under a
+// different name.
+const COURTS_STEPS: TutorialStep[] = [
+  {
+    id: 'courts.intro',
+    arc: 'courts',
+    actLabel: 'The Courts',
+    rail: 'guided',
+    requiresTab: 'Cursus',
+    narration:
+      "Domine. The standoff with Appius Claudius Pulcher holds — he cannot use what he holds over " +
+      "this family without exposing what you hold over him. A patient man would leave it there. He " +
+      "will not.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'courts.charge-gate',
+    arc: 'courts',
+    rail: 'guided',
+    requiresTab: 'Cursus',
+    narration:
+      "The courts move at their own pace, Domine, and hear one matter of the family's at a time. " +
+      "Claudius will have his moment the instant they are free to give him one.",
+    advance: { kind: 'predicate', predicateId: 'courtsEntryClear' },
+  },
+  {
+    id: 'courts.charge-filed',
+    arc: 'courts',
+    rail: 'guided',
+    requiresTab: 'Curia',
+    target: 'curia.trial-banner',
+    narration:
+      "There. Formal charges of repetundae — plundering a province under color of office, the " +
+      "Verres charge — brought against you by Appius Claudius Pulcher himself. A lie, Domine: " +
+      "your command in Sicilia was clean, and he knows it. He cannot touch the secret between you " +
+      "without losing it, so he has invented one instead.",
+    advance: { kind: 'tap' },
+    onEnterEffectId: 'courtsFileFalseCharge',
+  },
+  {
+    id: 'courts.basilica-intro',
+    arc: 'courts',
+    rail: 'guided',
+    requiresTab: 'Cursus',
+    narration:
+      "Open the Basilica. A weak case is still a case, and an unanswered one convicts itself. " +
+      "Choose how the family argues it — procedure, ferocity, or sympathy for the jury — and who " +
+      "speaks for you. The choice, again, is yours.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'courts.prep-logos',
+    arc: 'courts',
+    rail: 'guided',
+    requiresTab: 'Cursus',
+    narration:
+      "Logos first: the facts of the matter. Gather evidence, or present a secret as evidence " +
+      "outright if you hold one that fits — whatever the Basilica offers under that heading, take it.",
+    advance: { kind: 'predicate', predicateId: 'courtsLogosPrepared' },
+  },
+  {
+    id: 'courts.prep-pathos',
+    arc: 'courts',
+    rail: 'guided',
+    requiresTab: 'Cursus',
+    narration:
+      "Pathos: the human weight of it. A witness secured, an oration prepared — the jury are men, " +
+      "not ledgers, and men are moved by more than facts.",
+    advance: { kind: 'predicate', predicateId: 'courtsPathosPrepared' },
+  },
+  {
+    id: 'courts.prep-ethos',
+    arc: 'courts',
+    rail: 'guided',
+    requiresTab: 'Cursus',
+    narration:
+      "Ethos: your standing itself. Invoke the family's ancestors, or — Rome being Rome — spend to " +
+      "quietly improve a juror's opinion of you. Spend carefully; a discovered bribe costs more " +
+      "than it buys.",
+    advance: { kind: 'predicate', predicateId: 'courtsEthosPrepared' },
+  },
+  {
+    id: 'courts.wait-for-trial-day',
+    arc: 'courts',
+    rail: 'guided',
+    requiresTab: 'Cursus',
+    target: 'shared.end-season',
+    narration: "Close the season, Domine, until the day itself arrives.",
+    advance: { kind: 'predicate', predicateId: 'courtsTrialDayArrived' },
+  },
+  {
+    id: 'courts.trial-day',
+    arc: 'courts',
+    rail: 'guided',
+    requiresTab: 'Cursus',
+    narration:
+      "The Basilica is full. Answer the court as it presses you — three exchanges, and the matter " +
+      "is decided.",
+    advance: { kind: 'predicate', predicateId: 'courtsVerdictReached' },
+  },
+  {
+    id: 'courts.closing',
+    arc: 'courts',
+    rail: 'guided',
+    requiresTab: 'Cursus',
+    narration:
+      "Whatever the court decided, Domine, it decided something real — a false charge, met with an " +
+      "honest defense, argued on the strength of what you actually prepared, not what you were " +
+      "owed. That is the last of it. Appius Claudius Pulcher could not use what he held over this " +
+      "family without losing it himself — so he tried a lie instead, and the lie stood or fell on " +
+      "its own. Not virtue, and not leverage alone, either. Preparation, met honestly. Philon's part " +
+      "in this ends here, Domine. The rest of the history is yours to write.",
+    advance: { kind: 'tap' },
+    onCompleteEffectId: 'courtsSetCompleteFlag',
+  },
+];
+
 export const TUTORIAL_ARCS: Record<TutorialArcId, TutorialArc> = {
   prologue: {
     id: 'prologue',
@@ -747,5 +895,5 @@ export const TUTORIAL_ARCS: Record<TutorialArcId, TutorialArc> = {
   },
   embassy:  { id: 'embassy',  title: 'The Embassy',     steps: [...EMBASSY_STEPS] },
   war:      { id: 'war',      title: 'The War',         steps: [...WAR_STEPS] },
-  courts:   { id: 'courts',   title: 'The Courts',      steps: [] },
+  courts:   { id: 'courts',   title: 'The Courts',      steps: [...COURTS_STEPS] },
 };
