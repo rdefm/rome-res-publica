@@ -14,18 +14,11 @@ import { calcRomeStatModifiers } from '../engine/resourceEngine';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import StatBar from '../components/shared/StatBar';
 import CrisisTrackModal from '../components/shared/CrisisTrackModal';
-import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
 import ScrollModal, { PARCHMENT } from '../components/shared/ScrollModal';
 import type { CrisisTrackId, CrisisTrack } from '../models/crisis';
 import { getTierFromLevel } from '../models/crisis';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 import InfoTap from '../components/shared/InfoTap';
-import { MUNIFICENCE_ACTS, type MunificenceAct } from '../data/munificence';
-import {
-  checkMunificenceRequirements,
-  getMunificenceCost,
-  getMunificenceEffects,
-} from '../engine/munificenceEngine';
 import { getDesperationTier } from '../engine/warEngine';
 import { isWarActiveForCommand } from '../engine/commandEngine';
 import { useTutorialTarget } from '../components/shared/useTutorialTarget';
@@ -331,75 +324,3 @@ const styles = StyleSheet.create({
   scroll: { flex: 1, padding: SPACING.md },
 });
 
-// ─── Munificence act row (P2-F) ────────────────────────────────────────────────
-// Locked acts are shown greyed-out with their tier requirement, not hidden —
-// they're the aspiration (plan §P2-F UI). Grand acts (isGrandAct) get a laurel
-// accent border; executing one triggers a Philon interstitial via gameStore.
-
-function MunificenceActRow({ act }: { act: MunificenceAct }) {
-  const state = useGameStore();
-  const { performMunificence } = state;
-
-  const check = checkMunificenceRequirements(state, act);
-  const cost = getMunificenceCost(state, act);
-  const effects = getMunificenceEffects(state, act);
-  const aedileActive = !!act.aedileDiscount && state.currentOffice === 'aedile';
-
-  const effectParts: string[] = [];
-  if (effects.plebs)                            effectParts.push(`Plebs +${effects.plebs}`);
-  if (effects.fides)                             effectParts.push(`Fides +${effects.fides}`);
-  if (effects.lifetimeDignitas)                  effectParts.push(`Lifetime Dignitas +${effects.lifetimeDignitas}`);
-  if (effects.stability)                         effectParts.push(`Stability +${effects.stability}`);
-  if (effects.crisisDeltas?.unrest)              effectParts.push(`Unrest ${effects.crisisDeltas.unrest}`);
-  if (effects.crisisDeltas?.constitution)        effectParts.push(`Constitution ${effects.crisisDeltas.constitution}`);
-  if (effects.grantsEndowment)                   effectParts.push('+1 Fides/season, permanently');
-  if (effects.electionVoteBonus !== undefined)   effectParts.push(`+${effects.electionVoteBonus} votes, fading over years`);
-
-  const costParts = [`${cost.denarii} Denarii`];
-  if (cost.fides > 0) costParts.push(`${cost.fides} Fides`);
-
-  const locked = !check.ok && !!check.reason && check.reason.startsWith('Requires');
-  const cardStyle = StyleSheet.flatten([
-    mar.card,
-    act.isGrandAct && mar.grandCard,
-    !check.ok && !locked && mar.cooldownCard,
-  ]);
-
-  return (
-    <ParchmentCard style={cardStyle}>
-      <TouchableOpacity
-        activeOpacity={0.75}
-        disabled={!check.ok}
-        onPress={() => performMunificence(act.id)}
-      >
-        <View style={mar.row}>
-          <Text style={[mar.name, act.isGrandAct && mar.grandName]} numberOfLines={1}>
-            {act.isGrandAct ? '🌿 ' : ''}{act.name}
-          </Text>
-          <Text style={mar.cost}>−{costParts.join(', −')}</Text>
-        </View>
-        <Text style={mar.flavor}>{act.flavor}</Text>
-        {effectParts.length > 0 && <Text style={mar.effects}>{effectParts.join(' · ')}</Text>}
-        {aedileActive && <Text style={mar.aedileNote}>Aedile discount applied (½ cost, ×1.5 effect)</Text>}
-        {!check.ok && (
-          <Text style={locked ? mar.lockedNote : mar.blockedNote}>{check.reason}</Text>
-        )}
-      </TouchableOpacity>
-    </ParchmentCard>
-  );
-}
-
-const mar = StyleSheet.create({
-  card: { marginBottom: SPACING.sm },
-  grandCard: { borderWidth: 2, borderColor: COLORS.laurel },
-  cooldownCard: { opacity: 0.6 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 14, fontWeight: '700', flex: 1, marginRight: SPACING.sm },
-  grandName: { color: PARCHMENT_TEXT.gold },
-  cost: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11 },
-  flavor: { color: PARCHMENT_TEXT.body, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11, marginTop: 3 },
-  effects: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.ui, fontSize: 11, marginTop: 4 },
-  aedileNote: { color: PARCHMENT_TEXT.gold, fontFamily: FONTS.ui, fontSize: 10, marginTop: 3 },
-  lockedNote: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 10, marginTop: 4, fontStyle: 'italic' },
-  blockedNote: { color: '#a04030', fontFamily: FONTS.ui, fontSize: 10, marginTop: 4 },
-});
