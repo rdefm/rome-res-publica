@@ -362,7 +362,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Curia',
   },
   {
-    id: 'rome-treasury',
+    id: 'aerarium',
     term: 'Rome — Treasury',
     definition: 'A macro stat (0–100) affecting bill support and Denarii income. Below 10 it becomes Bankrupt, imposing −3 Denarii per season and triggering automatic crisis legislation.',
     relatedTab: 'Curia',

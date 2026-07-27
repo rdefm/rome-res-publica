@@ -21,6 +21,7 @@ import type { OfficeActionTargetContext } from '../engine/officeActionEngine';
 // ── Phase 1 (P1-A) ────────────────────────────────────────────────────────────
 import type { StartId, GensId, DifficultyId } from '../models/gameStart';
 import type { AgendaTarget, TabName } from '../models/agenda';
+import type { CuriaSubTab } from '../models/curia';
 import type { SeasonLedger } from '../models/ledger';
 // ── Tutorial redesign ──────────────────────────────────────────────────────────
 import type { TutorialState, TutorialArcId, TutorialAnyArcId } from '../models/tutorial';
@@ -409,6 +410,20 @@ export interface GameState {
    *  the Cursus tab even after dismissing the sheet. Transient UI field,
    *  excluded from persistence. */
   basilicaReturnTab: TabName | null;
+  /** Curia Tab Redesign, Chunk C2 — same transient-UI pattern as
+   *  selectedTrialId above: set by App.tsx's uiNavRequest effect (a
+   *  billId/trialId deep-link picks the sub-tab) or CuriaScreen itself;
+   *  CuriaScreen watches it, switches its local sub-tab useState, then
+   *  clears it. Excluded from persistence (see saveLoad.ts's transient list). */
+  curiaSubTabRequest: CuriaSubTab | null;
+  /** Curia Tab Redesign, Chunk C2 — the "close the gap" half of the billId
+   *  deep-link: carries the specific bill to scroll to and highlight once
+   *  landed on LEGES. Set by App.tsx's uiNavRequest effect alongside
+   *  curiaSubTabRequest. C2's LegesView is a stub with no scrollable bill
+   *  list yet, so it just reads-then-clears this without acting on it;
+   *  Chunk C3's real LegesView is what actually scrolls/highlights.
+   *  Excluded from persistence. */
+  curiaBillTargetRequest: string | null;
 
   // Faction Reputation (Feature 2)
   familyReputations: Record<string, number>;
@@ -820,6 +835,10 @@ export interface GameActions {
   intimidateTrialWitness: (trialId: string) => void;
   selectTrialForBasilica: (trialId: string | null) => void;
   setBasilicaReturnTab: (tab: TabName | null) => void;
+  /** Curia Tab Redesign, Chunk C2 — see curiaSubTabRequest's field comment. */
+  requestCuriaSubTab: (tab: CuriaSubTab | null) => void;
+  /** Curia Tab Redesign, Chunk C2 — see curiaBillTargetRequest's field comment. */
+  requestCuriaBillTarget: (billId: string | null) => void;
   // Trial day — Phase 4, Chunk P4-E
   answerTrialBeat: (trialId: string, beatId: string, responseId: string) => void;
   fastResolveTrialSession: (trialId: string) => void;
@@ -1262,6 +1281,8 @@ export const INITIAL_STATE: GameState = {
   selectedCharacterId: 'pc-1',
   selectedTrialId: null,
   basilicaReturnTab: null,
+  curiaSubTabRequest: null,
+  curiaBillTargetRequest: null,
   trainedThisSeason: [],
   pendingSuccession: null,
   regency: null,
@@ -3218,6 +3239,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   selectTrialForBasilica: (trialId) => set({ selectedTrialId: trialId }),
   setBasilicaReturnTab: (tab) => set({ basilicaReturnTab: tab }),
+  requestCuriaSubTab: (tab) => set({ curiaSubTabRequest: tab }),
+  requestCuriaBillTarget: (billId) => set({ curiaBillTargetRequest: billId }),
 
   // ─── Trial day: the beat engine (Phase 4, Chunk P4-E) ──────────────────────
 
@@ -3906,6 +3929,8 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     uiNavRequest:  null,
     selectedTrialId: null,
     basilicaReturnTab: null,
+    curiaSubTabRequest: null,
+    curiaBillTargetRequest: null,
     activeEvent:   null,
     });
   },

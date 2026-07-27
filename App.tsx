@@ -249,6 +249,8 @@ function GameRoot() {
   const selectCharacter = useGameStore(s => s.selectCharacter);
   const selectTrialForBasilica = useGameStore(s => s.selectTrialForBasilica);
   const setBasilicaReturnTab = useGameStore(s => s.setBasilicaReturnTab);
+  const requestCuriaSubTab = useGameStore(s => s.requestCuriaSubTab);
+  const requestCuriaBillTarget = useGameStore(s => s.requestCuriaBillTarget);
 
   useEffect(() => {
     if (!uiNavRequest) return;
@@ -277,6 +279,20 @@ function GameRoot() {
     }
     if (uiNavRequest.trialId) {
       selectTrialForBasilica(uiNavRequest.trialId);
+    }
+
+    // Curia Tab Redesign, Chunk C2 — a Curia deep-link also picks the right
+    // sub-tab. billId also carries a specific bill to scroll to/highlight
+    // (Chunk C3's real LegesView reads and clears curiaBillTargetRequest;
+    // C2's stub just clears it — see that field's gameStore.ts comment).
+    // trialId's Basilica open above still fires unchanged: until Chunk C4
+    // moves the Basilica's content into NEGOTIA, the only place a trial can
+    // actually be seen is Cursus, so it opens there in the background while
+    // this navigates the player to Curia's (stub, for now) NEGOTIA tab.
+    if (uiNavRequest.tab === 'Curia') {
+      if (uiNavRequest.billId)  requestCuriaSubTab('leges');
+      if (uiNavRequest.trialId) requestCuriaSubTab('negotia');
+      if (uiNavRequest.billId)  requestCuriaBillTarget(uiNavRequest.billId);
     }
 
     clearNavRequest();

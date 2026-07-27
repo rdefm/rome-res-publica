@@ -227,6 +227,8 @@ export class LocalSaveProvider implements SaveProvider {
       activeBattleBridgeCtx: _abbc,
       selectedTrialId: _sti,
       basilicaReturnTab: _brt,
+      curiaSubTabRequest: _cstr,
+      curiaBillTargetRequest: _cbtr,
       ...persistedState
     } = state as any;
     const json = JSON.stringify({ ...persistedState, saveVersion: CURRENT_SAVE_VERSION });

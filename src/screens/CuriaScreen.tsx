@@ -1,9 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
+import type { CuriaSubTab } from '../models/curia';
+import StateOfRepublicPanel from '../components/curia/StateOfRepublicPanel';
+import SubTabBar from '../components/curia/SubTabBar';
+import LegesView from '../components/curia/LegesView';
+import NegotiaView from '../components/curia/NegotiaView';
+import MunificentiaView from '../components/curia/MunificentiaView';
 import { calcRomeStatModifiers } from '../engine/resourceEngine';
 import { computeTotalPrepStrength } from '../engine/trialEngine';
 import { calcRomeStatVoteModifier, ALL_BILL_TEMPLATES } from '../data/billTemplates';
@@ -848,264 +854,45 @@ const commandStyles = StyleSheet.create({
 // ─── CuriaScreen ──────────────────────────────────────────────────────────────
 
 export default function CuriaScreen() {
-  const {
-    rome, crisis, bills, activeLaws, fides, turnNumber, grandGamesVoteBonus, wars,
-    family, clans, activeCommand, commandElection, callCommandVote,
-  } = useGameStore();
-  const [submitVisible, setSubmitVisible] = useState(false);
-  const [activeLawsExpanded, setActiveLawsExpanded] = useState(true);
-  const [munificenceExpanded, setMunificenceExpanded] = useState(true);
-  const [romeStatModal, setRomeStatModal] = useState<RomeStat | null>(null);
-  const [crisisModal, setCrisisModal] = useState<CrisisTrackId | null>(null);
-  const [negotiationWarId, setNegotiationWarId] = useState<string | null>(null);
-  const [commandModalVisible, setCommandModalVisible] = useState(false);
-  const romeMods = calcRomeStatModifiers(rome);
+  // Curia Tab Redesign, Chunk C2 — active sub-tab and header-collapse are
+  // local state, matching the CitySheet/LatiumSheet precedent (no
+  // persistence, no save-schema change).
+  const [activeSubTab, setActiveSubTab] = useState<CuriaSubTab>('leges');
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
 
-  // Tutorial redesign, T8 — same "call unconditionally, target id conditional
-  // on the relevant state" pattern already used above for bill-list/vote-for.
-  const proposeCommandVoteTarget = useTutorialTarget(
-    !activeCommand && !commandElection?.active ? 'curia.action.propose-command-vote' : undefined,
-  );
-  const openAssemblyTarget = useTutorialTarget(
-    commandElection?.active ? 'curia.action.open-assembly' : undefined,
-  );
-
-  // Military Overhaul M10 — any active war that's reached the sue threshold
-  // unlocks the negotiation entry point (agendaEngine's generator #18 also
-  // points here — see its target: { tab: 'Curia' }).
-  const negotiableWars = (wars ?? []).filter(w => w.active && getDesperationTier(w.warScore) !== 'none');
-
-  // Campaign Map plan, Chunk C4 — The Command.
-  const commandVoteEligible = !activeCommand && !commandElection?.active && isWarActiveForCommand(wars ?? []);
-  const commandHolderName = activeCommand
-    ? (activeCommand.holderOwner === 'player'
-        ? family.find(c => c.id === activeCommand.holderId)?.name ?? 'Unknown'
-        : clans.flatMap(c => c.leaders).find(l => l.id === activeCommand.holderId)?.name ?? 'A rival commander')
-    : null;
-
-  const TRACK_ORDER: CrisisTrackId[] = ['war', 'unrest', 'constitution', 'economy'];
+  // App.tsx's uiNavRequest effect sets curiaSubTabRequest from a
+  // billId/trialId deep-link; read-then-clear, same shape as CursusScreen's
+  // selectedTrialId effect.
+  const curiaSubTabRequest = useGameStore(s => s.curiaSubTabRequest);
+  const requestCuriaSubTab = useGameStore(s => s.requestCuriaSubTab);
+  useEffect(() => {
+    if (curiaSubTabRequest) {
+      setActiveSubTab(curiaSubTabRequest);
+      requestCuriaSubTab(null);
+    }
+  }, [curiaSubTabRequest]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>CURIA</Text>
-        <Text style={styles.subtitle}>Senate & Legislation</Text>
-      </View>
-
+      <StateOfRepublicPanel
+        collapsed={headerCollapsed}
+        onToggleCollapse={() => setHeaderCollapsed(c => !c)}
+      />
+      <SubTabBar
+        active={activeSubTab}
+        onChange={setActiveSubTab}
+        // Real counts/criticality land in Chunk C4 (AgendaBadge-style
+        // primitive selector, per plan §"Badge") — NegotiaView is still a
+        // stub, so there is nothing to badge yet.
+        negotiaCount={0}
+        negotiaCritical={false}
+      />
       <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}>
-        <TrialBanner />
-
-        {/* Treasury — the one Rome stat that directly affects legislation */}
-        <View style={styles.panel}>
-          <InfoTap termId="rome-treasury">
-            <Text style={styles.panelTitle}>ROME — TREASURY</Text>
-          </InfoTap>
-          <Text style={styles.panelSub}>
-            Affects bill support and Denarii income each season. Tap for tier details.
-          </Text>
-          <StatBar
-            label={`Treasury — ${romeMods.treasuryLabel}`}
-            value={rome.treasury}
-            color={COLORS.denariiColor}
-            thresholdMarks={[10, 25, 65, 85]}
-            onPress={() => setRomeStatModal('treasury')}
-          />
-          <View style={styles.crosslink}>
-            <Text style={styles.crosslinkText}>
-              Popular Sentiment &amp; Internal Stability are tracked in{' '}
-              <Text style={styles.crosslinkEmphasis}>Provinciae → Latium</Text>
-              {' '}— they drive Unrest and Constitution crisis escalation.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.panel}>
-          <InfoTap termId="crisis-tracks">
-            <Text style={styles.panelTitle}>CRISIS TRACKS</Text>
-          </InfoTap>
-          <Text style={styles.panelSub}>Four independent pressures on the Republic. Each escalates and de-escalates through different mechanisms.</Text>
-          <View style={styles.crisisRow}>
-            <CrisisTrackCell trackId={TRACK_ORDER[0]} track={crisis[TRACK_ORDER[0]]} onPress={() => setCrisisModal(TRACK_ORDER[0])} />
-            <View style={styles.crisisGap} />
-            <CrisisTrackCell trackId={TRACK_ORDER[1]} track={crisis[TRACK_ORDER[1]]} onPress={() => setCrisisModal(TRACK_ORDER[1])} />
-          </View>
-          <View style={[styles.crisisRow, { marginTop: SPACING.sm }]}>
-            <CrisisTrackCell trackId={TRACK_ORDER[2]} track={crisis[TRACK_ORDER[2]]} onPress={() => setCrisisModal(TRACK_ORDER[2])} />
-            <View style={styles.crisisGap} />
-            <CrisisTrackCell trackId={TRACK_ORDER[3]} track={crisis[TRACK_ORDER[3]]} onPress={() => setCrisisModal(TRACK_ORDER[3])} />
-          </View>
-        </View>
-
-        {/* Military Overhaul M10 — War & Peace */}
-        {negotiableWars.length > 0 && (
-          <View style={styles.panel}>
-            <InfoTap termId="peace-negotiation">
-              <Text style={styles.panelTitle}>WAR &amp; PEACE</Text>
-            </InfoTap>
-            <Text style={styles.panelSub}>
-              The war has reached a threshold where terms may be discussed.
-            </Text>
-            {negotiableWars.map(w => (
-              <TouchableOpacity
-                key={w.id}
-                style={styles.warRow}
-                onPress={() => setNegotiationWarId(w.id)}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.warRowLabel}>
-                    War with {w.enemyId.charAt(0).toUpperCase() + w.enemyId.slice(1)}
-                  </Text>
-                  <Text style={styles.warRowSub}>
-                    warScore {w.warScore >= 0 ? '+' : ''}{w.warScore}
-                    {w.treaty?.stage === 'ai_offer' && ' — terms offered'}
-                    {w.treaty?.stage === 'senate_vote' && ' — awaiting Senate vote'}
-                  </Text>
-                </View>
-                <Text style={styles.warRowArrow}>›</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* Campaign Map plan, Chunk C4 — The Command */}
-        {(commandVoteEligible || activeCommand || commandElection?.active) && (
-          <View style={styles.panel}>
-            <InfoTap termId="the-command">
-              <Text style={styles.panelTitle}>THE COMMAND</Text>
-            </InfoTap>
-            {commandElection?.active ? (
-              <TouchableOpacity
-                ref={openAssemblyTarget.ref}
-                onLayout={openAssemblyTarget.onLayout}
-                style={styles.warRow}
-                onPress={() => setCommandModalVisible(true)}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.warRowLabel}>
-                    {commandElection.isProrogation ? 'Prorogation vote open' : 'Extraordinary assembly open'}
-                  </Text>
-                  <Text style={styles.warRowSub}>
-                    {commandElection.rivals.length} rival(s) standing — canvass before End Season.
-                  </Text>
-                </View>
-                <Text style={styles.warRowArrow}>›</Text>
-              </TouchableOpacity>
-            ) : activeCommand ? (
-              <View style={styles.warRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.warRowLabel}>{commandHolderName} holds the command</Text>
-                  <Text style={styles.warRowSub}>
-                    War chest {activeCommand.warChest} den · expires season {activeCommand.expiresSeason}
-                  </Text>
-                </View>
-              </View>
-            ) : (
-              <TouchableOpacity
-                ref={proposeCommandVoteTarget.ref}
-                onLayout={proposeCommandVoteTarget.onLayout}
-                style={[styles.submitBtn, fides < BALANCE.campaign.command.callVoteFidesCost && styles.submitBtnDisabled]}
-                onPress={() => callCommandVote(null)}
-                disabled={fides < BALANCE.campaign.command.callVoteFidesCost}
-              >
-                <Text style={styles.submitBtnLabel}>Propose a Command Vote</Text>
-                <Text style={styles.submitBtnCost}>−{BALANCE.campaign.command.callVoteFidesCost} 🤝</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
-        {/* Active bills */}
-        <View style={styles.billsHeader}>
-          <Text style={styles.sectionLabel}>LEGES — ACTIVE BILLS</Text>
-          <TouchableOpacity
-            style={[styles.submitBtn, fides < 10 && styles.submitBtnDisabled]}
-            onPress={() => setSubmitVisible(true)}
-            disabled={fides < 10}
-          >
-            <Text style={styles.submitBtnLabel}>+ Submit Bill</Text>
-            <Text style={styles.submitBtnCost}>−10 🤝</Text>
-          </TouchableOpacity>
-        </View>
-
-        {bills.length === 0
-          ? <Text style={styles.emptyText}>No active bills. Submit one or end the season.</Text>
-          : bills.map(bill => <BillCard key={bill.id} bill={bill} />)
-        }
-
-        {/* Active Laws section */}
-        {(activeLaws ?? []).length > 0 && (
-          <View style={styles.activeLawsSection}>
-            <TouchableOpacity
-              style={styles.billsHeader}
-              onPress={() => setActiveLawsExpanded(e => !e)}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.sectionLabel}>LEGES IN VIGORE — ACTIVE LAWS ({activeLaws.length})</Text>
-              <Text style={styles.chevron}>{activeLawsExpanded ? '▲' : '▼'}</Text>
-            </TouchableOpacity>
-            {activeLawsExpanded && (activeLaws ?? []).map(law => (
-              <ActiveLawCard key={law.billId} law={law} />
-            ))}
-          </View>
-        )}
-
-        {/* Munificence — P2-F */}
-        <View style={styles.munificenceSection}>
-          <TouchableOpacity
-            style={styles.billsHeader}
-            onPress={() => setMunificenceExpanded(e => !e)}
-            activeOpacity={0.75}
-          >
-            <Text style={styles.sectionLabel}>MUNIFICENCE</Text>
-            <Text style={styles.chevron}>{munificenceExpanded ? '▲' : '▼'}</Text>
-          </TouchableOpacity>
-          {munificenceExpanded && (
-            <>
-              <Text style={styles.munificenceFraming}>“What Rome is given, Rome remembers.”</Text>
-              {grandGamesVoteBonus > 0 && (
-                <Text style={styles.munificenceBonusNote}>
-                  Rome still remembers your games: +{grandGamesVoteBonus} votes at the next election, fading with the years.
-                </Text>
-              )}
-              {MUNIFICENCE_ACTS.map(act => (
-                <MunificenceActRow key={act.id} act={act} />
-              ))}
-            </>
-          )}
-        </View>
+        {activeSubTab === 'leges' && <LegesView />}
+        {activeSubTab === 'negotia' && <NegotiaView />}
+        {activeSubTab === 'munificentia' && <MunificentiaView />}
       </ScrollView>
-
       <SeasonOverlay />
-      <SubmitBillModal visible={submitVisible} onClose={() => setSubmitVisible(false)} />
-
-      {romeStatModal && (
-        <RomeStatModal
-          stat={romeStatModal}
-          value={rome[romeStatModal]}
-          visible={!!romeStatModal}
-          onClose={() => setRomeStatModal(null)}
-        />
-      )}
-
-      {crisisModal && (
-        <CrisisTrackModal
-          trackId={crisisModal}
-          track={crisis[crisisModal]}
-          crisisState={crisis}
-          visible={!!crisisModal}
-          onClose={() => setCrisisModal(null)}
-        />
-      )}
-
-      {negotiationWarId && (
-        <NegotiationScreen
-          warId={negotiationWarId}
-          visible={!!negotiationWarId}
-          onClose={() => setNegotiationWarId(null)}
-        />
-      )}
-
-      <CommandAssemblyModal visible={commandModalVisible} onClose={() => setCommandModalVisible(false)} />
     </SafeAreaView>
   );
 }

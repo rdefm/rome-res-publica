@@ -1,17 +1,15 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Animated,
-  PanResponder,
-  Dimensions,
   TouchableOpacity,
   ViewStyle,
   TextStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
+import DragSheet from '../components/shared/DragSheet';
 import { COLORS, FONTS, SPACING, RADIUS, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 import { useGameStore } from '../state/gameStore';
 import MapView from '../components/provinciae/MapView';
@@ -25,14 +23,11 @@ import type { RegionId } from '../models/theatre';
 import { calcTotalImperium } from '../engine/troopEngine';
 import { reachable } from '../engine/movementEngine';
 
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-const SHEET_SNAP_HEIGHT = SCREEN_HEIGHT * 0.72;
-
 export default function ProvinciaeScreen() {
   const [selectedProvinceId, setSelectedProvinceId] = useState<string | null>(null);
   // Campaign Map plan, Chunk C2 — a region and a city are different tap
   // targets on the map now (Chunk C1); mutually exclusive with
-  // selectedProvinceId, sharing the same bottom-sheet animation/container.
+  // selectedProvinceId, sharing the same bottom-sheet DragSheet.
   const [selectedRegionId, setSelectedRegionId] = useState<RegionId | null>(null);
   const [focusArmyId, setFocusArmyId] = useState<string | null>(null);
   // Campaign Map plan, Chunk C5 — order mode is its own top-level UI state,
@@ -42,8 +37,10 @@ export default function ProvinciaeScreen() {
   const [orderModeForcedMarch, setOrderModeForcedMarch] = useState(false);
   // July Fixes plan, Chunk C — war status banner/modal.
   const [warStatusModalOpen, setWarStatusModalOpen] = useState(false);
-  const sheetAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-  const sheetVisible = selectedProvinceId !== null || selectedRegionId !== null;
+  // Curia Tab Redesign, Chunk C0 — DragSheet needs `visible` as its own state,
+  // separate from the content ids, so the content stays mounted through the
+  // close animation (see DragSheet.tsx's header comment).
+  const [sheetVisible, setSheetVisible] = useState(false);
 
   // ── Store state — only fields that exist in GameState ────────────────────────
   const provinces                = useGameStore(s => s.cities);
@@ -142,36 +139,27 @@ export default function ProvinciaeScreen() {
     setSelectedRegionId(null);
     setFocusArmyId(null);
     setSelectedProvinceId(provinceId);
-    Animated.spring(sheetAnim, {
-      toValue: SCREEN_HEIGHT - SHEET_SNAP_HEIGHT,
-      useNativeDriver: false,
-      tension: 65,
-      friction: 11,
-    }).start();
+    setSheetVisible(true);
   }
 
   function openRegionSheet(regionId: RegionId, armyId?: string) {
     setSelectedProvinceId(null);
     setFocusArmyId(armyId ?? null);
     setSelectedRegionId(regionId);
-    Animated.spring(sheetAnim, {
-      toValue: SCREEN_HEIGHT - SHEET_SNAP_HEIGHT,
-      useNativeDriver: false,
-      tension: 65,
-      friction: 11,
-    }).start();
+    setSheetVisible(true);
   }
 
+  // Starts the close animation (DragSheet); content ids are cleared by
+  // handleSheetClosed once that animation actually finishes.
   function closeSheet() {
-    Animated.timing(sheetAnim, {
-      toValue: SCREEN_HEIGHT,
-      duration: 240,
-      useNativeDriver: false,
-    }).start(() => {
-      setSelectedProvinceId(null);
-      setSelectedRegionId(null);
-      setFocusArmyId(null);
-    });
+    setSheetVisible(false);
+  }
+
+  function handleSheetClosed() {
+    setSheetVisible(false);
+    setSelectedProvinceId(null);
+    setSelectedRegionId(null);
+    setFocusArmyId(null);
   }
 
   // Campaign Map plan, Chunk C5 — order mode.
@@ -195,30 +183,6 @@ export default function ProvinciaeScreen() {
   const orderModeDestinations = orderModeArmy
     ? reachable(orderModeArmy, armies, theatre, seasonIndex, orderModeForcedMarch)
     : null;
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: (_, gs) => gs.dy > 0,
-      onMoveShouldSetPanResponder:  (_, gs) => gs.dy > 8,
-      onPanResponderMove: (_, gs) => {
-        if (gs.dy > 0) {
-          sheetAnim.setValue(SCREEN_HEIGHT - SHEET_SNAP_HEIGHT + gs.dy);
-        }
-      },
-      onPanResponderRelease: (_, gs) => {
-        if (gs.dy > 100 || gs.vy > 0.5) {
-          closeSheet();
-        } else {
-          Animated.spring(sheetAnim, {
-            toValue: SCREEN_HEIGHT - SHEET_SNAP_HEIGHT,
-            useNativeDriver: false,
-            tension: 65,
-            friction: 11,
-          }).start();
-        }
-      },
-    })
-  ).current;
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -334,27 +298,7 @@ export default function ProvinciaeScreen() {
       </View>
 
       {/* Bottom sheet overlay */}
-      {sheetVisible && (selectedProvince || selectedRegionId) && (
-        <>
-          <Animated.View
-            style={[
-              styles.scrim,
-              {
-                opacity: sheetAnim.interpolate({
-                  inputRange: [SCREEN_HEIGHT - SHEET_SNAP_HEIGHT, SCREEN_HEIGHT],
-                  outputRange: [0.5, 0],
-                  extrapolate: 'clamp',
-                }),
-              },
-            ]}
-            // @ts-ignore
-            pointerEvents="none"
-          />
-
-          <Animated.View
-            style={[styles.sheetContainer, { top: sheetAnim }]}
-            {...panResponder.panHandlers}
-          >
+      <DragSheet visible={sheetVisible} onClose={handleSheetClosed}>
             {selectedRegionId ? (
               <RegionSheet
                 regionId={selectedRegionId}
@@ -404,9 +348,7 @@ export default function ProvinciaeScreen() {
               onResolveOfficerDecision={(provinceId, idx, risk) => resolveOfficerDecision(provinceId, idx, risk)}
             />
             ) : null}
-          </Animated.View>
-        </>
-      )}
+      </DragSheet>
 
       {activeMajorWar && (
         <WarStatusModal
@@ -604,20 +546,4 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   } as TextStyle,
 
-  scrim: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#000',
-  } as ViewStyle,
-
-  sheetContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: SHEET_SNAP_HEIGHT,
-  } as ViewStyle,
 });

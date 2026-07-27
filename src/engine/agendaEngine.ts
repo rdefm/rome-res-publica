@@ -96,8 +96,10 @@ function genTrials(state: GameState): AgendaItem[] {
         severity,
         title: trial.seat === 'defense' ? `Trial of ${defendantName}` : `Prosecuting ${defendantName}`,
         detail: `Resolves in ${plural(seasonsRemaining, 'season')}. Your strength ${Math.round(playerStrength)} vs their ${Math.round(trial.npcStrength)}.`,
-        // Phase 4, Chunk P4-D — the Basilica lives in Cursus now, not Curia.
-        target: { tab: 'Cursus' as const, trialId: trial.id },
+        // Curia Tab Redesign, Chunk C4 moves trials back to Curia (NEGOTIA);
+        // this C2 edit only retargets the deep-link tab — CuriaScreen still
+        // shows a Basilica-navigation stub until C4 lands.
+        target: { tab: 'Curia' as const, trialId: trial.id },
         sortWeight: resolvesThisSeason ? 0 : 10,
       };
     });
@@ -814,7 +816,8 @@ function genFiledProsecutionPending(state: GameState): AgendaItem[] {
         severity: 'opportunity' as const,
         title: `Your case against ${defendantName} is building`,
         detail: `${plural(seasonsRemaining, 'season')} left to strengthen it before trial.`,
-        target: { tab: 'Cursus' as const, trialId: trial.id },
+        // Curia Tab Redesign, Chunk C2 — see genTrials' comment above.
+        target: { tab: 'Curia' as const, trialId: trial.id },
         sortWeight: 20,
       };
     });

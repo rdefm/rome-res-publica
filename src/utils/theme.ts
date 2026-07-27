@@ -13,27 +13,38 @@ const dust = '#9c8e7e';
 const goldBorder = '#8B6914';
 const crimsonBlack = '#2a0a0a';
 
+// Curia Tab Redesign, Chunk C0 — hoisted so the porphyry/porphyryFrame/etc.
+// reference-tokens below (and the CRISIS_TIER_VISUAL map) can point at these
+// directly instead of restating their literals (CLAUDE.md's token rule).
+const crimsonDeep  = '#4a1a1a';
+const goldBronze   = '#a07840';
+const rivet         = '#D9B45C';
+const laurel        = '#3d6b4f';
+const crimson       = '#8b1a1a';
+const gold          = '#c9a84c';
+const sealWaxGrey   = '#8E8A82';
+
 export const COLORS = {
   bg:            '#1a1714',
   panelSurface:  '#2e2a24',
   panelElevated: '#342e26',
   border:        '#4a3f2f',
-  gold:          '#c9a84c',
+  gold,
   goldDim:       '#7a6230',
   marble:        '#f0ebe0',
   dust,
-  laurel:        '#3d6b4f',
-  crimson:       '#8b1a1a',
+  laurel,
+  crimson,
   senatBlue:     '#a8c4d4',   // original (typo preserved — do not rename, breaks other files)
   senateBlue:    '#a8c4d4',   // alias used by redesign plan
   purple:        '#6a3d8f',
   amber:         '#d4a017',
   // Resource colours
   denariiColor:  '#d4a017',
-  fidesColor:        '#c9a84c',   // gold — the Fides resource colour
+  fidesColor:        gold,       // gold — the Fides resource colour
   lifetimeDignColor: '#a8c4d4',   // blue — Dignitas display in Domus
   // Chunk 7 tokens (previously hardcoded in EndSeasonButton / OfficeRung)
-  goldBronze:    '#a07840',
+  goldBronze,
   crimsonDark:   '#6b1414',
   crimsonMuted:  '#c09090',
   // Wax tablet palette (P1-C — AgendaTablet)
@@ -56,7 +67,7 @@ export const COLORS = {
   portraitPlaceholder: '#c8b890',
   terracotta:      '#8B3A2A',
   goldBorder,
-  crimsonDeep:     '#4a1a1a',
+  crimsonDeep,
   crimsonBlack,
   // Cursus Tab Visual Redesign plan, Chunk C1 — gilded-panel tokens.
   // Finding 5 audit: gildFrame/panelWood/lockedText reuse existing Domus
@@ -64,9 +75,9 @@ export const COLORS = {
   // rivet/gildFrameDark/sealWaxGrey/scrim* have no existing equivalent.
   gildFrame:       goldBorder,
   gildFrameDark:   '#6E5426',
-  rivet:           '#D9B45C',
+  rivet,
   panelWood:       crimsonBlack,
-  sealWaxGrey:     '#8E8A82',
+  sealWaxGrey,
   lockedText:      dust,
   // Retuned post-launch — the original 0.35 top alpha read as "a dark
   // filter over the whole image" rather than "clearly visible behind the
@@ -79,6 +90,48 @@ export const COLORS = {
   // sizing bug (image not covering its full container) was fixed; 0.58
   // keeps office-list text legible while leaving the image visible.
   scrimBottom:     'rgba(20,14,8,0.58)',
+};
+
+// ── Curia redesign (plans/curia-redesign.md) ──
+// References — same value, Curia-specific semantic name (CLAUDE.md's token
+// rule: a new token semantically equal to an existing one must reference it,
+// not restate the literal).
+export const porphyry       = crimsonDeep;    // header field
+export const porphyryFrame  = goldBronze;     // header outer bevel
+export const bronzeRivet    = rivet;          // LawCard corner rivets
+export const tabellaYes     = laurel;         // V·R
+export const tabellaNo      = crimson;        // A
+export const sealPass       = gold;
+export const sealClose      = sealWaxGrey;    // already exists, currently unused — Finding 7
+export const sealFail       = crimson;
+
+// Genuinely new values — no existing Curia-adjacent token to reference.
+export const bronzePlaque     = '#7a5230';
+export const bronzePlaqueDark = '#4a3018';
+export const stoneTab         = '#3a362e';
+export const stoneTabActive   = '#544c3e';
+export const emberGlow        = '#d4601a';
+
+/** Five entries, indices 0–4, matching CrisisTier / CRISIS_TIER_BANDS exactly
+ *  (models/crisis.ts — 20% bands). Data, not logic (rule 5) — the tier→style
+ *  lookup at call sites is `CRISIS_TIER_VISUAL[track.tier]`, no function, no
+ *  derivation. `track.tier` is already computed and stored by the crisis
+ *  engine; never recompute it from `level` in the UI. */
+export const CRISIS_TIER_VISUAL: Record<0 | 1 | 2 | 3 | 4, {
+  /** Overlay index passed to curiaAssets.damageOverlay; null = pristine. */
+  overlay: 0 | 1 | 2 | 3 | null;
+  /** Multiply-tint over the icon. */
+  tint: string;
+  /** Tile border. */
+  border: string;
+  /** Ember glow behind the icon — drives the one-shot flare (Delta 10). */
+  glow: boolean;
+}> = {
+  0: { overlay: null, tint: COLORS.marble,       border: COLORS.border,      glow: false },
+  1: { overlay: 0,    tint: gold,                border: COLORS.goldDim,     glow: false },
+  2: { overlay: 1,    tint: COLORS.amber,        border: goldBorder,         glow: false },
+  3: { overlay: 2,    tint: COLORS.crimsonMuted, border: COLORS.crimsonDark, glow: false },
+  4: { overlay: 3,    tint: crimson,             border: crimsonBlack,       glow: true  },
 };
 
 // QA Audit Fix Plan, Chunk A — a `#rrggbb` COLORS token at an alpha other

@@ -1,7 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Pressable,
-  Animated, PanResponder, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -13,6 +12,7 @@ import { calcPlayerElectionScore, calcNpcElectionScore, PLAYER_BASE_SCORE } from
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import ParchmentCard, { PARCHMENT_TEXT } from '../components/shared/ParchmentCard';
 import BasilicaSheet from '../components/cursus/BasilicaSheet';
+import DragSheet from '../components/shared/DragSheet';
 import CandidateHeader from '../components/cursus/CandidateHeader';
 import OfficeCard from '../components/cursus/OfficeCard';
 import OfficeActionsModal from '../components/cursus/OfficeActionsModal';
@@ -25,9 +25,6 @@ import PortraitRoundel from '../components/shared/PortraitRoundel';
 import { characterPortraitSubject, leaderPortraitSubject } from '../engine/portraitEngine';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
 import InfoTap from '../components/shared/InfoTap';
-
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-const BASILICA_SHEET_HEIGHT = SCREEN_HEIGHT * 0.72;
 
 // ─── Action button + Office card ───────────────────────────────────────────────
 // Chunk C4 of cursus-visual-redesign-plan.md — both extracted to
@@ -449,74 +446,48 @@ export default function CursusScreen() {
 
   // ── The Basilica (Phase 4, Chunk P4-D) — full-screen sheet, opened from
   // CuriaScreen's TrialBanner (requestNavigation) or an agenda deep-link.
-  // Mirrors ProvinciaeScreen's Animated/PanResponder drag-sheet shell.
+  // Curia Tab Redesign, Chunk C0 — now DragSheet's shared shell instead of
+  // an inline Animated/PanResponder duplicate (Finding 5). Note: visibility
+  // and content-id are deliberately two separate pieces of state — see
+  // DragSheet.tsx's own header comment for why conflating them (as this
+  // screen originally did via `basilicaTrialId !== null`) breaks the close
+  // animation.
   const navigation = useNavigation();
   const selectedTrialId = useGameStore(s => s.selectedTrialId);
   const selectTrialForBasilica = useGameStore(s => s.selectTrialForBasilica);
   const basilicaReturnTab = useGameStore(s => s.basilicaReturnTab);
   const setBasilicaReturnTab = useGameStore(s => s.setBasilicaReturnTab);
   const [basilicaTrialId, setBasilicaTrialId] = useState<string | null>(null);
-  const basilicaAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-  const basilicaVisible = basilicaTrialId !== null;
-
-  function openBasilica(trialId: string) {
-    setBasilicaTrialId(trialId);
-    Animated.spring(basilicaAnim, {
-      toValue: SCREEN_HEIGHT - BASILICA_SHEET_HEIGHT,
-      useNativeDriver: false,
-      tension: 65,
-      friction: 11,
-    }).start();
-  }
+  const [basilicaVisible, setBasilicaVisible] = useState(false);
 
   function closeBasilica() {
-    Animated.timing(basilicaAnim, {
-      toValue: SCREEN_HEIGHT,
-      duration: 240,
-      useNativeDriver: false,
-    }).start(() => {
-      setBasilicaTrialId(null);
-      // Send the player back to whichever tab they were actually on before
-      // a deep-link (e.g. CuriaScreen's "Open the Basilica" button) switched
-      // them to Cursus — otherwise closing the sheet just stranded them
-      // here. null (they were already on Cursus) means stay put.
-      if (basilicaReturnTab) {
-        navigation.navigate(basilicaReturnTab as never);
-        setBasilicaReturnTab(null);
-      }
-    });
+    setBasilicaVisible(false);
+  }
+
+  // Called by DragSheet once the close animation (drag-dismiss or the
+  // Basilica's own close button, both routed through closeBasilica above)
+  // actually finishes — matches the original code's post-animation
+  // `Animated.timing(...).start(callback)` ordering exactly.
+  function handleBasilicaClosed() {
+    setBasilicaVisible(false);
+    setBasilicaTrialId(null);
+    // Send the player back to whichever tab they were actually on before
+    // a deep-link (e.g. CuriaScreen's "Open the Basilica" button) switched
+    // them to Cursus — otherwise closing the sheet just stranded them
+    // here. null (they were already on Cursus) means stay put.
+    if (basilicaReturnTab) {
+      navigation.navigate(basilicaReturnTab as never);
+      setBasilicaReturnTab(null);
+    }
   }
 
   useEffect(() => {
     if (selectedTrialId) {
-      openBasilica(selectedTrialId);
+      setBasilicaTrialId(selectedTrialId);
+      setBasilicaVisible(true);
       selectTrialForBasilica(null);
     }
   }, [selectedTrialId]);
-
-  const basilicaPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: (_, gs) => gs.dy > 0,
-      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 8,
-      onPanResponderMove: (_, gs) => {
-        if (gs.dy > 0) {
-          basilicaAnim.setValue(SCREEN_HEIGHT - BASILICA_SHEET_HEIGHT + gs.dy);
-        }
-      },
-      onPanResponderRelease: (_, gs) => {
-        if (gs.dy > 100 || gs.vy > 0.5) {
-          closeBasilica();
-        } else {
-          Animated.spring(basilicaAnim, {
-            toValue: SCREEN_HEIGHT - BASILICA_SHEET_HEIGHT,
-            useNativeDriver: false,
-            tension: 65,
-            friction: 11,
-          }).start();
-        }
-      },
-    })
-  ).current;
 
   return (
     // FrescoBackground is the outermost element (mirrors DomusScreen's own
@@ -568,30 +539,9 @@ export default function CursusScreen() {
           )}
         </ScrollView>
 
-        {basilicaVisible && basilicaTrialId && (
-          <>
-            <Animated.View
-              style={[
-                cs.scrim,
-                {
-                  opacity: basilicaAnim.interpolate({
-                    inputRange: [SCREEN_HEIGHT - BASILICA_SHEET_HEIGHT, SCREEN_HEIGHT],
-                    outputRange: [0.5, 0],
-                    extrapolate: 'clamp',
-                  }),
-                },
-              ]}
-              // @ts-ignore
-              pointerEvents="none"
-            />
-            <Animated.View
-              style={[cs.sheetContainer, { top: basilicaAnim }]}
-              {...basilicaPanResponder.panHandlers}
-            >
-              <BasilicaSheet trialId={basilicaTrialId} onClose={closeBasilica} />
-            </Animated.View>
-          </>
-        )}
+        <DragSheet visible={basilicaVisible} onClose={handleBasilicaClosed}>
+          {basilicaTrialId && <BasilicaSheet trialId={basilicaTrialId} onClose={closeBasilica} />}
+        </DragSheet>
 
         <SeasonOverlay />
         <OfficeActionResultModal />
@@ -599,11 +549,6 @@ export default function CursusScreen() {
     </FrescoBackground>
   );
 }
-
-const cs = StyleSheet.create({
-  scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' },
-  sheetContainer: { position: 'absolute', left: 0, right: 0, height: BASILICA_SHEET_HEIGHT },
-});
 
 const styles = StyleSheet.create({
   // Chunk C5 fix — paddingTop lives here (FrescoBackground's own root),

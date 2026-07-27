@@ -98,12 +98,23 @@ describe('saveVersion stamping', () => {
 
   test('truly transient UI fields are still stripped', async () => {
     useGameStore.getState().startGame('standard');
-    const stateWithUi = { ...useGameStore.getState(), agendaVisible: true, uiNavRequest: { tab: 'Domus' } };
+    const stateWithUi = {
+      ...useGameStore.getState(),
+      agendaVisible: true,
+      uiNavRequest: { tab: 'Domus' },
+      // Curia Tab Redesign, Chunk C2 — same transient pattern as
+      // selectedTrialId/basilicaReturnTab, which this test didn't
+      // previously cover either; added here alongside the new field.
+      curiaSubTabRequest: 'leges',
+      curiaBillTargetRequest: 'bill-test',
+    };
     await saveProvider.save(stateWithUi as any);
     const raw = await AsyncStorage.getItem('rome_save_v1');
     const parsed = JSON.parse(raw as string);
     expect(parsed.agendaVisible).toBeUndefined();
     expect(parsed.uiNavRequest).toBeUndefined();
+    expect(parsed.curiaSubTabRequest).toBeUndefined();
+    expect(parsed.curiaBillTargetRequest).toBeUndefined();
   });
 });
 
