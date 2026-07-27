@@ -12,6 +12,7 @@ import {
   resolveCityEventEffect,
   rollCityEventTick,
   calcCityAssetBonuses,
+  tickAllCities,
 } from '../src/engine/cityEngine';
 import { applyEffectString } from '../src/engine/resourceEngine';
 import { buildInitialCityStates, getCityDefinition } from '../src/data/cityDefinitions';
@@ -238,6 +239,41 @@ describe('checkForeignWarDeclarations', () => {
     expect(newWars[0].startedTurn).toBe(42);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatch(/Syracuse/);
+  });
+});
+
+describe('tickAllCities — worldFrozen param (QA Audit Fix Plan)', () => {
+  // Found while digging into a flaky pre-push test failure: this was the
+  // one output of the city tick NOT gated by tutorialEngine.isWorldFrozen,
+  // unlike random events/crisis drift/the Claudius arc/births/family
+  // mortality/passive bill resolution — a hostile foreign power (Carthage,
+  // via Lilybaeum's low starting relationship) could spontaneously declare
+  // war on Rome during the guided prologue, outside the scripted embassy/
+  // Messana ignition sequencing T4/T7 built around. worldFrozen defaults to
+  // false so every pre-existing call site (only turnSequencer.ts calls
+  // this) had to opt in explicitly rather than silently changing behavior.
+  test('worldFrozen=true suppresses a would-be foreign war declaration entirely, events included', () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0); // would always succeed if rolled at all
+    const carthage = { ...findState('carthage'), relationshipScore: 5 };
+    const state = makeState({ cities: [carthage], turnNumber: 5 });
+    const result = tickAllCities([carthage], state, true);
+    expect(result.newWars).toEqual([]);
+    // Not just the war — the declaration's own log line must be suppressed
+    // too, since it's constructed in the same branch (see cityEngine.ts's
+    // own comment on why filtering newWars after the fact isn't enough).
+    expect(result.events.some(e => e.includes('declared war'))).toBe(false);
+  });
+
+  test('worldFrozen=false (or omitted) still fires — regression guard, not a new default behavior change', () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0);
+    const carthage = { ...findState('carthage'), relationshipScore: 5 };
+    const state = makeState({ cities: [carthage], turnNumber: 5 });
+    const resultExplicit = tickAllCities([carthage], state, false);
+    expect(resultExplicit.newWars).toHaveLength(1);
+    expect(resultExplicit.newWars[0].enemyId).toBe('carthage');
+
+    const resultOmitted = tickAllCities([carthage], state);
+    expect(resultOmitted.newWars).toHaveLength(1);
   });
 });
 

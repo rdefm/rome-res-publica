@@ -177,7 +177,24 @@ function makeTestClan(relationship: number) {
 }
 
 describe('Relationship decay only applies at the yearly rollover', () => {
+  // Found while digging into a flaky pre-push hook failure (QA Audit Fix
+  // Plan, Chunk F): turnSequencer's step 9 runs applyYearlyRelationshipDecay
+  // AND reputationEngine.ageAndProcessMortality unconditionally together at
+  // the same crossedNewYear gate — the latter has a real, unmocked
+  // Math.random() < mortalityChance(leader.age) roll per leader per year
+  // (age 55 here lands in BALANCE.relationships.mortality.band50to59, 3%).
+  // On the rare run where it hit, the leader was replaced by a fresh
+  // successor at round(37 * successorRelationshipRetention=0.4) = 15 —
+  // an exact match to the observed flake, confirming this as the root
+  // cause rather than any cross-test pollution. Pinned high (never beats
+  // any mortality band, max is band80plus at 0.35) so this describe block
+  // tests decay in isolation, same idiom as tutorialWorldFreeze.test.ts's
+  // own Math.random overrides for suppressing/forcing probabilistic steps.
+  const originalRandom = Math.random;
+  afterEach(() => { Math.random = originalRandom; });
+
   test('a mid-year season transition leaves relationship unchanged', () => {
+    Math.random = () => 0.999;
     // seasonIndex 0 (Spring) -> 1 (Summer): does not cross a new year.
     const state = makeState({ seasonIndex: 0, clans: [makeTestClan(40)] });
     const { nextState } = processSeason(state as any);
@@ -185,6 +202,7 @@ describe('Relationship decay only applies at the yearly rollover', () => {
   });
 
   test('the Winter -> Spring rollover applies exactly one decay tick', () => {
+    Math.random = () => 0.999;
     // seasonIndex 3 (Winter) -> 0 (Spring): crosses a new year.
     const state = makeState({ seasonIndex: 3, clans: [makeTestClan(40)] });
     const { nextState } = processSeason(state as any);

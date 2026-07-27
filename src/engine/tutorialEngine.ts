@@ -491,9 +491,16 @@ export function isTabSealed(tab: TabName, s: GameState): boolean {
  * background off NPC-driven support (nothing to do with the player) can
  * move crisis tracks on their own via passEffect/failEffect, which is both
  * "not actually frozen" and a confound for Act III's own bill-vote teaching
- * moment. `?.` guards bespoke test fixtures built via
- * `as unknown as GameState` that don't set `tutorial` — never null in any
- * real, INITIAL_STATE-derived GameState.
+ * moment. QA Audit Fix Plan (post-T10) added an eighth: `cityEngine.
+ * tickAllCities`'s `checkForeignWarDeclarations` — a hostile foreign power
+ * (Lilybaeum/Carthage, starting relationship 20, drifting toward hostile
+ * within a season or two) could spontaneously declare war on Rome during
+ * the prologue, completely outside the scripted embassy/Messana sequencing
+ * T4/T7 built around "the Carthage war only ignites after the Embassy arc."
+ * Found by chasing down a genuinely flaky pre-push test, not a design
+ * review — see that fix's own commit for the repro. `?.` guards bespoke
+ * test fixtures built via `as unknown as GameState` that don't set
+ * `tutorial` — never null in any real, INITIAL_STATE-derived GameState.
  */
 export function isWorldFrozen(s: GameState): boolean {
   return s.tutorial?.activeArc === 'prologue';

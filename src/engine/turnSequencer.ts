@@ -1136,7 +1136,7 @@ export function processSeason(state: GameState): {
 
     // ── 9c-ii: City tick ─────────────────────────────────────────────────────
     const { updatedCities, totalGoldDelta, totalImperiumDelta, totalTreasuryDelta, newWars, events: cityEvents, newCityEvent } =
-      tickAllCities(s.cities, s);
+      tickAllCities(s.cities, s, isWorldFrozen(s));
 
     s = {
       ...s,

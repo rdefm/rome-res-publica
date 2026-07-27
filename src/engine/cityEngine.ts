@@ -532,10 +532,27 @@ export function checkForeignWarDeclarations(
 
 /**
  * Tick all cities. Returns updated array + aggregate resource deltas.
+ *
+ * `worldFrozen` — found while digging into a flaky pre-push test failure:
+ * checkForeignWarDeclarations below was the one system in this function
+ * (and the only city-tick output at all) NOT gated the same way
+ * turnSequencer.ts's other six isWorldFrozen sites are, so a hostile
+ * foreign power could spontaneously declare war on Rome during the
+ * guided prologue's hard rail — directly undercutting the tutorial's own
+ * "the Carthage war only ignites after the scripted Embassy arc"
+ * sequencing (T4/T7). Suppressing it here (rather than filtering
+ * `newWars` after the fact) also keeps `events` honest — the
+ * declaration's own log line is pushed in the same branch that
+ * constructs the WarState, so discarding only the war and not the
+ * message would have left a "a power declared war" line with no war to
+ * back it up. Every other part of the city tick (income, infrastructure,
+ * ambassador/governor ticks) is unaffected — provinces don't stop
+ * running during the prologue, only this one spontaneous-war roll does.
  */
 export function tickAllCities(
   cities: CityState[],
-  state: GameState
+  state: GameState,
+  worldFrozen: boolean = false
 ): {
   updatedCities: CityState[];
   totalGoldDelta: number;
@@ -580,7 +597,11 @@ export function tickAllCities(
   // Checked after this season's drift has already been applied to
   // updatedCities, so a power that just crossed into 'hostile' this
   // season is eligible immediately rather than one tick behind.
-  const { newWars, events: warDeclarationEvents } = checkForeignWarDeclarations(updatedCities, state);
+  // worldFrozen: skipped outright during the guided prologue — see this
+  // function's own header comment.
+  const { newWars, events: warDeclarationEvents } = worldFrozen
+    ? { newWars: [] as WarState[], events: [] as string[] }
+    : checkForeignWarDeclarations(updatedCities, state);
   events.push(...warDeclarationEvents);
 
   // July 2026 fixes, Chunk D — passive governor/ambassador city event roll.
