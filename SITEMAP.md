@@ -528,6 +528,8 @@ Bill voting, speeches, filibusters, Rome-wide stats, crisis tracks.
 
 **Data:** `billTemplates.ts` (player-submittable + auto-injected bill templates, Rome-stat vote modifiers), `munificence.ts` (**P2-F** — see §9).
 
+**Post-launch fix — the last 4 unwired `curiaAssets.ts` slots.** `porphyryTile`, `bronzeTile`, `stoneTile`, and all 3 `coinFace` entries were registered in Chunk C0 but never actually read by any component through C6 — real production art for those slots would have sat unused. Fixed: `StateOfRepublicPanel.tsx` now renders `porphyryTile` (fallback: flat `porphyry` colour) as the pinned header's field, framed by `porphyryFrame`; `LawCard.tsx` renders `bronzeTile` behind `GildedPanel` (whose own background goes transparent when the tile is present) instead of the flat `bronzePlaque` colour unconditionally; `SubTabBar.tsx` renders `stoneTile` behind each tab with a semi-transparent `stoneTab`/`stoneTabActive` tint on top (`withAlpha`) so the texture reads through while active/inactive stays visually distinct; `ActionCluster.tsx` renders a small 18×18pt `coinFace` image above each VOTE/SPEECH/FILIBUSTER label when present. All four retain their original flat-colour/plain-button fallback when the asset is absent — no visual change today, only once art lands. See `plans/curia-asset-manifest.md` for the full 15-asset list (filenames, dimensions, ready-to-use AI generator prompts).
+
 ---
 
 ## 5a. Military Overhaul — Battle System (cross-cutting, not tab-bound)

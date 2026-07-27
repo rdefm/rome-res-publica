@@ -3,9 +3,16 @@
 // own beyond what it passes down — collapse state belongs to CuriaScreen
 // (C2), threaded in here, because C2's alert strip needs to sit outside this
 // panel but inside the same pinned region.
+//
+// Post-launch fix — porphyryTile/porphyry/porphyryFrame were registered in
+// C0 but never actually wired to this panel's background; the field sat
+// plain-transparent the whole time. `porphyryTile` (seamless, resizeMode
+// "repeat") is the real background when present, `porphyry` (flat colour)
+// is the fallback, `porphyryFrame` frames the whole field either way.
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { SPACING } from '../../utils/theme';
+import { View, StyleSheet, ImageBackground } from 'react-native';
+import { SPACING, porphyry, porphyryFrame } from '../../utils/theme';
+import { curiaAssets } from '../../utils/curiaAssets';
 import AerariumBar from './AerariumBar';
 import CrisisGrid from './CrisisGrid';
 
@@ -22,24 +29,39 @@ interface StateOfRepublicPanelProps {
 // stacked. Expanded keeps them stacked, AerariumBar's full two lines above
 // the tile grid.
 export default function StateOfRepublicPanel({ collapsed, onToggleCollapse }: StateOfRepublicPanelProps) {
-  if (collapsed) {
-    return (
-      <View style={[styles.panel, styles.collapsedPanel, styles.collapsedRow]}>
-        <AerariumBar compact />
-        <CrisisGrid collapsed={collapsed} onToggleCollapse={onToggleCollapse} />
-      </View>
-    );
-  }
+  const tile = curiaAssets.porphyryTile;
 
-  return (
+  const inner = collapsed ? (
+    <View style={[styles.panel, styles.collapsedPanel, styles.collapsedRow]}>
+      <AerariumBar compact />
+      <CrisisGrid collapsed={collapsed} onToggleCollapse={onToggleCollapse} />
+    </View>
+  ) : (
     <View style={styles.panel}>
       <AerariumBar />
       <CrisisGrid collapsed={collapsed} onToggleCollapse={onToggleCollapse} />
     </View>
   );
+
+  if (tile) {
+    return (
+      <ImageBackground source={tile} resizeMode="repeat" style={[styles.field, { borderColor: porphyryFrame }]}>
+        {inner}
+      </ImageBackground>
+    );
+  }
+
+  return (
+    <View style={[styles.field, { backgroundColor: porphyry, borderColor: porphyryFrame }]}>
+      {inner}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
+  field: {
+    borderBottomWidth: 1,
+  },
   panel: {
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.sm,

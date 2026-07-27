@@ -4,9 +4,16 @@
 // comment) rather than rebuilding rivets, per the plan's explicit "check
 // whether GildedPanel can be reused outright" instruction — only the panel
 // field itself is overridden to bronzePlaque.
+//
+// Post-launch fix — bronzeTile was registered in C0 but never actually
+// wired here; the plaque used the flat bronzePlaque colour unconditionally.
+// When the tile is present it renders behind GildedPanel (whose own
+// background goes transparent so the tile shows through); bronzePlaque
+// stays the flat-colour fallback.
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ImageBackground } from 'react-native';
 import { FONTS, SPACING, RADIUS, bronzePlaque, sealPass } from '../../utils/theme';
+import { curiaAssets } from '../../utils/curiaAssets';
 import { PARCHMENT_TEXT } from '../shared/ParchmentCard';
 import GildedPanel from '../shared/GildedPanel';
 import { useGameStore } from '../../state/gameStore';
@@ -25,9 +32,10 @@ export default function LawCard({ law }: { law: ActiveLaw }) {
   const seasonsLeft = law.expiresOnTurn !== undefined ? law.expiresOnTurn - turnNumber : null;
   const ongoingEffects = formatEffectString(law.ongoingEffect);
   const [detailVisible, setDetailVisible] = useState(false);
+  const tile = curiaAssets.bronzeTile;
 
-  return (
-    <GildedPanel style={{ ...styles.plaque, backgroundColor: bronzePlaque }}>
+  const card = (
+    <GildedPanel style={{ backgroundColor: tile ? 'transparent' : bronzePlaque }}>
       <TouchableOpacity activeOpacity={0.75} onPress={() => setDetailVisible(true)}>
         <View style={styles.topRow}>
           <Text style={styles.name}>{law.name}</Text>
@@ -57,11 +65,26 @@ export default function LawCard({ law }: { law: ActiveLaw }) {
       )}
     </GildedPanel>
   );
+
+  if (tile) {
+    return (
+      <ImageBackground source={tile} resizeMode="repeat" style={styles.tileWrap}>
+        {card}
+      </ImageBackground>
+    );
+  }
+
+  return <View style={styles.plaque}>{card}</View>;
 }
 
 const styles = StyleSheet.create({
   plaque: {
     marginBottom: SPACING.sm,
+  },
+  tileWrap: {
+    marginBottom: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
   },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   name: { fontFamily: FONTS.display, fontSize: 14, fontWeight: '600', color: PARCHMENT_TEXT.heading, flex: 1, marginRight: SPACING.sm },

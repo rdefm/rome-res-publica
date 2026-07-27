@@ -9,10 +9,18 @@
 // engine) on a committed tablet tap, plus haptics: light impact on a coin
 // tap, medium on a committed tablet. Haptics guarded for web, where
 // expo-haptics has no native implementation.
+//
+// Post-launch fix — curiaAssets.coinFace was registered in C0 but never
+// actually wired here; the coins were plain text-only buttons unconditionally
+// (matching the plan's own "a styled circular View... is an acceptable
+// permanent fallback" allowance). When a coin face exists it now renders as
+// a small circular image above the label; when absent, layout is byte-for-
+// byte identical to before — no placeholder circle, nothing new to look at.
 import React, { useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { COLORS, FONTS, RADIUS, SPACING } from '../../utils/theme';
+import { curiaAssets } from '../../utils/curiaAssets';
 import { useGameStore } from '../../state/gameStore';
 import { useTutorialTarget } from '../shared/useTutorialTarget';
 import Tabella from './Tabella';
@@ -76,6 +84,7 @@ export default function ActionCluster({ bill, isTutorialBill }: ActionClusterPro
           style={[styles.coin, isExpandedVote && styles.coinActive]}
           onPress={() => onCoinPress('vote')}
         >
+          {curiaAssets.coinFace('vote') && <Image source={curiaAssets.coinFace('vote')} style={styles.coinFace} />}
           <Text style={styles.coinLabel}>VOTE</Text>
           <Text style={styles.coinCost}>−{voteFidesCost} 🤝</Text>
         </TouchableOpacity>
@@ -83,6 +92,7 @@ export default function ActionCluster({ bill, isTutorialBill }: ActionClusterPro
           style={[styles.coin, isExpandedSpeech && styles.coinActive]}
           onPress={() => onCoinPress('speech')}
         >
+          {curiaAssets.coinFace('speech') && <Image source={curiaAssets.coinFace('speech')} style={styles.coinFace} />}
           <Text style={styles.coinLabel}>SPEECH</Text>
           <Text style={styles.coinCost}>−{speechFidesCost} 🤝</Text>
         </TouchableOpacity>
@@ -90,6 +100,7 @@ export default function ActionCluster({ bill, isTutorialBill }: ActionClusterPro
           style={[styles.coin, isExpandedFilibuster && styles.coinActive]}
           onPress={() => onCoinPress('filibuster')}
         >
+          {curiaAssets.coinFace('filibuster') && <Image source={curiaAssets.coinFace('filibuster')} style={styles.coinFace} />}
           <Text style={styles.coinLabel}>FILIBUSTER</Text>
           <Text style={styles.coinCost}>−{filibusterFidesCost} 🤝</Text>
         </TouchableOpacity>
@@ -177,6 +188,11 @@ const styles = StyleSheet.create({
   coinActive: {
     borderColor: COLORS.gold,
     backgroundColor: COLORS.goldDim + '22',
+  },
+  coinFace: {
+    width: 18,
+    height: 18,
+    marginBottom: 2,
   },
   coinLabel: {
     color: COLORS.marble,
