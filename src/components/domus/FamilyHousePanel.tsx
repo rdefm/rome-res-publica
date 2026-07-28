@@ -221,6 +221,13 @@ const styles = StyleSheet.create({
   bannerImg: {
     width: '100%',
     height: '100%',
+    // The source art ships with a decorative vine/bird border baked into
+    // the image itself — at the container's aspect ratio, `cover` crops
+    // just enough off the sides to slice into that border rather than
+    // removing it cleanly, and the busy street scene renders small. This
+    // scale crops the border out entirely (comfortably past the ~2.5% of
+    // image width it occupies) and zooms the scene in as a side effect.
+    transform: [{ scale: 1.2 }],
   },
   bannerPlaceholder: {
     flex: 1,
