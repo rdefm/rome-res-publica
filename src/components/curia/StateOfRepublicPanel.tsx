@@ -66,6 +66,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.sm,
     paddingBottom: SPACING.xs,
+    gap: SPACING.sm,
   },
   collapsedPanel: {
     paddingTop: SPACING.xs,

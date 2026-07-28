@@ -1,6 +1,8 @@
 // Curia Tab Redesign, Chunk C1 — one tile in the pinned CrisisGrid.
 // Tier drives the frame (tint/border/glow, from CRISIS_TIER_VISUAL); the
-// track's own icon/abbreviation carries identity. No StatBar here (Delta 8)
+// track's own icon carries identity — no text label, tap opens
+// CrisisTrackModal for the track's name/tier detail (the prologue tutorial's
+// 'curia.crisis-track.war' step teaches this tap). No StatBar here (Delta 8)
 // — the old CrisisTrackCell's StatBar doesn't fit this tile's budget.
 //
 // Chunk C6, Delta 10 — a one-shot opacity/scale pulse on the damage overlay
@@ -12,7 +14,6 @@ import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withSequence, withTiming } from 'react-native-reanimated';
 import { COLORS, FONTS, SPACING, RADIUS, CRISIS_TIER_VISUAL, emberGlow } from '../../utils/theme';
 import { curiaAssets } from '../../utils/curiaAssets';
-import InfoTap from '../shared/InfoTap';
 import type { CrisisTrackId, CrisisTrack } from '../../models/crisis';
 
 // Lifted out of CuriaScreen.tsx:49-54 (Finding — CRISIS_TIER_LABELS/TIER_NAMES
@@ -26,15 +27,6 @@ export const CRISIS_TIER_LABELS: Record<CrisisTrackId, [string, string, string, 
   unrest:       ['Content Populace',       'Murmurs',            'Growing Anger',        'Street Violence',       'Open Revolt'],
   constitution: ['Institutional Stability','Political Tension',  'Senate Dysfunction',   'Constitutional Crisis', 'Republic in Peril'],
   economy:      ['Prosperous Republic',    'Tightening Budgets', 'Economic Strain',      'Scarcity Crisis',       'Economic Collapse'],
-};
-
-// Abbreviations per the mockups (Delta 8) — MOS for constitution (mos
-// maiorum, ancestral custom), not the full word: no room on a ~70pt tile.
-const CRISIS_TRACK_ABBR: Record<CrisisTrackId, string> = {
-  war: 'WAR',
-  unrest: 'UNREST',
-  constitution: 'MOS',
-  economy: 'ECON',
 };
 
 // No per-track emoji existed anywhere in the codebase before this; picked to
@@ -91,13 +83,6 @@ export default function CrisisTile({ trackId, track, onPress }: CrisisTileProps)
           <Text style={styles.iconFallback}>{CRISIS_TRACK_EMOJI[trackId]}</Text>
         )}
       </View>
-      {trackId === 'constitution' ? (
-        <InfoTap termId="mos-maiorum">
-          <Text style={styles.abbr}>{CRISIS_TRACK_ABBR[trackId]}</Text>
-        </InfoTap>
-      ) : (
-        <Text style={styles.abbr}>{CRISIS_TRACK_ABBR[trackId]}</Text>
-      )}
       <Text style={styles.level}>{Math.round(track.level)}</Text>
     </TouchableOpacity>
   );
@@ -140,17 +125,11 @@ const styles = StyleSheet.create({
   iconFallback: {
     fontSize: 16,
   },
-  abbr: {
-    color: COLORS.dust,
-    fontFamily: FONTS.ui,
-    fontSize: 9,
-    letterSpacing: 0.5,
-    marginTop: 2,
-  },
   level: {
     color: COLORS.marble,
     fontFamily: FONTS.ui,
     fontSize: 12,
     fontWeight: '700',
+    marginTop: 2,
   },
 });

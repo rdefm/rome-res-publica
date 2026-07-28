@@ -225,7 +225,6 @@ The Senate does business in Latin. A quick glossary:
 - **Negotia** — the Senate's non-legislative business: treaties, extraordinary commands, and the courts.
 - **Uti Rogas** (inscribed **V·R**) — the "yes" vote: "as you ask."
 - **Antiquo** (inscribed **A**) — the "no" vote: "for the old way."
-- **Mos Maiorum** — ancestral custom; the Constitution crisis track measures its erosion.
 
 ### War and Peace
 Once Rome's war with Carthage has run long enough to reach a real breaking point, a **"War & Peace"** panel appears here, opening the negotiation table — see §9 for the whole arc.

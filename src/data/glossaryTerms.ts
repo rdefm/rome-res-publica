@@ -272,12 +272,6 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Domus',
   },
   {
-    id: 'mos-maiorum',
-    term: 'Mos Maiorum',
-    definition: 'Ancestral custom — the unwritten rules Roman politics is expected to follow. The Constitution crisis track measures its erosion; the track abbreviates to MOS in the pinned header.',
-    relatedTab: 'Curia',
-  },
-  {
     id: 'munificence',
     term: 'Munificence',
     definition: 'Public acts of wealth-to-standing conversion — feasts, games, temple restorations, endowments — available from the Curia screen. Costs Denarii (and sometimes Fides) for Lifetime Dignitas, plebs goodwill, and crisis relief; grander acts require a minimum Patron Tier.',
