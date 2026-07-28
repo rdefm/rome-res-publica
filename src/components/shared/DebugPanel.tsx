@@ -1169,8 +1169,14 @@ export default function DebugPanel() {
     <View style={styles.container}>
       <Text style={styles.header}>⚙ DEBUG</Text>
 
-      {/* Tab switcher */}
-      <View style={styles.tabs}>
+      {/* Tab switcher — horizontal scroll, not a fixed row of 9 equal
+          flex:1 slots. On a phone-width screen the old row squeezed every
+          tab (including "BATTLE", which hosts the army builder's "+ ADD
+          UNIT" control below) into ~40px each, text clipped/hard to tap
+          accurately — this was reported as "no option to add troops on
+          mobile," but the real control was just unreachable behind the
+          squished tab bar, not missing. */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsContent}>
         {(['resources', 'characters', 'events', 'battle', 'war', 'theatre', 'secrets', 'telemetry', 'pace'] as const).map(t => (
           <TouchableOpacity
             key={t}
@@ -1182,7 +1188,7 @@ export default function DebugPanel() {
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
         {tab === 'resources'  && <ResourceSection />}
@@ -1217,14 +1223,17 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.sm,
   },
   tabs: {
-    flexDirection: 'row',
+    flexGrow: 0,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     marginHorizontal: SPACING.md,
   },
+  tabsContent: {
+    flexDirection: 'row',
+  },
   tab: {
-    flex: 1,
     paddingVertical: 8,
+    paddingHorizontal: SPACING.sm,
     alignItems: 'center',
   },
   tabActive: {
