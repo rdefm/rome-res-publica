@@ -131,6 +131,34 @@ export const BALANCE = {
     skillCap: 10,
   },
 
+  // ─── Child growth curve (2026-07) ──────────────────────────────────────────
+  // A newborn previously started with a full parent-average roll (effectively
+  // adult-level stats at age 0 — e.g. a baby could show Rhetoric 7). Now a
+  // NEW child starts at a fixed floor and grows toward a live parent-derived
+  // target over childhood, gated by age brackets. Only ever applies to a
+  // Character with `parentIds` set (models/character.ts) — every existing
+  // character predating this feature is fully exempt, no migration needed.
+  // See engine/inheritanceEngine.ts's isGrowingUp/getChildSkillCap/
+  // computeChildSkillTargets/applyChildPassiveGrowth for the logic.
+  childGrowth: {
+    startingFloor: 1,
+    /** Below this age, gameStore.trainCharacter is a no-op entirely for a
+     *  growing-up child. */
+    minTrainingAge: 5,
+    /** Hard ceiling for ages 0–9 — limits BOTH passive growth and training. */
+    bracketCapUnder10: 3,
+    /** Hard ceiling for ages 10–17. Removed entirely at 18 — full 0–10
+     *  range, ordinary adult training (BALANCE.training.skillCap) applies
+     *  from there on, no more special-casing. */
+    bracketCap10to17: 6,
+    /** Once a year (the same Winter→Spring crossedNewYear tick that already
+     *  increments age), per skill, chance to +1 toward min(bracketCap, live
+     *  target) — the "small creep" even before training unlocks at 5, and
+     *  the visible "ramp" once the 10–17 bracket's higher cap gives more
+     *  headroom to climb. */
+    passiveGrowthChancePerYear: 0.5,
+  },
+
   // ─── Family House rework ────────────────────────────────────────────────────
   // FIRST-PASS/UNVERIFIED, same treatment as every other constant group here.
   clients: {

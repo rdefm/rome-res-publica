@@ -120,4 +120,70 @@ describe('trainCharacter', () => {
     expect(after.family[0].skills.rhetoric).toBe(BALANCE.training.skillCap);
     expect(after.fides).toBe(fidesBefore);
   });
+
+  // ─── Child growth curve (2026-07) — trainCharacter's age-gate and
+  // effective-cap logic for a growing-up child (parentIds set). ────────────
+
+  test('a growing-up child below minTrainingAge cannot train at all', () => {
+    resetStore({
+      family: [
+        {
+          id: 'kid-1', name: 'Little Marcus', role: 'son', isPlayer: false, age: BALANCE.childGrowth.minTrainingAge - 1,
+          parentIds: ['pc-1', 'pc-2'],
+          skills: { rhetoric: 1, martial: 1, intrigus: 1 },
+          traits: [], ambition: null, relationship: 100, familyTrust: 100,
+          officeId: null, corruptionScore: 0,
+          inheritedTraits: [], ambitionIds: [], reputationScores: {},
+          formalImperium: 0, militaryImperium: 0, raisedLegions: [], veterans: [],
+        },
+      ] as any,
+    } as any);
+    jest.spyOn(Math, 'random').mockReturnValue(0); // would otherwise always succeed
+    useGameStore.getState().trainCharacter('kid-1', 'rhetoric');
+    const after = useGameStore.getState();
+    expect(after.family[0].skills.rhetoric).toBe(1); // unchanged, no-op
+    expect(after.trainedThisSeason).not.toContain('kid-1');
+  });
+
+  test('a growing-up child is capped at their age bracket, not the adult skillCap', () => {
+    resetStore({
+      family: [
+        {
+          id: 'kid-1', name: 'Little Marcus', role: 'son', isPlayer: false, age: 6,
+          parentIds: ['pc-1', 'pc-2'],
+          skills: { rhetoric: BALANCE.childGrowth.bracketCapUnder10, martial: 1, intrigus: 1 },
+          traits: [], ambition: null, relationship: 100, familyTrust: 100,
+          officeId: null, corruptionScore: 0,
+          inheritedTraits: [], ambitionIds: [], reputationScores: {},
+          formalImperium: 0, militaryImperium: 0, raisedLegions: [], veterans: [],
+        },
+      ] as any,
+    } as any);
+    const fidesBefore = useGameStore.getState().fides;
+    jest.spyOn(Math, 'random').mockReturnValue(0); // would otherwise always succeed
+    useGameStore.getState().trainCharacter('kid-1', 'rhetoric');
+    const after = useGameStore.getState();
+    expect(after.family[0].skills.rhetoric).toBe(BALANCE.childGrowth.bracketCapUnder10); // refused, at cap
+    expect(after.fides).toBe(fidesBefore); // nothing spent, refused before the roll
+  });
+
+  test('a growing-up child of eligible age trains normally, below their bracket cap', () => {
+    resetStore({
+      family: [
+        {
+          id: 'kid-1', name: 'Little Marcus', role: 'son', isPlayer: false, age: 6,
+          parentIds: ['pc-1', 'pc-2'],
+          skills: { rhetoric: 1, martial: 1, intrigus: 1 },
+          traits: [], ambition: null, relationship: 100, familyTrust: 100,
+          officeId: null, corruptionScore: 0,
+          inheritedTraits: [], ambitionIds: [], reputationScores: {},
+          formalImperium: 0, militaryImperium: 0, raisedLegions: [], veterans: [],
+        },
+      ] as any,
+    } as any);
+    jest.spyOn(Math, 'random').mockReturnValue(0); // always succeeds
+    useGameStore.getState().trainCharacter('kid-1', 'rhetoric');
+    const after = useGameStore.getState();
+    expect(after.family[0].skills.rhetoric).toBe(2);
+  });
 });

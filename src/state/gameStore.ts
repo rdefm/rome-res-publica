@@ -180,7 +180,7 @@ import { makeSeededRng } from '../utils/seededRng';
 import type { WarState } from '../models/war';
 import type { AncestorRecord, EpilogueOutcome } from '../models/epilogue';
 import { applyTreatyEffects, buildTreatyBill, getDesperationTier, phaseForYear, type TreatySide } from '../engine/warEngine';
-import { generateCadet } from '../engine/inheritanceEngine';
+import { generateCadet, isGrowingUp, getChildSkillCap } from '../engine/inheritanceEngine';
 import { genderForCharacter, genderForLeader } from '../engine/portraitEngine';
 import { portraitAssets } from '../utils/portraitAssets';
 // Phase 5, Chunk P5-F — Achievements ("Laurels"). evaluateAchievements is
@@ -448,6 +448,9 @@ export interface GameState {
     role: 'son' | 'daughter';
     inheritedTraits: string[];
     baseSkills: { rhetoric: number; martial: number; intrigus: number };
+    // Child growth curve (2026-07) — the two parents, carried through to
+    // confirmBirthNaming so the new Character gets Character.parentIds set.
+    parentIds: [string, string];
   } | null;
 
   // Log
@@ -2039,8 +2042,16 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     const char = s.family.find((c) => c.id === characterId);
     if (!char) return;
     if (s.trainedThisSeason.includes(characterId)) return;
+    // Child growth curve (2026-07) — a growing-up child can't train at all
+    // below minTrainingAge, and is capped at their current age bracket's
+    // ceiling rather than the normal adult skillCap. isGrowingUp is false
+    // for the player, every pre-existing character, and any child once
+    // they turn 18 — all of those keep exactly today's behavior below.
+    const growingUp = isGrowingUp(char);
+    if (growingUp && char.age < BALANCE.childGrowth.minTrainingAge) return;
+    const effectiveCap = growingUp ? getChildSkillCap(char.age) : BALANCE.training.skillCap;
     const currentLevel = char.skills[skill];
-    if (currentLevel >= BALANCE.training.skillCap) return;
+    if (currentLevel >= effectiveCap) return;
     const targetLevel = currentLevel + 1;
     const cost = calcTrainingCost(currentLevel);
     if (s.fides < cost) return;
@@ -3315,7 +3326,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   confirmBirthNaming: (name) => {
     const s = get();
     if (!s.pendingBirthNaming) return;
-    const { role, inheritedTraits, baseSkills } = s.pendingBirthNaming;
+    const { role, inheritedTraits, baseSkills, parentIds } = s.pendingBirthNaming;
     const { applyTraitModifiers } = require('../engine/inheritanceEngine');
 
     const baseChild: import('../models/character').Character = {
@@ -3339,6 +3350,9 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       militaryImperium: 0,
       raisedLegions: [],
       veterans: [],
+      // Child growth curve (2026-07) — marks this as a NEW-system child;
+      // see Character.parentIds's own doc comment.
+      parentIds,
     };
 
     const child = applyTraitModifiers(baseChild, inheritedTraits);

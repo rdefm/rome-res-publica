@@ -1,4 +1,4 @@
-import type { Character, PendingSuccession, Regency, CadetBranch, PersonalityTrait } from '../models/character';
+import type { Character, CharacterSkills, PendingSuccession, Regency, CadetBranch, PersonalityTrait } from '../models/character';
 import type { GameState } from '../state/gameStore';
 import { TRAIT_DEFINITIONS } from '../data/traits';
 import { BALANCE } from '../data/balance';
@@ -162,6 +162,88 @@ export function applyTraitModifiers(
 
   updated.inheritedTraits = traitIds;
   return updated;
+}
+
+// ─── Child growth curve (2026-07) ───────────────────────────────────────────
+// See data/balance.ts's childGrowth section for the tunable numbers and the
+// full rationale. Only ever touches a Character with `parentIds` set — every
+// character that predates this feature is untouched by any function here.
+
+/** True while a character is still on the child growth curve — has
+ *  `parentIds` (only ever set by a birth after this feature shipped) AND is
+ *  still under 18. Once a growing-up child turns 18, this flips false
+ *  permanently and every function below stops applying to them; they behave
+ *  exactly like any other adult (ordinary BALANCE.training.skillCap, no more
+ *  age-bracket ceiling, no more passive tick). */
+export function isGrowingUp(character: Character): boolean {
+  return !!character.parentIds && character.age < 18;
+}
+
+/** The hard ceiling for a growing-up child's current age — limits BOTH the
+ *  passive yearly tick and manual training equally. Not meaningful once
+ *  isGrowingUp(character) is false (age >= 18); callers should check that
+ *  first and fall back to BALANCE.training.skillCap themselves. */
+export function getChildSkillCap(age: number): number {
+  if (age < 10) return BALANCE.childGrowth.bracketCapUnder10;
+  return BALANCE.childGrowth.bracketCap10to17;
+}
+
+function averageParentSkill(a: number, b: number, rng: () => number): number {
+  return Math.max(0, Math.min(10, Math.round((a + b) / 2 + (rng() * 2 - 1))));
+}
+
+/** Live — reads the parents' CURRENT skills every time this is called, not a
+ *  value snapshotted at birth, so a parent who trains up later raises the
+ *  child's target too. Falls back to a single parent's skills (used for
+ *  both slots in the average) if the other can't be found in `family`
+ *  (e.g. died); returns the child's own current skills unchanged (no target
+ *  to grow toward, so no growth that tick) if NEITHER parent can be found. */
+export function computeChildSkillTargets(
+  child: Character,
+  family: Character[],
+  rng: () => number = Math.random,
+): CharacterSkills {
+  const [idA, idB] = child.parentIds ?? [];
+  const parentA = family.find(c => c.id === idA);
+  const parentB = family.find(c => c.id === idB);
+  const skillsA = parentA?.skills ?? parentB?.skills;
+  const skillsB = parentB?.skills ?? parentA?.skills;
+  if (!skillsA || !skillsB) return child.skills;
+  return {
+    rhetoric: averageParentSkill(skillsA.rhetoric, skillsB.rhetoric, rng),
+    martial:  averageParentSkill(skillsA.martial,  skillsB.martial,  rng),
+    intrigus: averageParentSkill(skillsA.intrigus, skillsB.intrigus, rng),
+  };
+}
+
+/** Once-a-year passive tick — call from the same crossedNewYear gate that
+ *  already increments age (turnSequencer.ts step 10). Pure; returns a new
+ *  family array, only ever touching characters isGrowingUp() returns true
+ *  for. Per skill, if the character is below min(their age-bracket cap,
+ *  their live target), rolls BALANCE.childGrowth.passiveGrowthChancePerYear
+ *  for a +1 — this alone produces "flat" (ages 0-9, low cap of 3 reached
+ *  quickly) then "ramp" (ages 10-17, higher cap of 6 gives real room to keep
+ *  climbing) as an emergent effect of the two brackets, no separate curve
+ *  formula needed. */
+export function applyChildPassiveGrowth(family: Character[], rng: () => number = Math.random): Character[] {
+  return family.map(c => {
+    if (!isGrowingUp(c)) return c;
+    const cap = getChildSkillCap(c.age);
+    const target = computeChildSkillTargets(c, family, rng);
+    const grow = (current: number, targetVal: number): number => {
+      const ceiling = Math.min(cap, targetVal);
+      if (current >= ceiling) return current;
+      return rng() < BALANCE.childGrowth.passiveGrowthChancePerYear ? current + 1 : current;
+    };
+    return {
+      ...c,
+      skills: {
+        rhetoric: grow(c.skills.rhetoric, target.rhetoric),
+        martial:  grow(c.skills.martial,  target.martial),
+        intrigus: grow(c.skills.intrigus, target.intrigus),
+      },
+    };
+  });
 }
 
 // ─── Phase 3, Chunk P3-C — Mortality & Succession ───────────────────────────

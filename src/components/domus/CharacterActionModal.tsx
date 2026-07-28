@@ -6,6 +6,7 @@ import { getAmbitionDefinition } from '../../engine/ambitionEngine';
 import { TRAIT_DEFINITIONS } from '../../data/traits';
 import { BALANCE } from '../../data/balance';
 import { calcTrainingCost } from '../../engine/resourceEngine';
+import { isGrowingUp, getChildSkillCap } from '../../engine/inheritanceEngine';
 import type { ActiveAmbition } from '../../models/ambition';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import ScrollModal, { PARCHMENT } from '../shared/ScrollModal';
@@ -246,12 +247,38 @@ function TrainingSection({ character }: { character: Character }) {
   const trainCharacter = useGameStore(s => s.trainCharacter);
   const alreadyTrainedThisSeason = trainedThisSeason.includes(character.id);
 
+  // Child growth curve (2026-07) — a growing-up child can't train at all
+  // below minTrainingAge; show a locked reason instead of the per-skill
+  // button list rather than just silently omitting it (matches the
+  // "always show a disabled control with a reason" convention used
+  // elsewhere, e.g. OfficeCard's locked state).
+  const growingUp = isGrowingUp(character);
+  if (growingUp && character.age < BALANCE.childGrowth.minTrainingAge) {
+    return (
+      <View>
+        <Text style={styles.sectionLabel}>TRAIN SKILL</Text>
+        <ActionButton
+          label="Too young to train"
+          cost=""
+          desc={`${character.name} must be at least ${BALANCE.childGrowth.minTrainingAge} before training begins.`}
+          disabled
+          onPress={() => {}}
+        />
+      </View>
+    );
+  }
+
+  // A growing-up child's effective cap is their current age bracket's
+  // ceiling, not the normal adult skillCap — see
+  // inheritanceEngine.getChildSkillCap's own doc comment.
+  const effectiveCap = growingUp ? getChildSkillCap(character.age) : BALANCE.training.skillCap;
+
   return (
     <View>
       <Text style={styles.sectionLabel}>TRAIN SKILL</Text>
       {(Object.keys(SKILL_LABELS) as Array<keyof Character['skills']>).map(sk => {
         const level = character.skills[sk];
-        const atCap = level >= BALANCE.training.skillCap;
+        const atCap = level >= effectiveCap;
         const targetLevel = level + 1;
         const cost = calcTrainingCost(level);
 
@@ -259,7 +286,9 @@ function TrainingSection({ character }: { character: Character }) {
         let desc = `Always succeeds. ${SKILL_LABELS[sk]} rises to ${targetLevel}.`;
         if (atCap) {
           disabled = true;
-          desc = `${SKILL_LABELS[sk]} is maximized (${BALANCE.training.skillCap}).`;
+          desc = growingUp
+            ? `${SKILL_LABELS[sk]} is capped at ${effectiveCap} until ${character.age < 10 ? 'age 10' : 'adulthood (18)'}.`
+            : `${SKILL_LABELS[sk]} is maximized (${effectiveCap}).`;
         } else if (alreadyTrainedThisSeason) {
           disabled = true;
           desc = 'Already trained this season.';

@@ -90,6 +90,17 @@ export interface Character {
   // field existed) — portraitKeyFor falls back to the old id-hash in that
   // case, so this is safe to add without a migration.
   portraitVariant?: number;
+
+  // Child growth curve (2026-07) — set once at birth for a NEW-system child;
+  // absent for every character that predates this feature (the player,
+  // starting family, any child already born before this shipped) — those
+  // are fully exempt, keeping whatever skills they already have, with no
+  // age-bracket cap or training gate applied. inheritanceEngine.isGrowingUp
+  // is the single check everywhere that reads this field. The two ids are
+  // this character's parents at birth, looked up fresh each time (not
+  // snapshotted) so a parent training up later raises the live target —
+  // see inheritanceEngine.computeChildSkillTargets.
+  parentIds?: [string, string];
 }
 
 // ─── Phase 3, Chunk P3-C — Succession ────────────────────────────────────────

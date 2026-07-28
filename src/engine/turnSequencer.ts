@@ -36,6 +36,7 @@ import {
   generateSpouse,
   rollsDead,
   detectPaterfamiliasDeath,
+  applyChildPassiveGrowth,
 } from './inheritanceEngine';
 import { resolveDeathNotice } from '../data/cadetEvents';
 import { buildFamilyDeathBody } from '../data/successionEvents';
@@ -1729,7 +1730,12 @@ export function processSeason(state: GameState): {
   // file's header comment for why the two were unified rather than left as
   // two divergent succession systems.
   {
-    const aged = s.family.map((c) => ({ ...c, age: c.age + (crossedNewYear ? 1 : 0) }));
+    const bumped = s.family.map((c) => ({ ...c, age: c.age + (crossedNewYear ? 1 : 0) }));
+    // Child growth curve (2026-07) — the once-a-year passive tick for any
+    // growing-up child (see inheritanceEngine.applyChildPassiveGrowth),
+    // applied at the exact same crossedNewYear gate as the age bump above
+    // so it fires once per year, not once per season.
+    const aged = crossedNewYear ? applyChildPassiveGrowth(bumped) : bumped;
     let family = aged;
 
     // Tutorial redesign, Chunk T4 — the death roll itself is frozen during
@@ -2225,17 +2231,24 @@ export function processSeason(state: GameState): {
       const role: 'son' | 'daughter' = Math.random() < 0.5 ? 'son' : 'daughter';
       const inheritedTraits = resolveInheritedTraits(player, spouse);
 
+      // Child growth curve (2026-07) — a newborn now starts at a fixed
+      // floor, not a full parent-average roll (that used to make a
+      // newborn's displayed stats effectively adult-level at age 0 — e.g.
+      // a baby could show Rhetoric 7). The parent-average+RNG formula that
+      // used to live here now computes the LIVE, continuously-recalculated
+      // growth target instead (inheritanceEngine.computeChildSkillTargets),
+      // read fresh every year via parentIds rather than snapshotted once.
       const baseSkills = {
-        rhetoric: Math.max(1, Math.min(8, Math.round((player.skills.rhetoric + spouse.skills.rhetoric) / 2 + (Math.random() * 2 - 1)))),
-        martial:  Math.max(1, Math.min(8, Math.round((player.skills.martial  + spouse.skills.martial)  / 2 + (Math.random() * 2 - 1)))),
-        intrigus: Math.max(1, Math.min(8, Math.round((player.skills.intrigus + spouse.skills.intrigus) / 2 + (Math.random() * 2 - 1)))),
+        rhetoric: BALANCE.childGrowth.startingFloor,
+        martial:  BALANCE.childGrowth.startingFloor,
+        intrigus: BALANCE.childGrowth.startingFloor,
       };
 
       const suggestedName = suggestChildName(role, s.gensSurname);
 
       s = {
         ...s,
-        pendingBirthNaming: { suggestedName, role, inheritedTraits, baseSkills },
+        pendingBirthNaming: { suggestedName, role, inheritedTraits, baseSkills, parentIds: [player.id, spouse.id] },
       };
       events.push(`A child is expected in the ${s.gensPlural} household. Name them before the season ends.`);
     }

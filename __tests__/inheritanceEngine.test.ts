@@ -11,6 +11,7 @@ import {
   mortalityChance, rollsDead, getHeirOrder, detectPaterfamiliasDeath,
   generateCadet, promoteCadetToParterfamilias, needsSpouse, generateSpouse,
   isBirthEligible, applySuccession,
+  isGrowingUp, getChildSkillCap, computeChildSkillTargets, applyChildPassiveGrowth,
 } from '../src/engine/inheritanceEngine';
 import { resolveDeathNotice } from '../src/data/cadetEvents';
 import { BALANCE } from '../src/data/balance';
@@ -299,6 +300,96 @@ describe('resolveDeathNotice (cadetEvents.ts)', () => {
     expect(result.notice.defId).toBe('evt-succession-no-heir');
     expect(result.cadetBranch).toBeUndefined();
     expect(result.pendingEpilogue).toBe('gens_ends');
+  });
+});
+
+// ─── Child growth curve (2026-07) ───────────────────────────────────────────
+
+describe('isGrowingUp', () => {
+  test('false with no parentIds, regardless of age (pre-existing/legacy character)', () => {
+    expect(isGrowingUp(makeCharacter({ age: 5, parentIds: undefined }))).toBe(false);
+  });
+
+  test('true with parentIds set and age under 18', () => {
+    expect(isGrowingUp(makeCharacter({ age: 10, parentIds: ['p1', 'p2'] }))).toBe(true);
+  });
+
+  test('false with parentIds set but age 18 or older (adult, curve no longer applies)', () => {
+    expect(isGrowingUp(makeCharacter({ age: 18, parentIds: ['p1', 'p2'] }))).toBe(false);
+  });
+});
+
+describe('getChildSkillCap', () => {
+  test('returns bracketCapUnder10 below age 10', () => {
+    expect(getChildSkillCap(0)).toBe(BALANCE.childGrowth.bracketCapUnder10);
+    expect(getChildSkillCap(9)).toBe(BALANCE.childGrowth.bracketCapUnder10);
+  });
+
+  test('returns bracketCap10to17 from age 10 up', () => {
+    expect(getChildSkillCap(10)).toBe(BALANCE.childGrowth.bracketCap10to17);
+    expect(getChildSkillCap(17)).toBe(BALANCE.childGrowth.bracketCap10to17);
+  });
+});
+
+describe('computeChildSkillTargets', () => {
+  test('averages both parents live skills, within +/-1 of the midpoint', () => {
+    const parentA = makeCharacter({ id: 'pa', skills: { rhetoric: 4, martial: 4, intrigus: 4 } });
+    const parentB = makeCharacter({ id: 'pb', skills: { rhetoric: 8, martial: 8, intrigus: 8 } });
+    const child = makeCharacter({ id: 'kid', age: 5, parentIds: ['pa', 'pb'] });
+    const target = computeChildSkillTargets(child, [parentA, parentB, child]);
+    expect(target.rhetoric).toBeGreaterThanOrEqual(5);
+    expect(target.rhetoric).toBeLessThanOrEqual(7);
+  });
+
+  test('falls back to the single found parent for both slots when the other is missing', () => {
+    const parentA = makeCharacter({ id: 'pa', skills: { rhetoric: 6, martial: 6, intrigus: 6 } });
+    const child = makeCharacter({ id: 'kid', age: 5, parentIds: ['pa', 'missing-parent'] });
+    const target = computeChildSkillTargets(child, [parentA, child], () => 0.5); // rng=0.5 -> +0 offset
+    expect(target.rhetoric).toBe(6);
+  });
+
+  test('returns the child skills unchanged when neither parent can be found', () => {
+    const child = makeCharacter({ id: 'kid', age: 5, parentIds: ['gone-1', 'gone-2'], skills: { rhetoric: 2, martial: 2, intrigus: 2 } });
+    const target = computeChildSkillTargets(child, [child]);
+    expect(target).toEqual(child.skills);
+  });
+});
+
+describe('applyChildPassiveGrowth', () => {
+  test('never touches a character without parentIds (legacy/adult, exempt)', () => {
+    const adult = makeCharacter({ id: 'adult-1', age: 30, skills: { rhetoric: 3, martial: 3, intrigus: 3 } });
+    const result = applyChildPassiveGrowth([adult], () => 0); // rng=0 would always grow if eligible
+    expect(result[0].skills).toEqual(adult.skills);
+  });
+
+  test('grows a growing-up child toward the parent target when rng always succeeds', () => {
+    const parentA = makeCharacter({ id: 'pa', skills: { rhetoric: 8, martial: 8, intrigus: 8 } });
+    const parentB = makeCharacter({ id: 'pb', skills: { rhetoric: 8, martial: 8, intrigus: 8 } });
+    const child = makeCharacter({ id: 'kid', age: 5, parentIds: ['pa', 'pb'], skills: { rhetoric: 1, martial: 1, intrigus: 1 } });
+    const result = applyChildPassiveGrowth([parentA, parentB, child], () => 0); // always grows, no random offset
+    const grownChild = result.find(c => c.id === 'kid')!;
+    expect(grownChild.skills.rhetoric).toBe(2);
+  });
+
+  test('never exceeds the age-bracket cap even when the parent target is higher', () => {
+    const parentA = makeCharacter({ id: 'pa', skills: { rhetoric: 10, martial: 10, intrigus: 10 } });
+    const parentB = makeCharacter({ id: 'pb', skills: { rhetoric: 10, martial: 10, intrigus: 10 } });
+    const child = makeCharacter({
+      id: 'kid', age: 5, parentIds: ['pa', 'pb'],
+      skills: { rhetoric: BALANCE.childGrowth.bracketCapUnder10, martial: BALANCE.childGrowth.bracketCapUnder10, intrigus: BALANCE.childGrowth.bracketCapUnder10 },
+    });
+    const result = applyChildPassiveGrowth([parentA, parentB, child], () => 0); // always-succeed rng
+    const grownChild = result.find(c => c.id === 'kid')!;
+    expect(grownChild.skills.rhetoric).toBe(BALANCE.childGrowth.bracketCapUnder10);
+  });
+
+  test('never grows when rng always fails the passiveGrowthChancePerYear roll', () => {
+    const parentA = makeCharacter({ id: 'pa', skills: { rhetoric: 10, martial: 10, intrigus: 10 } });
+    const parentB = makeCharacter({ id: 'pb', skills: { rhetoric: 10, martial: 10, intrigus: 10 } });
+    const child = makeCharacter({ id: 'kid', age: 5, parentIds: ['pa', 'pb'], skills: { rhetoric: 1, martial: 1, intrigus: 1 } });
+    const result = applyChildPassiveGrowth([parentA, parentB, child], () => 0.999); // always fails the roll
+    const grownChild = result.find(c => c.id === 'kid')!;
+    expect(grownChild.skills.rhetoric).toBe(1);
   });
 });
 
