@@ -97,7 +97,7 @@ export default function CandidateHeader({ selected, onSelect }: CandidateHeaderP
 
           <View style={styles.main}>
             <View style={styles.identityRow}>
-              <PortraitRoundel subject={characterPortraitSubject(character)} size={56} frame="gold" />
+              <PortraitRoundel subject={characterPortraitSubject(character)} size={96} frame="gold" />
               <View style={styles.textBlock}>
                 <TouchableOpacity onPress={() => setPickerOpen(true)}>
                   <Text style={styles.name} numberOfLines={1}>

@@ -48,7 +48,7 @@ export default function CharacterCard({ character, selected, onPress }: Characte
         <View style={styles.row}>
           {/* Portrait */}
           <View style={styles.portraitWrap}>
-            <PortraitRoundel subject={characterPortraitSubject(character)} size={80} shape="square" frame="plain" />
+            <PortraitRoundel subject={characterPortraitSubject(character)} size={96} shape="square" frame="plain" />
           </View>
 
           {/* Text info */}

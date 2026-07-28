@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import { HOUSE_LOCATION_DEFINITIONS, getHouseLocationDefinition } from '../../data/houseLocations';
 import { getHouseRoomDefinition } from '../../data/houseRooms';
@@ -10,6 +10,7 @@ import HousePickerModal, { type HousePickerItem } from './HousePickerModal';
 import RelocateModal from './RelocateModal';
 import ParchmentCard, { PARCHMENT_TEXT } from '../shared/ParchmentCard';
 import InfoTap from '../shared/InfoTap';
+import { domusAssets } from '../../utils/domusAssets';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 
 // ─── Bonus summary formatting ─────────────────────────────────────────────────
@@ -51,6 +52,8 @@ export default function FamilyHousePanel() {
   const location = getHouseLocationDefinition(house.locationId);
   if (!location) return null; // defensive — should never happen, house.locationId always a valid id
 
+  const houseBannerImg = domusAssets.houseBanner(location.id);
+
   const roomItems: HousePickerItem[] = getAvailableRooms(house).map(r => ({
     id: r.type, name: r.name, cost: r.cost, flavorText: r.flavorText, bonusSummary: roomBonusSummary(r),
   }));
@@ -61,6 +64,21 @@ export default function FamilyHousePanel() {
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Horizontal banner of the current house — art keyed off
+            location.id via domusAssets.houseBanner; every entry ships
+            commented out until art lands (see utils/domusAssets.ts), so this
+            always shows the placeholder today. */}
+        <View style={styles.banner}>
+          {houseBannerImg ? (
+            <Image source={houseBannerImg} style={styles.bannerImg} resizeMode="cover" />
+          ) : (
+            <View style={styles.bannerPlaceholder}>
+              <Text style={styles.bannerPlaceholderIcon}>🏛</Text>
+              <Text style={styles.bannerPlaceholderText}>{location.name} — image coming soon</Text>
+            </View>
+          )}
+        </View>
+
         <InfoTap termId="family-house">
           <Text style={styles.panelHeader}>FAMILY HOUSE</Text>
         </InfoTap>
@@ -177,6 +195,39 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { flex: 1 },
   scrollContent: { padding: SPACING.md, paddingBottom: SPACING.xl },
+  // ── House banner — horizontal image across the top of the tab ────────────
+  banner: {
+    width: '100%',
+    aspectRatio: 16 / 7,
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  bannerImg: {
+    width: '100%',
+    height: '100%',
+  },
+  bannerPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.panelSurface,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  bannerPlaceholderIcon: {
+    fontSize: 28,
+    marginBottom: 4,
+  },
+  bannerPlaceholderText: {
+    color: COLORS.dust,
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    letterSpacing: 0.5,
+  },
   panelHeader: {
     color: COLORS.goldDim, fontFamily: FONTS.ui, fontSize: 10, letterSpacing: 8,
     textTransform: 'uppercase', marginBottom: SPACING.lg,

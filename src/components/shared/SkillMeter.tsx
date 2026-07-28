@@ -46,7 +46,7 @@ export default function SkillMeter({ label, value, max = 10, color = COLORS.gold
 
   const content = (
     <View style={styles.row}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label} numberOfLines={1}>{label}</Text>
       <Text style={[styles.value, { color }]}>{value}</Text>
       <View style={styles.pipRow}>
         {chunks.map((fraction, i) => (
@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.5,
     color: COLORS.dust,
-    width: 20,
+    width: 24,
   },
   value: {
     fontFamily: FONTS.ui,

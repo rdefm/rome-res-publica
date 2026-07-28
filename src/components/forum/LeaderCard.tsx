@@ -61,7 +61,7 @@ function LeaderCard({ leader, clanId, selected, onPress, campaigning }: {
       {youHoldOnThem && <View style={lc.youHoldDot} />}
       {theyHoldOnYou && <View style={lc.theyHoldDot} />}
       <View style={lc.portraitWrap}>
-        <PortraitRoundel subject={leaderPortraitSubject(leader, clanId)} size={44} frame="plain" />
+        <PortraitRoundel subject={leaderPortraitSubject(leader, clanId)} size={96} frame="plain" />
       </View>
       <Text style={lc.name} numberOfLines={1}>{leader.name.split(' ').slice(-1)[0]}</Text>
       <Text style={lc.title} numberOfLines={1}>{leader.title}</Text>
@@ -76,7 +76,7 @@ function LeaderCard({ leader, clanId, selected, onPress, campaigning }: {
 }
 const lc = StyleSheet.create({
   card: {
-    width: 90, backgroundColor: COLORS.panelElevated, borderWidth: 1, borderRadius: RADIUS.md,
+    width: 96 + SPACING.sm * 2, backgroundColor: COLORS.panelElevated, borderWidth: 1, borderRadius: RADIUS.md,
     padding: SPACING.sm, alignItems: 'center', marginRight: SPACING.sm, position: 'relative',
   },
   blackmailDot: { position: 'absolute', top: 4, right: 4, width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.crimson },

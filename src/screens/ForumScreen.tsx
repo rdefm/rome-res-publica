@@ -7,7 +7,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
 import ClanCard from '../components/forum/ClanCard';
-import PatronLadderPanel from '../components/forum/PatronLadderPanel';
 import DossierPanel from '../components/forum/DossierPanel';
 import { COLORS, FONTS, SPACING, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT, RADIUS } from '../utils/theme';
 import { OFFICES } from '../data/offices';
@@ -193,7 +192,7 @@ function CanvassingPanel() {
             <View style={cp.leaderAvatar}>
               <PortraitRoundel
                 subject={leaderPortraitSubject(leader, leader.clanId)}
-                size={40}
+                size={96}
                 frame="plain"
               />
             </View>
@@ -368,8 +367,6 @@ export default function ForumScreen() {
         onScrollEndDrag={remeasureAllTargets}
         onMomentumScrollEnd={remeasureAllTargets}
       >
-        <PatronLadderPanel />
-
         {/* Phase 4, Chunk P4-B — self-hides when there's nothing to show */}
         <DossierPanel />
 

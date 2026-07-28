@@ -213,7 +213,7 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
     <View style={ld.container}>
       <View style={ld.header}>
         <View style={ld.portraitWrap}>
-          <PortraitRoundel subject={leaderPortraitSubject(leader, clanId)} size={56} frame="gold" />
+          <PortraitRoundel subject={leaderPortraitSubject(leader, clanId)} size={96} frame="gold" />
         </View>
         <View style={ld.info}>
           <Text style={ld.name}>{leader.name}</Text>

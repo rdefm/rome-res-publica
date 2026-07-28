@@ -29,8 +29,8 @@ const OFFICE_ICONS: Partial<Record<OfficeId, RequiredAsset>> = {
   aedile: require('../assets/cursus/icon-aedile.png'),
   praetor: require('../assets/cursus/icon-praetor.png'),
   consul: require('../assets/cursus/icon-consul.png'),
-  // tribune: require('../assets/cursus/icon-tribune.png'),
-  // censor: require('../assets/cursus/icon-censor.png'),
+  tribune: require('../assets/cursus/icon-tribune.png'),
+  censor: require('../assets/cursus/icon-censor.png'),
   // dictator: require('../assets/cursus/icon-dictator.png'),
 };
 

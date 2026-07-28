@@ -96,12 +96,21 @@ function TribunePanel({ character }: { character: Character }) {
                 <Text style={tp.name}>Tribune of the Plebs</Text>
               </InfoTap>
               <Text style={tp.latin}>Tribunus Plebis · Parallel Path</Text>
+              <Text style={tp.meta}>Min age {TRIBUNE_OFFICE.minAge} · {TRIBUNE_OFFICE.termSeasons} seasons</Text>
             </View>
             {isHolder && (
               <View style={tp.badge}><Text style={tp.badgeText}>IN OFFICE</Text></View>
             )}
             {isCandidate && (
               <View style={[tp.badge, tp.badgePending]}><Text style={tp.badgeText}>CANDIDACY</Text></View>
+            )}
+            {isEligible && (
+              <TouchableOpacity
+                style={tp.declareBtn}
+                onPress={() => declareTribuneCandidate(character.id)}
+              >
+                <Text style={tp.declareBtnText}>DECLARE</Text>
+              </TouchableOpacity>
             )}
           </View>
 
@@ -154,17 +163,6 @@ function TribunePanel({ character }: { character: Character }) {
             <Text style={tp.occupied}>{candidateName} has declared candidacy for Tribune.</Text>
           )}
 
-          {/* Eligible to declare */}
-          {isEligible && (
-            <TouchableOpacity
-              style={tp.declareBtn}
-              onPress={() => declareTribuneCandidate(character.id)}
-            >
-              <Text style={tp.declareBtnText}>Declare Candidacy</Text>
-              <Text style={tp.declareBtnSub}>Min age 30 · Election resolves next season end</Text>
-            </TouchableOpacity>
-          )}
-
           {/* Not eligible — show reason */}
           {!isHolder && !isCandidate && !someoneElseHolds && !someoneElseRunning && !isEligible && (
             <Text style={tp.ineligible}>
@@ -197,6 +195,7 @@ const tp = StyleSheet.create({
   info: { flex: 1 },
   name: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 15, fontWeight: '700' },
   latin: { color: COLORS.goldDim, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11 },
+  meta: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 10, marginTop: 2 },
   desc: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6, lineHeight: 16 },
   // Chunk G — same values as OfficeCard.tsx's rung.sealRow/rung.tapHint.
   sealRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.sm },
@@ -212,9 +211,11 @@ const tp = StyleSheet.create({
   pendingText: { color: COLORS.amber, fontFamily: FONTS.display, fontSize: 12, fontWeight: '600' },
   pendingSub: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 10, marginTop: 3 },
   occupied: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: SPACING.sm },
-  declareBtn: { marginTop: SPACING.sm, backgroundColor: COLORS.amber + '22', borderWidth: 1, borderColor: COLORS.amber, borderRadius: RADIUS.sm, padding: SPACING.sm, alignItems: 'center' },
-  declareBtnText: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 14, fontWeight: '700' },
-  declareBtnSub: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 10, marginTop: 2 },
+  // Same shape as OfficeCard.tsx's rung.applyBtn/rung.applyText — Tribune's
+  // action button now sits in the header row like every other office card's
+  // CAMPAIGN button, not as a full-width block after the description.
+  declareBtn: { backgroundColor: COLORS.amber + '22', borderWidth: 1, borderColor: COLORS.amber, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.sm, paddingVertical: 6, minHeight: 36, justifyContent: 'center' },
+  declareBtnText: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 12, fontWeight: '700' },
   ineligible: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: SPACING.sm, opacity: 0.7 },
 });
 

@@ -10,12 +10,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
-import CharacterProfilePane from '../components/domus/CharacterProfilePane';
 import FamilyTree from '../components/domus/FamilyTree';
 import CharacterActionModal from '../components/domus/CharacterActionModal';
 import DomesticDirectivesTray from '../components/domus/DomesticDirectivesTray';
 import LegatumPanel from '../components/domus/LegatumPanel';
 import ClientelaPanel from '../components/domus/ClientelaPanel';
+import PatronLadderPanel from '../components/domus/PatronLadderPanel';
 import FamilyHousePanel from '../components/domus/FamilyHousePanel';
 import DebugPanel from '../components/shared/DebugPanel';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
@@ -24,9 +24,9 @@ import { remeasureAllTargets } from '../engine/tutorialTargets';
 
 const BG_DOMUS = require('../assets/images/bg-domus.png');
 
-type DomusSection = 'familias' | 'clientela' | 'house';
+type DomusTab = 'familias' | 'clientela' | 'house';
 
-const SECTIONS: { key: DomusSection; label: string }[] = [
+const TABS: { key: DomusTab; label: string }[] = [
   { key: 'familias',  label: 'FAMILIAS' },
   { key: 'clientela', label: 'CLIENTELA' },
   { key: 'house',     label: 'FAMILY HOUSE' },
@@ -35,18 +35,16 @@ const SECTIONS: { key: DomusSection; label: string }[] = [
 export default function DomusScreen() {
   const { family, selectedCharacterId, selectCharacter, debugMode } = useGameStore();
   const [modalChar, setModalChar] = useState<string | null>(null);
-  const [openSection, setOpenSection] = useState<DomusSection | null>('familias');
+  // Domus redesign — three top tabs (mirroring Curia's SubTabBar pattern)
+  // replace the old per-section accordion; only one tab's content shows at
+  // a time instead of independently-collapsible sections.
+  const [activeTab, setActiveTab] = useState<DomusTab>('familias');
 
-  const selected = family.find((c) => c.id === selectedCharacterId) ?? family[0];
   const modalCharObj = family.find((c) => c.id === modalChar) ?? null;
 
   function handlePress(id: string) {
     selectCharacter(id);
     setModalChar(id);
-  }
-
-  function toggleSection(key: DomusSection) {
-    setOpenSection(prev => (prev === key ? null : key));
   }
 
   return (
@@ -63,63 +61,55 @@ export default function DomusScreen() {
           <Text style={styles.headerSubtitle}>Family &amp; Heritage</Text>
         </View>
 
+        <View style={styles.tabBar}>
+          {TABS.map(({ key, label }) => {
+            const isActive = activeTab === key;
+            return (
+              <TouchableOpacity
+                key={key}
+                style={[styles.tab, isActive && styles.tabActive]}
+                onPress={() => setActiveTab(key)}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           onScrollEndDrag={remeasureAllTargets}
           onMomentumScrollEnd={remeasureAllTargets}
         >
-          {SECTIONS.map(({ key, label }) => {
-            const isOpen = openSection === key;
+          {activeTab === 'familias' && (
+            <>
+              <FamilyTree
+                selectedCharacterId={selectedCharacterId}
+                onPressCharacter={handlePress}
+              />
 
-            return (
-              <View key={key} style={styles.section}>
-                <TouchableOpacity
-                  style={[styles.sectionHeader, isOpen && styles.sectionHeaderOpen]}
-                  onPress={() => toggleSection(key)}
-                  activeOpacity={0.75}
-                >
-                  <Text style={[styles.sectionLabel, isOpen && styles.sectionLabelOpen]}>
-                    {label}
-                  </Text>
-                  <Text style={[styles.sectionChevron, isOpen && styles.sectionChevronOpen]}>
-                    ›
-                  </Text>
-                </TouchableOpacity>
+              <DomesticDirectivesTray />
 
-                {isOpen && (
-                  <View style={styles.sectionBody}>
-                    {key === 'familias' && (
-                      <>
-                        <LegatumPanel />
+              <LegatumPanel />
+            </>
+          )}
 
-                        {selected && (
-                          <CharacterProfilePane character={selected} />
-                        )}
+          {activeTab === 'clientela' && (
+            <>
+              <PatronLadderPanel />
+              <ClientelaPanel />
+            </>
+          )}
 
-                        <FamilyTree
-                          selectedCharacterId={selectedCharacterId}
-                          onPressCharacter={handlePress}
-                        />
-
-                        <DomesticDirectivesTray />
-                      </>
-                    )}
-
-                    {key === 'clientela' && <ClientelaPanel />}
-
-                    {key === 'house' && <FamilyHousePanel />}
-                  </View>
-                )}
-              </View>
-            );
-          })}
+          {activeTab === 'house' && <FamilyHousePanel />}
 
           {debugMode && <DebugPanel />}
           <View style={{ height: CONTENT_PADDING_BOTTOM }} />
         </ScrollView>
-
-
 
         {modalCharObj && (
           <CharacterActionModal
@@ -174,47 +164,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.sm,
   },
-  // ── Collapsible sections ──────────────────────────────────────────────────
-  section: {
-    marginBottom: SPACING.xs,
+  // ── Top tab bar — mirrors Curia's SubTabBar pattern (fixed above the
+  // scroll region, one tab's content shows at a time) using Domus's own
+  // gold/dust palette instead of Curia's stone-tile tokens.
+  tabBar: {
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.sm,
+  },
+  tab: {
+    flex: 1,
     borderRadius: RADIUS.md,
-    overflow: 'hidden',
     borderWidth: 1,
     borderColor: COLORS.border,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: COLORS.panelSurface,
     paddingVertical: 10,
-    paddingHorizontal: SPACING.md,
+    alignItems: 'center',
   },
-  sectionHeaderOpen: {
+  tabActive: {
     backgroundColor: COLORS.panelElevated,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gold,
+    borderColor: COLORS.gold,
   },
-  sectionLabel: {
+  tabLabel: {
     fontFamily: FONTS.ui,
     fontSize: 11,
-    letterSpacing: 2,
+    letterSpacing: 1.5,
     color: COLORS.dust,
   },
-  sectionLabelOpen: {
+  tabLabelActive: {
     color: COLORS.gold,
-  },
-  sectionChevron: {
-    color: COLORS.dust,
-    fontFamily: FONTS.ui,
-    fontSize: 20,
-    transform: [{ rotate: '90deg' }],
-  },
-  sectionChevronOpen: {
-    color: COLORS.gold,
-    transform: [{ rotate: '270deg' }],
-  },
-  sectionBody: {
-    backgroundColor: 'rgba(26, 23, 20, 0.82)',  // semi-transparent so fresco bleeds through
   },
 });
