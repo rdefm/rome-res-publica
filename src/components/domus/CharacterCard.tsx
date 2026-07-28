@@ -36,7 +36,7 @@ export default function CharacterCard({ character, selected, onPress }: Characte
       onLayout={tutorialTarget.onLayout}
       onPress={onPress}
       activeOpacity={0.75}
-      style={[styles.touchable, selected && styles.selected]}
+      style={styles.touchable}
     >
       <ImageBackground
         source={PARCHMENT_IMG}
@@ -82,10 +82,6 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
     borderRadius: 4,
     overflow: 'hidden',
-  },
-  selected: {
-    borderWidth: 2,
-    borderColor: COLORS.gold,
   },
   bg: {
     // ImageBackground sizes to its children — no explicit height needed

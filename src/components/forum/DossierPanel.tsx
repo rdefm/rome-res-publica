@@ -309,8 +309,14 @@ function HeldAgainstYouRow({ secret }: { secret: Secret }) {
   );
 }
 
+// Chunk C1b (menu aesthetics pass) — DossierPanel itself sits directly on
+// the screen background (not inside a ParchmentCard, unlike the clan
+// grid/detail zone below it), so its rows keep a dark, warm-toned fill
+// (parchmentDark/parchmentBorder, same pair LeaderCard.tsx uses) rather
+// than switching to a full light parchment card — coordinated with, not a
+// literal copy of, the rest of the tab's new material.
 const row = StyleSheet.create({
-  card: { backgroundColor: COLORS.panelSurface, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.sm },
+  card: { backgroundColor: COLORS.parchmentDark, borderWidth: 1, borderColor: COLORS.parchmentBorder, borderRadius: RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.sm },
   headerRow: { flexDirection: 'row', alignItems: 'center' },
   icon: { fontSize: 22, marginRight: SPACING.sm },
   headerInfo: { flex: 1 },
@@ -321,7 +327,7 @@ const row = StyleSheet.create({
   flavor: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 6, lineHeight: 16 },
   frozenNote: { color: COLORS.goldDim, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11, marginTop: 6 },
   actionsRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm, flexWrap: 'wrap' },
-  actionBtn: { backgroundColor: COLORS.panelElevated, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.sm, paddingVertical: 6 },
+  actionBtn: { backgroundColor: COLORS.panelElevated, borderWidth: 1, borderColor: COLORS.parchmentBorder, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.sm, paddingVertical: 6 },
   actionBtnDisabled: { opacity: 0.4 },
   actionBtnText: { color: COLORS.gold, fontFamily: FONTS.ui, fontSize: 11, fontWeight: '600' },
   burnBtn: { borderColor: COLORS.crimson },

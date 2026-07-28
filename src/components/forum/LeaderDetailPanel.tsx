@@ -12,6 +12,7 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import PortraitRoundel from '../shared/PortraitRoundel';
 import { leaderPortraitSubject } from '../../engine/portraitEngine';
 import { useTutorialTarget } from '../shared/useTutorialTarget';
+import ParchmentCard, { PARCHMENT_TEXT } from '../shared/ParchmentCard';
 
 // ─── Gather Intelligence family-member picker (Phase 4, P4-A) ────────────────
 // Inline modal list, per the plan's "a simple inline list is fine this
@@ -150,23 +151,32 @@ export function ForumActionBtn({
   );
 }
 
+// Chunk C1b (menu aesthetics pass) — same amber-wash treatment OfficeCard.tsx's
+// CAMPAIGN button already uses on top of its own ParchmentCard (applyBtn/
+// applyBtnLocked), rather than the old flat panelElevated box. Text follows
+// onto PARCHMENT_TEXT since the effective background is now light (a
+// translucent amber tint over the card's cream parchment, not a dark panel).
 const fab = StyleSheet.create({
   btn: {
-    backgroundColor: COLORS.panelElevated,
+    backgroundColor: COLORS.amber + '22',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.amber,
     borderRadius: RADIUS.md,
     padding: SPACING.sm,
     marginBottom: SPACING.sm,
     minHeight: 44,
   },
-  disabled: { opacity: 0.4 },
+  disabled: {
+    backgroundColor: COLORS.border + '22',
+    borderColor: PARCHMENT_TEXT.muted,
+    opacity: 1,
+  },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   labelWrap: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   lockIcon: { fontSize: 11, marginRight: 2 },
-  label: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 14, fontWeight: '600', flex: 1 },
+  label: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 14, fontWeight: '600', flex: 1 },
   cost: { color: COLORS.fidesColor, fontFamily: FONTS.ui, fontSize: 12, fontWeight: '700' },
-  desc: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 2 },
+  desc: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 2 },
 });
 
 // ─── LeaderDetailPanel ────────────────────────────────────────────────────────
@@ -221,7 +231,7 @@ function LeaderDetailPanel({ leader, clanId, scrollRef }: {
   const repFor = (relationshipDelta: number) => computeReputationDelta(relationshipDelta, leader.votes, clanTotalVotes);
 
   return (
-    <View style={ld.container}>
+    <ParchmentCard style={ld.card} contentStyle={ld.container}>
       <View style={ld.header}>
         <View style={ld.portraitWrap}>
           <PortraitRoundel subject={leaderPortraitSubject(leader, clanId)} size={96} frame="gold" />
@@ -321,27 +331,31 @@ function LeaderDetailPanel({ leader, clanId, scrollRef }: {
         leaderId={leader.id}
         onClose={() => setProsecutionPickerOpen(false)}
       />
-    </View>
+    </ParchmentCard>
   );
 }
 
+// Chunk C1b (menu aesthetics pass) — flat panelSurface View replaced with
+// ParchmentCard (see ClanGridTile.tsx's header comment for the full
+// rationale); text switched to PARCHMENT_TEXT.
 const ld = StyleSheet.create({
+  card: {
+    marginTop: SPACING.sm,
+    marginBottom: 0,
+  },
   container: {
-    backgroundColor: COLORS.panelSurface,
-    borderTopWidth: 1,
-    borderColor: COLORS.border,
     padding: SPACING.md,
   },
   header: { flexDirection: 'row', marginBottom: SPACING.sm },
   portraitWrap: { marginRight: SPACING.sm },
   info: { flex: 1 },
-  name: { color: COLORS.marble, fontFamily: FONTS.display, fontSize: 16, fontWeight: '700' },
-  title: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, marginTop: 2 },
-  bio: { color: COLORS.dust, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 4, lineHeight: 17 },
+  name: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 16, fontWeight: '700' },
+  title: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11, marginTop: 2 },
+  bio: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, marginTop: 4, lineHeight: 17 },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: SPACING.sm },
-  stat: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11 },
-  statVal: { color: COLORS.marble, fontWeight: '600' },
-  secretsLine: { color: COLORS.goldDim, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11, marginBottom: SPACING.sm },
+  stat: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.ui, fontSize: 11 },
+  statVal: { color: PARCHMENT_TEXT.heading, fontWeight: '600' },
+  secretsLine: { color: PARCHMENT_TEXT.gold, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11, marginBottom: SPACING.sm },
   actions: {},
 });
 

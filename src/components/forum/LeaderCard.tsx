@@ -29,7 +29,7 @@ function LeaderCard({ leader, clanId, selected, onPress, campaigning }: {
   const borderColor = selected ? COLORS.gold
     : leader.relationship >= 20 ? COLORS.laurel
     : leader.relationship <= -20 ? COLORS.crimson
-    : COLORS.border;
+    : COLORS.parchmentBorder;
 
   // Phase 4, Chunk P4-B — Dossier indicators. Only DISCOVERED against-you
   // Secrets show — the Dossier is the player's own knowledge, not omniscience.
@@ -75,8 +75,17 @@ function LeaderCard({ leader, clanId, selected, onPress, campaigning }: {
   );
 }
 const lc = StyleSheet.create({
+  // Chunk C1b (menu aesthetics pass) — this chip now sits inside
+  // ClanDetailZone's ParchmentCard. A nested full parchment texture here
+  // would look muddy stacked on itself, so it keeps a solid fill instead —
+  // parchmentDark/parchmentBorder (theme.ts's existing warm-brown pair,
+  // already used elsewhere for exactly this "coordinate with parchment
+  // without repeating the texture" case) rather than the old cold
+  // panelElevated/border. Text stays light (marble/dust) since the chip
+  // itself is still dark-toned, unlike ClanGridTile/ClanDetailZone's own
+  // switch to PARCHMENT_TEXT's dark-on-cream palette.
   card: {
-    width: 96 + SPACING.sm * 2, backgroundColor: COLORS.panelElevated, borderWidth: 1, borderRadius: RADIUS.md,
+    width: 96 + SPACING.sm * 2, backgroundColor: COLORS.parchmentDark, borderWidth: 1, borderColor: COLORS.parchmentBorder, borderRadius: RADIUS.md,
     padding: SPACING.sm, alignItems: 'center', marginRight: SPACING.sm, position: 'relative',
   },
   blackmailDot: { position: 'absolute', top: 4, right: 4, width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.crimson },
