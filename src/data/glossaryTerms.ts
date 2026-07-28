@@ -22,12 +22,6 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     relatedTab: 'Cursus',
   },
   {
-    id: 'aerarium',
-    term: 'Aerarium',
-    definition: 'The state treasury, shown as a 0–100 health index rather than a coin balance. Below 10 it becomes Bankrupt, imposing −3 Denarii per season and triggering automatic crisis legislation.',
-    relatedTab: 'Curia',
-  },
-  {
     id: 'ambition',
     term: 'Ambitions',
     definition: 'Medium-term goals for your family (Family scope) or a specific character (Character scope), each with a time limit. Meet the condition to earn a reward; fail and consequences apply.',
@@ -436,6 +430,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: 'Taxation (Governor Policy)',
     definition: 'A governor policy axis controlling gold extraction from a province. Higher settings multiply gold income but damage provincial relationships and add corruption to the governor each season.',
     relatedTab: 'Provinciae',
+  },
+  {
+    id: 'treasury',
+    term: 'Treasury',
+    definition: 'The state treasury, shown as a 0–100 health index rather than a coin balance. Below 10 it becomes Bankrupt, imposing −3 Denarii per season and triggering automatic crisis legislation.',
+    relatedTab: 'Curia',
   },
   {
     id: 'trial',

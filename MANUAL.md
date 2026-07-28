@@ -220,7 +220,6 @@ Submit and vote on bills, give speeches, filibuster; passed bills with lasting e
 
 ### Curia Vocabulary
 The Senate does business in Latin. A quick glossary:
-- **Aerarium** — the state treasury, shown as a health index (0–100), not a coin balance.
 - **Rogationes** — bills currently before the Senate, awaiting a vote, speech, or filibuster.
 - **Leges in Vigore** — laws already enacted and still in force, each with its own ongoing effect.
 - **Negotia** — the Senate's non-legislative business: treaties, extraordinary commands, and the courts.

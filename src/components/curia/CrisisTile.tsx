@@ -18,7 +18,7 @@ import type { CrisisTrackId, CrisisTrack } from '../../models/crisis';
 // Lifted out of CuriaScreen.tsx:49-54 (Finding — CRISIS_TIER_LABELS/TIER_NAMES
 // was independently duplicated there and in CrisisTrackModal.tsx even before
 // this redesign; this is the canonical copy going forward, exported for
-// AerariumBar's "highest-tier track" sentence. CrisisTrackModal.tsx's own
+// TreasuryBar's "highest-tier track" sentence. CrisisTrackModal.tsx's own
 // copy is a pre-existing duplicate, out of this chunk's file scope — flagged,
 // not fixed here.
 export const CRISIS_TIER_LABELS: Record<CrisisTrackId, [string, string, string, string, string]> = {

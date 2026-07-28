@@ -11,7 +11,7 @@ import type { CrisisTrackId } from '../../models/crisis';
 
 const TRACK_ORDER: CrisisTrackId[] = ['war', 'unrest', 'constitution', 'economy'];
 
-interface AerariumBarProps {
+interface TreasuryBarProps {
   /** §5's budget only balances if the whole pinned panel is ~32pt when the
    *  grid collapses — that leaves no room for a second line. `compact` drops
    *  the "Republic: …" sentence and renders line 1 alone, single-line,
@@ -21,7 +21,7 @@ interface AerariumBarProps {
   compact?: boolean;
 }
 
-export default function AerariumBar({ compact = false }: AerariumBarProps) {
+export default function TreasuryBar({ compact = false }: TreasuryBarProps) {
   const rome = useGameStore(s => s.rome);
   const crisis = useGameStore(s => s.crisis);
 
@@ -39,19 +39,19 @@ export default function AerariumBar({ compact = false }: AerariumBarProps) {
 
   if (compact) {
     return (
-      <InfoTap termId="aerarium" style={styles.compactWrapper}>
+      <InfoTap termId="treasury" style={styles.compactWrapper}>
         <Text style={styles.line1} numberOfLines={1}>
-          AERARIUM: {treasuryLabel} · {Math.round(rome.treasury)}/100
+          TREASURY: {treasuryLabel} · {Math.round(rome.treasury)}/100
         </Text>
       </InfoTap>
     );
   }
 
   return (
-    <InfoTap termId="aerarium" style={styles.wrapper}>
+    <InfoTap termId="treasury" style={styles.wrapper}>
       <View>
         <Text style={styles.line1}>
-          AERARIUM: {treasuryLabel} · {Math.round(rome.treasury)}/100
+          TREASURY: {treasuryLabel} · {Math.round(rome.treasury)}/100
         </Text>
         <Text style={styles.line2}>{republicLine}</Text>
       </View>
