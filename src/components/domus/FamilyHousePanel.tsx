@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import { HOUSE_LOCATION_DEFINITIONS, getHouseLocationDefinition } from '../../data/houseLocations';
 import { getHouseRoomDefinition } from '../../data/houseRooms';
@@ -12,6 +12,17 @@ import ParchmentCard, { PARCHMENT_TEXT } from '../shared/ParchmentCard';
 import InfoTap from '../shared/InfoTap';
 import { domusAssets } from '../../utils/domusAssets';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
+
+// Explicit pixel dimensions, not `aspectRatio` + `width: '100%'` — that
+// combination rendered ForumScreen.tsx's header banner far taller than
+// intended (bleeding into unrelated content) inside a comparably nested
+// flex chain; same class of bug components/shared/FrescoBackground.tsx's
+// own header comment already documents. This banner sits inside this
+// screen's own padded ScrollView (scrollContent's `padding: SPACING.md`),
+// so its available width is screen width minus that padding on both sides.
+const { width: HOUSE_SCREEN_W } = Dimensions.get('window');
+const BANNER_WIDTH = HOUSE_SCREEN_W - SPACING.md * 2;
+const BANNER_HEIGHT = Math.round(BANNER_WIDTH * 7 / 16);
 
 // ─── Bonus summary formatting ─────────────────────────────────────────────────
 
@@ -196,9 +207,11 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { padding: SPACING.md, paddingBottom: SPACING.xl },
   // ── House banner — horizontal image across the top of the tab ────────────
+  // Explicit BANNER_WIDTH/BANNER_HEIGHT (computed above), not `aspectRatio`
+  // — see that constant's comment for why.
   banner: {
-    width: '100%',
-    aspectRatio: 16 / 7,
+    width: BANNER_WIDTH,
+    height: BANNER_HEIGHT,
     borderRadius: RADIUS.md,
     overflow: 'hidden',
     marginBottom: SPACING.md,

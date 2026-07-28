@@ -12,7 +12,10 @@
 type RequiredAsset = any; // matches the untyped require() convention already used by cursusAssets.ts / curiaAssets.ts.
 
 const HOUSE_BANNERS: Partial<Record<string, RequiredAsset>> = {
-  // subura: require('../assets/domus/houses/banner-subura.png'),
+  // ~775KB — over the ~400KB guidance other manifests use (see
+  // cursusAssets.ts's fresco-bg.png note for the same situation); fine
+  // as-is, worth recompressing next time this art gets touched.
+  subura: require('../assets/domus/houses/banner-subura.png'),
   // aventine: require('../assets/domus/houses/banner-aventine.png'),
   // caelian: require('../assets/domus/houses/banner-caelian.png'),
   // palatine: require('../assets/domus/houses/banner-palatine.png'),

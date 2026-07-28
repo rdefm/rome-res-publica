@@ -80,17 +80,40 @@ const PORTRAITS: Partial<Record<string, RequiredAsset>> = {
   // 'fabii-1-f-midage': require('../assets/portraits/portrait-fabii-1-f-midage.png'),
   // 'fabii-1-f-elder': require('../assets/portraits/portrait-fabii-1-f-elder.png'),
   // 'claudii-1-m-baby': require('../assets/portraits/portrait-claudii-1-m-baby.png'),
-  // 'claudii-1-m-child': require('../assets/portraits/portrait-claudii-1-m-child.png'),
   // 'claudii-1-m-youth': require('../assets/portraits/portrait-claudii-1-m-youth.png'),
-  // 'claudii-1-m-adult': require('../assets/portraits/portrait-claudii-1-m-adult.png'),
-  // 'claudii-1-m-midage': require('../assets/portraits/portrait-claudii-1-m-midage.png'),
-  // 'claudii-1-m-elder': require('../assets/portraits/portrait-claudii-1-m-elder.png'),
+  // Claudii portrait variants — delivered (commit a966671) but never wired
+  // into this registry, so every Claudii npc/leader fell back to the emoji
+  // placeholder despite the files existing on disk. Filenames as delivered
+  // (capitalized `Portrait-`, and numbered 2-5, not 1-4 — a different
+  // convention than cornelii's lowercase/sequential-from-1 files above);
+  // rather than renaming committed asset files, the registry KEYS below are
+  // renumbered sequential-from-1 to match every other lineage's convention,
+  // while the require() paths point at the actual on-disk filenames
+  // verbatim. No 'baby'/'youth' band exists for any Claudii variant.
+  'claudii-1-m-child': require('../assets/portraits/Portrait-claudii-2-m-child.png'),
+  'claudii-1-m-adult': require('../assets/portraits/Portrait-claudii-2-m-adult.png'),
+  'claudii-1-m-midage': require('../assets/portraits/Portrait-claudii-2-m-midage.png'),
+  'claudii-1-m-elder': require('../assets/portraits/Portrait-claudii-2-m-elder.png'),
   // 'claudii-1-f-baby': require('../assets/portraits/portrait-claudii-1-f-baby.png'),
-  // 'claudii-1-f-child': require('../assets/portraits/portrait-claudii-1-f-child.png'),
   // 'claudii-1-f-youth': require('../assets/portraits/portrait-claudii-1-f-youth.png'),
-  // 'claudii-1-f-adult': require('../assets/portraits/portrait-claudii-1-f-adult.png'),
-  // 'claudii-1-f-midage': require('../assets/portraits/portrait-claudii-1-f-midage.png'),
-  // 'claudii-1-f-elder': require('../assets/portraits/portrait-claudii-1-f-elder.png'),
+  'claudii-1-f-child': require('../assets/portraits/Portrait-claudii-3-f-child.png'),
+  'claudii-1-f-adult': require('../assets/portraits/Portrait-claudii-3-f-adult.png'),
+  'claudii-1-f-midage': require('../assets/portraits/Portrait-claudii-3-f-midage.png'),
+  'claudii-1-f-elder': require('../assets/portraits/Portrait-claudii-3-f-elder.png'),
+  // No 'claudii-2-f-child' — Portrait-claudii-3-m-* (this variant's male
+  // counterpart) has no child image either; both stay missing (emoji
+  // fallback for that one band) rather than borrowing a mismatched asset.
+  'claudii-2-m-adult': require('../assets/portraits/Portrait-claudii-3-m-adult.png'),
+  'claudii-2-m-midage': require('../assets/portraits/Portrait-claudii-3-m-midage.png'),
+  'claudii-2-m-elder': require('../assets/portraits/Portrait-claudii-3-m-elder.png'),
+  'claudii-3-m-child': require('../assets/portraits/Portrait-claudii-4-m-child.png'),
+  'claudii-3-m-adult': require('../assets/portraits/Portrait-claudii-4-m-adult.png'),
+  'claudii-3-m-midage': require('../assets/portraits/Portrait-claudii-4-m-midage.png'),
+  'claudii-3-m-elder': require('../assets/portraits/Portrait-claudii-4-m-elder.png'),
+  // variant 4 — only adult/child delivered; midage/elder stay on the emoji
+  // fallback for this variant specifically.
+  'claudii-4-m-child': require('../assets/portraits/Portrait-claudii-5-m-child.png'),
+  'claudii-4-m-adult': require('../assets/portraits/Portrait-claudii-5-m-adult.png'),
 };
 
 // Bespoke full-image overrides for the 4 starting-family characters with
@@ -134,6 +157,8 @@ const LEADER_PORTRAITS: Partial<Record<string, RequiredAsset>> = {
 // hash-fallback path already assumes.
 const VARIANT_COUNTS: Partial<Record<string, number>> = {
   'cornelii-m': 3,
+  'claudii-m': 4,
+  'claudii-f': 1,
 };
 
 export const portraitAssets = {

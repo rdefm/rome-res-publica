@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Modal, ImageBackground, ViewStyle, TextStyle,
+  Modal, ImageBackground, Dimensions, ViewStyle, TextStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
@@ -23,6 +23,24 @@ import PortraitRoundel from '../components/shared/PortraitRoundel';
 import type { CanvassingEvent } from '../data/canvassingEvents';
 import { useTutorialTarget } from '../components/shared/useTutorialTarget';
 import { remeasureAllTargets } from '../engine/tutorialTargets';
+
+// Forum redesign, Chunk C1 (revised) — explicit pixel height computed once
+// from screen width, not `aspectRatio` + `width: '100%'`. That combination
+// rendered the header banner far taller than its 10:3 ratio (bleeding down
+// behind the intro text and the whole clan grid) — the same "percentage-
+// based sizing is unreliable inside a nested flex chain" class of bug
+// components/shared/FrescoBackground.tsx's own header comment documents
+// (it works around it by measuring and rendering at an explicit pixel
+// size instead of a percentage/aspectRatio). Same fix here, simpler case:
+// full device width is already known synchronously via Dimensions, so no
+// onLayout measurement round-trip is needed — same idiom as
+// TutorialCaption.tsx's SCREEN_W/CARD_W.
+const { width: FORUM_SCREEN_W } = Dimensions.get('window');
+// Deliberately taller than the source image's own ~10:3 ratio — resizeMode
+// "cover" fills this box by cropping overflow, so a taller box crops more
+// off the image's left/right edges, which both enlarges it on screen and
+// tightens the crop onto its central focal point (the temple facade).
+const HEADER_BANNER_HEIGHT = Math.round(FORUM_SCREEN_W / 2);
 
 // ─── Canvassing Event Modal ───────────────────────────────────────────────────
 
@@ -367,14 +385,33 @@ export default function ForumScreen() {
   // active target (see useTutorialTarget.ts's scrollRef param).
   const scrollRef = useRef<ScrollView>(null);
 
+  // Forum redesign, Chunk C1 (revised) — a fixed-height header banner
+  // (10:3, forumAssets.headerBanner) instead of a full-screen background
+  // (see forumAssets.ts's header comment for why a full-bleed image was
+  // reverted: Forum's scrollable body is almost entirely opaque panels, so
+  // most of a tall background would sit permanently hidden behind them).
+  // Undefined until real art lands — falls back to today's plain bordered
+  // header for that case.
+  const headerContent = (
+    <>
+      <Text style={styles.title}>FORUM</Text>
+      <Text style={styles.subtitle}>
+        {campaigning ? `Campaign Active — Canvass for Votes` : 'Clans & Political Alliances'}
+      </Text>
+    </>
+  );
+
   const screenContent = (
     <>
-      <View style={styles.header}>
-        <Text style={styles.title}>FORUM</Text>
-        <Text style={styles.subtitle}>
-          {campaigning ? `Campaign Active — Canvass for Votes` : 'Clans & Political Alliances'}
-        </Text>
-      </View>
+      {forumAssets.headerBanner ? (
+        <ImageBackground source={forumAssets.headerBanner} style={styles.headerBanner} resizeMode="cover">
+          {headerContent}
+        </ImageBackground>
+      ) : (
+        <View style={styles.header}>
+          {headerContent}
+        </View>
+      )}
 
       <ScrollView
         ref={scrollRef}
@@ -428,24 +465,6 @@ export default function ForumScreen() {
     </>
   );
 
-  // Forum redesign, Chunk C1 — Forum was the one tab with a flat background
-  // (plans/forum-redesign.md Finding 5). forumAssets.screenBg is undefined
-  // until real art lands (see that file), so this falls back to exactly
-  // today's flat SafeAreaView — same "no asset → plain View/fallback"
-  // pattern as components/shared/FrescoBackground.tsx, not duplicated here
-  // since Forum has no art yet to hit that component's percentage-sizing
-  // gotcha (its own header comment) — worth reusing that fix if/when this
-  // ever needs anything more than a plain ImageBackground.
-  if (forumAssets.screenBg) {
-    return (
-      <ImageBackground source={forumAssets.screenBg} style={styles.screen} resizeMode="cover">
-        <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-          {screenContent}
-        </SafeAreaView>
-      </ImageBackground>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       {screenContent}
@@ -455,10 +474,49 @@ export default function ForumScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.bg, paddingTop: RESOURCE_BAR_HEIGHT },
-  safeArea: { flex: 1 },
   header: { padding: SPACING.md, borderBottomColor: COLORS.border, borderBottomWidth: 1 },
-  title: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 20, fontWeight: '700', letterSpacing: 2 },
-  subtitle: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 1, marginTop: 2 },
+  // Forum redesign, Chunk C1 (revised) — matches forumAssets.headerBanner's
+  // asset. Explicit pixel height (HEADER_BANNER_HEIGHT, computed once
+  // above) rather than `aspectRatio` — see that constant's comment for why.
+  // Text anchored toward the bottom edge, same "float over the art"
+  // treatment DomusScreen's header uses over its fresco.
+  // marginTop: -RESOURCE_BAR_HEIGHT — `styles.screen`'s own paddingTop is
+  // redundant (ResourceBar is a real sibling above the tab navigator in
+  // App.tsx, already occupying that space in normal flow; every screen's
+  // identical paddingTop double-counts it) but invisible everywhere else
+  // since every other header/fallback is flat-colored and blends into the
+  // gap. Scoped to only the image case rather than touching that
+  // widely-shared convention — pulls just the banner up flush against the
+  // resource bar without affecting the plain-header fallback or the rest
+  // of the screen's layout.
+  headerBanner: {
+    width: '100%',
+    height: HEADER_BANNER_HEIGHT,
+    marginTop: -RESOURCE_BAR_HEIGHT,
+    justifyContent: 'flex-end',
+    padding: SPACING.md,
+    overflow: 'hidden',
+  },
+  title: {
+    color: COLORS.gold,
+    fontFamily: FONTS.display,
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+  },
+  subtitle: {
+    color: COLORS.dust,
+    fontFamily: FONTS.ui,
+    fontSize: 11,
+    letterSpacing: 1,
+    marginTop: 2,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
   scroll: { flex: 1, padding: SPACING.md },
   sectionLabel: {
     color: COLORS.goldDim,

@@ -51,9 +51,17 @@ export default function PortraitRoundel({ subject, size = 44, frame = 'gold', sh
   const ringStyle = frame === 'gold' ? styles.ringGold : styles.ringPlain;
 
   if (source) {
+    // Several portrait assets have a decorative mosaic-tile frame around
+    // the circular bust artwork, drawn slightly inside the source image's
+    // own edges — at 1:1 scale, a thin sliver of that frame shows just
+    // inside our clip circle before the actual face content starts.
+    // Oversizing the image (centered, clipped by the container's own
+    // overflow:'hidden' + borderRadius) zooms past that sliver.
+    const ZOOM = 1.18;
+    const zoomedDim = { width: size * ZOOM, height: size * ZOOM };
     return (
       <View style={[styles.base, dim, ringStyle]}>
-        <Image source={source} style={dim} resizeMode="cover" />
+        <Image source={source} style={zoomedDim} resizeMode="cover" />
       </View>
     );
   }
