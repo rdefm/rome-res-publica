@@ -8,6 +8,7 @@ import type { AgendaItem } from '../../models/agenda';
 import SettingsModal from './SettingsModal';
 import InfoTap from './InfoTap';
 import ScrollModal, { PARCHMENT } from './ScrollModal';
+import { useTutorialTarget } from './useTutorialTarget';
 import { COLORS, FONTS, SPACING, RESOURCE_BAR_HEIGHT } from '../../utils/theme';
 
 // Fides icon: reusing icon-gratia.png (clasped hands) until a dedicated
@@ -86,6 +87,10 @@ export default function ResourceBar() {
   const shownCriticals  = criticalItems.slice(0, 3);
   const hiddenCount     = criticalItems.length - 3;
 
+  // prologue.act1.fides ("you will spend two currencies...") spotlights
+  // this row — previously that step had no `target` at all.
+  const tutorialTarget = useTutorialTarget('shared.resource-bar');
+
   return (
     <>
       <View style={[styles.bar, { paddingTop: insets.top }]}>
@@ -100,7 +105,7 @@ export default function ResourceBar() {
         </TouchableOpacity>
 
         {/* Centre — resources */}
-        <View style={styles.resources}>
+        <View ref={tutorialTarget.ref} onLayout={tutorialTarget.onLayout} style={styles.resources}>
           <InfoTap termId="fides">
             <ResourceItem
               value={fides}

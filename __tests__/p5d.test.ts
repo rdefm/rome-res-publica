@@ -152,6 +152,14 @@ function makeSeasonState(overrides: Record<string, any> = {}) {
 
 describe('turnSequencer — NPC self-destructive Secret burn (P5-D aftermath flag)', () => {
   test('a leader burning a held Secret against the family sets secret-burned-recently', () => {
+    // Second scandal-frequency-down-tune — burn now rolls against
+    // BALANCE.secrets.npcAi.npcBurnChance instead of firing unconditionally;
+    // force the roll to succeed so this test still isolates the flag-write
+    // behavior, not the roll itself (which has no dedicated test elsewhere —
+    // it's a plain Math.random() < constant check, same idiom as every
+    // other inline roll in turnSequencer.ts).
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+
     const leader = makeLeader({
       id: 'leader-1', relationship: BALANCE.secrets.npcAi.npcBurnStandingMax, votes: 10, bias: 'optimates',
     });
@@ -167,6 +175,8 @@ describe('turnSequencer — NPC self-destructive Secret burn (P5-D aftermath fla
 
     expect(nextState.flags['secret-burned-recently']).toBe(true);
     expect(nextState.secrets.find((s: Secret) => s.id === 'secret-1')?.status).toBe('spent');
+
+    randomSpy.mockRestore();
   });
 
   test('no eligible Secret to burn leaves the flag unset', () => {

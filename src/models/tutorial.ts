@@ -37,7 +37,9 @@ export interface TutorialStep {
   arc: TutorialAnyArcId;
   actLabel?: string;                 // display only, e.g. 'Act II — The Forum'
   rail: TutorialRail;
-  requiresTab?: TabName;             // director navigates here on enter if not already there
+  requiresTab?: TabName;             // App.tsx's TutorialLayer spotlights this tab's button and
+                                      // waits for a real tap if the player isn't already there —
+                                      // no longer auto-navigated (tutorial fix)
   target?: TutorialTargetId;         // omit for a full-screen narration beat
   narration: string;                 // Philon's voice; supports no templating in v1
   advance: TutorialAdvance;

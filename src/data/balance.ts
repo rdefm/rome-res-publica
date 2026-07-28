@@ -864,12 +864,17 @@ export const BALANCE = {
      *  the fuel — a clean family is nearly un-blackmailable.
      *  July 2026 frequency-down-tune (base 0.03→0.018, cap 0.15→0.10) — with
      *  13 leaders each rolling independently every season, the old base rate
-     *  produced too many fresh secrets even for a clean family. */
-    npcGatherBase: 0.018,
+     *  produced too many fresh secrets even for a clean family.
+     *  Second frequency-down-tune (base 0.018→0.012, cap 0.10→0.06,
+     *  maxHeldAgainstFamily 3→2) — the first tune alone wasn't enough; see
+     *  npcAi.npcUseCooldownSeasons below for the demand/burn-cadence half of
+     *  this same pass, which turned out to be the bigger driver of "feels
+     *  like every season." */
+    npcGatherBase: 0.012,
     npcGatherPerCorruption: 0.0015,
-    npcGatherCap: 0.10,
+    npcGatherCap: 0.06,
     hostileStandingMax: 30,
-    maxHeldAgainstFamily: 3,
+    maxHeldAgainstFamily: 2,
     /** Potency 1 / 2 / 3 generation weights (sums to 1). */
     potencyWeights: [0.55, 0.35, 0.10] as [number, number, number],
 
@@ -942,8 +947,13 @@ export const BALANCE = {
        *  cooldown acts unconditionally (no extra probability roll), so this
        *  constant directly sets demand cadence; with several leaders each
        *  independently accumulating secrets, the old value compounded into
-       *  demands feeling near-constant. */
-      npcUseCooldownSeasons: 6,
+       *  demands feeling near-constant.
+       *  Second frequency-down-tune (6→10 seasons) — the actual bigger lever:
+       *  with 13 leaders each independently clearing cooldown on their own
+       *  schedule, even a 6-season cooldown meant one was almost always
+       *  ready to act, so demands/burns felt continuous despite the low
+       *  underlying generation chance (npcGatherBase/Cap above). */
+      npcUseCooldownSeasons: 10,
       /** Leverage retains the Secret for this many uses before it's spent. */
       leverageReuseLimit: 2,
       /** Defying a social-class demand: scandal event hits. */
@@ -951,6 +961,12 @@ export const BALANCE = {
       socialExposureRelationship: -20,
       /** Burn only considered at standing (leader.relationship) at/below this. */
       npcBurnStandingMax: 5,
+      /** Second frequency-down-tune, new — burn used to fire unconditionally
+       *  the instant a leader qualified (standing ≤ npcBurnStandingMax, no
+       *  live Leverage opportunity); now it rolls like every other NPC
+       *  secret action instead of guaranteeing itself every season a
+       *  qualifying leader exists. */
+      npcBurnChance: 0.40,
     },
 
     // ── Phase 4, Chunk P4-G — the Claudius arc ──────────────────────────────

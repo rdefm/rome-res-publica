@@ -3690,13 +3690,14 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set({
       ...enterPatch,
       tutorial: { ...s.tutorial, activeArc: arc, stepId: firstStep?.id ?? null },
-      // Reuses the existing agenda deep-link mechanism (App.tsx's uiNavRequest
-      // effect) rather than a tutorial-specific nav path — "director
-      // navigates here on enter if not already there" (models/tutorial.ts's
-      // requiresTab doc comment), fired once at the exact moment of entry,
-      // not enforced continuously (that would fight the player's own taps
-      // on any tab already-unlocked from an earlier act).
-      ...(firstStep?.requiresTab ? { uiNavRequest: { tab: firstStep.requiresTab } } : {}),
+      // Tutorial fix — used to auto-navigate here via the agenda deep-link
+      // mechanism (App.tsx's uiNavRequest effect) the instant the step
+      // became current. Removed: the player now has to actually tap the
+      // destination tab themselves — App.tsx's TutorialLayer spotlights
+      // that tab's button and waits for the real press instead of firing
+      // navigation as a side effect of this action. requiresTab is now
+      // read-only metadata for TutorialLayer to compare against the live
+      // navigation state, not something this action acts on.
     });
   },
 
@@ -3723,9 +3724,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         ...completePatch,
         ...enterPatch,
         tutorial: { ...s.tutorial, stepId: nextStep.id, unlockedTabs },
-        // See startTutorialArc's identical comment — one-shot nav request,
-        // reusing the existing agenda deep-link mechanism.
-        ...(nextStep.requiresTab ? { uiNavRequest: { tab: nextStep.requiresTab } } : {}),
+        // See startTutorialArc's identical comment — no more auto-navigate.
       });
     } else {
       // Arc finished — auto-chain into the next arc in TUTORIAL_ARC_ORDER
@@ -3756,7 +3755,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
             completedArcs,
             unlockedTabs,
           },
-          ...(nextArcFirstStep.requiresTab ? { uiNavRequest: { tab: nextArcFirstStep.requiresTab } } : {}),
+          // See startTutorialArc's identical comment — no more auto-navigate.
         });
       } else {
         set({

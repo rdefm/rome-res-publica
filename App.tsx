@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer, useNavigationContainerRef, useNavigationState } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +26,7 @@ import TutorialOverlay, { getCaptionDock } from './src/components/shared/Tutoria
 import TutorialCaption from './src/components/shared/TutorialCaption';
 import TutorialDeflectionToast, { pingSealedTabDeflection } from './src/components/shared/TutorialDeflectionToast';
 import ConfirmModal from './src/components/shared/ConfirmModal';
+import { useTutorialTarget } from './src/components/shared/useTutorialTarget';
 import { getTarget, subscribeTargets } from './src/engine/tutorialTargets';
 import {
   getStep as getTutorialStep,
@@ -43,6 +44,22 @@ import { useGameStore } from './src/state/gameStore';
 import { loadEarnedAchievements } from './src/state/achievementStore';
 
 const Tab = createBottomTabNavigator();
+
+// Tutorial fix — a step's requiresTab used to auto-navigate the player
+// there the instant it became current (gameStore's uiNavRequest stamp,
+// removed — see startTutorialArc/advanceTutorialStep). Now TutorialLayer
+// spotlights the destination tab button instead and waits for a real tap,
+// same "make the player do it" treatment every other spotlighted control
+// gets. One target id per tab, registered unconditionally in TabIcon below
+// (harmless outside a tab-switch wait — TutorialOverlay only ever renders
+// whichever id the current display state actually asks for).
+const TAB_BAR_TARGET_ID: Record<TabName, string> = {
+  Domus:      'shared.tabbar.domus',
+  Forum:      'shared.tabbar.forum',
+  Cursus:     'shared.tabbar.cursus',
+  Provinciae: 'shared.tabbar.provinciae',
+  Curia:      'shared.tabbar.curia',
+};
 
 // ─── Error boundary ───────────────────────────────────────────────────────────
 
@@ -100,7 +117,16 @@ function TabIcon({ tab, focused }: { tab: TabName; focused: boolean }) {
     wasUnlockedRef.current = isUnlocked;
   }, [isUnlocked]);
 
-  return renderTabIcon(tab, focused, hasCampaignActivity, sealed, ceremonyActive);
+  // Tutorial fix — see TAB_BAR_TARGET_ID's comment. Measurement only, the
+  // tab button's own press handling is untouched (screenListeners.tabPress
+  // below, and React Navigation's own gesture).
+  const tutorialTarget = useTutorialTarget(TAB_BAR_TARGET_ID[tab]);
+
+  return (
+    <View ref={tutorialTarget.ref} onLayout={tutorialTarget.onLayout} style={{ flex: 1 }}>
+      {renderTabIcon(tab, focused, hasCampaignActivity, sealed, ceremonyActive)}
+    </View>
+  );
 }
 
 function AppNavigator() {
@@ -188,22 +214,33 @@ function TutorialLayer() {
   );
   const currentStep = tutorial.stepId ? getTutorialStep(tutorial.stepId) : null;
 
+  // Tutorial fix — a step's requiresTab used to auto-navigate the player
+  // there (gameStore's uiNavRequest stamp, now removed). Instead, while the
+  // active tab doesn't match yet, spotlight that tab's button and wait for
+  // a real tap on it — same "make the player do it" treatment as every
+  // other spotlighted control, applied consistently to every tab
+  // transition across every arc, not just the ones that happened to have
+  // their own scripted "go to the Forum" beat.
+  const activeTabName = useNavigationState(state => state?.routes?.[state.index]?.name as TabName | undefined);
+  const needsTabSwitch = !!(currentStep?.requiresTab && activeTabName && activeTabName !== currentStep.requiresTab);
+  const spotlightTargetId = needsTabSwitch ? TAB_BAR_TARGET_ID[currentStep!.requiresTab!] : currentStep?.target;
+
   const rect = useSyncExternalStore(
     subscribeTargets,
-    () => (currentStep?.target ? getTarget(currentStep.target) : null),
+    () => (spotlightTargetId ? getTarget(spotlightTargetId) : null),
   );
 
   if (!currentStep || blocked) return null;
 
   return (
     <>
-      <TutorialOverlay targetId={currentStep.target} rail={currentStep.rail} />
+      <TutorialOverlay targetId={spotlightTargetId} rail={needsTabSwitch ? 'hard' : currentStep.rail} />
       <TutorialCaption
-        narration={currentStep.narration}
+        narration={needsTabSwitch ? `Onward to the ${currentStep.requiresTab}, Domine.` : currentStep.narration}
         actLabel={currentStep.actLabel}
         dock={getCaptionDock(rect)}
         onTapAdvance={
-          currentStep.advance.kind === 'tap'
+          !needsTabSwitch && currentStep.advance.kind === 'tap'
             ? () => useGameStore.getState().advanceTutorialStep()
             : undefined
         }

@@ -1543,6 +1543,10 @@ export function processSeason(state: GameState): {
 
     for (const decision of decisions) {
       if (decision.action !== 'burn') continue;
+      // Second scandal-frequency-down-tune — burn used to fire unconditionally
+      // the instant a leader qualified; now it rolls like every other NPC
+      // secret action (see BALANCE.secrets.npcAi.npcBurnChance's comment).
+      if (Math.random() >= BALANCE.secrets.npcAi.npcBurnChance) continue;
       const clan = s.clans.find(c => c.id === decision.clanId);
       const leader = clan?.leaders.find(l => l.id === decision.leaderId);
       const secret = s.secrets.find(sec => sec.id === decision.secretId);

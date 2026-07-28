@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -94,6 +94,24 @@ export default function CitySheet({
 }: CitySheetProps) {
   const [activeTab, setActiveTab] = useState<SheetTab>('overview');
   const [musterPickerVisible, setMusterPickerVisible] = useState(false);
+
+  // Provinciae tutorial fix — ProvinciaeScreen.tsx mounts one CitySheet
+  // instance shared by every city (no `key` on that call site keyed to
+  // province.id), so switching which city is open (e.g. tapping a new map
+  // marker while the sheet is already up) reuses the same ScrollView and
+  // carries over whatever scroll offset the PREVIOUS city was left at.
+  // Embassy arc bug: the sheet left scrolled down from viewing a Roman
+  // province (e.g. Capua) would then open on Messana still scrolled to
+  // that same offset, hiding Messana's Request Posting button (top of its
+  // ForeignTerritoryView content) even though the tutorial's spotlight
+  // rect for it was measured/registered correctly — the target itself was
+  // just off-screen inside its own ScrollView. Reset to top on every city
+  // change closes this regardless of which two cities are involved.
+  const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [province.id]);
+
   const def = getCityDefinition(province.id);
   if (!def) return null;
 
@@ -191,6 +209,7 @@ export default function CitySheet({
 
       {/* Content */}
       <ScrollView
+        ref={scrollRef}
         style={styles.content}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.contentInner}

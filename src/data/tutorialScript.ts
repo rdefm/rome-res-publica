@@ -54,6 +54,7 @@ const PROLOGUE_ACT1_STEPS: TutorialStep[] = [
     arc: 'prologue',
     rail: 'hard',
     requiresTab: 'Domus',
+    target: 'shared.resource-bar',
     narration:
       "You will spend two currencies in this life, Domine. Denarii buy bread and armies. Fides — " +
       "favour, standing, the small debts men owe you — buys everything else: votes, friendships, " +
@@ -164,7 +165,7 @@ const PROLOGUE_ACT2_STEPS: TutorialStep[] = [
     rail: 'hard',
     requiresTab: 'Forum',
     target: 'forum.action.invite-dinner',
-    narration: "Court him. An invitation to dinner is the simplest opening — but the choice of gesture is yours.",
+    narration: "Court Flaccus, then. An invitation to dinner is the simplest opening — but the choice of gesture is yours.",
     advance: { kind: 'predicate', predicateId: 'flaccusRelationshipRaised' },
     unlocksTab: 'Curia',
   },

@@ -48,6 +48,17 @@ export const TUTORIAL_ARC_ORDER: TutorialArcId[] = ['prologue', 'embassy', 'war'
 // see the caption over is pointless, so those steps are narration-only
 // (no target) with a predicate advance instead.
 export const TUTORIAL_TARGET_IDS = new Set<string>([
+  // Cross-cutting — always-mounted controls outside the tab navigator, or
+  // the tab bar itself (see App.tsx's TabIcon/TutorialLayer: a step whose
+  // requiresTab differs from the currently-active tab spotlights the
+  // matching tabbar.* target and waits for a real tap on it instead of
+  // auto-navigating).
+  'shared.resource-bar',
+  'shared.tabbar.domus',
+  'shared.tabbar.forum',
+  'shared.tabbar.cursus',
+  'shared.tabbar.provinciae',
+  'shared.tabbar.curia',
   // Act I — Domus
   'domus.character-card.marcus',
   // Act II — Forum

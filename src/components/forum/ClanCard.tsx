@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import type { RefObject } from 'react';
 import type { Clan } from '../../models/clan';
 import { useGameStore } from '../../state/gameStore';
 import LeaderCard from './LeaderCard';
@@ -121,14 +122,18 @@ const rb = StyleSheet.create({
 
 // ─── ClanCard ─────────────────────────────────────────────────────────────────
 
-function ClanCard({ clan }: { clan: Clan }) {
+function ClanCard({ clan, scrollRef }: { clan: Clan; scrollRef?: RefObject<ScrollView | null> }) {
   const { expandedClanId, selectedLeaderId, expandClan, selectLeader, familyReputations, electionRivals } = useGameStore();
   const isExpanded = expandedClanId === clan.id;
   const selectedLeader = clan.leaders.find((l) => l.id === selectedLeaderId);
   const standing = getClanStanding(clan.id, familyReputations, electionRivals);
   const standingColor = STANDING_COLORS[standing] ?? COLORS.dust;
   // Tutorial redesign, T5 — only Gens Valeria is ever a spotlight target.
-  const tutorialTarget = useTutorialTarget(clan.id === 'valerii' ? 'forum.clan.valeria' : undefined);
+  // Tutorial fix — scrollRef lets it scroll itself fully into view the
+  // moment it becomes the active target (Gens Valeria previously rendered
+  // "half cut off" as the 2nd item in the clan list, below the fold on most
+  // phone screens, with no way to bring it fully into view).
+  const tutorialTarget = useTutorialTarget(clan.id === 'valerii' ? 'forum.clan.valeria' : undefined, scrollRef);
 
   return (
     <View style={cc.container}>
@@ -180,7 +185,7 @@ function ClanCard({ clan }: { clan: Clan }) {
           <ReputationBar clanId={clan.id} />
 
           {selectedLeader && isExpanded && (
-            <LeaderDetailPanel leader={selectedLeader} clanId={clan.id} />
+            <LeaderDetailPanel leader={selectedLeader} clanId={clan.id} scrollRef={scrollRef} />
           )}
         </View>
       )}

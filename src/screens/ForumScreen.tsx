@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Modal, ViewStyle, TextStyle,
@@ -352,6 +352,12 @@ export default function ForumScreen() {
     activeCanvassingEvent: s.activeCanvassingEvent,
   }));
 
+  // Tutorial fix — passed down to ClanCard/LeaderDetailPanel so the Gens
+  // Valeria header and the Invite to Dinner button can scroll themselves
+  // into view once they become the tutorial's active target (see
+  // useTutorialTarget.ts's scrollRef param).
+  const scrollRef = useRef<ScrollView>(null);
+
   return (
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <View style={styles.header}>
@@ -362,6 +368,7 @@ export default function ForumScreen() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={{ paddingBottom: CONTENT_PADDING_BOTTOM }}
         onScrollEndDrag={remeasureAllTargets}
@@ -379,7 +386,7 @@ export default function ForumScreen() {
           shift their votes and allegiance.
         </Text>
         {clans.map((clan) => (
-          <ClanCard key={clan.id} clan={clan} />
+          <ClanCard key={clan.id} clan={clan} scrollRef={scrollRef} />
         ))}
       </ScrollView>
 

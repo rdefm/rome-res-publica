@@ -179,21 +179,21 @@ describe('gameStore tutorial actions', () => {
     expect(tutorial.stepId).toBe('s1');
   });
 
-  it('startTutorialArc requests navigation (via the existing uiNavRequest deep-link mechanism) when the first step declares requiresTab', () => {
+  it('startTutorialArc does NOT auto-navigate when the first step declares requiresTab — the player must tap the tab themselves (tutorial fix, App.tsx TutorialLayer)', () => {
     TUTORIAL_ARCS.prologue.steps = [makeStep({ id: 's1', requiresTab: 'Forum' })];
     useGameStore.setState(INITIAL_STATE);
     useGameStore.getState().startTutorialArc('prologue');
-    expect(useGameStore.getState().uiNavRequest).toEqual({ tab: 'Forum' });
+    expect(useGameStore.getState().uiNavRequest).toBeNull();
   });
 
-  it('advanceTutorialStep requests navigation when the NEXT step declares requiresTab', () => {
+  it('advanceTutorialStep does NOT auto-navigate when the NEXT step declares requiresTab', () => {
     TUTORIAL_ARCS.prologue.steps = [makeStep({ id: 's1' }), makeStep({ id: 's2', requiresTab: 'Curia' })];
     useGameStore.setState({
       ...INITIAL_STATE,
       tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
     });
     useGameStore.getState().advanceTutorialStep();
-    expect(useGameStore.getState().uiNavRequest).toEqual({ tab: 'Curia' });
+    expect(useGameStore.getState().uiNavRequest).toBeNull();
   });
 
   it('advanceTutorialStep moves to the next step without touching unlockedTabs', () => {
@@ -248,7 +248,8 @@ describe('gameStore tutorial actions', () => {
     expect(tutorial.stepId).toBe('embassy.s1');
     expect(tutorial.completedArcs).toEqual(['prologue']);
     expect(tutorial.unlockedTabs).toEqual(['Domus', 'Cursus']);
-    expect(useGameStore.getState().uiNavRequest).toEqual({ tab: 'Provinciae' });
+    // Tutorial fix — no more auto-navigate on arc-to-arc chaining either.
+    expect(useGameStore.getState().uiNavRequest).toBeNull();
 
     TUTORIAL_ARCS.embassy.steps = realEmbassySteps;
   });

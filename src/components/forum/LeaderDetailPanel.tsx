@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView } from 'react-native';
+import type { RefObject } from 'react';
 import type { ClanLeader } from '../../models/clan';
 import { useGameStore } from '../../state/gameStore';
 import { getUnlockedReputationActions, computeReputationDelta } from '../../engine/reputationEngine';
@@ -106,7 +107,7 @@ const ip = StyleSheet.create({
 // ─── ForumActionBtn ───────────────────────────────────────────────────────────
 
 export function ForumActionBtn({
-  label, cost, desc, disabled, onPress, locked, lockReason, tutorialTargetId,
+  label, cost, desc, disabled, onPress, locked, lockReason, tutorialTargetId, scrollRef,
 }: {
   label: string;
   cost: string;
@@ -116,9 +117,15 @@ export function ForumActionBtn({
   locked?: boolean;
   lockReason?: string;
   tutorialTargetId?: string;
+  // Tutorial fix — the Invite to Dinner button (Act II) sits far enough
+  // down this panel that it never appeared in the initial viewport at all,
+  // a genuine softlock under the hard-rail overlay. Scrolls itself into
+  // view once it becomes the tutorial's active target (see
+  // useTutorialTarget.ts's scrollRef param).
+  scrollRef?: RefObject<ScrollView | null>;
 }) {
   const isDisabled = disabled || !!locked;
-  const tutorialTarget = useTutorialTarget(tutorialTargetId);
+  const tutorialTarget = useTutorialTarget(tutorialTargetId, scrollRef);
 
   return (
     <TouchableOpacity
@@ -164,7 +171,11 @@ const fab = StyleSheet.create({
 
 // ─── LeaderDetailPanel ────────────────────────────────────────────────────────
 
-function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: string }) {
+function LeaderDetailPanel({ leader, clanId, scrollRef }: {
+  leader: ClanLeader;
+  clanId: string;
+  scrollRef?: RefObject<ScrollView | null>;
+}) {
   const {
     fides, denarii, campaigning, campaignVotes, familyReputations, clans, secrets, trials,
     buyInfluence, inviteToDinner, forgeAlliance, arrangeMarriageForum,
@@ -246,6 +257,7 @@ function LeaderDetailPanel({ leader, clanId }: { leader: ClanLeader; clanId: str
           disabled={denarii < 20}
           onPress={() => inviteToDinner(leader.id)}
           tutorialTargetId={leader.id === 'valerius-flaccus' ? 'forum.action.invite-dinner' : undefined}
+          scrollRef={scrollRef}
         />
         <ForumActionBtn
           label="Forge Alliance"
