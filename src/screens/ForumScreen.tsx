@@ -1,13 +1,15 @@
 import React, { useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Modal, ViewStyle, TextStyle,
+  Modal, ImageBackground, ViewStyle, TextStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
-import ClanCard from '../components/forum/ClanCard';
+import ClanGridTile from '../components/forum/ClanGridTile';
+import ClanDetailZone from '../components/forum/ClanDetailZone';
 import DossierPanel from '../components/forum/DossierPanel';
+import { forumAssets } from '../utils/forumAssets';
 import { COLORS, FONTS, SPACING, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT, RADIUS } from '../utils/theme';
 import { OFFICES } from '../data/offices';
 import {
@@ -346,20 +348,27 @@ const cp = StyleSheet.create({
 // ─── ForumScreen ──────────────────────────────────────────────────────────────
 
 export default function ForumScreen() {
-  const { clans, campaigning, activeCanvassingEvent } = useGameStore(s => ({
+  const { clans, campaigning, activeCanvassingEvent, expandedClanId, expandClan } = useGameStore(s => ({
     clans: s.clans,
     campaigning: s.campaigning,
     activeCanvassingEvent: s.activeCanvassingEvent,
+    expandedClanId: s.expandedClanId,
+    expandClan: s.expandClan,
   }));
 
-  // Tutorial fix — passed down to ClanCard/LeaderDetailPanel so the Gens
-  // Valeria header and the Invite to Dinner button can scroll themselves
-  // into view once they become the tutorial's active target (see
-  // useTutorialTarget.ts's scrollRef param).
+  // Forum redesign, Chunk C0 — expandedClanId already models "one clan
+  // selected at a time" (plans/forum-redesign.md Finding 1); the grid+detail
+  // split below is a pure layout change, no new store state.
+  const selectedClan = clans.find(c => c.id === expandedClanId) ?? null;
+
+  // Tutorial fix — passed down to ClanGridTile/ClanDetailZone/
+  // LeaderDetailPanel so the Gens Valeria tile and the Invite to Dinner
+  // button can scroll themselves into view once they become the tutorial's
+  // active target (see useTutorialTarget.ts's scrollRef param).
   const scrollRef = useRef<ScrollView>(null);
 
-  return (
-    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
+  const screenContent = (
+    <>
       <View style={styles.header}>
         <Text style={styles.title}>FORUM</Text>
         <Text style={styles.subtitle}>
@@ -385,9 +394,29 @@ export default function ForumScreen() {
           Each clan is led by individual men of influence. Build relationships with them personally to
           shift their votes and allegiance.
         </Text>
-        {clans.map((clan) => (
-          <ClanCard key={clan.id} clan={clan} scrollRef={scrollRef} />
-        ))}
+
+        {/* Forum redesign, Chunk C0 — a fixed, always-visible clan grid
+            replaces the old per-clan accordion. Selecting a tile swaps
+            ClanDetailZone's content below; the grid itself never scrolls
+            away, so switching clans costs zero scrolling past others'
+            collapsed cards. */}
+        <View style={styles.clanGrid}>
+          {clans.map((clan) => (
+            <ClanGridTile
+              key={clan.id}
+              clan={clan}
+              isSelected={expandedClanId === clan.id}
+              onPress={() => expandClan(clan.id)}
+              scrollRef={scrollRef}
+            />
+          ))}
+        </View>
+
+        {selectedClan ? (
+          <ClanDetailZone clan={selectedClan} scrollRef={scrollRef} />
+        ) : (
+          <Text style={styles.selectHint}>Select a clan above to see its leaders.</Text>
+        )}
       </ScrollView>
 
       {/* Canvassing event modal — overlays everything when an event fires */}
@@ -396,12 +425,37 @@ export default function ForumScreen() {
       )}
 
       <SeasonOverlay />
+    </>
+  );
+
+  // Forum redesign, Chunk C1 — Forum was the one tab with a flat background
+  // (plans/forum-redesign.md Finding 5). forumAssets.screenBg is undefined
+  // until real art lands (see that file), so this falls back to exactly
+  // today's flat SafeAreaView — same "no asset → plain View/fallback"
+  // pattern as components/shared/FrescoBackground.tsx, not duplicated here
+  // since Forum has no art yet to hit that component's percentage-sizing
+  // gotcha (its own header comment) — worth reusing that fix if/when this
+  // ever needs anything more than a plain ImageBackground.
+  if (forumAssets.screenBg) {
+    return (
+      <ImageBackground source={forumAssets.screenBg} style={styles.screen} resizeMode="cover">
+        <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+          {screenContent}
+        </SafeAreaView>
+      </ImageBackground>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
+      {screenContent}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.bg, paddingTop: RESOURCE_BAR_HEIGHT },
+  safeArea: { flex: 1 },
   header: { padding: SPACING.md, borderBottomColor: COLORS.border, borderBottomWidth: 1 },
   title: { color: COLORS.gold, fontFamily: FONTS.display, fontSize: 20, fontWeight: '700', letterSpacing: 2 },
   subtitle: { color: COLORS.dust, fontFamily: FONTS.ui, fontSize: 11, letterSpacing: 1, marginTop: 2 },
@@ -421,5 +475,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: SPACING.md,
     lineHeight: 18,
+  },
+  clanGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  selectHint: {
+    color: COLORS.dust,
+    fontFamily: FONTS.body,
+    fontStyle: 'italic',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.md,
   },
 });

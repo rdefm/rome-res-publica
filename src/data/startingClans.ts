@@ -1,4 +1,5 @@
 import type { Clan } from '../models/clan';
+import { COLORS } from '../utils/theme';
 
 // ── Phase 4, Chunk P4-E ────────────────────────────────────────────────────
 // `traits` (data/traits.ts's TRAIT_DEFINITIONS ids) are hand-picked to fit
@@ -13,6 +14,7 @@ export const STARTING_CLANS: Clan[] = [
     name: 'Gens Cornelia',
     gensName: 'Cornelius',
     sigil: '🦅',
+    accentColor: COLORS.gold,
     influence: 85,
     desc: 'The most powerful patrician family. Controls aristocratic senate seats and priesthoods.',
     leaders: [
@@ -99,6 +101,7 @@ export const STARTING_CLANS: Clan[] = [
     name: 'Gens Valeria',
     gensName: 'Valerius',
     sigil: '🐺',
+    accentColor: COLORS.senateBlue,
     influence: 60,
     desc: 'Ancient plebeian clan. Populist sympathies, strong in the tribal assembly.',
     leaders: [
@@ -167,6 +170,7 @@ export const STARTING_CLANS: Clan[] = [
     name: 'Gens Fabia',
     gensName: 'Fabius',
     sigil: '🐗',
+    accentColor: COLORS.purple,
     influence: 70,
     desc: 'Ancient rivals of your family. Control northern tribal votes.',
     leaders: [
@@ -233,6 +237,7 @@ export const STARTING_CLANS: Clan[] = [
     name: 'Gens Claudia',
     gensName: 'Claudius',
     sigil: '⚖️',
+    accentColor: COLORS.crimson,
     influence: 75,
     desc: 'Haughty patricians who view your family as upstarts.',
     leaders: [

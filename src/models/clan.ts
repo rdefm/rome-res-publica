@@ -105,6 +105,12 @@ export interface Clan {
    *  names at runtime. */
   gensName: string;
   sigil: string;
+  /** Forum redesign, Chunk C1 — a per-clan visual accent (theme.ts token
+   *  value, e.g. COLORS.senateBlue), used by ClanGridTile/ClanDetailZone.
+   *  Optional: a save from before this field existed simply has no accent,
+   *  and consumers fall back to a neutral default — same convention as
+   *  ClanLeader.portraitVariant just above (this file's own precedent). */
+  accentColor?: string;
   influence: number; // 0–100
   desc: string;
   leaders: ClanLeader[];
