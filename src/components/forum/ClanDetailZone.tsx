@@ -15,7 +15,7 @@
 // boundary instead of one undifferentiated charcoal box.
 
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, Image, StyleSheet } from 'react-native';
 import type { RefObject } from 'react';
 import type { Clan } from '../../models/clan';
 import { useGameStore } from '../../state/gameStore';
@@ -23,6 +23,7 @@ import LeaderCard from './LeaderCard';
 import LeaderDetailPanel from './LeaderDetailPanel';
 import { getReputationTier } from '../../engine/reputationEngine';
 import ParchmentCard, { PARCHMENT_TEXT } from '../shared/ParchmentCard';
+import { forumAssets } from '../../utils/forumAssets';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
 
 // ─── Reputation bar — moved verbatim from ClanCard.tsx, text/label colors
@@ -143,13 +144,20 @@ export default function ClanDetailZone({ clan, scrollRef }: {
   // Forum redesign, Chunk C1 — same accent treatment as ClanGridTile, so
   // the identity carries through from tile to detail.
   const accentColor = clan.accentColor ?? PARCHMENT_TEXT.border;
+  const sigilIcon = forumAssets.clanSigil(clan.id);
 
   return (
     <>
-      <ParchmentCard style={StyleSheet.flatten([dz.card, { borderColor: accentColor }])} contentStyle={dz.inner}>
+      <ParchmentCard style={dz.card} contentStyle={dz.inner}>
         <View style={dz.headerRow}>
           <View style={[dz.sigilRing, { borderColor: accentColor }]}>
-            <Text style={dz.sigil}>{clan.sigil}</Text>
+            {sigilIcon ? (
+              <View style={dz.sigilClip}>
+                <Image source={sigilIcon} style={dz.sigilImage} />
+              </View>
+            ) : (
+              <Text style={dz.sigil}>{clan.sigil}</Text>
+            )}
           </View>
           <View style={dz.headerInfo}>
             <Text style={dz.name}>{clan.name}</Text>
@@ -191,7 +199,6 @@ export default function ClanDetailZone({ clan, scrollRef }: {
 
 const dz = StyleSheet.create({
   card: {
-    borderWidth: 1,
     marginTop: SPACING.sm,
     marginBottom: 0,
   },
@@ -203,13 +210,18 @@ const dz = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    borderWidth: 2,
+    borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.panelElevated,
     marginRight: SPACING.sm,
   },
   sigil: { fontSize: 22 },
+  // See ClanGridTile.tsx's matching comment — `cover` inside a clipped
+  // circle crops the source medallion art's wide transparent canvas down
+  // to just the circle.
+  sigilClip: { width: 38, height: 38, borderRadius: 19, overflow: 'hidden' },
+  sigilImage: { width: 38, height: 38, resizeMode: 'cover' },
   headerInfo: { flex: 1 },
   name: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 15, fontWeight: '700' },
   desc: { color: PARCHMENT_TEXT.muted, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 12, lineHeight: 16, marginTop: 2 },

@@ -18,13 +18,14 @@
 // on top of this exact same card.
 
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Image, StyleSheet } from 'react-native';
 import type { RefObject } from 'react';
 import type { Clan } from '../../models/clan';
 import { useGameStore } from '../../state/gameStore';
 import { getClanStanding } from '../../engine/reputationEngine';
 import { useTutorialTarget } from '../shared/useTutorialTarget';
 import ParchmentCard, { PARCHMENT_TEXT } from '../shared/ParchmentCard';
+import { forumAssets } from '../../utils/forumAssets';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
 
 export const STANDING_COLORS: Record<string, string> = {
@@ -58,6 +59,7 @@ export default function ClanGridTile({ clan, isSelected, onPress, scrollRef }: {
   // unselected; falls back to the neutral border color for a save from
   // before this field existed (Clan.accentColor's own doc comment).
   const accentColor = clan.accentColor ?? PARCHMENT_TEXT.border;
+  const sigilIcon = forumAssets.clanSigil(clan.id);
 
   return (
     <TouchableOpacity
@@ -67,12 +69,18 @@ export default function ClanGridTile({ clan, isSelected, onPress, scrollRef }: {
       activeOpacity={0.75}
       style={gt.touchable}
     >
-      <ParchmentCard style={StyleSheet.flatten([gt.tile, { borderColor: accentColor }])} contentStyle={gt.inner} selected={isSelected}>
+      <ParchmentCard style={gt.tile} contentStyle={gt.inner}>
         {/* Medallion — deliberately kept dark, like a wax seal or bronze
             medallion pinned to a document, rather than switching to
             parchment's own cream tone. */}
         <View style={[gt.sigilRing, { borderColor: accentColor }]}>
-          <Text style={gt.sigil}>{clan.sigil}</Text>
+          {sigilIcon ? (
+            <View style={gt.sigilClip}>
+              <Image source={sigilIcon} style={gt.sigilImage} />
+            </View>
+          ) : (
+            <Text style={gt.sigil}>{clan.sigil}</Text>
+          )}
         </View>
         <Text style={gt.name} numberOfLines={1}>{clan.name}</Text>
         <View style={[gt.standingBadge, { borderColor: standingColor }]}>
@@ -89,7 +97,6 @@ const gt = StyleSheet.create({
     flexGrow: 1,
   },
   tile: {
-    borderWidth: 1,
     margin: 0,
   },
   inner: {
@@ -101,12 +108,18 @@ const gt = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    borderWidth: 2,
+    borderWidth: 4,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.panelElevated,
   },
   sigil: { fontSize: 26 },
+  // The source art (assets/forum/icon-*.png) is a circular medallion
+  // (already gold-on-black, its own ring baked in) rendered on a wide
+  // transparent canvas — `cover` inside a clipped circle crops away that
+  // padding down to just the medallion, no `contain` letterboxing.
+  sigilClip: { width: 44, height: 44, borderRadius: 22, overflow: 'hidden' },
+  sigilImage: { width: 44, height: 44, resizeMode: 'cover' },
   name: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 14, fontWeight: '700' },
   standingBadge: { borderWidth: 1, borderRadius: 2, paddingHorizontal: 6, paddingVertical: 1, marginTop: 2 },
   standingText: { fontFamily: FONTS.ui, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 },

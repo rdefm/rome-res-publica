@@ -23,8 +23,22 @@ type RequiredAsset = any; // matches the untyped require() convention already us
 // as-is, worth recompressing next time this art gets touched.
 const FORUM_HEADER_BANNER = require('../assets/forum/header-banner.png');
 
+// Per-clan medallion icons, replacing ClanGridTile's emoji `clan.sigil`
+// fallback (🦅/🐺/🐗/⚖️ for cornelii/valerii/fabii/claudii — see
+// data/startingClans.ts). Keyed by Clan.id; a clan with no entry here (a
+// future 5th clan, or before this art existed) falls back to the emoji,
+// same graceful-degradation contract as the rest of this registry.
+const CLAN_SIGILS: Record<string, RequiredAsset> = {
+  cornelii: require('../assets/forum/icon-cornelii.png'),
+  valerii: require('../assets/forum/icon-valerii.png'),
+  fabii: require('../assets/forum/icon-fabii.png'),
+  claudii: require('../assets/forum/icon-claudii.png'),
+};
+
 export const forumAssets = {
   /** 10:3 aspect (actual: 1888x560, ~3.37:1 — close enough that cover-mode
    *  crop is negligible). */
   headerBanner: FORUM_HEADER_BANNER as RequiredAsset,
+  /** Per-clan medallion icon for ClanGridTile's sigil ring. */
+  clanSigil: (id: string): RequiredAsset | undefined => CLAN_SIGILS[id],
 };
