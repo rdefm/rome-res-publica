@@ -17,6 +17,7 @@
 
 import type { Character } from '../models/character';
 import type { Clan } from '../models/clan';
+import type { Client } from '../models/client';
 import type { ElectionRival } from '../models/office';
 import type { Command, CommandElectionState } from '../models/command';
 import type { WarState } from '../models/war';
@@ -207,4 +208,77 @@ export function resolveCommandElection(
     topRivalName: topRival?.name ?? '',
     topRivalScore: topRival?.score ?? 0,
   };
+}
+
+// ─── Live standings (mid-vote display) ───────────────────────────────────────
+
+export interface CommandStanding {
+  id: string;          // character id for the player, rival id otherwise
+  name: string;
+  isPlayer: boolean;
+  score: number;
+}
+
+/** Mobile QA fix (2026-07) — CommandAssemblyModal.tsx had no voting-status
+ *  display at all (unlike the magistracy ElectionPanel's "Live Polling
+ *  Standings"), which was the actual root of the "can't see voting status"
+ *  report. Mirrors calcPlayerElectionScore's own precedent exactly: every
+ *  DETERMINISTIC component of resolveCommandElection's formula (base +
+ *  votingSwayBonus + lockedFor + incumbentBonus) is included, but the random
+ *  wordOfMouth/jitter rolls (only applied at actual resolution) are not —
+ *  same "honest estimate, not a fake-precise number" scope as the existing
+ *  magistracy panel. */
+export function calcPlayerCommandScore(
+  election: CommandElectionState,
+  clans: Clan[],
+  clients: Client[],
+): number | null {
+  if (!election.candidateCharacterId) return null;
+
+  const votingSwayBonus = clients
+    .filter(c => c.type === 'votingSway')
+    .reduce((sum, c) => sum + (c.bonus.votingSwayBonus ?? 1), 0);
+
+  const lockedFor = clans
+    .flatMap(c => c.leaders)
+    .filter(l => election.votes[l.id] === 'for')
+    .reduce((sum, l) => sum + l.votes, 0);
+
+  const incumbentBonusForPlayer = election.incumbentIsPlayerCandidate ? election.incumbentWinLossModifier : 0;
+
+  return PLAYER_BASE_SCORE + votingSwayBonus + lockedFor + incumbentBonusForPlayer;
+}
+
+/** Rival's displayed estimate — rival.strength plus their own deterministic
+ *  incumbent bonus (jitter is resolution-only, same exclusion as above). */
+export function calcRivalCommandScore(rival: ElectionRival, election: CommandElectionState): number {
+  const incumbentBonus = rival.id === election.incumbentRivalId ? election.incumbentWinLossModifier : 0;
+  return rival.strength + incumbentBonus;
+}
+
+/** Full ranked standings list — player row (if a candidate has been
+ *  declared) plus every rival, sorted by estimated score descending. */
+export function calcCommandStandings(
+  election: CommandElectionState,
+  clans: Clan[],
+  clients: Client[],
+  playerCandidateName: string | null,
+): CommandStanding[] {
+  const playerScore = calcPlayerCommandScore(election, clans, clients);
+  const standings: CommandStanding[] = [];
+
+  if (playerScore !== null && playerCandidateName) {
+    standings.push({ id: 'player', name: playerCandidateName, isPlayer: true, score: playerScore });
+  }
+
+  for (const rival of election.rivals) {
+    standings.push({
+      id: rival.id,
+      name: rival.name,
+      isPlayer: false,
+      score: calcRivalCommandScore(rival, election),
+    });
+  }
+
+  return standings.sort((a, b) => b.score - a.score);
 }

@@ -6,9 +6,14 @@ import {
   buildRivalEntry,
   calcProrogationModifier,
   resolveCommandElection,
+  calcPlayerCommandScore,
+  calcRivalCommandScore,
+  calcCommandStandings,
 } from '../src/engine/commandEngine';
+import { PLAYER_BASE_SCORE } from '../src/engine/electionEngine';
 import type { Clan, ClanLeader } from '../src/models/clan';
 import type { Character } from '../src/models/character';
+import type { Client } from '../src/models/client';
 import type { WarState } from '../src/models/war';
 import type { CommandElectionState } from '../src/models/command';
 import { BALANCE } from '../src/data/balance';
@@ -54,6 +59,14 @@ function makeWar(overrides: Partial<WarState> = {}): WarState {
     peaceOffered: false, lastFundingOfferTurn: -Infinity,
     ...overrides,
   } as unknown as WarState;
+}
+
+function makeClient(overrides: Partial<Client> = {}): Client {
+  return {
+    id: 'client-1', name: 'Client', type: 'votingSway', flavourTitle: '', flavourText: '',
+    bonus: {}, acquiredTurn: 1,
+    ...overrides,
+  };
 }
 
 function makeElection(overrides: Partial<CommandElectionState> = {}): CommandElectionState {
@@ -288,5 +301,109 @@ describe('resolveCommandElection', () => {
       makeElection({ candidateCharacterId: 'pc-1', rivals: [], votes: { l1: 'for' } }), clans, 0, noRng,
     );
     expect(withVote.playerScore).toBe((withoutVote.playerScore ?? 0) + 12);
+  });
+});
+
+// ─── Live standings (mid-vote display) ─────────────────────────────────────
+// Mobile QA fix (2026-07) — CommandAssemblyModal.tsx had no voting-status
+// display at all; these three functions back the new "Live Assembly
+// Standings" section. Coverage mirrors resolveCommandElection's own tests
+// above (same fixtures), checking the deterministic-only scope against
+// resolveCommandElection with a zero RNG (noRng gives wordOfMouth/jitter of
+// 0, so a deterministic resolve and the live estimate should agree exactly).
+
+describe('calcPlayerCommandScore', () => {
+  test('null when no player candidate is standing', () => {
+    const election = makeElection({ candidateCharacterId: null });
+    expect(calcPlayerCommandScore(election, [], [])).toBeNull();
+  });
+
+  test('base score with no bonuses', () => {
+    const election = makeElection({ candidateCharacterId: 'pc-1' });
+    expect(calcPlayerCommandScore(election, [], [])).toBe(PLAYER_BASE_SCORE);
+  });
+
+  test('adds votingSway client bonus', () => {
+    const election = makeElection({ candidateCharacterId: 'pc-1' });
+    const clients = [makeClient({ type: 'votingSway', bonus: { votingSwayBonus: 7 } })];
+    expect(calcPlayerCommandScore(election, [], clients)).toBe(PLAYER_BASE_SCORE + 7);
+  });
+
+  test('adds locked-for bloc votes', () => {
+    const leader = makeLeader({ id: 'l1', votes: 9 });
+    const clans = [makeClan({ leaders: [leader] })];
+    const election = makeElection({ candidateCharacterId: 'pc-1', votes: { l1: 'for' } });
+    expect(calcPlayerCommandScore(election, clans, [])).toBe(PLAYER_BASE_SCORE + 9);
+  });
+
+  test('applies the incumbent modifier only when the player is the incumbent', () => {
+    const election = makeElection({
+      candidateCharacterId: 'pc-1', incumbentIsPlayerCandidate: true, incumbentWinLossModifier: 15,
+    });
+    expect(calcPlayerCommandScore(election, [], [])).toBe(PLAYER_BASE_SCORE + 15);
+
+    const notIncumbent = makeElection({
+      candidateCharacterId: 'pc-1', incumbentIsPlayerCandidate: false, incumbentWinLossModifier: 15,
+    });
+    expect(calcPlayerCommandScore(notIncumbent, [], [])).toBe(PLAYER_BASE_SCORE);
+  });
+
+  test('agrees with resolveCommandElection\'s playerScore under a zero RNG', () => {
+    const leader = makeLeader({ id: 'l1', votes: 4 });
+    const clans = [makeClan({ leaders: [leader] })];
+    const election = makeElection({ candidateCharacterId: 'pc-1', votes: { l1: 'for' } });
+    const live = calcPlayerCommandScore(election, clans, []);
+    const resolved = resolveCommandElection(election, clans, 0, noRng);
+    expect(live).toBe(resolved.playerScore);
+  });
+});
+
+describe('calcRivalCommandScore', () => {
+  test('uses rival.strength with no incumbent bonus by default', () => {
+    const clans = [makeClan({ leaders: [makeLeader({ id: 'r1' })] })];
+    const rival = buildRivalEntry(clans, 'r1')!;
+    const election = makeElection();
+    expect(calcRivalCommandScore(rival, election)).toBe(rival.strength);
+  });
+
+  test('adds the incumbent modifier only for the incumbent rival', () => {
+    const clans = [makeClan({ leaders: [makeLeader({ id: 'r1' })] })];
+    const rival = buildRivalEntry(clans, 'r1')!;
+    const election = makeElection({ incumbentRivalId: 'r1', incumbentWinLossModifier: 12 });
+    expect(calcRivalCommandScore(rival, election)).toBe(rival.strength + 12);
+
+    const otherIncumbent = makeElection({ incumbentRivalId: 'someone-else', incumbentWinLossModifier: 12 });
+    expect(calcRivalCommandScore(rival, otherIncumbent)).toBe(rival.strength);
+  });
+});
+
+describe('calcCommandStandings', () => {
+  test('omits the player row when no candidate is declared', () => {
+    const clans = [makeClan({ leaders: [makeLeader({ id: 'r1' })] })];
+    const rival = buildRivalEntry(clans, 'r1')!;
+    const election = makeElection({ candidateCharacterId: null, rivals: [rival] });
+    const standings = calcCommandStandings(election, clans, [], null);
+    expect(standings.map(s => s.id)).toEqual(['r1']);
+  });
+
+  test('includes and correctly ranks the player row when a candidate is declared', () => {
+    const strongLeader = makeLeader({ id: 'strong', votes: 500, skills: { rhetoric: 10, martial: 10, intrigus: 10 } });
+    const weakLeader = makeLeader({ id: 'weak', votes: 0, skills: { rhetoric: 0, martial: 0, intrigus: 0 } });
+    const clans = [
+      makeClan({ id: 'c-strong', influence: 100, leaders: [strongLeader] }),
+      makeClan({ id: 'c-weak', influence: 0, leaders: [weakLeader] }),
+    ];
+    const election = makeElection({
+      candidateCharacterId: 'pc-1',
+      rivals: [buildRivalEntry(clans, 'strong')!, buildRivalEntry(clans, 'weak')!],
+    });
+    const standings = calcCommandStandings(election, clans, [], 'Marcus');
+
+    expect(standings.map(s => s.id)).toEqual(['strong', 'player', 'weak']);
+    expect(standings.find(s => s.id === 'player')?.isPlayer).toBe(true);
+    // Sorted descending by score
+    for (let i = 1; i < standings.length; i++) {
+      expect(standings[i - 1].score).toBeGreaterThanOrEqual(standings[i].score);
+    }
   });
 });
