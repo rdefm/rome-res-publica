@@ -14,7 +14,7 @@
 // scope, just preserved.
 
 import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, LayoutChangeEvent } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
 import type { Character } from '../../models/character';
 import type { OfficeId } from '../../models/office';
@@ -48,6 +48,23 @@ function OfficeCard({
   const tribuneHolder = useGameStore(s => s.tribuneHolder);
   const clans = useGameStore(s => s.clans);
   const [modalOpen, setModalOpen] = useState(false);
+  // Mobile QA fix (2026-07) — this replaces an earlier attempt at this same
+  // bug (position: 'absolute' fill on iconImg) that turned out to trade one
+  // failure mode for another: without an explicit numeric width/height, an
+  // absolutely-positioned Image doesn't reliably get a definite box from
+  // top/left/right/bottom alone in every renderer, and falls back toward the
+  // source PNG's own intrinsic size — reproduced on Chrome's mobile
+  // simulator as the icon rendering centered and spanning the full card
+  // width, mostly clipped off the bottom. FrescoBackground.tsx already
+  // solved this exact class of bug (percentage/fill sizing unreliable in a
+  // stretch-height flex chain) by measuring the container via onLayout and
+  // rendering the <Image> at explicit pixel dimensions instead — same fix
+  // here, applied to iconSlot instead of a full-screen background.
+  const [iconBoxSize, setIconBoxSize] = useState<{ width: number; height: number } | null>(null);
+  const onIconSlotLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setIconBoxSize({ width, height });
+  };
 
   const office = OFFICES.find((o) => o.id === officeId)!;
   const isPlayer = character.isPlayer;
@@ -98,9 +115,15 @@ function OfficeCard({
               cardRow, per user feedback that the icon should own "the whole
               left side" of the card, not just a slot within its top row. */}
           <View style={rung.cardRow}>
-            <View style={rung.iconSlot}>
+            <View style={rung.iconSlot} onLayout={onIconSlotLayout}>
               {officeIconImg ? (
-                <Image source={officeIconImg} style={rung.iconImg} resizeMode="contain" />
+                iconBoxSize && (
+                  <Image
+                    source={officeIconImg}
+                    style={{ width: iconBoxSize.width, height: iconBoxSize.height }}
+                    resizeMode="contain"
+                  />
+                )
               ) : (
                 <Text style={rung.icon}>{office.icon}</Text>
               )}
@@ -203,9 +226,16 @@ const rung = StyleSheet.create({
   // earlier user feedback, then nudged right to compensate for the card's
   // near-zero content padding) is gone now that Chunk B gave the card real
   // edge padding — keeping both would have overcorrected.
+  // Mobile QA fix (2026-07) — iconSlot's own height comes from cardRow's
+  // `alignItems: 'stretch'`, not an explicit style (there's no fixed-height
+  // ancestor for it to inherit from). A child sized with height: '100%'
+  // inside a stretch-height parent is exactly the case Yoga doesn't fully
+  // support — it was blowing the whole card up to the source PNG's
+  // intrinsic size on-device. The icon's actual pixel size is now measured
+  // via onIconSlotLayout and passed to <Image> as an explicit style inline
+  // (see the render above) rather than any percentage/fill value here.
   iconSlot: { width: '32%', alignItems: 'center', justifyContent: 'center', marginRight: SPACING.md },
   icon: { fontSize: 64 },
-  iconImg: { width: '100%', height: '100%' },
   info: { flex: 1 },
   inner: { padding: SPACING.sm },
   name: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 15, fontWeight: '700' },

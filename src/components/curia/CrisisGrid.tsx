@@ -109,8 +109,23 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.ui,
     fontSize: 11,
   },
+  // Mobile QA fix (2026-07) — reported bug was 3 sub-tabs overlaying the
+  // crisis tracker on mobile, but the actual on-device symptom was the grid
+  // going invisible with small artifacts bleeding onto SubTabBar below.
+  // Nothing here imposes a height cap (this row is meant to size off its
+  // CrisisTile children's own 36px icon + label), so there's no code-level
+  // cause found for a collapse to near-zero height — this is a defensive
+  // hardening, not a confirmed root-cause fix: an explicit minHeight makes
+  // the row's height non-negotiable even if something upstream miscomputes
+  // it, and overflow: 'hidden' means any tile that DOES get squeezed clips
+  // inside this row's bounds instead of spilling onto SubTabBar. If this
+  // doesn't resolve it on the affected device, the next step is a live
+  // debug session (remote JS inspector / logcat) rather than more static
+  // guessing.
   expandedRow: {
     flexDirection: 'row',
     paddingVertical: SPACING.xs,
+    minHeight: 36 + SPACING.xs * 2,
+    overflow: 'hidden',
   },
 });

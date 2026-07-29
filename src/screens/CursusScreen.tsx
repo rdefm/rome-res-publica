@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Pressable,
+  View, Text, Image, ScrollView, StyleSheet, TouchableOpacity, Modal, Pressable, LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
@@ -21,6 +21,7 @@ import GildedPanel from '../components/shared/GildedPanel';
 import PortraitRoundel from '../components/shared/PortraitRoundel';
 import { characterPortraitSubject, leaderPortraitSubject } from '../engine/portraitEngine';
 import { COLORS, FONTS, SPACING, RADIUS, CONTENT_PADDING_BOTTOM, RESOURCE_BAR_HEIGHT } from '../utils/theme';
+import { cursusAssets } from '../utils/cursusAssets';
 import InfoTap from '../components/shared/InfoTap';
 import { remeasureAllTargets } from '../engine/tutorialTargets';
 
@@ -39,6 +40,15 @@ function TribunePanel({ character }: { character: Character }) {
   const state = useGameStore();
   const { tribuneHolder, tribuneImmunity, tribuneSeasonsServed, tribuneCandidateId, family, declareTribuneCandidate, currentOffice } = state as any;
   const [modalOpen, setModalOpen] = useState(false);
+  // Mobile QA fix (2026-07) — same measured-size fix as OfficeCard.tsx's
+  // iconBoxSize/onIconSlotLayout (see that file's comment for why): a
+  // percentage/absolute-fill Image inside a stretch-height slot doesn't
+  // reliably get a definite box in every renderer.
+  const [iconBoxSize, setIconBoxSize] = useState<{ width: number; height: number } | null>(null);
+  const onIconSlotLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setIconBoxSize({ width, height });
+  };
 
   const isHolder      = tribuneHolder === character.id;
   const isCandidate   = tribuneCandidateId === character.id;
@@ -59,6 +69,7 @@ function TribunePanel({ character }: { character: Character }) {
   const isEligible    = ageOk && noOtherOffice && tribuneFree && !isHolder && !isCandidate;
 
   const seasonsLeft = isHolder ? Math.max(0, 4 - (tribuneSeasonsServed ?? 0)) : 0;
+  const tribuneIconImg = cursusAssets.officeIcon(TRIBUNE_OFFICE.id);
 
   // Chunk G of cursustabuifixesplan.md — TribuneStatus equivalent to
   // engine/officeStatus.ts's OfficeStatus (Tribune isn't on the ladder that
@@ -89,90 +100,114 @@ function TribunePanel({ character }: { character: Character }) {
     <>
       <TouchableOpacity activeOpacity={0.85} onPress={() => setModalOpen(true)}>
         <ParchmentCard style={tp.container} contentStyle={tp.inner}>
-          <View style={tp.header}>
-            <Text style={tp.icon}>✊</Text>
-            <View style={tp.info}>
-              <InfoTap termId="tribune">
-                <Text style={tp.name}>Tribune of the Plebs</Text>
-              </InfoTap>
-              <Text style={tp.latin}>Tribunus Plebis · Parallel Path</Text>
-              <Text style={tp.meta}>Min age {TRIBUNE_OFFICE.minAge} · {TRIBUNE_OFFICE.termSeasons} seasons</Text>
+          {/* Mobile QA fix (2026-07) — brought to icon/layout parity with
+              OfficeCard.tsx's cardRow/iconSlot: a real office icon (or the
+              emoji fallback) now owns the card's full-height left column via
+              cardRow's alignItems: 'stretch', instead of a small inline
+              emoji in the header row. Everything that used to be a sibling
+              of the header row (desc, sealRow, holder/candidate/ineligible
+              sections) now lives in rightCol alongside it. */}
+          <View style={tp.cardRow}>
+            <View style={tp.iconSlot} onLayout={onIconSlotLayout}>
+              {tribuneIconImg ? (
+                iconBoxSize && (
+                  <Image
+                    source={tribuneIconImg}
+                    style={{ width: iconBoxSize.width, height: iconBoxSize.height }}
+                    resizeMode="contain"
+                  />
+                )
+              ) : (
+                <Text style={tp.icon}>✊</Text>
+              )}
             </View>
-            {isHolder && (
-              <View style={tp.badge}><Text style={tp.badgeText}>IN OFFICE</Text></View>
-            )}
-            {isCandidate && (
-              <View style={[tp.badge, tp.badgePending]}><Text style={tp.badgeText}>CANDIDACY</Text></View>
-            )}
-            {isEligible && (
-              <TouchableOpacity
-                style={tp.declareBtn}
-                onPress={() => declareTribuneCandidate(character.id)}
-              >
-                <Text style={tp.declareBtnText}>DECLARE</Text>
-              </TouchableOpacity>
-            )}
-          </View>
 
-          <Text style={tp.desc}>
-            Sacred defender of the plebeian people. Not a rung on the Cursus Honorum —
-            a separate office that can be held alongside (or instead of) the normal ladder.
-          </Text>
-
-          {/* Chunk G — same tapHint-left/StatusSeal-right layout as OfficeCard
-              (Chunk F), bringing Tribune to parity with the ladder offices. */}
-          <View style={tp.sealRow}>
-            <Text style={tp.tapHint}>Tap for powers ›</Text>
-            <StatusSeal status={tribuneStatus} reason={tribuneReason} />
-          </View>
-
-          {/* Current holder view */}
-          {isHolder && (
-            <>
-              <View style={tp.immunity}>
-                <Text style={tp.immunityText}>🛡 Sacrosanct — trial immunity active</Text>
-                <Text style={tp.seasonsLeft}>{seasonsLeft} season{seasonsLeft !== 1 ? 's' : ''} remaining</Text>
+            <View style={tp.rightCol}>
+              <View style={tp.header}>
+                <View style={tp.info}>
+                  <InfoTap termId="tribune">
+                    <Text style={tp.name}>Tribune of the Plebs</Text>
+                  </InfoTap>
+                  <Text style={tp.latin}>Tribunus Plebis · Parallel Path</Text>
+                  <Text style={tp.meta}>Min age {TRIBUNE_OFFICE.minAge} · {TRIBUNE_OFFICE.termSeasons} seasons</Text>
+                </View>
+                {isHolder && (
+                  <View style={tp.badge}><Text style={tp.badgeText}>IN OFFICE</Text></View>
+                )}
+                {isCandidate && (
+                  <View style={[tp.badge, tp.badgePending]}><Text style={tp.badgeText}>CANDIDACY</Text></View>
+                )}
+                {isEligible && (
+                  <TouchableOpacity
+                    style={tp.declareBtn}
+                    onPress={() => declareTribuneCandidate(character.id)}
+                  >
+                    <Text style={tp.declareBtnText}>DECLARE</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-              <View style={tp.actions}>
-                {TRIBUNE_OFFICE.inOfficeActions?.map(action => (
-                  <ActionButton key={action.id} action={action} character={character} />
-                ))}
-              </View>
-            </>
-          )}
 
-          {/* Pending candidacy view — this character is waiting on the election */}
-          {isCandidate && (
-            <View style={tp.pending}>
-              <Text style={tp.pendingText}>
-                ⏳ Candidacy declared — the Concilium Plebis votes at next season end.
+              <Text style={tp.desc}>
+                Sacred defender of the plebeian people. Not a rung on the Cursus Honorum —
+                a separate office that can be held alongside (or instead of) the normal ladder.
               </Text>
-              <Text style={tp.pendingSub}>
-                Success chance increases with Plebs mood and Populares standing.
-              </Text>
+
+              {/* Chunk G — same tapHint-left/StatusSeal-right layout as OfficeCard
+                  (Chunk F), bringing Tribune to parity with the ladder offices. */}
+              <View style={tp.sealRow}>
+                <Text style={tp.tapHint}>Tap for powers ›</Text>
+                <StatusSeal status={tribuneStatus} reason={tribuneReason} />
+              </View>
+
+              {/* Current holder view */}
+              {isHolder && (
+                <>
+                  <View style={tp.immunity}>
+                    <Text style={tp.immunityText}>🛡 Sacrosanct — trial immunity active</Text>
+                    <Text style={tp.seasonsLeft}>{seasonsLeft} season{seasonsLeft !== 1 ? 's' : ''} remaining</Text>
+                  </View>
+                  <View style={tp.actions}>
+                    {TRIBUNE_OFFICE.inOfficeActions?.map(action => (
+                      <ActionButton key={action.id} action={action} character={character} />
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {/* Pending candidacy view — this character is waiting on the election */}
+              {isCandidate && (
+                <View style={tp.pending}>
+                  <Text style={tp.pendingText}>
+                    ⏳ Candidacy declared — the Concilium Plebis votes at next season end.
+                  </Text>
+                  <Text style={tp.pendingSub}>
+                    Success chance increases with Plebs mood and Populares standing.
+                  </Text>
+                </View>
+              )}
+
+              {/* Another family member already holds Tribune */}
+              {someoneElseHolds && (
+                <Text style={tp.occupied}>{holderName} is serving as Tribune this term.</Text>
+              )}
+
+              {/* Another family member is running */}
+              {someoneElseRunning && !someoneElseHolds && (
+                <Text style={tp.occupied}>{candidateName} has declared candidacy for Tribune.</Text>
+              )}
+
+              {/* Not eligible — show reason */}
+              {!isHolder && !isCandidate && !someoneElseHolds && !someoneElseRunning && !isEligible && (
+                <Text style={tp.ineligible}>
+                  {!ageOk
+                    ? `Minimum age 30 (current: ${character.age})`
+                    : !noOtherOffice
+                      ? `${character.name} already holds an office`
+                      : 'Not currently available'}
+                </Text>
+              )}
             </View>
-          )}
-
-          {/* Another family member already holds Tribune */}
-          {someoneElseHolds && (
-            <Text style={tp.occupied}>{holderName} is serving as Tribune this term.</Text>
-          )}
-
-          {/* Another family member is running */}
-          {someoneElseRunning && !someoneElseHolds && (
-            <Text style={tp.occupied}>{candidateName} has declared candidacy for Tribune.</Text>
-          )}
-
-          {/* Not eligible — show reason */}
-          {!isHolder && !isCandidate && !someoneElseHolds && !someoneElseRunning && !isEligible && (
-            <Text style={tp.ineligible}>
-              {!ageOk
-                ? `Minimum age 30 (current: ${character.age})`
-                : !noOtherOffice
-                  ? `${character.name} already holds an office`
-                  : 'Not currently available'}
-            </Text>
-          )}
+          </View>
         </ParchmentCard>
       </TouchableOpacity>
 
@@ -190,8 +225,15 @@ function TribunePanel({ character }: { character: Character }) {
 const tp = StyleSheet.create({
   container: { marginBottom: SPACING.sm },
   inner: { padding: SPACING.sm },
+  // Mobile QA fix (2026-07) — same cardRow/iconSlot shape as OfficeCard.tsx's
+  // rung styles; the icon's actual pixel size is measured via
+  // onIconSlotLayout and passed to <Image> as an explicit style inline (see
+  // that file's comment for why a percentage/fill value doesn't work here).
+  cardRow: { flexDirection: 'row', alignItems: 'stretch' },
+  iconSlot: { width: '32%', alignItems: 'center', justifyContent: 'center', marginRight: SPACING.md },
+  icon: { fontSize: 64 },
+  rightCol: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center' },
-  icon: { fontSize: 24, marginRight: SPACING.sm },
   info: { flex: 1 },
   name: { color: PARCHMENT_TEXT.heading, fontFamily: FONTS.display, fontSize: 15, fontWeight: '700' },
   latin: { color: COLORS.goldDim, fontFamily: FONTS.body, fontStyle: 'italic', fontSize: 11 },

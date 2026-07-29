@@ -403,16 +403,6 @@ export default function ForumScreen() {
 
   const screenContent = (
     <>
-      {forumAssets.headerBanner ? (
-        <ImageBackground source={forumAssets.headerBanner} style={styles.headerBanner} resizeMode="cover">
-          {headerContent}
-        </ImageBackground>
-      ) : (
-        <View style={styles.header}>
-          {headerContent}
-        </View>
-      )}
-
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
@@ -466,14 +456,36 @@ export default function ForumScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
-      {screenContent}
-    </SafeAreaView>
+    // Mobile QA fix (2026-07) — the header banner used to be a child of the
+    // left/right-inset SafeAreaView below, which meant those insets ate into
+    // its width on devices that report one, cropping it short of the true
+    // right edge. Every other full-bleed image in the app (Domus/Cursus)
+    // sits outside its screen's SafeAreaView for exactly this reason (see
+    // FrescoBackground.tsx's own header comment); same fix here, done as a
+    // split (banner-or-fallback outside, SafeAreaView around just the
+    // scrollable content) rather than removing the SafeAreaView outright, so
+    // styles.screen's existing paddingTop/marginTop relationship (see that
+    // comment below) is untouched.
+    <View style={styles.screen}>
+      {forumAssets.headerBanner ? (
+        <ImageBackground source={forumAssets.headerBanner} style={styles.headerBanner} resizeMode="cover">
+          {headerContent}
+        </ImageBackground>
+      ) : (
+        <View style={styles.header}>
+          {headerContent}
+        </View>
+      )}
+      <SafeAreaView style={styles.safeContent} edges={['left', 'right']}>
+        {screenContent}
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.bg, paddingTop: RESOURCE_BAR_HEIGHT },
+  safeContent: { flex: 1 },
   header: { padding: SPACING.md, borderBottomColor: COLORS.border, borderBottomWidth: 1 },
   // Forum redesign, Chunk C1 (revised) — matches forumAssets.headerBanner's
   // asset. Explicit pixel height (HEADER_BANNER_HEIGHT, computed once
