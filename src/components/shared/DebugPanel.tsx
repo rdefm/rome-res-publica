@@ -1190,7 +1190,7 @@ export default function DebugPanel() {
         ))}
       </ScrollView>
 
-      <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
         {tab === 'resources'  && <ResourceSection />}
         {tab === 'characters' && <CharacterSection />}
         {tab === 'events'     && <EventsSection />}

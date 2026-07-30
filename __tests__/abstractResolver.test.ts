@@ -44,6 +44,7 @@ function baseCtx(overrides: Partial<AbstractBattleContext> = {}): AbstractBattle
     generalMartialB: 5,
     fatigueA: false,
     fatigueB: false,
+    defenderSurprised: false,
     ...overrides,
   };
 }
@@ -105,6 +106,24 @@ describe('abstractResolver — fatigue', () => {
       if (abstractResolver(a, b, baseCtx({ fatigueA: true }), fatiguedRng).winner === 'A') fatiguedWins++;
     }
     expect(fatiguedWins).toBeLessThan(restedWins);
+  });
+});
+
+// ─── Raid surprise (player raid order vs. a defended region) ───────────────
+
+describe('abstractResolver — defenderSurprised (raid-into-defended-region)', () => {
+  test('a surprised defender (side B) loses more often than an identical un-surprised one', () => {
+    const a = makeArmy({ id: 'a' });
+    const b = makeArmy({ id: 'b' });
+    let normalAWins = 0;
+    let surprisedAWins = 0;
+    const normalRng = makeSeededRng(11);
+    const surprisedRng = makeSeededRng(11);
+    for (let i = 0; i < 300; i++) {
+      if (abstractResolver(a, b, baseCtx(), normalRng).winner === 'A') normalAWins++;
+      if (abstractResolver(a, b, baseCtx({ defenderSurprised: true }), surprisedRng).winner === 'A') surprisedAWins++;
+    }
+    expect(surprisedAWins).toBeGreaterThan(normalAWins);
   });
 });
 

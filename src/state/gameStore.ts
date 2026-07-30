@@ -931,9 +931,12 @@ export interface GameActions {
    *  army's own `movementEngine.reachable()` set (valid, in-budget,
    *  correctly intent-labelled). No-ops for an unmanageable army (not
    *  'player'/'rome_state' — mirrors ArmyCard's own canManage gate) or an
-   *  unreachable/blocked destination. Nothing resolves the order yet — C7
-   *  does, and clears `ordersThisSeason` afterward. */
-  issueMovementOrder: (armyId: string, destinationRegionId: RegionId, forcedMarch: boolean) => void;
+   *  unreachable/blocked destination. `raiding`, if true, no-ops as well
+   *  against a friendly-controlled destination (see movementEngine
+   *  .buildMovementOrder's `raidable` check) — raiding your own territory
+   *  isn't a valid order. Nothing resolves the order yet — C7 does, and
+   *  clears `ordersThisSeason` afterward. */
+  issueMovementOrder: (armyId: string, destinationRegionId: RegionId, forcedMarch: boolean, raiding?: boolean) => void;
   clearOrder: (armyId: string) => void;
 
   // ── Campaign Map plan, Chunk C7/C8 — Turn-end resolution & the battle bridge ─
@@ -4494,16 +4497,16 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
 
   // ── Campaign Map plan, Chunk C5 — Movement ───────────────────────────────
 
-  issueMovementOrder: (armyId, destinationRegionId, forcedMarch) => {
+  issueMovementOrder: (armyId, destinationRegionId, forcedMarch, raiding = false) => {
     const s = get();
     const army = s.armies.find(a => a.id === armyId);
     if (!army || (army.owner !== 'player' && army.owner !== 'rome_state')) return;
 
-    const order = buildMovementOrder(army, s.armies, s.theatre, s.seasonIndex, destinationRegionId, forcedMarch);
+    const order = buildMovementOrder(army, s.armies, s.theatre, s.seasonIndex, destinationRegionId, forcedMarch, raiding);
     if (!order) return;
 
     const label = turnLabel(s);
-    const verb = order.intent === 'attack' ? 'marches to attack' : 'marches for';
+    const verb = order.raiding ? 'raids toward' : order.intent === 'attack' ? 'marches to attack' : 'marches for';
     set({
       armies: s.armies.map(a => a.id === armyId ? { ...a, ordersThisSeason: order } : a),
       log: [...s.log, mkLog(label, `${army.name} ${verb} ${destinationRegionId}.${forcedMarch ? ' (forced march)' : ''}`, 'neutral')],
@@ -4642,8 +4645,20 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     for (const c of captains) romeRoster[c.characterId] = c.martial;
     const romeHand = drawStratagemHand(romeCommanderCharacter?.skills.martial ?? 0, romeUnits, terrain, makeSeededRng(seed ^ 0x51ed270b));
 
+    // A raid order that ran into a garrison escalates into this same "Take
+    // the Field" tactical path (campaignResolver's move loop, Engagement
+    // .raiding) — the defender is caught flat-footed, same
+    // BALANCE.campaign.abstract.raidSurpriseDefenderPenaltyMult the abstract
+    // path multiplies power by, reused here as a flat strength scale-down
+    // pre-deployment (same mechanism/precedent as the fatigue scale-down
+    // just above — battleEngine has no native "surprise" concept either).
     const generalProfile = profileForCarthageArmy(enemyArmy);
-    const enemyUnits = enemyArmy.units.map(armyUnitToBattleUnit);
+    const enemyUnits = enemyArmy.units.map(u => {
+      const battleUnit = armyUnitToBattleUnit(u);
+      return engagement.raiding
+        ? { ...battleUnit, strength: Math.round(battleUnit.strength * BALANCE.campaign.abstract.raidSurpriseDefenderPenaltyMult) }
+        : battleUnit;
+    });
     const enemyHand = drawStratagemHand(generalProfile.martial, enemyUnits, terrain, makeSeededRng(seed ^ 0x2545f491));
     const aiDeployment = chooseDeployment(generalProfile, enemyUnits, terrain, enemyHand, makeSeededRng(seed ^ 0x9e3779b9));
 

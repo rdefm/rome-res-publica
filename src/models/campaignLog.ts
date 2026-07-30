@@ -49,4 +49,10 @@ export interface Engagement {
   regionId: RegionId;
   attackerArmyId: string;
   defenderArmyId: string;
+  /** True iff this engagement was forced by a raid order walking into a
+   *  defended (non-friendly, garrisoned) region rather than a normal attack
+   *  order — resolveEngagement applies a surprise power penalty to the
+   *  defender for exactly this case. Undefined for every ordinary
+   *  engagement — treated as false. */
+  raiding?: boolean;
 }

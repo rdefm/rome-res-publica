@@ -29,6 +29,13 @@ export interface AbstractBattleContext {
   generalMartialB: number;
   fatigueA: boolean;
   fatigueB: boolean;
+  /** True iff this engagement was forced by a raid order walking into a
+   *  defended region (Engagement.raiding) — applies
+   *  BALANCE.campaign.abstract.raidSurpriseDefenderPenaltyMult to side B's
+   *  power. Side B is always the defender by this resolver's own A/B
+   *  convention, and a raid's mover is always side A (the attacker role) —
+   *  see resolveEngagement's call site. */
+  defenderSurprised: boolean;
 }
 
 export type AbstractCommanderFateResult = 'unharmed' | 'wounded' | 'captured' | 'killed';
@@ -73,13 +80,15 @@ function computePower(
   role: 'attacker' | 'defender',
   martial: number,
   fatigued: boolean,
+  surprised: boolean = false,
 ): number {
   const cfg = BALANCE.campaign.abstract;
   const base = armyStrength(army);
   const terrainMult = terrainFitMultiplier(army, terrain, role);
   const martialMult = 1 + martial * cfg.martialFactor;
   const fatigueMult = fatigued ? cfg.fatiguePenaltyMult : 1;
-  return base * terrainMult * martialMult * fatigueMult;
+  const surpriseMult = surprised ? cfg.raidSurpriseDefenderPenaltyMult : 1;
+  return base * terrainMult * martialMult * fatigueMult * surpriseMult;
 }
 
 function rollWeighted(weights: Record<AbstractCommanderFateResult, number>, rng: RngFn): AbstractCommanderFateResult {
@@ -115,7 +124,7 @@ export function abstractResolver(
 ): AbstractBattleResult {
   const cfg = BALANCE.campaign.abstract;
   const powerA = computePower(armyA, ctx.terrain, 'attacker', ctx.generalMartialA, ctx.fatigueA);
-  const powerB = computePower(armyB, ctx.terrain, 'defender', ctx.generalMartialB, ctx.fatigueB);
+  const powerB = computePower(armyB, ctx.terrain, 'defender', ctx.generalMartialB, ctx.fatigueB, ctx.defenderSurprised);
 
   const logRatio = Math.log(Math.max(1e-6, powerA) / Math.max(1e-6, powerB));
   const winProbA = 1 / (1 + Math.exp(-cfg.logisticSteepness * logRatio));

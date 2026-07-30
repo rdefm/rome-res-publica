@@ -11,7 +11,7 @@
 import type { Army, ArmyUnit, MovementOrder } from '../models/army';
 import type { RegionId, TheatreState } from '../models/theatre';
 import { THEATRE_EDGES } from '../data/theatreMap';
-import { getAdjacent, getRegion } from './theatreEngine';
+import { getAdjacent, getRegion, isFriendly } from './theatreEngine';
 import { armyPowerOf } from './armyEngine';
 import { BALANCE } from '../data/balance';
 
@@ -54,6 +54,13 @@ export interface ReachableDestination {
    *  THIS army — currently only 'leaderless' (design invariant 5: a
    *  leaderless army may move but never attack). Null = orderable. */
   blockedReason: 'leaderless' | null;
+  /** True iff this region isn't controlled by the mover's own power —
+   *  the same "not-friendly" test campaignAi's pickRaidTarget already uses
+   *  to pick the AI's own raid targets. A player raid order is only valid
+   *  against a raidable destination (buildMovementOrder rejects otherwise);
+   *  unlike the AI, the player MAY target a defended raidable region — see
+   *  MovementOrder.raiding's doc comment on what happens then. */
+  raidable: boolean;
 }
 
 /**
@@ -110,7 +117,8 @@ export function reachable(
     const hostileHere = armies.some(a => a.location === regionId && armyPowerOf(a.owner) !== power);
     const intent: 'move' | 'attack' = hostileHere ? 'attack' : 'move';
     const blockedReason = intent === 'attack' && !army.commanderId ? 'leaderless' as const : null;
-    results.set(regionId, { regionId, path, costSpent, viaSeaLane, intent, blockedReason });
+    const raidable = !isFriendly(theatre, regionId, power);
+    results.set(regionId, { regionId, path, costSpent, viaSeaLane, intent, blockedReason, raidable });
   }
 
   for (const [regionId, path] of bestPath) {
@@ -161,7 +169,10 @@ export function isValidPath(path: RegionId[]): PathValidation {
 /** Looks up `destinationRegionId` in this army's own `reachable()` set and
  *  wraps it into a MovementOrder — the only supported way to build one, so
  *  every issued order is guaranteed reachable and correctly intent-labelled.
- *  Returns null for an unreachable or blocked (leaderless-attack) target. */
+ *  Returns null for an unreachable or blocked (leaderless-attack) target, or
+ *  for a raid order (`raiding: true`) against a friendly-controlled
+ *  destination (not `destination.raidable`) — raiding your own territory
+ *  isn't a valid order. */
 export function buildMovementOrder(
   army: Army,
   armies: Army[],
@@ -169,11 +180,13 @@ export function buildMovementOrder(
   seasonIndex: number,
   destinationRegionId: RegionId,
   forcedMarch: boolean,
+  raiding: boolean = false,
 ): MovementOrder | null {
   const destination = reachable(army, armies, theatre, seasonIndex, forcedMarch)
     .find(d => d.regionId === destinationRegionId);
   if (!destination || destination.blockedReason) return null;
-  return { path: destination.path, forcedMarch, intent: destination.intent };
+  if (raiding && !destination.raidable) return null;
+  return { path: destination.path, forcedMarch, intent: destination.intent, ...(raiding ? { raiding: true } : {}) };
 }
 
 // ─── Resolution-time consequences (C7 calls these; declared+tested now) ────

@@ -35,6 +35,7 @@ export default function ProvinciaeScreen() {
   // whichever sheet is open — see enterOrderMode below).
   const [orderModeArmyId, setOrderModeArmyId] = useState<string | null>(null);
   const [orderModeForcedMarch, setOrderModeForcedMarch] = useState(false);
+  const [orderModeRaiding, setOrderModeRaiding] = useState(false);
   // July Fixes plan, Chunk C — war status banner/modal.
   const [warStatusModalOpen, setWarStatusModalOpen] = useState(false);
   // Curia Tab Redesign, Chunk C0 — DragSheet needs `visible` as its own state,
@@ -166,6 +167,7 @@ export default function ProvinciaeScreen() {
   function enterOrderMode(armyId: string) {
     closeSheet();
     setOrderModeForcedMarch(false);
+    setOrderModeRaiding(false);
     setOrderModeArmyId(armyId);
   }
 
@@ -175,14 +177,21 @@ export default function ProvinciaeScreen() {
 
   function handleOrderRegionPress(regionId: RegionId) {
     if (!orderModeArmyId) return;
-    issueMovementOrder(orderModeArmyId, regionId, orderModeForcedMarch);
+    issueMovementOrder(orderModeArmyId, regionId, orderModeForcedMarch, orderModeRaiding);
     exitOrderMode();
   }
 
   const orderModeArmy = orderModeArmyId ? armies.find(a => a.id === orderModeArmyId) ?? null : null;
-  const orderModeDestinations = orderModeArmy
+  const orderModeAllDestinations = orderModeArmy
     ? reachable(orderModeArmy, armies, theatre, seasonIndex, orderModeForcedMarch)
     : null;
+  // Raiding your own territory isn't a valid order (movementEngine
+  // .buildMovementOrder rejects it) — while the Raid toggle is on, only
+  // highlight destinations it could actually apply to, same "map preview is
+  // the one source of truth" rule this destinations set already follows.
+  const orderModeDestinations = orderModeAllDestinations && orderModeRaiding
+    ? orderModeAllDestinations.filter(d => d.raidable)
+    : orderModeAllDestinations;
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -272,6 +281,15 @@ export default function ProvinciaeScreen() {
           >
             <Text style={[styles.orderBannerToggleText, orderModeForcedMarch && styles.orderBannerToggleTextActive]}>
               Forced March
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.orderBannerToggle, orderModeRaiding && styles.orderBannerToggleActive]}
+            onPress={() => setOrderModeRaiding(v => !v)}
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.orderBannerToggleText, orderModeRaiding && styles.orderBannerToggleTextActive]}>
+              Raid
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.orderBannerCancel} onPress={exitOrderMode} activeOpacity={0.75}>

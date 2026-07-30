@@ -232,6 +232,40 @@ describe('buildMovementOrder', () => {
     const enemy = makeArmy({ id: 'enemy-1', owner: 'carthage', location: 'etruria' });
     expect(buildMovementOrder(army, [army, enemy], makeTheatre(), 0, 'etruria', false)).toBeNull();
   });
+
+  test('a raid order against a non-friendly, undefended destination sets raiding: true', () => {
+    const army = makeArmy({ location: 'latium' }); // sicilia starts 'neutral'
+    const order = buildMovementOrder(army, [army], makeTheatre(), 0, 'sicilia', false, true);
+    expect(order?.raiding).toBe(true);
+  });
+
+  test('a raid order against a friendly-controlled destination is rejected', () => {
+    const army = makeArmy({ location: 'latium' }); // etruria starts Rome-controlled
+    expect(buildMovementOrder(army, [army], makeTheatre(), 0, 'etruria', false, true)).toBeNull();
+  });
+
+  test('a raid order against a defended non-friendly destination still builds (escalates at resolution, not order-issue)', () => {
+    const army = makeArmy({ owner: 'player', location: 'campania', commanderId: 'cmdr-1' });
+    const enemy = makeArmy({ id: 'enemy-1', owner: 'carthage', location: 'sicilia' });
+    const order = buildMovementOrder(army, [army, enemy], makeTheatre(), 0, 'sicilia', false, true);
+    expect(order?.raiding).toBe(true);
+  });
+});
+
+// ─── reachable — raidable ───────────────────────────────────────────────────
+
+describe('reachable — raidable', () => {
+  test('a friendly-controlled destination is not raidable', () => {
+    const army = makeArmy({ location: 'latium' });
+    const dests = reachable(army, [army], makeTheatre(), 0, false);
+    expect(dests.find(x => x.regionId === 'etruria')?.raidable).toBe(false);
+  });
+
+  test('a non-friendly (neutral or enemy-controlled) destination is raidable', () => {
+    const army = makeArmy({ location: 'latium' }); // sicilia starts 'neutral'
+    const dests = reachable(army, [army], makeTheatre(), 0, false);
+    expect(dests.find(x => x.regionId === 'sicilia')?.raidable).toBe(true);
+  });
 });
 
 // ─── Resolution-time consequences ──────────────────────────────────────────

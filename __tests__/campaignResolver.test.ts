@@ -179,6 +179,26 @@ describe('resolveCampaignSeason — initiative & round-robin', () => {
   });
 });
 
+// ─── stationedCityId marker ─────────────────────────────────────────────────
+// MapView's ArmyMarker anchors to `stationedCityId`, not `location` — a
+// completed move that only updates `location` leaves the map icon pointing
+// at the city the army left.
+
+describe('resolveCampaignSeason — stationedCityId marker', () => {
+  test('a completed move updates stationedCityId to a city in the destination region', () => {
+    const mover = makeArmy({
+      id: 'mover', owner: 'rome_state', location: 'etruria', stationedCityId: 'etruria',
+      ordersThisSeason: makeOrder(['etruria', 'latium']),
+    });
+    const input = baseInput([mover]);
+    const result = resolveCampaignSeason(input, makeSeededRng(1));
+
+    const finalMover = result.armies.find(a => a.id === 'mover')!;
+    expect(finalMover.location).toBe('latium');
+    expect(finalMover.stationedCityId).toBe('latium');
+  });
+});
+
 // ─── Bounce / attack / withdrawal branches ──────────────────────────────────
 
 describe('resolveCampaignSeason — engagement branches', () => {
@@ -272,6 +292,31 @@ describe('resolveEngagement — retreat priority & shatter', () => {
   });
 });
 
+// ─── Raid surprise plumbing (engagement.raiding → abstractResolver) ────────
+
+describe('resolveEngagement — raiding flag applies the surprise penalty to the defender', () => {
+  test('an otherwise-even fight tips toward the attacker when engagement.raiding is set', () => {
+    const attacker = makeArmy({ id: 'attacker', owner: 'player', location: 'campania', stance: 'give_battle' });
+    const defender = makeArmy({ id: 'defender', owner: 'carthage', location: 'sicilia', stance: 'give_battle' });
+    const theatre = makeTheatre();
+    const family = [makeCharacter()];
+    const clans = [makeClan()];
+
+    let normalAttackerWins = 0;
+    let raidingAttackerWins = 0;
+    for (let seed = 0; seed < 200; seed++) {
+      const engagement = { regionId: 'sicilia' as RegionId, attackerArmyId: 'attacker', defenderArmyId: 'defender' };
+      const normal = resolveEngagement(engagement, [attacker, defender], theatre, family, clans, makeSeededRng(seed));
+      if (normal.armies.find(a => a.id === 'attacker')?.location === 'sicilia') normalAttackerWins++;
+
+      const raidingEngagement = { ...engagement, raiding: true };
+      const raiding = resolveEngagement(raidingEngagement, [attacker, defender], theatre, family, clans, makeSeededRng(seed));
+      if (raiding.armies.find(a => a.id === 'attacker')?.location === 'sicilia') raidingAttackerWins++;
+    }
+    expect(raidingAttackerWins).toBeGreaterThan(normalAttackerWins);
+  });
+});
+
 // ─── Control flips ───────────────────────────────────────────────────────────
 
 describe('resolveCampaignSeason — control flips', () => {
@@ -325,6 +370,25 @@ describe('resolveCampaignSeason — raids', () => {
     const latiumCity = result.cities.find(c => c.id === 'latium')!;
     const originalLatiumCity = CITIES.find(c => c.id === 'latium')!;
     expect(latiumCity.relationshipScore).toBeLessThanOrEqual(originalLatiumCity.relationshipScore);
+  });
+
+  test('a player raid order that finds a garrison at the destination escalates to a pending engagement, not a bounce', () => {
+    const raider = makeArmy({
+      id: 'raider', owner: 'player', location: 'campania', commanderId: 'pc-1',
+      ordersThisSeason: makeOrder(['campania', 'sicilia'], { raiding: true, intent: 'move' }),
+    });
+    const defender = makeArmy({ id: 'defender', owner: 'carthage', commanderId: null, location: 'sicilia' });
+    const input = baseInput([raider, defender]);
+    const result = resolveCampaignSeason(input, makeSeededRng(3));
+
+    expect(result.pendingEngagements).toHaveLength(1);
+    expect(result.pendingEngagements[0]).toMatchObject({
+      attackerArmyId: 'raider', defenderArmyId: 'defender', regionId: 'sicilia', raiding: true,
+    });
+    expect(result.log.entries.some(e => e.type === 'bounce')).toBe(false);
+    // Deferred, same as any other player-involving engagement — neither side moved yet.
+    expect(result.armies.find(a => a.id === 'raider')!.location).toBe('campania');
+    expect(result.armies.find(a => a.id === 'defender')!.location).toBe('sicilia');
   });
 });
 

@@ -78,11 +78,20 @@ export interface MovementOrder {
   path: RegionId[];
   forcedMarch: boolean;
   intent: 'move' | 'attack';
-  /** Chunk C6 — set by the campaign AI's RAID behavior only (never by a
-   *  player order). A raid doesn't seek control; C7's resolution applies an
-   *  economy/relationship sting to the destination and sends the army home
-   *  next season instead of leaving it there. Undefined for every
-   *  non-raiding order — treated as false. */
+  /** Chunk C6 — originally set only by the campaign AI's RAID behavior;
+   *  player raid orders (movementEngine.buildMovementOrder's `raiding` param,
+   *  gated on the destination's `raidable` — non-friendly-controlled) set it
+   *  too. A raid doesn't seek control: if the destination is undefended,
+   *  C7's resolution applies an economy/relationship sting instead of
+   *  leaving the army there (the AI also sends itself home next season —
+   *  see campaignAi.chooseSeasonOrders — a behavior the player isn't
+   *  auto-piloted into, they just issue their own next order). If the
+   *  destination turns out to be defended, the raid escalates into a real
+   *  engagement instead of bouncing, with the defender suffering a
+   *  surprise/morale power penalty (BALANCE.campaign.abstract
+   *  .raidSurpriseDefenderPenaltyMult) — see campaignResolver.ts's move
+   *  loop and resolveEngagement. Undefined for every non-raiding order —
+   *  treated as false. */
   raiding?: boolean;
 }
 

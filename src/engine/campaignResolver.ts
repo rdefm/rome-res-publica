@@ -56,6 +56,15 @@ function garrisonStrengthAt(regionId: RegionId, armies: Army[], power: 'rome' | 
     .reduce((sum, a) => sum + armyStrength(a), 0);
 }
 
+/** MapView's ArmyMarker anchors to `stationedCityId` (falling back to the
+ *  region centroid only if it doesn't resolve) — every `location` reassignment
+ *  below must update this alongside it, or the marker keeps pointing at the
+ *  city the army left. Flavor-only per that component's own comment (which
+ *  city within the region), so any city in the destination region is fine. */
+function seatCityFor(regionId: RegionId): string | null {
+  return REGIONS.find(r => r.id === regionId)?.cityIds[0] ?? null;
+}
+
 /** Commander martial, whichever of the three places it lives — a player/
  *  rome_state army's commanderId is a Character id, a rome_rival army's is a
  *  ClanLeader id, a carthage army's is one of the four data/enemyGenerals.ts
@@ -166,7 +175,7 @@ export interface EngagementResolution {
  * resolver's own job (step 6), not this function's.
  */
 export function resolveEngagement(
-  engagement: { regionId: RegionId; attackerArmyId: string; defenderArmyId: string },
+  engagement: { regionId: RegionId; attackerArmyId: string; defenderArmyId: string; raiding?: boolean },
   armies: Army[],
   theatre: TheatreState,
   family: Character[],
@@ -190,7 +199,7 @@ export function resolveEngagement(
       const attritted = applyCasualtyPct(defender, w.attritionPct);
       let finalDefender: Army | null;
       if (dest) {
-        finalDefender = clearSpentOrder({ ...attritted, location: dest });
+        finalDefender = clearSpentOrder({ ...attritted, location: dest, stationedCityId: seatCityFor(dest) });
         logEntries.push({
           type: 'withdrawal', armyId: defender.id, armyName: defender.name,
           from: engagement.regionId, to: dest,
@@ -204,7 +213,7 @@ export function resolveEngagement(
           text: `${defender.name}, cut off from retreat, scatters rather than stand. ${captured ? 'Its commander is taken.' : 'Its commander escapes.'}`,
         });
       }
-      const finalAttacker = clearSpentOrder({ ...attacker, location: engagement.regionId });
+      const finalAttacker = clearSpentOrder({ ...attacker, location: engagement.regionId, stationedCityId: seatCityFor(engagement.regionId) });
       logEntries.push({
         type: 'move', armyId: attacker.id, armyName: attacker.name,
         from: attacker.location, to: engagement.regionId,
@@ -229,6 +238,7 @@ export function resolveEngagement(
       generalMartialB: commanderMartial(defender.commanderId, family, clans),
       fatigueA: attacker.fatigued,
       fatigueB: defender.fatigued,
+      defenderSurprised: !!engagement.raiding,
     },
     rng,
   );
@@ -321,7 +331,7 @@ export function applyPostBattleContinuation(
     const loserPower = armyPowerOf(loserArmyMeta.owner);
     const dest = pickRetreatDestination(engagement.regionId, loserPower, armies, theatre);
     if (dest) {
-      loserFinal = clearSpentOrder({ ...loserAfterCasualties, location: dest });
+      loserFinal = clearSpentOrder({ ...loserAfterCasualties, location: dest, stationedCityId: seatCityFor(dest) });
       logEntries.push({
         type: 'withdrawal', armyId: loserAfterCasualties.id, armyName: loserAfterCasualties.name,
         from: engagement.regionId, to: dest,
@@ -338,7 +348,7 @@ export function applyPostBattleContinuation(
   }
 
   const winnerFinal: Army | null = winnerAfterCasualties
-    ? (winnerIsAttacker ? clearSpentOrder({ ...winnerAfterCasualties, location: engagement.regionId }) : clearSpentOrder(winnerAfterCasualties))
+    ? (winnerIsAttacker ? clearSpentOrder({ ...winnerAfterCasualties, location: engagement.regionId, stationedCityId: seatCityFor(engagement.regionId) }) : clearSpentOrder(winnerAfterCasualties))
     : null;
 
   const finalAttacker = winnerIsAttacker ? winnerFinal : loserFinal;
@@ -472,7 +482,7 @@ export function resolveCampaignSeason(
     }
   }
 
-  const engagementQueue: { regionId: RegionId; attackerArmyId: string; defenderArmyId: string }[] = [];
+  const engagementQueue: { regionId: RegionId; attackerArmyId: string; defenderArmyId: string; raiding: boolean }[] = [];
   const raidedThisSeason: { armyId: string; regionId: RegionId }[] = [];
 
   // ── Step 2/3: stepwise round-robin movement + sea rolls ─────────────────
@@ -510,8 +520,14 @@ export function resolveCampaignSeason(
 
       if (hostileHere) {
         const isFinalStep = o.stepIndex + 1 === o.path.length - 1;
-        if (isFinalStep && o.intent === 'attack') {
-          engagementQueue.push({ regionId: to, attackerArmyId: mover.id, defenderArmyId: hostileHere.id });
+        // A raid order's `intent` is normally 'move' (set at issue time from
+        // whether the destination looked hostile then) — this re-check is
+        // live, at resolution time, so a raid that finds a garrison here
+        // (regardless of intent) escalates into a real engagement instead of
+        // bouncing, same as a genuine attack order does. See
+        // MovementOrder.raiding's doc comment.
+        if (isFinalStep && (o.intent === 'attack' || o.raiding)) {
+          engagementQueue.push({ regionId: to, attackerArmyId: mover.id, defenderArmyId: hostileHere.id, raiding: o.raiding });
         } else {
           entries.push({
             type: 'bounce', armyId: mover.id, armyName: mover.name, at: from,
@@ -524,7 +540,7 @@ export function resolveCampaignSeason(
         continue;
       }
 
-      armyMap.set(mover.id, { ...mover, location: to });
+      armyMap.set(mover.id, { ...mover, location: to, stationedCityId: seatCityFor(to) });
       o.stepIndex += 1;
       entries.push({
         type: 'move', armyId: mover.id, armyName: mover.name, from, to,
@@ -550,7 +566,7 @@ export function resolveCampaignSeason(
 
     if (isPlayerManaged(attacker) || isPlayerManaged(defender)) {
       const id = `engagement-${turnNumber}-${engagementCounter++}`;
-      pendingEngagements.push({ id, regionId: eng.regionId, attackerArmyId: eng.attackerArmyId, defenderArmyId: eng.defenderArmyId });
+      pendingEngagements.push({ id, regionId: eng.regionId, attackerArmyId: eng.attackerArmyId, defenderArmyId: eng.defenderArmyId, raiding: eng.raiding });
       entries.push({
         type: 'engagement_pending', armyId: attacker.id, armyName: attacker.name, regionId: eng.regionId,
         text: `${attacker.name} finds the enemy at ${eng.regionId} — awaiting your command.`,

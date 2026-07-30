@@ -188,7 +188,8 @@ export default function ArmyCard({
       {canManage && army.ordersThisSeason && (
         <View style={styles.orderRow}>
           <Text style={styles.orderText}>
-            {army.ordersThisSeason.intent === 'attack' ? '⚔ Attack → ' : '→ '}
+            {army.ordersThisSeason.raiding ? '🔥 Raid → '
+              : army.ordersThisSeason.intent === 'attack' ? '⚔ Attack → ' : '→ '}
             {army.ordersThisSeason.path[army.ordersThisSeason.path.length - 1]}
             {army.ordersThisSeason.forcedMarch ? ' (forced march)' : ''}
           </Text>

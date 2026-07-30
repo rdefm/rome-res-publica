@@ -1526,6 +1526,17 @@ export const BALANCE = {
       /** Applied to a fatigued army's power (Army.fatigued — set by a
        *  forced march the same season, C5). */
       fatiguePenaltyMult: 0.9,
+      /** Applied to the DEFENDER's power when a player raid order runs into
+       *  a garrisoned region and escalates into a real engagement instead
+       *  of the usual undefended-raid sting (MovementOrder.raiding's doc
+       *  comment) — a raid catches the defender flat-footed. Invented here,
+       *  first-pass/unverified like this block's other seeds; a harsher cut
+       *  than fatiguePenaltyMult since being caught by surprise is a bigger
+       *  disadvantage than merely having force-marched. Reused as-is by
+       *  gameStore.takeTheFieldForEngagement's tactical-path pre-deployment
+       *  strength scale-down, same "one constant, two mechanisms" precedent
+       *  fatiguePenaltyMult already set (see that action's own comment). */
+      raidSurpriseDefenderPenaltyMult: 0.85,
       /** Steepness of the logistic win-probability curve over the two
        *  sides' power-ratio log — calibrated against battleSim.ts's real
        *  tactical harness (abstractResolver.test.ts's calibration suite),

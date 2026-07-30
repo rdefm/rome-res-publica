@@ -6,6 +6,7 @@ import { useGameStore } from '../../state/gameStore';
 import { getUnlockedReputationActions, computeReputationDelta } from '../../engine/reputationEngine';
 import { gatherChance, isDeterred } from '../../engine/secretEngine';
 import { getCanvassFidesCost, CANVASS_MIN_RELATIONSHIP } from '../../engine/electionEngine';
+import { commandCanvassFidesCost, COMMAND_CANVASS_MIN_RELATIONSHIP } from '../../engine/commandEngine';
 import { FileProsecutionPickerModal } from './DossierPanel';
 import { BALANCE } from '../../data/balance';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
@@ -189,7 +190,7 @@ function LeaderDetailPanel({ leader, clanId, scrollRef }: {
   const {
     fides, denarii, campaigning, campaignVotes, familyReputations, clans, secrets, trials,
     buyInfluence, inviteToDinner, forgeAlliance, arrangeMarriageForum,
-    gatherIntelligence, canvassLeader,
+    gatherIntelligence, canvassLeader, commandElection, canvassForCommand,
   } = useGameStore();
   const [intelPickerOpen, setIntelPickerOpen] = useState(false);
   const [prosecutionPickerOpen, setProsecutionPickerOpen] = useState(false);
@@ -306,6 +307,24 @@ function LeaderDetailPanel({ leader, clanId, scrollRef }: {
               }
               disabled={fides < canvassCost || canvassed || tooLowRel}
               onPress={() => canvassLeader(leader.id)}
+            />
+          );
+        })()}
+        {commandElection?.active && (() => {
+          const commandCanvassCost = commandCanvassFidesCost();
+          const commandCanvassed = commandElection.votes[leader.id] === 'for';
+          const commandTooLowRel = leader.relationship < COMMAND_CANVASS_MIN_RELATIONSHIP;
+          return (
+            <ForumActionBtn
+              label={commandCanvassed ? 'Pledged to Your Command' : 'Canvass for the Command'}
+              cost={`${commandCanvassCost} Fides`}
+              desc={
+                commandTooLowRel
+                  ? `Requires standing ≥ ${COMMAND_CANVASS_MIN_RELATIONSHIP} (current: ${leader.relationship}).`
+                  : "Lock this leader's vote in the extraordinary assembly — scales with your Rhetoric, not guaranteed."
+              }
+              disabled={fides < commandCanvassCost || commandCanvassed || commandTooLowRel}
+              onPress={() => canvassForCommand(leader.id)}
             />
           );
         })()}
