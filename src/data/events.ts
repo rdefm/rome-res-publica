@@ -3731,4 +3731,54 @@ export const EVENT_DEFS: EventDef[] = [
     ],
   },
 
+  // ── QA harness only (ambition rework ticket 05) ─────────────────────────
+  // weight: 0 excludes both from pickRandomEvent (isEventEligible,
+  // eventEngine.ts) — they only ever fire when explicitly picked by id from
+  // DebugPanel.tsx's EventsSection, which is exactly the point: these exist
+  // so the setAmbition:/offerAmbition: narrative-hook tokens are demoable
+  // end-to-end through the real event-resolution pipeline (resolveEvent ->
+  // resolveEventChoice -> applyEffectString), not just at the unit-test
+  // level. Not narrative content — no per-gens flavor, never author real
+  // story beats here (spec §4's "author content later").
+  {
+    id: 'evt-qa-ambition-direct-write',
+    title: 'QA: Direct-Write Ambition',
+    bodyText:
+      'Debug harness only. Applying this fires setAmbition:family:battles_won:2:6:refusable, writing a ' +
+      'story-sourced family ambition straight into the family slot and force-evicting whatever currently ' +
+      'occupies it (with a progress-scaled partial payout to the evicted ambition, per the ambition ' +
+      'rework spec\'s supersede rule).',
+    imageKey: 'qa-harness',
+    conditions: [],
+    weight: 0,
+    choices: [
+      {
+        id: 'apply',
+        label: 'Apply',
+        successEffect: 'setAmbition:family:battles_won:2:6:refusable',
+        failureEffect: '',
+        successText: 'A family ambition to win 2 battles within 6 seasons is now active, evicting any prior occupant of that slot.',
+      },
+    ],
+  },
+  {
+    id: 'evt-qa-ambition-offer',
+    title: 'QA: Offer an Ambition',
+    bodyText:
+      'Debug harness only. Applying this fires offerAmbition:character:client_count:5:6, staging an ' +
+      'AmbitionOffer on the character slot. Open the Agenda Tablet\'s Ambitiones leaf to Accept or Refuse it.',
+    imageKey: 'qa-harness',
+    conditions: [],
+    weight: 0,
+    choices: [
+      {
+        id: 'apply',
+        label: 'Apply',
+        successEffect: 'offerAmbition:character:client_count:5:6',
+        failureEffect: '',
+        successText: 'An offer to hold 5 clients within 6 seasons is now staged on the character slot, awaiting Accept/Refuse from the Ambitiones leaf.',
+      },
+    ],
+  },
+
 ];

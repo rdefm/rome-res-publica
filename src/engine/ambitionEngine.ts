@@ -23,6 +23,7 @@ import type {
   AmbitionBaseline,
   AmbitionCriterion,
   AmbitionCriterionId,
+  AmbitionOffer,
   AmbitionProgress,
   AmbitionReward,
   AmbitionScope,
@@ -31,6 +32,7 @@ import type {
 import { BALANCE } from '../data/balance';
 import { OFFICES, TRIBUNE_OFFICE } from '../data/offices';
 import { REGIONS } from '../data/theatreMap';
+import { ASSET_DEFINITIONS } from '../data/assetDefinitions';
 import { LEGACY_DEFINITIONS } from '../data/legacyDefinitions';
 import { getNextMilestone } from './legacyEngine';
 
@@ -75,6 +77,45 @@ function officeLabel(officeId: OfficeId | undefined): string {
 function regionLabel(regionId: RegionId | undefined): string {
   if (!regionId) return 'region';
   return REGIONS.find(r => r.id === regionId)?.name ?? regionId;
+}
+
+function assetLabel(assetId: string | undefined): string {
+  if (!assetId) return 'an asset';
+  return ASSET_DEFINITIONS.find(a => a.id === assetId)?.name ?? assetId;
+}
+
+function clanLabel(clanId: string | undefined, state: GameState): string {
+  if (!clanId) return 'a clan';
+  return state.clans.find(c => c.id === clanId)?.name ?? clanId;
+}
+
+/** Player-facing title for a criterion, shared by the builder's live preview
+ *  (AmbitionBuilder.tsx) and direct-write/offer narrative-hook tokens
+ *  (resourceEngine.ts's setAmbition:/offerAmbition:, ticket 05) — one
+ *  phrasing table instead of two switch statements drifting apart. */
+export function describeCriterionTitle(criterion: AmbitionCriterion, state: GameState): string {
+  switch (criterion.id) {
+    case 'resource_threshold':
+      return `Hold ${criterion.amount ?? 0} ${criterion.resource === 'fides' ? 'Fides' : 'Denarii'}`;
+    case 'office_held':
+      return `Win the ${officeLabel(criterion.officeId)}`;
+    case 'clan_standing':
+      return `Reach ${criterion.amount ?? 0} Standing with the ${clanLabel(criterion.clanId, state)}`;
+    case 'asset_tier':
+      return `Own the ${assetLabel(criterion.assetId)} at Tier ${criterion.amount ?? 1}`;
+    case 'client_count':
+      return `Hold ${criterion.amount ?? 0} Clients`;
+    case 'battles_won':
+      return `Win ${criterion.amount ?? 0} Battles`;
+    case 'region_control':
+      return `Take ${regionLabel(criterion.regionId)}`;
+    case 'survive_seasons':
+      return `Keep the Gens Intact ${criterion.amount ?? 0} More Seasons`;
+    case 'trial_won':
+      return `Win ${criterion.amount ?? 0} Trials`;
+    default:
+      return 'Ambition';
+  }
 }
 
 /** Whether `officeId` is currently held, and (when `assignedCharacterId` is
@@ -401,6 +442,38 @@ export function buildAmbition(input: BuildAmbitionInput, state: GameState): Acti
   };
 }
 
+export interface BuildAmbitionOfferInput {
+  scope: AmbitionScope;
+  title: string;
+  criterion: AmbitionCriterion;
+  assignedCharacterId?: string;
+  /** Duration, resolved to an absolute deadlineTurn only on accept
+   *  (buildAmbition) — an offer is never baseline-snapshotted or
+   *  reward-frozen (models/ambition.ts's AmbitionOffer doc comment). */
+  deadlineSeasons?: number;
+  onCompleteEventId?: string;
+  onFailEventId?: string;
+}
+
+/** The single construction path for every AmbitionOffer, mirroring
+ *  buildAmbition above — used by the store's offerAmbition action (narrative
+ *  hook ticket 05). Unlike buildAmbition, this never touches baseline/
+ *  reward/failureDignitas: nothing is measured or priced until the player
+ *  actually accepts (acceptStoryAmbition → buildAmbition, spec §2.4). */
+export function buildAmbitionOffer(input: BuildAmbitionOfferInput, state: GameState): AmbitionOffer {
+  return {
+    id: generateAmbitionId(),
+    scope: input.scope,
+    assignedCharacterId: input.assignedCharacterId,
+    title: input.title,
+    criterion: input.criterion,
+    deadlineSeasons: input.deadlineSeasons,
+    onCompleteEventId: input.onCompleteEventId,
+    onFailEventId: input.onFailEventId,
+    turnOffered: state.turnNumber,
+  };
+}
+
 /** Progress toward an ambition's target, normalized 0..1 from its baseline —
  *  the same current/target measurement getProgress uses for the tablet's
  *  readout, expressed as a fraction. Shared by the Ambitiones leaf's
@@ -440,6 +513,49 @@ export function supersedeAmbition(
   return {
     ambition: { ...ambition, status: 'superseded', turnResolved: state.turnNumber },
     partialReward,
+  };
+}
+
+/** The active ambition (if any) occupying a family/character slot — shared
+ *  lookup for both the eviction path below and the offer-staging occupancy
+ *  guard, so "what does this slot currently hold" is answered identically
+ *  everywhere it's asked. */
+export function findActiveAmbitionInSlot(
+  ambitions: ActiveAmbition[],
+  scope: AmbitionScope,
+  assignedCharacterId: string | undefined,
+): ActiveAmbition | undefined {
+  return ambitions.find(a =>
+    a.status === 'active' && a.scope === scope &&
+    (scope !== 'character' || a.assignedCharacterId === assignedCharacterId)
+  );
+}
+
+/** Shared "force-evict whatever's in this slot" step for a direct-write
+ *  (spec §2.3's slot-collision rule): supersedes the occupant (if any) and
+ *  folds its partial reward into `resources`. Used by both the store's
+ *  setAmbition action and the setAmbition: effect-string token so the two
+ *  producers of a direct write can't drift on how eviction behaves. Returns
+ *  `resources` unchanged (same object) when the slot was already empty. */
+export function evictOccupantForDirectWrite(
+  ambitions: ActiveAmbition[],
+  scope: AmbitionScope,
+  assignedCharacterId: string | undefined,
+  resources: { denarii: number; fides: number; lifetimeDignitas: number },
+  state: GameState,
+): {
+  ambitions: ActiveAmbition[];
+  resources: { denarii: number; fides: number; lifetimeDignitas: number };
+  evicted?: ActiveAmbition;
+} {
+  const occupant = findActiveAmbitionInSlot(ambitions, scope, assignedCharacterId);
+  if (!occupant) return { ambitions, resources };
+
+  const { ambition: superseded, partialReward } = supersedeAmbition(occupant, state);
+  return {
+    ambitions: ambitions.map(a => (a.id === occupant.id ? superseded : a)),
+    resources: applyAmbitionReward(resources, partialReward),
+    evicted: occupant,
   };
 }
 

@@ -8,8 +8,8 @@ import type { EventInstance, EventChoice } from '../models/event';
 import type { OwnedAsset } from '../models/asset';
 import type { OwnedHouse, RoomType, BusinessType } from '../models/house';
 import type { ActiveAmbition, AmbitionOffer } from '../models/ambition';
-import { buildAmbition, supersedeAmbition, applyAmbitionReward } from '../engine/ambitionEngine';
-import type { BuildAmbitionInput } from '../engine/ambitionEngine';
+import { buildAmbition, buildAmbitionOffer, evictOccupantForDirectWrite, findActiveAmbitionInSlot } from '../engine/ambitionEngine';
+import type { BuildAmbitionInput, BuildAmbitionOfferInput } from '../engine/ambitionEngine';
 import type { LegacyObjective } from '../models/legacyObjective';
 import type { PatronTier } from '../models/patronLadder';
 import type { TrialState, TrialApproach, ChargeId, ChargeSource } from '../models/trial';
@@ -392,8 +392,8 @@ export interface GameState {
   // Ambitions (rework — spec: plans/ambition-system-rework/ambition-system-rework-spec.md)
   ambitions: ActiveAmbition[];
   /** Staged AmbitionOffers reserving the family/character slot, awaiting an
-   *  accept/refuse decision. Populated for real by ticket 05's narrative
-   *  hooks (offerAmbition); this is the scaffold field only. */
+   *  accept/refuse decision (ticket 05's narrative-hook offer-then-accept
+   *  flow — offerAmbition/acceptStoryAmbition/refuseStoryAmbition below). */
   pendingAmbitionOffers: { family?: AmbitionOffer; character?: AmbitionOffer };
 
   // Legacy Objectives (Feature 4)
@@ -859,6 +859,22 @@ export interface GameActions {
    *  'tutorial'). No reward, no penalty, no cooldown; the slot is free
    *  immediately. */
   abandonAmbition: (id: string) => void;
+  /** Narrative-hook (ticket 05, spec §1 "Story/tutorial entry" /
+   *  offer-then-accept): stages an AmbitionOffer into
+   *  pendingAmbitionOffers[scope], reserving that slot until the player
+   *  accepts or refuses on the Ambitiones leaf. Does NOT evict an occupant —
+   *  an offer can only be staged into an empty slot (the direct-write path,
+   *  setAmbition, is what force-evicts). */
+  offerAmbition: (input: BuildAmbitionOfferInput) => void;
+  /** Converts a pending offer into a real ActiveAmbition: baseline snapshotted
+   *  and reward frozen NOW, at accept time (not offer time, spec §2.4), via
+   *  the same buildAmbition construction path as everything else.
+   *  `refusable` is always true on accept — choosing a story ambition
+   *  doesn't forfeit the later right to abandon it (spec §2.3's
+   *  acceptStoryAmbition bullet). */
+  acceptStoryAmbition: (offerId: string) => void;
+  /** Discards a pending offer and frees its slot — no reward, no penalty. */
+  refuseStoryAmbition: (offerId: string) => void;
   /** Opens the Agenda Tablet directly on the Ambitiones leaf (or null to
    *  clear a consumed request) — same idiom as requestCuriaSubTab. */
   requestAgendaTabletLeaf: (leaf: 'ambitiones' | null) => void;
@@ -1524,6 +1540,16 @@ const SEASON_NAMES = ['Spring', 'Summer', 'Autumn', 'Winter'];
 
 function turnLabel(state: GameState): string {
   return `${Math.abs(state.year)} BC · ${SEASON_NAMES[state.seasonIndex]}`;
+}
+
+/** Which slot (if any) of pendingAmbitionOffers holds the given offer id —
+ *  shared by acceptStoryAmbition/refuseStoryAmbition below so both look it
+ *  up identically. */
+function findOfferScope(
+  offers: GameState['pendingAmbitionOffers'],
+  offerId: string,
+): 'family' | 'character' | undefined {
+  return (['family', 'character'] as const).find(key => offers[key]?.id === offerId);
 }
 
 /** Campaign Map plan, Chunk C9 — a DEFERRED battle's momentum feed + warScore
@@ -2766,28 +2792,38 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   setAmbition: (input) => {
     const s = get();
     const label = turnLabel(s);
-    const occupant = s.ambitions.find(a =>
-      a.status === 'active' && a.scope === input.scope &&
-      (input.scope !== 'character' || a.assignedCharacterId === input.assignedCharacterId)
+    const { ambitions: postEviction, resources, evicted } = evictOccupantForDirectWrite(
+      s.ambitions,
+      input.scope,
+      input.assignedCharacterId,
+      { denarii: s.denarii, fides: s.fides, lifetimeDignitas: s.lifetimeDignitas },
+      s,
     );
 
-    let ambitions = s.ambitions;
-    let resources = { denarii: s.denarii, fides: s.fides, lifetimeDignitas: s.lifetimeDignitas };
     const logEntries: LogEntry[] = [];
-
-    if (occupant) {
-      const { ambition: supersededAmbition, partialReward } = supersedeAmbition(occupant, s);
-      ambitions = ambitions.map(a => (a.id === occupant.id ? supersededAmbition : a));
-      resources = applyAmbitionReward(resources, partialReward);
-      logEntries.push(mkLog(label, `Ambition superseded: "${occupant.title}". Partial reward paid.`, 'neutral'));
+    if (evicted) {
+      logEntries.push(mkLog(label, `Ambition superseded: "${evicted.title}". Partial reward paid.`, 'neutral'));
     }
 
     const newAmbition = buildAmbition(input, s);
-    ambitions = [...ambitions, newAmbition];
+    const ambitions = [...postEviction, newAmbition];
     logEntries.push(mkLog(label, `Ambition set: "${newAmbition.title}".`, 'neutral'));
+
+    // A direct-write (ticket 05's setAmbition: effect-string token) can target
+    // a slot a pending AmbitionOffer has reserved — a real ActiveAmbition
+    // trumps an unresolved offer, and a stale offer left behind would mask
+    // the new ambition forever (AgendaTablet's AmbitionSlotCard renders the
+    // offer branch before the active-ambition branch). Silently drop it;
+    // there's no consequence to the player either way, since an offer never
+    // committed them to anything.
+    const pendingAmbitionOffers = { ...s.pendingAmbitionOffers };
+    if (input.scope === 'family' || input.scope === 'character') {
+      delete pendingAmbitionOffers[input.scope];
+    }
 
     set({
       ambitions,
+      pendingAmbitionOffers,
       ...resources,
       log: [...s.log, ...logEntries],
     });
@@ -2800,6 +2836,70 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     set({
       ambitions: s.ambitions.filter(a => a.id !== id),
       log: [...s.log, mkLog(turnLabel(s), `Ambition abandoned: "${ambition.title}".`, 'neutral')],
+    });
+  },
+
+  // Narrative-hook offer-then-accept flow (ticket 05, spec §1/§2.4). Distinct
+  // from setAmbition: an offer never evicts an occupant. Guarded (not just
+  // documented) — a producer firing this against an already-occupied slot
+  // is a no-op rather than silently masking the live ActiveAmbition behind
+  // an offer card (AgendaTablet's AmbitionSlotCard renders the offer branch
+  // before the active-ambition branch, so an unguarded stage here would hide
+  // a ticking ambition with no warning).
+  offerAmbition: (input) => {
+    const s = get();
+    if (findActiveAmbitionInSlot(s.ambitions, input.scope, input.assignedCharacterId)) return;
+
+    const offer = buildAmbitionOffer(input, s);
+    const scopeKey = input.scope as 'family' | 'character';
+    set({
+      pendingAmbitionOffers: { ...s.pendingAmbitionOffers, [scopeKey]: offer },
+      log: [...s.log, mkLog(turnLabel(s), `Ambition offered: "${offer.title}".`, 'neutral')],
+    });
+  },
+
+  acceptStoryAmbition: (offerId) => {
+    const s = get();
+    const scopeKey = findOfferScope(s.pendingAmbitionOffers, offerId);
+    const offer = scopeKey ? s.pendingAmbitionOffers[scopeKey] : undefined;
+    if (!offer) return;
+
+    const newAmbition = buildAmbition({
+      scope: offer.scope,
+      source: 'story',
+      title: offer.title,
+      criterion: offer.criterion,
+      assignedCharacterId: offer.assignedCharacterId,
+      deadlineSeasons: offer.deadlineSeasons,
+      // Accepting a staged choice never forfeits the later right to abandon
+      // it — refusal already happened at the offer stage (spec §2.3).
+      refusable: true,
+      onCompleteEventId: offer.onCompleteEventId,
+      onFailEventId: offer.onFailEventId,
+    }, s);
+
+    const pendingAmbitionOffers = { ...s.pendingAmbitionOffers };
+    delete pendingAmbitionOffers[scopeKey!];
+
+    set({
+      ambitions: [...s.ambitions, newAmbition],
+      pendingAmbitionOffers,
+      log: [...s.log, mkLog(turnLabel(s), `Ambition accepted: "${newAmbition.title}".`, 'neutral')],
+    });
+  },
+
+  refuseStoryAmbition: (offerId) => {
+    const s = get();
+    const scopeKey = findOfferScope(s.pendingAmbitionOffers, offerId);
+    const offer = scopeKey ? s.pendingAmbitionOffers[scopeKey] : undefined;
+    if (!offer) return;
+
+    const pendingAmbitionOffers = { ...s.pendingAmbitionOffers };
+    delete pendingAmbitionOffers[scopeKey!];
+
+    set({
+      pendingAmbitionOffers,
+      log: [...s.log, mkLog(turnLabel(s), `Ambition offer refused: "${offer.title}".`, 'neutral')],
     });
   },
 

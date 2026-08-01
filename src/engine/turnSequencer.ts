@@ -1980,6 +1980,23 @@ export function processSeason(state: GameState): {
   const { updated, completed, failed, superseded } = tickAmbitions(s.ambitions, s, s.turnNumber);
   s = { ...s, ambitions: updated };
 
+  // Narrative-hook follow-up (ambition rework ticket 05, spec §4-1): a
+  // story/tutorial ambition's onCompleteEventId/onFailEventId queues the
+  // named event the same way any other scripted follow-up does (see
+  // `nextEvent:` in resourceEngine.ts) — pushed onto pendingEvents, not
+  // fired immediately, so it surfaces through the normal event-resolution
+  // flow next time one is due. Deliberately NOT checked for `superseded`
+  // ambitions: a supersede is an interruption outside the player's control,
+  // not a real completion or failure of the narrative beat (spec §2.3).
+  function queueAmbitionFollowUp(defId: string, assignedCharacterId: string | undefined) {
+    const instance: EventInstance = {
+      defId,
+      firedAtTurn: s.turnNumber,
+      targetCharacterId: assignedCharacterId ?? s.family.find(c => c.isPlayer)?.id ?? 'pc-1',
+    };
+    s = { ...s, pendingEvents: [...s.pendingEvents, instance] };
+  }
+
   for (const a of completed) {
     s = { ...s, ...applyAmbitionReward(s, a.reward) };
     if (a.reward.assetId) {
@@ -1991,11 +2008,13 @@ export function processSeason(state: GameState): {
         ],
       };
     }
+    if (a.onCompleteEventId) queueAmbitionFollowUp(a.onCompleteEventId, a.assignedCharacterId);
     events.push(`Ambition complete: "${a.title}". Rewards applied.`);
   }
 
   for (const a of failed) {
     s = { ...s, lifetimeDignitas: Math.max(0, s.lifetimeDignitas + a.failureDignitas) };
+    if (a.onFailEventId) queueAmbitionFollowUp(a.onFailEventId, a.assignedCharacterId);
     events.push(`Ambition failed: "${a.title}".`);
   }
 

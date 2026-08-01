@@ -91,7 +91,7 @@ function ProgressBar({ fraction }: { fraction: number }) {
 }
 
 function AmbitionSlotCard({
-  icon, label, ambition, offer, turnNumber, state, onSet, onAbandon,
+  icon, label, ambition, offer, turnNumber, state, onSet, onAbandon, onAccept, onRefuse,
 }: {
   icon: string;
   label: string;
@@ -101,17 +101,28 @@ function AmbitionSlotCard({
   state: GameState;
   onSet: () => void;
   onAbandon: (id: string) => void;
+  onAccept: (offerId: string) => void;
+  onRefuse: (offerId: string) => void;
 }) {
   if (offer) {
-    // Offer-pending state — fully wired (Accept/Refuse) by ticket 05's
-    // acceptStoryAmbition/refuseStoryAmbition. No producer writes into
-    // pendingAmbitionOffers yet, so this branch only needs to render without
-    // crashing if reached early.
+    // Offer-pending state (ticket 05's offer-then-accept narrative hook) —
+    // criterion/title plus working Accept/Refuse actions. Accepting snapshots
+    // the baseline and freezes the reward NOW (acceptStoryAmbition ->
+    // buildAmbition), not at offer time — the number shown here is
+    // deliberately not a preview, since nothing is priced until commitment.
     return (
       <View style={styles.slotCard}>
         <Text style={styles.slotLabel}>{icon} {label}</Text>
         <Text style={styles.slotTitle}>{offer.title}</Text>
         <Text style={styles.slotMuted}>A pending offer — awaiting your decision.</Text>
+        <View style={styles.offerActionsRow}>
+          <TouchableOpacity style={styles.setBtn} onPress={() => onAccept(offer.id)} activeOpacity={0.75}>
+            <Text style={styles.setBtnText}>Accept</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.abandonBtn, styles.offerActionBtn]} onPress={() => onRefuse(offer.id)} activeOpacity={0.75}>
+            <Text style={styles.abandonBtnText}>Refuse</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -169,6 +180,8 @@ function AmbitionesLeaf({ onOpenBuilder }: { onOpenBuilder: (scope: AmbitionScop
   const turnNumber = useGameStore(s => s.turnNumber);
   const family = useGameStore(s => s.family);
   const abandonAmbition = useGameStore(s => s.abandonAmbition);
+  const acceptStoryAmbition = useGameStore(s => s.acceptStoryAmbition);
+  const refuseStoryAmbition = useGameStore(s => s.refuseStoryAmbition);
   const player = family.find(c => c.isPlayer);
 
   // Snapshot read for getProgress/projectDynasticAmbitions — this component
@@ -197,6 +210,8 @@ function AmbitionesLeaf({ onOpenBuilder }: { onOpenBuilder: (scope: AmbitionScop
         state={state}
         onSet={() => onOpenBuilder('family')}
         onAbandon={abandonAmbition}
+        onAccept={acceptStoryAmbition}
+        onRefuse={refuseStoryAmbition}
       />
       <AmbitionSlotCard
         icon="👤"
@@ -207,6 +222,8 @@ function AmbitionesLeaf({ onOpenBuilder }: { onOpenBuilder: (scope: AmbitionScop
         state={state}
         onSet={() => onOpenBuilder('character')}
         onAbandon={abandonAmbition}
+        onAccept={acceptStoryAmbition}
+        onRefuse={refuseStoryAmbition}
       />
       <Text style={styles.dynasticHeading}>DYNASTIC LEGACY</Text>
       {dynastic.map(d => <DynasticRow key={d.id} ambition={d} state={state} />)}
@@ -601,6 +618,18 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.ui,
     fontSize: 10,
     color: COLORS.crimson,
+  },
+  offerActionsRow: {
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
+  },
+  // Cancels abandonBtn's own marginTop when it's reused as the offer row's
+  // Refuse button — offerActionsRow already spaces itself from the title
+  // above, and setBtn (reused for Accept) carries no marginTop of its own,
+  // so without this the two buttons would sit at different heights.
+  offerActionBtn: {
+    marginTop: 0,
   },
   dynasticHeading: {
     fontFamily: FONTS.ui,

@@ -20,7 +20,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { useGameStore } from '../../state/gameStore';
-import { buildAmbition, nextEligibleElectionTurns } from '../../engine/ambitionEngine';
+import { buildAmbition, nextEligibleElectionTurns, describeCriterionTitle } from '../../engine/ambitionEngine';
 import type { BuildAmbitionInput } from '../../engine/ambitionEngine';
 import type { AmbitionCriterion, AmbitionCriterionId, AmbitionScope } from '../../models/ambition';
 import type { OfficeId } from '../../models/office';
@@ -116,22 +116,12 @@ export default function AmbitionBuilder({ visible, scope, onClose }: Props) {
     }
   }
 
+  // Delegates to the shared engine helper (ambitionEngine.describeCriterionTitle)
+  // so the builder's title and a direct-write/offer narrative-hook token
+  // (resourceEngine.ts, ticket 05) can never phrase the same criterion two
+  // different ways.
   function criterionTitle(): string {
-    const office = getOffice(officeId);
-    const clanName = clans.find(c => c.id === clanId)?.name ?? 'a clan';
-    const assetName = BUILDER_ASSETS.find(a => a.id === assetId)?.name ?? 'an asset';
-    const regionName = REGIONS.find(r => r.id === regionId)?.name ?? 'a region';
-    switch (criterionId) {
-      case 'resource_threshold': return `Hold ${amount} ${resource === 'fides' ? 'Fides' : 'Denarii'}`;
-      case 'office_held':        return `Win the ${office?.name ?? 'office'}`;
-      case 'clan_standing':      return `Reach ${amount} Standing with the ${clanName}`;
-      case 'asset_tier':         return `Own the ${assetName} at Tier ${tier}`;
-      case 'client_count':       return `Hold ${amount} Clients`;
-      case 'battles_won':        return `Win ${amount} Battles`;
-      case 'region_control':     return `Take ${regionName}`;
-      case 'survive_seasons':    return `Keep the Gens Intact ${amount} More Seasons`;
-      case 'trial_won':          return `Win ${amount} Trials`;
-    }
+    return describeCriterionTitle(buildCriterion(), state);
   }
 
   const state = useGameStore.getState();
