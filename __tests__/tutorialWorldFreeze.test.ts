@@ -118,3 +118,60 @@ describe('world freeze — the Claudius arc', () => {
     expect(nextState.claudiusPatience).toBe(2);
   });
 });
+
+// World gate rework, ticket 01 — these two categories previously had no
+// processSeason-level coverage in this file (only tutorialEngine.test.ts's
+// unit test on the boolean itself, and cityEngine.test.ts's direct
+// tickAllCities param test). Covering them here closes the gap at the same
+// integration level as every other category above.
+describe('world freeze — random events and war ignition', () => {
+  test('frozen: no story event is injected, even when the Messana/Carthage ignition conditions are otherwise met', () => {
+    const state = makeState({
+      tutorial: FROZEN,
+      startId: 'guided',
+      flags: { 'tutorial-embassy-complete': true }, // ignition-eligible if not frozen
+      wars: [],
+    });
+    const { nextState } = processSeason(state);
+    expect(nextState.pendingEvents).toEqual(state.pendingEvents);
+  });
+
+  test('not frozen: the same ignition-eligible state forces evt-messana-appeal (regression guard)', () => {
+    const state = makeState({
+      tutorial: UNFROZEN,
+      startId: 'guided',
+      flags: { 'tutorial-embassy-complete': true },
+      wars: [],
+    });
+    const { nextState } = processSeason(state);
+    expect(nextState.pendingEvents.some(e => e.defId === 'evt-messana-appeal')).toBe(true);
+  });
+});
+
+describe('world freeze — foreign war declarations (QA Audit Fix Plan regression)', () => {
+  test('frozen: a hostile foreign power cannot spontaneously declare war', () => {
+    const originalRandom = Math.random;
+    Math.random = () => 0; // would always succeed the declaration roll if not gated
+    try {
+      const carthage = { ...INITIAL_STATE.cities.find(c => c.id === 'carthage')!, relationshipScore: 5 };
+      const state = makeState({ tutorial: FROZEN, cities: [carthage], wars: [] });
+      const { nextState } = processSeason(state);
+      expect(nextState.wars).toEqual([]);
+    } finally {
+      Math.random = originalRandom;
+    }
+  });
+
+  test('not frozen: the same hostile power does declare war (regression guard — the freeze gate did not disable the roll outright)', () => {
+    const originalRandom = Math.random;
+    Math.random = () => 0;
+    try {
+      const carthage = { ...INITIAL_STATE.cities.find(c => c.id === 'carthage')!, relationshipScore: 5 };
+      const state = makeState({ tutorial: UNFROZEN, cities: [carthage], wars: [] });
+      const { nextState } = processSeason(state);
+      expect(nextState.wars.some(w => w.enemyId === 'carthage')).toBe(true);
+    } finally {
+      Math.random = originalRandom;
+    }
+  });
+});

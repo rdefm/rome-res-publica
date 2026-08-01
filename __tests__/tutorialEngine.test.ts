@@ -16,6 +16,9 @@ import {
   isStepSatisfied,
   isTabSealed,
   isWorldFrozen,
+  isWorldCategoryFrozen,
+  categoryFrozenUnderPolicy,
+  ALL_WORLD_GATE_CATEGORIES,
   applyTutorialEffect,
   validateTutorialScript,
   TUTORIAL_PREDICATES,
@@ -132,6 +135,48 @@ describe('tutorialEngine — pure step resolution', () => {
   it('isWorldFrozen defensively reads undefined tutorial as not frozen (bespoke test fixtures)', () => {
     const s = { ...makeState(), tutorial: undefined } as any;
     expect(isWorldFrozen(s)).toBe(false);
+  });
+
+  it('isWorldCategoryFrozen freezes every one of the eight categories during the prologue (no behavior change from the old all-or-nothing boolean)', () => {
+    const s = makeState({
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+    });
+    for (const category of ALL_WORLD_GATE_CATEGORIES) {
+      expect(isWorldCategoryFrozen(s, category)).toBe(true);
+    }
+  });
+
+  it('isWorldCategoryFrozen leaves every category open once the prologue has ended', () => {
+    const s = makeState({
+      tutorial: { activeArc: 'embassy', stepId: 's1', completedArcs: ['prologue'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false },
+    });
+    for (const category of ALL_WORLD_GATE_CATEGORIES) {
+      expect(isWorldCategoryFrozen(s, category)).toBe(false);
+    }
+  });
+
+  // No real arc is wired to a partial policy yet — doing so would itself be
+  // a behavior change for that arc, which the ticket's own "no behavior
+  // change" acceptance criterion rules out until a later ticket adds a real
+  // guided beat with one. So the partial-thaw case is proven at the policy-
+  // resolution layer instead: categoryFrozenUnderPolicy is the exact
+  // function isWorldCategoryFrozen delegates to once it has looked up an
+  // arc's policy value, so exercising it directly with a hand-built partial
+  // array is genuine coverage of the same per-category logic, just without
+  // a production arc attached to it yet.
+  it('categoryFrozenUnderPolicy supports a partially-thawed policy — the mechanism future guided beats will plug into, ahead of any real arc using it yet', () => {
+    const partial = ['crisisDrift', 'births'] as const;
+    expect(categoryFrozenUnderPolicy(partial, 'crisisDrift')).toBe(true);
+    expect(categoryFrozenUnderPolicy(partial, 'births')).toBe(true);
+    expect(categoryFrozenUnderPolicy(partial, 'randomEvents')).toBe(false);
+    expect(categoryFrozenUnderPolicy(partial, 'warIgnition')).toBe(false);
+  });
+
+  it('categoryFrozenUnderPolicy: "all" freezes every category; undefined freezes none', () => {
+    for (const category of ALL_WORLD_GATE_CATEGORIES) {
+      expect(categoryFrozenUnderPolicy('all', category)).toBe(true);
+      expect(categoryFrozenUnderPolicy(undefined, category)).toBe(false);
+    }
   });
 
   it('applyTutorialEffect applies a registered effect and no-ops for undefined/unknown ids', () => {

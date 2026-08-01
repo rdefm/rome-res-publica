@@ -21,7 +21,7 @@ import {
 import { getTierFromLevel } from '../models/crisis';
 import { tickNpcCareers, resolveElection } from './electionEngine';
 import { pickRandomEvent, evalCondition, injectNoticeEvent, getEventDef } from './eventEngine';
-import { isWorldFrozen } from './tutorialEngine';
+import { isWorldCategoryFrozen } from './tutorialEngine';
 import { applyYearlyRelationshipDecay, ageAndProcessMortality } from './reputationEngine';
 import { genderForCharacter, genderForLeader } from './portraitEngine';
 import { portraitAssets } from '../utils/portraitAssets';
@@ -530,7 +530,7 @@ export function processSeason(state: GameState): {
   // one-off narrative beat in this codebase (evt-war-outcome-*, etc.).
   const billOutcomeNotices: EventInstance[] = [];
 
-  if (!isWorldFrozen(s)) {
+  if (!isWorldCategoryFrozen(s, 'passiveBills')) {
     const unrestTier = getTierFromLevel(s.crisis.unrest.level);
     const senateSessionSuspended = unrestTier >= 4 && Math.random() < 0.20;
     if (senateSessionSuspended) {
@@ -635,7 +635,7 @@ export function processSeason(state: GameState): {
 
   let updatedCrisis = { ...s.crisis };
 
-  if (!isWorldFrozen(s)) {
+  if (!isWorldCategoryFrozen(s, 'crisisDrift')) {
     for (const trackId of ['war', 'unrest', 'constitution', 'economy'] as const) {
       const delta = calcIndividualEscalation(trackId, s);
       updatedCrisis = { ...updatedCrisis, [trackId]: applyTrackDelta(updatedCrisis[trackId], delta) };
@@ -1137,7 +1137,7 @@ export function processSeason(state: GameState): {
 
     // ── 9c-ii: City tick ─────────────────────────────────────────────────────
     const { updatedCities, totalGoldDelta, totalImperiumDelta, totalTreasuryDelta, newWars, events: cityEvents, newCityEvent } =
-      tickAllCities(s.cities, s, isWorldFrozen(s));
+      tickAllCities(s.cities, s, isWorldCategoryFrozen(s, 'foreignWarDeclarations'));
 
     s = {
       ...s,
@@ -1641,7 +1641,7 @@ export function processSeason(state: GameState): {
     // isDeterred-consuming sites depend on this NOT ticking ahead of Act V's
     // audit resolving the standoff on-screen. One of the six isWorldFrozen
     // call sites (tutorial-redesign-plan.md §3 T4).
-    if (!isWorldFrozen(s)) {
+    if (!isWorldCategoryFrozen(s, 'claudiusDemands')) {
       // Patience countdown first — may cancel (deterrence) or auto-resolve to
       // defiance before the demand-injection check below runs this same
       // season, so order matters here.
@@ -1764,7 +1764,7 @@ export function processSeason(state: GameState): {
     // the guided prologue (one of the six isWorldFrozen call sites); aging
     // continues regardless, that's cosmetic and expected every Winter→Spring
     // rollover either way.
-    if (crossedNewYear && !s.pendingSuccession && !isWorldFrozen(s)) {
+    if (crossedNewYear && !s.pendingSuccession && !isWorldCategoryFrozen(s, 'mortality')) {
       const deceased = aged.find(c => rollsDead(c));
       if (deceased) {
         const result = detectPaterfamiliasDeath(aged, deceased.id, s.heldOffices);
@@ -1843,7 +1843,7 @@ export function processSeason(state: GameState): {
   // reasoning as step 4: new bills (emergency or top-up) appearing in the
   // background isn't "the world frozen," and every one of these can only
   // ever be resolved by step 4's own (now-frozen) passive pass.
-  if (!isWorldFrozen(s)) {
+  if (!isWorldCategoryFrozen(s, 'passiveBills')) {
     {
       const economyTier = getTierFromLevel(s.crisis.economy.level);
       const needsVectigalis = s.rome.treasury <= 9 || economyTier >= 2;
@@ -1900,9 +1900,18 @@ export function processSeason(state: GameState): {
   {
     let chosenDef: import('../models/event').EventDef | undefined;
 
-    if (isWorldFrozen(s)) {
+    // World gate rework, ticket 01 — split from a single isWorldFrozen check
+    // into its two constituent categories (randomEvents, warIgnition) so a
+    // future curated beat can leave one open while the other stays frozen.
+    // Today both always move together (only 'prologue' has a policy, and it
+    // freezes both), so this is behavior-equivalent to the old single check.
+    const randomEventsFrozen = isWorldCategoryFrozen(s, 'randomEvents');
+    const warIgnitionFrozen = isWorldCategoryFrozen(s, 'warIgnition');
+
+    if (randomEventsFrozen && warIgnitionFrozen) {
       // No story event fires while the prologue hard-rail is active.
     } else if (
+      !warIgnitionFrozen &&
       !(s.wars ?? []).some(w => w.enemyId === 'carthage') &&
       !s.flags['messanaResolved'] &&
       (s.startId !== 'guided' || !!s.flags['tutorial-embassy-complete'])
@@ -1929,7 +1938,7 @@ export function processSeason(state: GameState): {
       // T7), so the appeal's envoy is always someone the player has already
       // met (Vibius) by the time it fires.
       chosenDef = getEventDef('evt-messana-appeal') as typeof chosenDef;
-    } else {
+    } else if (!randomEventsFrozen) {
       // Normal random event
       chosenDef = pickRandomEvent([...EVENT_DEFS, ...WAR_EVENT_DEFS, ...CADET_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS], s);
     }
@@ -2230,7 +2239,7 @@ export function processSeason(state: GameState): {
   // Tutorial redesign, Chunk T4 — frozen during the guided prologue (one of
   // the six isWorldFrozen call sites): a BirthNamingModal mid-hard-rail
   // would compete with the scripted narration for the same screen.
-  if (isBirthEligible(s.family) && s.pendingBirthNaming === null && !isWorldFrozen(s)) {
+  if (isBirthEligible(s.family) && s.pendingBirthNaming === null && !isWorldCategoryFrozen(s, 'births')) {
     const prob = calcBirthProbability(s.family);
     if (Math.random() < prob) {
       const player  = s.family.find(c => c.isPlayer)!;

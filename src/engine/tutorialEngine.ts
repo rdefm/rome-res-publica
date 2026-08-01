@@ -4,7 +4,7 @@
 // logic in src/data/.
 
 import type { GameState } from '../state/gameStore';
-import type { TutorialArcId, TutorialLessonId, TutorialStep, TabName } from '../models/tutorial';
+import type { TutorialArcId, TutorialAnyArcId, TutorialLessonId, TutorialStep, TabName } from '../models/tutorial';
 import type { Army } from '../models/army';
 import { TUTORIAL_ARCS } from '../data/tutorialScript';
 import { applyEffectString } from './resourceEngine';
@@ -498,28 +498,91 @@ export function isTabSealed(tab: TabName, s: GameState): boolean {
 }
 
 /**
- * True while the guided prologue is hard-railing the world: random events,
- * ambient crisis drift, war ignition, the Claudius demand block, births, and
- * the natural-mortality roll all gate on this (turnSequencer.ts,
- * tutorial-redesign-plan.md §3 T4's six named targets). Also gates passive
- * bill resolution and auto-bill-injection — found during T4's own
- * verification, not one of the plan's original six: bills resolving in the
- * background off NPC-driven support (nothing to do with the player) can
- * move crisis tracks on their own via passEffect/failEffect, which is both
- * "not actually frozen" and a confound for Act III's own bill-vote teaching
- * moment. QA Audit Fix Plan (post-T10) added an eighth: `cityEngine.
- * tickAllCities`'s `checkForeignWarDeclarations` — a hostile foreign power
- * (Lilybaeum/Carthage, starting relationship 20, drifting toward hostile
- * within a season or two) could spontaneously declare war on Rome during
- * the prologue, completely outside the scripted embassy/Messana sequencing
+ * World gate — tutorial-rebuild-plan.md §2.2. Replaces the old single
+ * `isWorldFrozen` boolean with per-category freeze checks so a future
+ * guided beat can leave some systems open while others stay hard-railed
+ * (e.g. a curated event pool while war ignition stays frozen), rather than
+ * the prologue's current all-or-nothing rail. The eight categories below
+ * are exactly the eight systems the old boolean gated — see isWorldFrozen's
+ * own comment for their individual histories.
+ */
+export type WorldGateCategory =
+  | 'randomEvents'
+  | 'crisisDrift'
+  | 'warIgnition'
+  | 'claudiusDemands'
+  | 'births'
+  | 'mortality'
+  | 'passiveBills'
+  | 'foreignWarDeclarations';
+
+// Exported (like ALL_TABS above) so callers — tests included — enumerate
+// categories off this one list instead of restating the literal elsewhere.
+export const ALL_WORLD_GATE_CATEGORIES: readonly WorldGateCategory[] = [
+  'randomEvents', 'crisisDrift', 'warIgnition', 'claudiusDemands',
+  'births', 'mortality', 'passiveBills', 'foreignWarDeclarations',
+];
+
+/**
+ * Per-arc freeze policy: `'all'` freezes every category — today's only real
+ * entry, the prologue hard-rail, unchanged in effect from the old boolean.
+ * An explicit array freezes just those categories, leaving the rest open;
+ * no arc is wired to a partial array yet — this is the seam a future guided
+ * beat (tutorial-rebuild-plan.md §2.2's per-beat policy table) plugs into.
+ * An arc with no entry here is fully open, matching the old boolean's
+ * behavior for embassy/war/courts today.
+ */
+const WORLD_GATE_POLICY: Partial<Record<TutorialAnyArcId, 'all' | readonly WorldGateCategory[]>> = {
+  prologue: 'all',
+};
+
+/**
+ * Pure resolution of one category against a policy value, split out from
+ * isWorldCategoryFrozen so the per-category mechanism itself has direct
+ * unit coverage independent of which real arc (if any) uses a partial
+ * policy — see __tests__/tutorialEngine.test.ts's partial-thaw case.
+ */
+export function categoryFrozenUnderPolicy(
+  policy: 'all' | readonly WorldGateCategory[] | undefined,
+  category: WorldGateCategory,
+): boolean {
+  if (!policy) return false;
+  return policy === 'all' || policy.includes(category);
+}
+
+/** `?.` guards bespoke test fixtures built via `as unknown as GameState`
+ *  that don't set `tutorial` — never null in any real, INITIAL_STATE-derived
+ *  GameState. */
+export function isWorldCategoryFrozen(s: GameState, category: WorldGateCategory): boolean {
+  const arc = s.tutorial?.activeArc;
+  return categoryFrozenUnderPolicy(arc ? WORLD_GATE_POLICY[arc] : undefined, category);
+}
+
+/**
+ * Legacy all-frozen check, preserved as a thin wrapper over
+ * isWorldCategoryFrozen so the eight existing call sites can migrate to the
+ * category check one at a time rather than in one risky sweep
+ * (tutorial-rebuild-plan.md §2.2). True only while the guided prologue is
+ * hard-railing the world: random events, ambient crisis drift, war ignition,
+ * the Claudius demand block, births, and the natural-mortality roll all
+ * gated on this originally (turnSequencer.ts, tutorial-redesign-plan.md §3
+ * T4's six named targets). Also gated passive bill resolution and
+ * auto-bill-injection — found during T4's own verification, not one of the
+ * plan's original six: bills resolving in the background off NPC-driven
+ * support (nothing to do with the player) can move crisis tracks on their
+ * own via passEffect/failEffect, which is both "not actually frozen" and a
+ * confound for Act III's own bill-vote teaching moment. QA Audit Fix Plan
+ * (post-T10) added an eighth: `cityEngine.tickAllCities`'s
+ * `checkForeignWarDeclarations` — a hostile foreign power (Lilybaeum/
+ * Carthage, starting relationship 20, drifting toward hostile within a
+ * season or two) could spontaneously declare war on Rome during the
+ * prologue, completely outside the scripted embassy/Messana sequencing
  * T4/T7 built around "the Carthage war only ignites after the Embassy arc."
  * Found by chasing down a genuinely flaky pre-push test, not a design
- * review — see that fix's own commit for the repro. `?.` guards bespoke
- * test fixtures built via `as unknown as GameState` that don't set
- * `tutorial` — never null in any real, INITIAL_STATE-derived GameState.
+ * review — see that fix's own commit for the repro.
  */
 export function isWorldFrozen(s: GameState): boolean {
-  return s.tutorial?.activeArc === 'prologue';
+  return ALL_WORLD_GATE_CATEGORIES.every(c => isWorldCategoryFrozen(s, c));
 }
 
 /**
