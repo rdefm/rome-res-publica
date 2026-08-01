@@ -40,6 +40,24 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Applies a reward's numeric fields (denarii/fides/lifetimeDignitas) onto a
+ *  resource slice. Shared by the completion and supersede write-back paths
+ *  in turnSequencer.ts, which otherwise repeat the same "if the field is
+ *  present, add it" shape for a full reward and a partial (supersede)
+ *  reward alike. */
+export function applyAmbitionReward(
+  resources: { denarii: number; fides: number; lifetimeDignitas: number },
+  reward: AmbitionReward,
+): { denarii: number; fides: number; lifetimeDignitas: number } {
+  return {
+    denarii: reward.denarii ? resources.denarii + reward.denarii : resources.denarii,
+    fides: reward.fides ? resources.fides + reward.fides : resources.fides,
+    lifetimeDignitas: reward.lifetimeDignitas
+      ? resources.lifetimeDignitas + reward.lifetimeDignitas
+      : resources.lifetimeDignitas,
+  };
+}
+
 function getOffice(officeId: OfficeId | undefined) {
   if (!officeId) return undefined;
   if (officeId === 'tribune') return TRIBUNE_OFFICE;

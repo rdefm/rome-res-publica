@@ -479,14 +479,16 @@ export interface GameState {
   // here only via debug spawn/combine/divide.
   armies: Army[];
   /** Ambition system rework — lifetime count of engagements the player's own
-   *  side has won, across every war. Incremented only in
-   *  resolveEngagementAbstract (the single choke point every player-involved
-   *  engagement resolves through — campaignResolver.ts routes any battle
-   *  touching a player/rome_state army into pendingEngagements rather than
-   *  resolving it inline). Feeds the `battles_won` ambition criterion
-   *  (engine/ambitionEngine.ts) — no such lifetime counter existed anywhere
-   *  in GameState before this. Not yet in the save schema (state/saveLoad.ts)
-   *  — flagged as a follow-up for the ambition rework's schema ticket. */
+   *  side has won, across every war. Incremented in both production
+   *  battle-resolution paths: resolveEngagementAbstract (an abstractly-
+   *  resolved engagement) and resolveCampaignBattleOutcome (the tactical
+   *  write-back once the player fights it out and returns via
+   *  returnFromBattle) — a battle can end through either, and both compute
+   *  their own winning army the same way. Feeds the `battles_won` ambition
+   *  criterion (engine/ambitionEngine.ts) — no such lifetime counter existed
+   *  anywhere in GameState before this. Not yet in the save schema
+   *  (state/saveLoad.ts) — flagged as a follow-up for the ambition rework's
+   *  schema ticket. */
   lifetimeBattlesWon: number;
 
   // ── Campaign Map plan, Chunk C4 — the theatre command. A NEW, PARALLEL
@@ -4594,11 +4596,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     // without it. Feed this battle's result in now, at the moment it actually
     // resolves.
     let wars = s.wars;
-    // Ambition system rework — the only choke point every player-involved
-    // engagement resolves through (campaignResolver routes any battle
-    // touching a player/rome_state army into pendingEngagements rather than
-    // resolving it inline), so it's the single correct place to count a
-    // lifetime "battles won" for the battles_won ambition criterion.
+    // Ambition system rework — battles_won ambition criterion counter. This
+    // is the abstract-resolution half of the count; resolveCampaignBattleOutcome
+    // (the tactical write-back) increments the other half — see this field's
+    // own doc comment above for why both are needed.
     let lifetimeBattlesWon = s.lifetimeBattlesWon;
     const battleEntry = result.logEntries.find(
       (e): e is Extract<CampaignLogEntry, { type: 'battle' }> => e.type === 'battle',
@@ -4825,6 +4826,11 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     // side was the campaign-layer attacker.
     const winnerPower = romeWon ? 'rome' : 'carthage';
     const wars = applyDeferredBattleToWarStanding(s.wars, continuation.armies, s.cities, winnerPower, outcome.tier);
+    // Ambition system rework — the tactical-battle sibling of
+    // resolveEngagementAbstract's own lifetimeBattlesWon increment (see that
+    // action's comment): a player who takes the field and wins is a second,
+    // equally live production path to a win, not a corner case.
+    const lifetimeBattlesWon = winnerArmy?.owner === 'player' ? s.lifetimeBattlesWon + 1 : s.lifetimeBattlesWon;
 
     set({
       armies: continuation.armies,
@@ -4835,6 +4841,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       pendingEngagements: s.pendingEngagements.filter(e => e.id !== ctx.engagementId),
       log: [...s.log, ...[...romeResult.ledgerNotes, ...continuation.logEntries.map(e => e.text), ...triumphNotes].map(text => mkLog(label, text, 'neutral'))],
       wars,
+      lifetimeBattlesWon,
     });
   },
 

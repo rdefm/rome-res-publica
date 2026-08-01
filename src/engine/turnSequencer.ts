@@ -25,7 +25,7 @@ import { isWorldFrozen } from './tutorialEngine';
 import { applyYearlyRelationshipDecay, ageAndProcessMortality } from './reputationEngine';
 import { genderForCharacter, genderForLeader } from './portraitEngine';
 import { portraitAssets } from '../utils/portraitAssets';
-import { tickAmbitions } from './ambitionEngine';
+import { tickAmbitions, applyAmbitionReward } from './ambitionEngine';
 import { incrementLegacy, computeLegacyBonuses } from './legacyEngine';
 import {
   isBirthEligible,
@@ -1989,16 +1989,13 @@ export function processSeason(state: GameState): {
   s = { ...s, ambitions: updated };
 
   for (const a of completed) {
-    const r = a.reward;
-    if (r.denarii)          s = { ...s, denarii:          s.denarii          + r.denarii };
-    if (r.lifetimeDignitas) s = { ...s, lifetimeDignitas: s.lifetimeDignitas + r.lifetimeDignitas };
-    if (r.fides)             s = { ...s, fides:            s.fides            + r.fides };
-    if (r.assetId) {
+    s = { ...s, ...applyAmbitionReward(s, a.reward) };
+    if (a.reward.assetId) {
       s = {
         ...s,
         ownedAssets: [
           ...s.ownedAssets,
-          { definitionId: r.assetId, currentTier: 1, turnAcquired: s.turnNumber },
+          { definitionId: a.reward.assetId, currentTier: 1, turnAcquired: s.turnNumber },
         ],
       };
     }
@@ -2011,9 +2008,7 @@ export function processSeason(state: GameState): {
   }
 
   for (const { ambition, partialReward } of superseded) {
-    if (partialReward.denarii)          s = { ...s, denarii:          s.denarii          + partialReward.denarii };
-    if (partialReward.lifetimeDignitas) s = { ...s, lifetimeDignitas: s.lifetimeDignitas + partialReward.lifetimeDignitas };
-    if (partialReward.fides)            s = { ...s, fides:            s.fides            + partialReward.fides };
+    s = { ...s, ...applyAmbitionReward(s, partialReward) };
     events.push(`Ambition superseded: "${ambition.title}".`);
   }
 
