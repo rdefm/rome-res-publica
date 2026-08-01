@@ -478,6 +478,16 @@ export interface GameState {
   // full reasoning). No movement yet (C5); no muster (C3) — armies exist
   // here only via debug spawn/combine/divide.
   armies: Army[];
+  /** Ambition system rework — lifetime count of engagements the player's own
+   *  side has won, across every war. Incremented only in
+   *  resolveEngagementAbstract (the single choke point every player-involved
+   *  engagement resolves through — campaignResolver.ts routes any battle
+   *  touching a player/rome_state army into pendingEngagements rather than
+   *  resolving it inline). Feeds the `battles_won` ambition criterion
+   *  (engine/ambitionEngine.ts) — no such lifetime counter existed anywhere
+   *  in GameState before this. Not yet in the save schema (state/saveLoad.ts)
+   *  — flagged as a follow-up for the ambition rework's schema ticket. */
+  lifetimeBattlesWon: number;
 
   // ── Campaign Map plan, Chunk C4 — the theatre command. A NEW, PARALLEL
   // election track to Cursus's Winter magistracy campaigns (campaigning/
@@ -1395,6 +1405,7 @@ export const INITIAL_STATE: GameState = {
   lifetimeImperium: 0,
   theatre: buildInitialTheatreState(),
   armies: [],
+  lifetimeBattlesWon: 0,
   activeCommand: null,
   commandElection: null,
   campaignLog: null,
@@ -4583,6 +4594,12 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     // without it. Feed this battle's result in now, at the moment it actually
     // resolves.
     let wars = s.wars;
+    // Ambition system rework — the only choke point every player-involved
+    // engagement resolves through (campaignResolver routes any battle
+    // touching a player/rome_state army into pendingEngagements rather than
+    // resolving it inline), so it's the single correct place to count a
+    // lifetime "battles won" for the battles_won ambition criterion.
+    let lifetimeBattlesWon = s.lifetimeBattlesWon;
     const battleEntry = result.logEntries.find(
       (e): e is Extract<CampaignLogEntry, { type: 'battle' }> => e.type === 'battle',
     );
@@ -4594,6 +4611,9 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         wars = applyDeferredBattleToWarStanding(
           s.wars, result.armies, s.cities, armyPowerOf(winnerArmy.owner), battleEntry.tier,
         );
+        if (winnerArmy.owner === 'player') {
+          lifetimeBattlesWon = lifetimeBattlesWon + 1;
+        }
       }
     }
 
@@ -4603,6 +4623,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       pendingEngagements: s.pendingEngagements.filter(e => e.id !== engagementId),
       log: [...s.log, ...[...result.logEntries.map(e => e.text), ...fateNotes].map(text => mkLog(label, text, 'neutral'))],
       wars,
+      lifetimeBattlesWon,
     });
   },
 

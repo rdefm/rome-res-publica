@@ -25,7 +25,7 @@ import { isWorldFrozen } from './tutorialEngine';
 import { applyYearlyRelationshipDecay, ageAndProcessMortality } from './reputationEngine';
 import { genderForCharacter, genderForLeader } from './portraitEngine';
 import { portraitAssets } from '../utils/portraitAssets';
-import { tickAmbitions, getAmbitionDefinition } from './ambitionEngine';
+import { tickAmbitions } from './ambitionEngine';
 import { incrementLegacy, computeLegacyBonuses } from './legacyEngine';
 import {
   isBirthEligible,
@@ -1968,17 +1968,31 @@ export function processSeason(state: GameState): {
   }
 
   // 13. Tick ambitions
-  const { updatedAmbitions, completed, expired } = tickAmbitions(s.ambitions, s);
-  s = { ...s, ambitions: updatedAmbitions };
+  //
+  // Ambition system rework (ticket 01/foundation) — tickAmbitions' signature
+  // and return shape changed (§2.4/Chunk A2 of the rework plan): rewards and
+  // failure/supersede payouts are now frozen ON each ActiveAmbition instance
+  // at construction time (buildAmbition) rather than looked up from a
+  // deleted shared definitions table, so this block reads `a.reward`/
+  // `a.failureDignitas`/`partialReward` directly instead of resolving a
+  // `definitionId`. This is a mechanical shape adaptation only — kept
+  // in-ticket (rather than left broken like the rest of this file's expected
+  // tsc fallout, see CLAUDE.md) purely because `s.ambitions` is always `[]`
+  // today (no store action can populate it until ticket 02's `setAmbition`/
+  // `offerAmbition` land) and a crashing call site here breaks `endSeason`
+  // for every unrelated test that exercises a season tick. The player-facing
+  // integration (new store actions, the Ambitiones leaf, dropping the
+  // `pendingAmbitionScopes` re-offer flow below) is still ticket 02's job —
+  // this patch changes no behavior since the loops below are currently
+  // always no-ops.
+  const { updated, completed, failed, superseded } = tickAmbitions(s.ambitions, s, s.turnNumber);
+  s = { ...s, ambitions: updated };
 
   for (const a of completed) {
-    const def = getAmbitionDefinition(a.definitionId);
-    if (!def) continue;
-    const r = def.reward;
-    if (r.gold)             s = { ...s, denarii:          s.denarii          + r.gold };
-    if (r.lifetimeDignitas) s = { ...s, lifetimeDignitas:  s.lifetimeDignitas + r.lifetimeDignitas };
-    if (r.fides)            s = { ...s, fides:             s.fides            + r.fides };
-    if (r.imperium)         s = { ...s, imperium:          s.imperium         + r.imperium };
+    const r = a.reward;
+    if (r.denarii)          s = { ...s, denarii:          s.denarii          + r.denarii };
+    if (r.lifetimeDignitas) s = { ...s, lifetimeDignitas: s.lifetimeDignitas + r.lifetimeDignitas };
+    if (r.fides)             s = { ...s, fides:            s.fides            + r.fides };
     if (r.assetId) {
       s = {
         ...s,
@@ -1988,33 +2002,19 @@ export function processSeason(state: GameState): {
         ],
       };
     }
-    if (r.reputationBonus) {
-      const newReps = { ...s.familyReputations };
-      for (const { clanId, delta } of r.reputationBonus) {
-        newReps[clanId] = Math.min(100, Math.max(-100, (newReps[clanId] ?? 0) + delta));
-      }
-      s = { ...s, familyReputations: newReps };
-    }
-    events.push(`Ambition complete: "${def.title}". Rewards applied.`);
+    events.push(`Ambition complete: "${a.title}". Rewards applied.`);
   }
 
-  for (const a of expired) {
-    const def = getAmbitionDefinition(a.definitionId);
-    if (!def?.consequence) continue;
-    const c = def.consequence;
-    if (c.gold)             s = { ...s, denarii:         Math.max(0, s.denarii + c.gold) };
-    if (c.lifetimeDignitas) s = { ...s, lifetimeDignitas: Math.max(0, s.lifetimeDignitas + c.lifetimeDignitas) };
-    if (c.familyTrustDelta) {
-      s = {
-        ...s,
-        family: s.family.map(m =>
-          m.isPlayer
-            ? { ...m, familyTrust: Math.max(0, Math.min(100, m.familyTrust + c.familyTrustDelta!)) }
-            : m
-        ),
-      };
-    }
-    events.push(`Ambition expired: "${def.title}". Consequences applied.`);
+  for (const a of failed) {
+    s = { ...s, lifetimeDignitas: Math.max(0, s.lifetimeDignitas + a.failureDignitas) };
+    events.push(`Ambition failed: "${a.title}".`);
+  }
+
+  for (const { ambition, partialReward } of superseded) {
+    if (partialReward.denarii)          s = { ...s, denarii:          s.denarii          + partialReward.denarii };
+    if (partialReward.lifetimeDignitas) s = { ...s, lifetimeDignitas: s.lifetimeDignitas + partialReward.lifetimeDignitas };
+    if (partialReward.fides)            s = { ...s, fides:            s.fides            + partialReward.fides };
+    events.push(`Ambition superseded: "${ambition.title}".`);
   }
 
   // 13b. Re-offer ambition selection for any scope left without an active ambition —
