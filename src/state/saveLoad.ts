@@ -236,6 +236,7 @@ export class LocalSaveProvider implements SaveProvider {
       selectedTrialId: _sti,
       curiaSubTabRequest: _cstr,
       curiaBillTargetRequest: _cbtr,
+      agendaTabletLeafRequest: _atlr,
       ...persistedState
     } = state as any;
     const json = JSON.stringify({ ...persistedState, saveVersion: CURRENT_SAVE_VERSION });

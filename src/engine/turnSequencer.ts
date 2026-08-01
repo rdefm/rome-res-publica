@@ -1969,22 +1969,14 @@ export function processSeason(state: GameState): {
 
   // 13. Tick ambitions
   //
-  // Ambition system rework (ticket 01/foundation) — tickAmbitions' signature
-  // and return shape changed (§2.4/Chunk A2 of the rework plan): rewards and
-  // failure/supersede payouts are now frozen ON each ActiveAmbition instance
-  // at construction time (buildAmbition) rather than looked up from a
-  // deleted shared definitions table, so this block reads `a.reward`/
-  // `a.failureDignitas`/`partialReward` directly instead of resolving a
-  // `definitionId`. This is a mechanical shape adaptation only — kept
-  // in-ticket (rather than left broken like the rest of this file's expected
-  // tsc fallout, see CLAUDE.md) purely because `s.ambitions` is always `[]`
-  // today (no store action can populate it until ticket 02's `setAmbition`/
-  // `offerAmbition` land) and a crashing call site here breaks `endSeason`
-  // for every unrelated test that exercises a season tick. The player-facing
-  // integration (new store actions, the Ambitiones leaf, dropping the
-  // `pendingAmbitionScopes` re-offer flow below) is still ticket 02's job —
-  // this patch changes no behavior since the loops below are currently
-  // always no-ops.
+  // Ambition system rework (spec: plans/ambition-system-rework/ambition-
+  // system-rework-spec.md) — rewards and failure/supersede payouts are
+  // frozen ON each ActiveAmbition instance at construction time
+  // (buildAmbition), so this block reads `a.reward`/`a.failureDignitas`/
+  // `partialReward` directly. No re-offer step follows (ticket 02 dropped
+  // the old pendingAmbitionScopes re-offer flow): a failed/completed/
+  // superseded slot is simply empty again, ready for setAmbition, no
+  // cooldown.
   const { updated, completed, failed, superseded } = tickAmbitions(s.ambitions, s, s.turnNumber);
   s = { ...s, ambitions: updated };
 
@@ -2010,27 +2002,6 @@ export function processSeason(state: GameState): {
   for (const { ambition, partialReward } of superseded) {
     s = { ...s, ...applyAmbitionReward(s, partialReward) };
     events.push(`Ambition superseded: "${ambition.title}".`);
-  }
-
-  // 13b. Re-offer ambition selection for any scope left without an active ambition —
-  // covers a scope that was skipped/dismissed earlier as well as one that just
-  // completed or expired above. Without this, dismissing the prompt once meant it
-  // never returned, since pendingAmbitionScopes was only ever cleared, not refilled.
-  {
-    const scopesNeeded: ('family' | 'character')[] = [];
-    if (!s.ambitions.some(a => a.status === 'active' && a.scope === 'family')) {
-      scopesNeeded.push('family');
-    }
-    const player = s.family.find(c => c.isPlayer);
-    if (!s.ambitions.some(a => a.status === 'active' && a.scope === 'character' && a.assignedCharacterId === player?.id)) {
-      scopesNeeded.push('character');
-    }
-    if (scopesNeeded.length > 0) {
-      s = {
-        ...s,
-        pendingAmbitionScopes: Array.from(new Set([...s.pendingAmbitionScopes, ...scopesNeeded])),
-      };
-    }
   }
 
   // 14. Corruption tick

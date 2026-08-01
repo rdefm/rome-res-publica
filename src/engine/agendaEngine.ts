@@ -358,25 +358,22 @@ function genComingOfAge(state: GameState): AgendaItem[] {
 }
 
 // ─── Generator 10 — Ambition expiring ────────────────────────────────────────
-// Note: getAmbitionDefinition from ambitionEngine is NOT imported here because
-// gameStore lazy-requires ambitionEngine to break a circular dependency.
-// We use the definitionId directly for the title — readable enough for the tablet.
+// Ambition rework — deadlineTurn replaces the old turnsRemaining countdown;
+// seasons remaining is derived from it against the current turn.
 
 function genAmbitionsExpiring(state: GameState): AgendaItem[] {
-  return (state.ambitions ?? [])
-    .filter(a =>
-      a.status === 'active' &&
-      typeof a.turnsRemaining === 'number' &&
-      a.turnsRemaining <= 2
-    )
-    .map(a => ({
-      id: `agenda-ambition-${a.definitionId}`,
+  return state.ambitions
+    .filter(a => a.status === 'active' && a.deadlineTurn !== undefined)
+    .map(a => ({ ambition: a, seasonsLeft: a.deadlineTurn! - state.turnNumber }))
+    .filter(({ seasonsLeft }) => seasonsLeft <= 2)
+    .map(({ ambition: a, seasonsLeft }) => ({
+      id: `agenda-ambition-${a.id}`,
       category: 'family' as const,
       severity: 'warning' as const,
-      title: `Ambition at risk: ${a.definitionId.replace(/-/g, ' ')}`,
-      detail: `${plural(a.turnsRemaining!, 'season')} left. Failure carries consequences.`,
+      title: `Ambition at risk: ${a.title}`,
+      detail: `${plural(Math.max(0, seasonsLeft), 'season')} left. Missing the deadline costs Dignitas.`,
       target: { tab: 'Domus' as const },
-      sortWeight: a.turnsRemaining! <= 1 ? 0 : 10,
+      sortWeight: seasonsLeft <= 1 ? 0 : 10,
     }));
 }
 
@@ -495,18 +492,6 @@ function genHousekeeping(state: GameState): AgendaItem[] {
       severity: 'info',
       title: 'Household matters await',
       detail: 'A birth to name.',
-      target: { tab: 'Domus' as const },
-      sortWeight: 10,
-    });
-  }
-
-  if ((state.pendingAmbitionScopes ?? []).length > 0) {
-    items.push({
-      id: 'agenda-housekeeping-ambition',
-      category: 'housekeeping' as const,
-      severity: 'info',
-      title: 'Household matters await',
-      detail: 'A new ambition to choose.',
       target: { tab: 'Domus' as const },
       sortWeight: 10,
     });

@@ -7,7 +7,9 @@ import type { Client, ClientType } from '../models/client';
 import type { EventInstance, EventChoice } from '../models/event';
 import type { OwnedAsset } from '../models/asset';
 import type { OwnedHouse, RoomType, BusinessType } from '../models/house';
-import type { ActiveAmbition } from '../models/ambition';
+import type { ActiveAmbition, AmbitionOffer } from '../models/ambition';
+import { buildAmbition, supersedeAmbition, applyAmbitionReward } from '../engine/ambitionEngine';
+import type { BuildAmbitionInput } from '../engine/ambitionEngine';
 import type { LegacyObjective } from '../models/legacyObjective';
 import type { PatronTier } from '../models/patronLadder';
 import type { TrialState, TrialApproach, ChargeId, ChargeSource } from '../models/trial';
@@ -373,7 +375,6 @@ export interface GameState {
   campaigningCharacterId: string | null;
   campaignVotes: Record<string, 'for' | 'against' | 'neutral'>;
   electionRivals: ElectionRival[];
-  pendingAmbitionScopes: ('family' | 'character')[];
 
   // Clientela Network
   clients: Client[];
@@ -388,8 +389,12 @@ export interface GameState {
   // INITIAL_STATE below) so the player is never "homeless."
   house: OwnedHouse;
 
-  // Ambitions (Feature 3)
+  // Ambitions (rework — spec: plans/ambition-system-rework/ambition-system-rework-spec.md)
   ambitions: ActiveAmbition[];
+  /** Staged AmbitionOffers reserving the family/character slot, awaiting an
+   *  accept/refuse decision. Populated for real by ticket 05's narrative
+   *  hooks (offerAmbition); this is the scaffold field only. */
+  pendingAmbitionOffers: { family?: AmbitionOffer; character?: AmbitionOffer };
 
   // Legacy Objectives (Feature 4)
   legacyObjectives: LegacyObjective[];
@@ -672,15 +677,15 @@ export interface GameState {
   /** True while the Agenda Tablet modal is open. */
   agendaVisible: boolean;
   /**
-   * Gates the Agenda Tablet (Ex Tabulis Philonis, auto-open + badge) and
-   * AmbitionSelectionModal. True for every start except guided, where both
-   * would otherwise surface within the first turn or two — before the
-   * player has any context for either — on top of Philon's own scripted
-   * beats. Set false at guided-start time (startGame), flipped true by
+   * Gates the Agenda Tablet (Ex Tabulis Philonis, auto-open + badge). True
+   * for every start except guided, where it would otherwise surface within
+   * the first turn or two — before the player has any context for it — on
+   * top of Philon's own scripted beats. Set false at guided-start time
+   * (startGame), flipped true by
    * courts.philon-handoff's onCompleteEffectId (the arc's actual last step)
    * once Philon explicitly hands off — and unconditionally by
    * skipTutorialArc/skipAllTutorials, so skipping never leaves a save
-   * permanently unable to reach either system.
+   * permanently unable to reach it.
    */
   philonAdvisoryUnlocked: boolean;
   /** Snapshot of the last completed season's resource/crisis/rome deltas. Displayed in SeasonOverlay and welcome-back recap (P1-D). */
@@ -694,6 +699,10 @@ export interface GameState {
   saveVersion?: number;
   /** One-shot deep-link request. Set by agenda item taps; consumed and cleared by the App.tsx navigator (P1-C). */
   uiNavRequest: AgendaTarget | null;
+  /** One-shot request to open the Agenda Tablet directly on its Ambitiones
+   *  leaf (ambition rework ticket 02) — same idiom as curiaSubTabRequest.
+   *  Consumed and cleared by AgendaTablet itself. */
+  agendaTabletLeafRequest: 'ambitiones' | null;
 
   // ── App lifecycle (previously untyped — formalised here) ──────────────────
   gameStarted: boolean;
@@ -837,11 +846,22 @@ export interface GameActions {
   // Cursus — family member campaigns
   declareFamilyCampaign: (characterId: string, officeId: OfficeId) => void;
 
-  // Ambitions
-  selectAmbition: (definitionId: string, scope: 'family' | 'character', assignedCharacterId?: string) => void;
-  dismissAmbitionSelection: () => void;
-  clearAmbitionScope: (scope: 'family' | 'character') => void;
-  requestAmbitionChange: (scope: 'family' | 'character') => void;
+  // Ambitions (rework — spec: plans/ambition-system-rework/ambition-system-rework-spec.md)
+  /** Builds and installs an ambition into its target slot (input.scope,
+   *  input.assignedCharacterId for 'character'). If the slot already holds
+   *  an active ambition, that occupant is superseded first (partial,
+   *  progress-scaled payout, no failureDignitas) — the same construction
+   *  path the player builder and later direct-write story/tutorial effect
+   *  strings (ticket 05) both call. */
+  setAmbition: (input: BuildAmbitionInput) => void;
+  /** Removes an active ambition from its slot — only when `refusable` is
+   *  true (always true for source 'player'; per-instance for 'story'/
+   *  'tutorial'). No reward, no penalty, no cooldown; the slot is free
+   *  immediately. */
+  abandonAmbition: (id: string) => void;
+  /** Opens the Agenda Tablet directly on the Ambitiones leaf (or null to
+   *  clear a consumed request) — same idiom as requestCuriaSubTab. */
+  requestAgendaTabletLeaf: (leaf: 'ambitiones' | null) => void;
 
   // Reputation
   adjustClanReputation: (clanId: string, delta: number, clanName: string) => void;
@@ -1367,7 +1387,6 @@ export const INITIAL_STATE: GameState = {
   campaigningCharacterId: null,
   campaignVotes: {},
   electionRivals: [],
-  pendingAmbitionScopes: ['family', 'character'],
 
   clients: [],
 
@@ -1383,6 +1402,7 @@ export const INITIAL_STATE: GameState = {
   },
   familyReputations: INITIAL_FAMILY_REPUTATIONS,
   ambitions: [],
+  pendingAmbitionOffers: {},
   legacyObjectives: initLegacyObjectives(),
   patronTier: 0,
   lifetimeDignitas: 0,
@@ -1480,6 +1500,7 @@ export const INITIAL_STATE: GameState = {
   lastSeasonLedger: null,
   lastActiveAt: Date.now(),
   uiNavRequest: null,
+  agendaTabletLeafRequest: null,
 
   gameStarted: false,
   debugMode: false,
@@ -2736,55 +2757,53 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     });
   },
 
-  // ─── Ambitions ──────────────────────────────────────────────────────────────
+  // ─── Ambitions (rework) ─────────────────────────────────────────────────────
+  // spec: plans/ambition-system-rework/ambition-system-rework-spec.md. Single
+  // construction path (buildAmbition) for both the player builder and later
+  // direct-write story/tutorial effect strings (ticket 05) — setAmbition
+  // itself doesn't care which called it.
 
-  selectAmbition: (definitionId, scope, assignedCharacterId) => {
+  setAmbition: (input) => {
     const s = get();
-    const { getAmbitionDefinition } = require('../engine/ambitionEngine');
-    const def = getAmbitionDefinition(definitionId);
-    if (!def) return;
-    const newAmbition = {
-      definitionId,
-      scope,
-      assignedCharacterId,
-      status: 'active' as const,
-      turnActivated: s.turnNumber,
-      turnsRemaining: def.expiresInTurns,
-    };
-    // Picking a new ambition for a scope (initial selection or a deliberate change from
-    // the Domus tab) always supersedes whatever's currently active there — dropped for
-    // free, with no reward or expiry consequence, since it's a choice, not a timeout.
-    const survivingAmbitions = s.ambitions.filter(a =>
-      !(a.status === 'active' && a.scope === scope &&
-        (scope !== 'character' || a.assignedCharacterId === assignedCharacterId))
+    const label = turnLabel(s);
+    const occupant = s.ambitions.find(a =>
+      a.status === 'active' && a.scope === input.scope &&
+      (input.scope !== 'character' || a.assignedCharacterId === input.assignedCharacterId)
     );
-    const newFamily = assignedCharacterId
-      ? s.family.map(c =>
-          c.id === assignedCharacterId
-            ? { ...c, ambitionIds: [...c.ambitionIds.filter(id => id !== definitionId), definitionId] }
-            : c
-        )
-      : s.family;
+
+    let ambitions = s.ambitions;
+    let resources = { denarii: s.denarii, fides: s.fides, lifetimeDignitas: s.lifetimeDignitas };
+    const logEntries: LogEntry[] = [];
+
+    if (occupant) {
+      const { ambition: supersededAmbition, partialReward } = supersedeAmbition(occupant, s);
+      ambitions = ambitions.map(a => (a.id === occupant.id ? supersededAmbition : a));
+      resources = applyAmbitionReward(resources, partialReward);
+      logEntries.push(mkLog(label, `Ambition superseded: "${occupant.title}". Partial reward paid.`, 'neutral'));
+    }
+
+    const newAmbition = buildAmbition(input, s);
+    ambitions = [...ambitions, newAmbition];
+    logEntries.push(mkLog(label, `Ambition set: "${newAmbition.title}".`, 'neutral'));
+
     set({
-      ambitions: [...survivingAmbitions, newAmbition],
-      family: newFamily,
-      pendingAmbitionScopes: s.pendingAmbitionScopes.filter(sc => sc !== scope),
+      ambitions,
+      ...resources,
+      log: [...s.log, ...logEntries],
     });
   },
 
-  dismissAmbitionSelection: () => set({ pendingAmbitionScopes: [] }),
+  abandonAmbition: (id) => {
+    const s = get();
+    const ambition = s.ambitions.find(a => a.id === id && a.status === 'active');
+    if (!ambition || !ambition.refusable) return;
+    set({
+      ambitions: s.ambitions.filter(a => a.id !== id),
+      log: [...s.log, mkLog(turnLabel(s), `Ambition abandoned: "${ambition.title}".`, 'neutral')],
+    });
+  },
 
-  clearAmbitionScope: (scope) => set((s) => ({
-    pendingAmbitionScopes: s.pendingAmbitionScopes.filter(sc => sc !== scope),
-  })),
-
-  // Opens the ambition picker for a scope on demand (e.g. tapping an ambition in the
-  // Domus character modal to change it), independent of the season-end auto-prompt.
-  requestAmbitionChange: (scope) => set((s) => ({
-    pendingAmbitionScopes: s.pendingAmbitionScopes.includes(scope)
-      ? s.pendingAmbitionScopes
-      : [...s.pendingAmbitionScopes, scope],
-  })),
+  requestAgendaTabletLeaf: (leaf) => set({ agendaTabletLeafRequest: leaf }),
 
   // ─── Clientela ──────────────────────────────────────────────────────────────
 

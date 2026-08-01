@@ -2,6 +2,7 @@ import { generateAgenda, getCriticalItems, getAgendaBadgeCount } from '../src/en
 import { SEVERITY_ORDER } from '../src/models/agenda';
 import { CORRUPTION_TRIAL_THRESHOLD } from '../src/engine/trialEngine';
 import type { GameState } from '../src/state/gameStore';
+import type { ActiveAmbition } from '../src/models/ambition';
 
 // ─── Minimal state factory ────────────────────────────────────────────────────
 // Only the fields that agendaEngine generators actually read.
@@ -49,7 +50,6 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
     flags: {},
     // Housekeeping
     pendingBirthNaming: null,
-    pendingAmbitionScopes: [],
     // Spread overrides last
     ...overrides,
   } as GameState;
@@ -94,6 +94,26 @@ function makePlayer(overrides: Record<string, unknown> = {}) {
     corruptionScore: 0,
     ...overrides,
   } as any;
+}
+
+// Ambition rework — minimal ActiveAmbition fixture (ticket 02's
+// genAmbitionsExpiring reads status/deadlineTurn/title only).
+function makeAmbition(overrides: Partial<ActiveAmbition> = {}): ActiveAmbition {
+  return {
+    id: 'amb-1',
+    scope: 'family',
+    source: 'player',
+    title: 'Hold 500 Denarii',
+    criterion: { id: 'resource_threshold', resource: 'denarii', amount: 500 },
+    baseline: { value: 100, turnNumber: 1 },
+    status: 'active',
+    turnSet: 1,
+    deadlineTurn: 5,
+    reward: { lifetimeDignitas: 20 },
+    failureDignitas: -6,
+    refusable: true,
+    ...overrides,
+  };
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -479,6 +499,36 @@ describe('generateAgenda', () => {
   test('#25 does not fire with no extortion active', () => {
     const state = makeState({ secrets: [] } as any);
     expect(generateAgenda(state).some(i => i.id === 'agenda-extortion-active')).toBe(false);
+  });
+
+  // Ambition rework, ticket 02 — genAmbitionsExpiring now derives seasons
+  // remaining from deadlineTurn (the old turnsRemaining countdown field no
+  // longer exists on ActiveAmbition).
+  test('active ambition within 2 seasons of its deadline is a warning', () => {
+    const state = makeState({
+      turnNumber: 3,
+      ambitions: [makeAmbition({ deadlineTurn: 5 })],
+    } as any);
+    const item = generateAgenda(state).find(i => i.id === 'agenda-ambition-amb-1');
+    expect(item).toBeDefined();
+    expect(item?.severity).toBe('warning');
+    expect(item?.title).toContain('Hold 500 Denarii');
+  });
+
+  test('ambition agenda item does not fire when the deadline is far away', () => {
+    const state = makeState({
+      turnNumber: 1,
+      ambitions: [makeAmbition({ deadlineTurn: 10 })],
+    } as any);
+    expect(generateAgenda(state).some(i => i.id === 'agenda-ambition-amb-1')).toBe(false);
+  });
+
+  test('a dynastic ambition (no deadlineTurn) never produces an expiring-agenda item', () => {
+    const state = makeState({
+      turnNumber: 3,
+      ambitions: [makeAmbition({ scope: 'dynastic', source: 'dynastic', deadlineTurn: undefined })],
+    } as any);
+    expect(generateAgenda(state).some(i => i.id === 'agenda-ambition-amb-1')).toBe(false);
   });
 
 });

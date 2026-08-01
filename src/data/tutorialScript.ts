@@ -888,9 +888,9 @@ const COURTS_STEPS: TutorialStep[] = [
   // on purpose: that step's "Philon's part in this ends here" closes the
   // courts drama specifically, not Philon's ongoing presence, and cramming
   // this practical note into the same caption made an already-long beat
-  // unwieldy. Firing philonAdvisoryUnlocked here (not earlier) means neither
-  // AmbitionSelectionModal nor the Agenda Tablet has been able to surface
-  // ANYTHING throughout the entire guided run until Philon says so himself —
+  // unwieldy. Firing philonAdvisoryUnlocked here (not earlier) means the
+  // Agenda Tablet has been unable to surface ANYTHING throughout the entire
+  // guided run until Philon says so himself —
   // see philonAdvisoryUnlocked's own doc comment on GameState. This is now
   // the arc's real last step (courtsCourtsArc.test.ts's "arc's last step
   // carries courtsSetCompleteFlag" moved onto it, not courts.closing).

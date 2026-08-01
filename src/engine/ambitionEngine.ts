@@ -401,6 +401,17 @@ export function buildAmbition(input: BuildAmbitionInput, state: GameState): Acti
   };
 }
 
+/** Progress toward an ambition's target, normalized 0..1 from its baseline —
+ *  the same current/target measurement getProgress uses for the tablet's
+ *  readout, expressed as a fraction. Shared by the Ambitiones leaf's
+ *  progress bar and supersedeAmbition's partial-payout scaling below, so
+ *  both read "how far along is this ambition" identically. */
+export function getProgressFraction(ambition: ActiveAmbition, state: GameState): number {
+  const { current, target } = getProgress(ambition, state);
+  const span = target - ambition.baseline.value;
+  return span === 0 ? 0 : clamp((current - ambition.baseline.value) / span, 0, 1);
+}
+
 // ─── Graceful early termination (spec §2.3 "superseded") ──────────────────
 
 /** Shared "ended early, not a failure" path — called both when a
@@ -413,9 +424,7 @@ export function supersedeAmbition(
   ambition: ActiveAmbition,
   state: GameState,
 ): { ambition: ActiveAmbition; partialReward: AmbitionReward } {
-  const { current, target } = getProgress(ambition, state);
-  const span = target - ambition.baseline.value;
-  const progressFraction = span === 0 ? 0 : clamp((current - ambition.baseline.value) / span, 0, 1);
+  const progressFraction = getProgressFraction(ambition, state);
 
   const partialReward: AmbitionReward = {};
   if (ambition.reward.lifetimeDignitas !== undefined) {
