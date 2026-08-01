@@ -236,15 +236,16 @@ describe('gens-neutrality sweep — spot checks on previously-hardcoded function
   test('tickSenateResponse\'s censure bill description reads state.gensPlural', () => {
     const state = {
       ...INITIAL_STATE, gensPlural: 'Duilii', turnNumber: 5,
-      senateResponse: { active: true, phase: null, debateSuppressed: false, ignoredLevies: 0 },
+      // seasonDetected: 4 → debateTurn (seasonDetected + 1) === turnNumber,
+      // so this actually lands in the null → debate branch that builds the bill.
+      senateResponse: { active: true, phase: null, seasonDetected: 4, debateSuppressed: false },
       consulAuthorityActive: false,
     } as any;
     const patch: any = tickSenateResponse(state, 'pc-1');
-    const bill = (patch.bills ?? []).find((b: any) => b?.type === 'censure');
-    if (bill) {
-      expect(bill.description).toContain('Duilii');
-      expect(bill.description).not.toContain('Brutii');
-    }
+    const bill = (patch.bills ?? []).find((b: any) => b?.id?.startsWith('senate-censura-'));
+    expect(bill).toBeDefined();
+    expect(bill.desc).toContain('Duilii');
+    expect(bill.desc).not.toContain('Brutii');
   });
 });
 

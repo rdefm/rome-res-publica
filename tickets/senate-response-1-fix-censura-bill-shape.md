@@ -1,5 +1,9 @@
 # Ticket: Censura bill doesn't match the real Bill model
 
+**STATUS: RESOLVED.** Implemented per the plan below — see "What actually
+shipped" at the bottom. Left in place per this repo's convention of keeping
+past plan docs rather than deleting them.
+
 **Depends on nothing. Ticket 2 (Fides income block) depends on this one.**
 
 ## Report
@@ -189,3 +193,38 @@ at the top of the test file if not already imported.
   titled/described bill in the Curia LEGES tab that can be voted on, spoken
   on, or filibustered like any other bill, and eventually passes or expires
   instead of sitting forever.
+
+## What actually shipped
+
+Implemented exactly as planned above, no deviations:
+
+- **`src/engine/senateResponseEngine.ts`** — added `import type { Bill }
+  from '../models/bill';`. Replaced the ad-hoc `as any` object with a real
+  `Bill` literal (`name`/`desc`/`type: 'constitutional'`/`support: 20`/
+  `turnsLeft: 3`/`passEffect: 'setFlag:fidesIncomeBlocked:true'`/
+  `failEffect: ''`), matching the plan's field choices and rationale
+  verbatim.
+- **`__tests__/p5e.test.ts`** — updated the existing censure-bill test to
+  find the bill by `id.startsWith('senate-censura-')` and assert on `desc`
+  instead of the old `type === 'censure'` / `description` lookup. Also had
+  to add `seasonDetected: 4` to the fixture's `senateResponse` (turnNumber
+  5, so `debateTurn = seasonDetected + 1 = 5` actually matches) — the
+  original fixture omitted `seasonDetected` entirely, which made
+  `debateTurn` resolve to `NaN` and meant the bill-building branch never
+  ran at all. The old test's `if (bill) { ... }` guard silently swallowed
+  that (an unconditional pass, asserting nothing) — worth calling out
+  explicitly since it's a second, independent instance of the same "test
+  never actually exercised the code" failure mode this ticket set out to
+  fix in the app code.
+- **`__tests__/militaryEngine.test.ts`** — added `import type { Bill } from
+  '../src/models/bill';` and a new test in the existing `tickSenateResponse
+  / capitulate` describe block asserting the generated bill has a truthy
+  `name`/`desc`, numeric `support`/`turnsLeft`, and the expected
+  `passEffect` string. Had to add `bills: []` to that test's state override
+  — `makeState`'s base fixture never included a `bills` field (no prior
+  test in this file exercised the `null → debate` branch, which is the only
+  branch that reads `state.bills`), so omitting it would have thrown
+  `undefined is not iterable` at `[...state.bills, censuraBill]`.
+- Verified: `npx tsc --noEmit` zero-error; `npm test` — 60/60 suites, 1478
+  tests (1476 passed, 2 pre-existing skips), including both the updated and
+  new tests above.

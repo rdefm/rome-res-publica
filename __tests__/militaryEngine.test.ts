@@ -20,6 +20,7 @@ import type { Army, ArmyUnit } from '../src/models/army';
 import type { Character } from '../src/models/character';
 import type { Clan } from '../src/models/clan';
 import type { GameState } from '../src/state/gameStore';
+import type { Bill } from '../src/models/bill';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -619,5 +620,21 @@ describe('tickSenateResponse / capitulate — Chunk C3 Army-sourced branch', () 
     const patch = capitulate(state as any, 'pc-1');
     expect((patch.family as Character[])[0].raisedLegions).toEqual([]);
     expect(patch.armies).toEqual(state.armies); // present but untouched
+  });
+
+  test('the debate-phase censure bill is a real Bill the Curia UI can render and resolve', () => {
+    const state = makeState({
+      senateResponse: { ...armySourcedResponse, phase: null, sourceArmyId: undefined },
+      turnNumber: 2, // seasonDetected(1) + 1 = debateTurn
+      bills: [],
+    });
+    const patch = tickSenateResponse(state as any, 'pc-1');
+    const bill = (patch.bills as Bill[])?.find(b => b.id.startsWith('senate-censura-'));
+    expect(bill).toBeDefined();
+    expect(bill!.name).toBeTruthy();
+    expect(bill!.desc).toBeTruthy();
+    expect(typeof bill!.support).toBe('number');
+    expect(typeof bill!.turnsLeft).toBe('number');
+    expect(bill!.passEffect).toBe('setFlag:fidesIncomeBlocked:true');
   });
 });
