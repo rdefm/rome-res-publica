@@ -20,6 +20,8 @@ import type { Army, ArmyUnit } from '../src/models/army';
 import type { Character } from '../src/models/character';
 import type { Clan } from '../src/models/clan';
 import type { GameState } from '../src/state/gameStore';
+import { INITIAL_STATE } from '../src/state/gameStore';
+import { processSeason } from '../src/engine/turnSequencer';
 import type { Bill } from '../src/models/bill';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -636,5 +638,63 @@ describe('tickSenateResponse / capitulate — Chunk C3 Army-sourced branch', () 
     expect(typeof bill!.support).toBe('number');
     expect(typeof bill!.turnsLeft).toBe('number');
     expect(bill!.passEffect).toBe('setFlag:fidesIncomeBlocked:true');
+  });
+});
+
+// tickets/senate-response-2-fides-income-block.md — the disband parity fix
+// lives in turnSequencer.ts's step 9f, not senateResponseEngine.ts, so this
+// needs a full processSeason() run rather than a direct tickSenateResponse()
+// call. Built off INITIAL_STATE (real STARTING_FAMILY, real crisis/rome
+// defaults) rather than this file's own minimal makeState() — the same
+// proven pattern __tests__/training.test.ts already uses for store-shaped
+// fixtures, since a hand-rolled minimal state isn't safe to run through the
+// full season pipeline (crisis/war/election processing all read fields
+// makeState() doesn't set).
+describe('senate response — disband parity fix (processSeason)', () => {
+  function makeFullState(overrides: Partial<GameState> = {}): GameState {
+    return { ...INITIAL_STATE, ...overrides } as GameState;
+  }
+
+  const basePersonalResponse: SenateResponseState = {
+    active: true, seasonDetected: INITIAL_STATE.turnNumber, phase: 'censure',
+    musterProvinceId: null, consularArmyStrength: 999, debateSuppressed: false,
+    consularArmyArrivesOnTurn: INITIAL_STATE.turnNumber + 10, sourceArmyId: undefined,
+  };
+
+  test('raisedLegions disbanded to zero auto-clears the response at season end', () => {
+    const family = INITIAL_STATE.family.map(c =>
+      c.isPlayer ? { ...c, raisedLegions: [], veterans: [{ id: 'v1' } as any] } : c
+    );
+    const state = makeFullState({ family, senateResponse: basePersonalResponse });
+    const { nextState } = processSeason(state);
+    expect((nextState as any).senateResponse).toBeNull();
+  });
+
+  test('raisedLegions still present keeps the response escalating normally', () => {
+    const family = INITIAL_STATE.family.map(c =>
+      c.isPlayer ? { ...c, raisedLegions: [{ id: 't1' } as any] } : c
+    );
+    const state = makeFullState({ family, senateResponse: basePersonalResponse });
+    const { nextState } = processSeason(state);
+    expect((nextState as any).senateResponse).not.toBeNull();
+  });
+
+  test('an Army-sourced response with an empty raisedLegions but a still-existing Army keeps escalating (new check does not misfire on it)', () => {
+    const family = INITIAL_STATE.family.map(c =>
+      c.isPlayer ? { ...c, raisedLegions: [] } : c
+    );
+    const army = {
+      id: 'army-1', name: 'Legio I', owner: 'player' as const, commanderId: null,
+      location: 'latium' as any, stationedCityId: null, units: [],
+      stance: 'give_battle' as const, ordersThisSeason: null, fatigued: false, unpaidSeasons: 0,
+    };
+    const armySourced: SenateResponseState = { ...basePersonalResponse, sourceArmyId: 'army-1' };
+    const state = makeFullState({ family, senateResponse: armySourced, armies: [army] });
+    const { nextState } = processSeason(state);
+    // The player's raisedLegions is empty, but this response is Army-sourced
+    // and the Army still exists — the new (raisedLegions-only) parity check
+    // must not clear it. It should keep escalating via the pre-existing
+    // Army-sourced machinery instead.
+    expect((nextState as any).senateResponse).not.toBeNull();
   });
 });

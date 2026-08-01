@@ -256,8 +256,17 @@ export function calcResourceIncome(state: GameState): {
   // is a no-op for every state that predates this chunk.
   const incomeMult = BALANCE.difficulty[state.difficulty ?? 'aequus'].incomeMult;
 
+  // tickets/senate-response-2-fides-income-block.md — the censura bill's
+  // passEffect (senateResponseEngine.ts) sets this flag via the generic
+  // setFlag: token when the Senate's censure motion passes. Only Fides is
+  // blocked, matching the bill's own "Fides income is suspended" text —
+  // Denarii/Plebs are untouched. Cleared by turnSequencer.ts's season-end
+  // Senate response tick once the triggering character's raisedLegions are
+  // empty (or immediately by capitulating/bribing the commission).
   return {
-    fidesIncome: Math.max(0, Math.round(fidesIncome * incomeMult)),
+    fidesIncome: state.flags?.['fidesIncomeBlocked']
+      ? 0
+      : Math.max(0, Math.round(fidesIncome * incomeMult)),
     denariiIncome: Math.round(denariiIncome * incomeMult),
     plebsDelta,
   };

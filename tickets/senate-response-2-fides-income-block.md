@@ -1,5 +1,9 @@
 # Ticket: Implement the Fides-income-blocked effect for real (+ disband parity fix)
 
+**STATUS: RESOLVED.** Implemented per the plan below — see "What actually
+shipped" at the bottom. Left in place per this repo's convention of keeping
+past plan docs rather than deleting them.
+
 **Depends on Ticket 1 (fix censura bill shape) being done first** — this
 ticket's flag is only ever set via that bill's `passEffect`, which only
 reaches the real resolution pipeline once Ticket 1 lands. If Ticket 1 isn't
@@ -200,3 +204,46 @@ new logic keys off `family.find(c => c.isPlayer)`.
   season ledger/SeasonOverlay while the flag is active. Disband all raised
   legions via the Military tab, end another season, confirm `senateResponse`
   clears and Fides income resumes.
+
+## What actually shipped
+
+Implemented per the plan above, with one deviation from the suggested test
+approach (noted below):
+
+- **`src/engine/resourceEngine.ts`** — `calcResourceIncome`'s final return
+  now zeroes `fidesIncome` when `state.flags?.['fidesIncomeBlocked']` is
+  set, exactly as planned. Denarii/Plebs untouched.
+- **`src/engine/turnSequencer.ts`** — added `type SenateResponseState` to
+  the existing `senateResponseEngine` import. Step 9f now checks
+  `compliedByDisbanding` (`!response.sourceArmyId && raisedLegions.length
+  === 0`) before calling `tickSenateResponse`; when true, clears
+  `senateResponse` to `null` and clears `flags.fidesIncomeBlocked` if set,
+  exactly as planned.
+- **`__tests__/engine.test.ts`** — added the two `fidesIncomeBlocked` tests
+  to the existing `calcResourceIncome` describe block, verbatim from the
+  plan (the file's `makeState` already accepted a `flags` override, no
+  changes needed there).
+- **`__tests__/militaryEngine.test.ts`** — deviated from the plan's
+  suggestion to reuse this file's own minimal `makeState`/`makeCharacter`
+  helpers for the `processSeason` tests. Those fixtures only set the
+  handful of fields the file's existing `tickSenateResponse`/`capitulate`
+  tests need directly — running the *full* `processSeason` pipeline against
+  them risked hitting undefined fields deep in crisis/war/election
+  processing that `calcResourceIncome` and friends read but `makeState`
+  never sets. Instead built the test state off `INITIAL_STATE` (real
+  `STARTING_FAMILY`, real crisis/rome defaults) the same way
+  `__tests__/training.test.ts` already does for store-shaped fixtures —
+  `{ ...INITIAL_STATE, family: [...], senateResponse: {...} }` — which is
+  the proven-safe pattern for feeding a hand-constructed state through the
+  real store/engine plumbing. Also corrected the plan's example, which read
+  `processSeason`'s return value directly; the real signature returns
+  `{ nextState, ... }` (confirmed against `p5e.test.ts`'s existing
+  `processSeason` caller), so the tests destructure `nextState`. Added
+  three tests instead of two: the plan's "disbanded to zero clears" and
+  "still present keeps escalating" cases, plus a third guarding that an
+  Army-sourced response with empty `raisedLegions` but a still-existing
+  Army is *not* mistakenly cleared by the new personal-levy-only check.
+- Verified: `npx tsc --noEmit` zero-error; `npm test` — 60/60 suites, 1483
+  tests (1481 passed, 2 pre-existing skips, up from 1478 in Ticket 1's
+  baseline — 5 new tests: 2 in `engine.test.ts`, 3 in
+  `militaryEngine.test.ts`).

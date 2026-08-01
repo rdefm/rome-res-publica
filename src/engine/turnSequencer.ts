@@ -61,7 +61,7 @@ import { computeHouseBonuses } from './houseEngine';
 import { tickAllCities } from './cityEngine';
 import { applyTroopAttrition, calcMilitaryImperium } from './troopEngine';
 import { processWarSeason, classifyTerminalOutcome, computeRipeness } from './warEngine';
-import { tickSenateResponse } from './senateResponseEngine';
+import { tickSenateResponse, type SenateResponseState } from './senateResponseEngine';
 import { calcAntagonismLevel, tickNpcConsul } from './npcConsulEngine';
 import {
   npcGatherTick,
@@ -1363,9 +1363,31 @@ export function processSeason(state: GameState): {
 
   // 9f. Senate response tick
   if ((s as any).senateResponse?.active) {
-    const playerCharacterId = s.family.find(c => c.isPlayer)?.id ?? 'pc-1';
-    const patch = tickSenateResponse(s as any, playerCharacterId);
-    s = { ...s, ...patch };
+    const response = (s as any).senateResponse as SenateResponseState;
+    const player = s.family.find(c => c.isPlayer);
+
+    // tickets/senate-response-2-fides-income-block.md — personal-levy path
+    // only; the Army-sourced path already self-clears in tickSenateResponse
+    // when its Army no longer exists (senateResponseEngine.ts's
+    // hostis/consular_army branch). Same "nothing left to prosecute" idea
+    // for the older raisedLegions-based levy: if the player has disbanded
+    // every illegal legion (whether via the dedicated Capitulate action or
+    // just the Military tab's per-unit Disband), there's nothing left to
+    // escalate against. Checked before tickSenateResponse runs so a
+    // same-season "reached zero" doesn't still advance one more phase.
+    const compliedByDisbanding = !response.sourceArmyId && (player?.raisedLegions.length ?? 0) === 0;
+
+    if (compliedByDisbanding) {
+      s = {
+        ...s,
+        senateResponse: null,
+        flags: s.flags['fidesIncomeBlocked'] ? { ...s.flags, fidesIncomeBlocked: false } : s.flags,
+      };
+    } else {
+      const playerCharacterId = player?.id ?? 'pc-1';
+      const patch = tickSenateResponse(s as any, playerCharacterId);
+      s = { ...s, ...patch };
+    }
   }
 
   // 9g. Resolve campaigns with completed officer volunteers
