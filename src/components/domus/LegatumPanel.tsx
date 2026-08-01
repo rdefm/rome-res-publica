@@ -53,7 +53,7 @@ function LegatumModal({
   visible: boolean;
   onClose: () => void;
 }) {
-  const { legacyObjectives } = useGameStore();
+  const legacyObjectives = useGameStore(s => s.legacyObjectives);
 
   return (
     <ScrollModal
@@ -300,7 +300,7 @@ const modal = StyleSheet.create({
 // ─── Condensed inline panel ───────────────────────────────────────────────────
 
 export default function LegatumPanel() {
-  const { legacyObjectives } = useGameStore();
+  const legacyObjectives = useGameStore(s => s.legacyObjectives);
   const [modalVisible, setModalVisible] = useState(false);
 
   return (
