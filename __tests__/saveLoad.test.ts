@@ -260,11 +260,15 @@ describe('Ambition save schema + migration', () => {
     expect(() => SaveSchema.parse(withOldAmbitions)).not.toThrow();
   });
 
+  function roundTrip(state: unknown) {
+    return JSON.parse(JSON.stringify(state));
+  }
+
   test('loadGame round-trips a fresh-shape save keeping its ambitions intact', () => {
     useGameStore.getState().startGame('standard');
     const base = useGameStore.getState();
     const stateWithAmbitions = { ...base, ambitions: [freshAmbition] };
-    const roundTripped = JSON.parse(JSON.stringify(stateWithAmbitions));
+    const roundTripped = roundTrip(stateWithAmbitions);
     expect(() => SaveSchema.parse(roundTripped)).not.toThrow();
     expect(() => useGameStore.getState().loadGame(roundTripped)).not.toThrow();
     expect(useGameStore.getState().ambitions).toEqual([freshAmbition]);
@@ -274,7 +278,7 @@ describe('Ambition save schema + migration', () => {
     useGameStore.getState().startGame('standard');
     const base = useGameStore.getState();
     const stateWithOldAmbitions = { ...base, ambitions: [oldShapeAmbition] };
-    const roundTripped = JSON.parse(JSON.stringify(stateWithOldAmbitions));
+    const roundTripped = roundTrip(stateWithOldAmbitions);
     expect(() => SaveSchema.parse(roundTripped)).not.toThrow();
     expect(() => useGameStore.getState().loadGame(roundTripped)).not.toThrow();
     expect(useGameStore.getState().ambitions).toEqual([]);
@@ -284,7 +288,7 @@ describe('Ambition save schema + migration', () => {
     useGameStore.getState().startGame('standard');
     const base = useGameStore.getState() as any;
     const { ambitions: _omitted, pendingAmbitionOffers: _omitted2, ...preReworkState } = base;
-    const roundTripped = JSON.parse(JSON.stringify(preReworkState));
+    const roundTripped = roundTrip(preReworkState);
     expect(() => SaveSchema.parse(roundTripped)).not.toThrow();
     expect(() => useGameStore.getState().loadGame(roundTripped)).not.toThrow();
     expect(useGameStore.getState().ambitions).toEqual([]);

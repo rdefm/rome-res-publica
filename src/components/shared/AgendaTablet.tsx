@@ -105,6 +105,8 @@ function AmbitionSlotCard({
   onAccept: (offerId: string) => void;
   onRefuse: (offerId: string) => void;
 }) {
+  const slotLabel = <InfoTap termId="ambition"><Text style={styles.slotLabel}>{icon} {label}</Text></InfoTap>;
+
   if (offer) {
     // Offer-pending state (ticket 05's offer-then-accept narrative hook) —
     // criterion/title plus working Accept/Refuse actions. Accepting snapshots
@@ -113,7 +115,7 @@ function AmbitionSlotCard({
     // deliberately not a preview, since nothing is priced until commitment.
     return (
       <View style={styles.slotCard}>
-        <InfoTap termId="ambition"><Text style={styles.slotLabel}>{icon} {label}</Text></InfoTap>
+        {slotLabel}
         <Text style={styles.slotTitle}>{offer.title}</Text>
         <InfoTap termId="ambition-offer">
           <Text style={styles.slotMuted}>A pending offer — awaiting your decision.</Text>
@@ -133,7 +135,7 @@ function AmbitionSlotCard({
   if (!ambition) {
     return (
       <View style={styles.slotCard}>
-        <InfoTap termId="ambition"><Text style={styles.slotLabel}>{icon} {label}</Text></InfoTap>
+        {slotLabel}
         <TouchableOpacity style={styles.setBtn} onPress={onSet} activeOpacity={0.75}>
           <Text style={styles.setBtnText}>Set an ambition ›</Text>
         </TouchableOpacity>
@@ -147,7 +149,7 @@ function AmbitionSlotCard({
 
   return (
     <View style={styles.slotCard}>
-      <InfoTap termId="ambition"><Text style={styles.slotLabel}>{icon} {label}</Text></InfoTap>
+      {slotLabel}
       <Text style={styles.slotTitle}>{ambition.title}</Text>
       <ProgressBar fraction={fraction} />
       <View style={styles.slotMetaRow}>

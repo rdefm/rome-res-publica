@@ -1648,8 +1648,13 @@ function backfillLegacyObjectives(objectives: GameState['legacyObjectives']): Ga
  * silently on load instead, matching the trialQueue -> trials migration
  * precedent (saveLoad.ts's SaveSchema.ambitions entry lets both shapes
  * through parse() unrejected; this is what actually enforces the new shape).
+ *
+ * Deliberately shallow: it only needs to tell old shape from new shape, not
+ * fully validate the new one (SaveSchema's ActiveAmbitionSchema already did
+ * the strict per-field validation at the parse layer before this ever runs).
+ * Named for that — don't read this as a general ActiveAmbition validator.
  */
-function isActiveAmbitionShape(a: any): a is ActiveAmbition {
+function isPostReworkAmbitionShape(a: any): a is ActiveAmbition {
   return !!a && typeof a === 'object'
     && typeof a.criterion === 'object' && a.criterion !== null
     && typeof a.baseline === 'object' && a.baseline !== null
@@ -4064,12 +4069,12 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     cadetBranch: savedState.cadetBranch ?? generateCadet((savedState as any).gensName ?? 'Brutia'),
     // Phase 4, Chunk P4-F — see backfillLegacyObjectives's doc comment.
     legacyObjectives: backfillLegacyObjectives(savedState.legacyObjectives),
-    // Ambition system rework, ticket 06 — see isActiveAmbitionShape's doc
+    // Ambition system rework, ticket 06 — see isPostReworkAmbitionShape's doc
     // comment. A missing key (pre-rework save) reads as [] the same as an
     // empty array of old-shape entries; `pendingAmbitionOffers` needs no
     // matching migration since it never existed pre-rework, so a missing key
     // is a total-miss backfilled by the top-level INITIAL_STATE spread above.
-    ambitions: (savedState.ambitions ?? []).filter(isActiveAmbitionShape),
+    ambitions: (savedState.ambitions ?? []).filter(isPostReworkAmbitionShape),
     // Phase 4, Chunk P4-G — a save written before the Claudius arc existed
     // has no secret-claudius-arc entry at all; inject it now so an
     // in-progress pre-P4-G run still gets the arc (design invariant 9).
