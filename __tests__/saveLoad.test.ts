@@ -196,3 +196,98 @@ describe('Provincial client save-corruption fix', () => {
     expect(useGameStore.getState().clients).toHaveLength(1);
   });
 });
+
+// ─── Ambition system rework, ticket 06 — save schema + migration ───────────
+// `ambitions` was never in SaveSchema before this ticket (verified by grep,
+// plan §0.6) — nothing validated it, it just round-tripped raw. This closes
+// that gap for the new ActiveAmbition/AmbitionOffer shape while still
+// letting a pre-rework save (old definitionId/turnActivated shape, deleted
+// ticket 01) load cleanly, with its unconvertable ambitions dropped silently
+// by gameStore.loadGame rather than the whole save being rejected.
+
+describe('Ambition save schema + migration', () => {
+  const freshAmbition = {
+    id: 'amb-1',
+    scope: 'family',
+    source: 'player',
+    title: 'Hold 500 Denarii',
+    criterion: { id: 'resource_threshold', resource: 'denarii', amount: 500 },
+    baseline: { value: 200, turnNumber: 3 },
+    status: 'active',
+    turnSet: 3,
+    deadlineTurn: 7,
+    reward: { lifetimeDignitas: 4, fides: 2 },
+    failureDignitas: -2,
+    refusable: true,
+  };
+
+  const oldShapeAmbition = {
+    definitionId: 'grand_estate',
+    scope: 'family',
+    status: 'active',
+    turnActivated: 2,
+    turnsRemaining: 6,
+  };
+
+  test('SaveSchema accepts a fresh-shape ambitions array and pendingAmbitionOffers', () => {
+    const withFreshAmbitions = {
+      year: -264, turnNumber: 3, seasonIndex: 0,
+      fides: 30, denarii: 200, crisisLevel: 0,
+      family: [{ id: 'pc-1', name: 'Marcus' }],
+      bills: [], clans: [],
+      lifetimeDignitas: 0,
+      ambitions: [freshAmbition],
+      pendingAmbitionOffers: {
+        character: {
+          id: 'offer-1', scope: 'character', title: 'Win the Consulship',
+          criterion: { id: 'office_held', officeId: 'consul' },
+          deadlineSeasons: 8, turnOffered: 3,
+        },
+      },
+    };
+    expect(() => SaveSchema.parse(withFreshAmbitions)).not.toThrow();
+  });
+
+  test('SaveSchema does not reject a save whose ambitions carry the pre-rework shape', () => {
+    const withOldAmbitions = {
+      year: -264, turnNumber: 3, seasonIndex: 0,
+      fides: 30, denarii: 200, crisisLevel: 0,
+      family: [{ id: 'pc-1', name: 'Marcus' }],
+      bills: [], clans: [],
+      lifetimeDignitas: 0,
+      ambitions: [oldShapeAmbition],
+    };
+    expect(() => SaveSchema.parse(withOldAmbitions)).not.toThrow();
+  });
+
+  test('loadGame round-trips a fresh-shape save keeping its ambitions intact', () => {
+    useGameStore.getState().startGame('standard');
+    const base = useGameStore.getState();
+    const stateWithAmbitions = { ...base, ambitions: [freshAmbition] };
+    const roundTripped = JSON.parse(JSON.stringify(stateWithAmbitions));
+    expect(() => SaveSchema.parse(roundTripped)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(roundTripped)).not.toThrow();
+    expect(useGameStore.getState().ambitions).toEqual([freshAmbition]);
+  });
+
+  test('loadGame silently drops pre-rework-shape ambitions, leaving the slot empty', () => {
+    useGameStore.getState().startGame('standard');
+    const base = useGameStore.getState();
+    const stateWithOldAmbitions = { ...base, ambitions: [oldShapeAmbition] };
+    const roundTripped = JSON.parse(JSON.stringify(stateWithOldAmbitions));
+    expect(() => SaveSchema.parse(roundTripped)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(roundTripped)).not.toThrow();
+    expect(useGameStore.getState().ambitions).toEqual([]);
+  });
+
+  test('a save from immediately before the rework (no ambitions key at all) still loads', () => {
+    useGameStore.getState().startGame('standard');
+    const base = useGameStore.getState() as any;
+    const { ambitions: _omitted, pendingAmbitionOffers: _omitted2, ...preReworkState } = base;
+    const roundTripped = JSON.parse(JSON.stringify(preReworkState));
+    expect(() => SaveSchema.parse(roundTripped)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(roundTripped)).not.toThrow();
+    expect(useGameStore.getState().ambitions).toEqual([]);
+    expect(useGameStore.getState().pendingAmbitionOffers).toEqual({});
+  });
+});

@@ -7,6 +7,63 @@ import type { GameState } from './gameStore';
 
 const SAVE_KEY = 'rome_save_v1';
 
+// ─── Ambition rework, ticket 06 — shared sub-schemas ────────────────────────
+// Mirrors models/ambition.ts's AmbitionCriterion/ActiveAmbition/AmbitionOffer
+// exactly (keep in sync by hand — same convention as the rest of this file's
+// hand-maintained shapes, e.g. `clients.type`'s enum).
+
+const AmbitionCriterionSchema = z.object({
+  id: z.enum([
+    'resource_threshold', 'office_held', 'clan_standing', 'asset_tier',
+    'client_count', 'battles_won', 'region_control', 'survive_seasons', 'trial_won',
+  ]),
+  resource: z.enum(['denarii', 'fides']).optional(),
+  officeId: z.string().optional(),
+  clanId: z.string().optional(),
+  assetId: z.string().optional(),
+  regionId: z.string().optional(),
+  amount: z.number().optional(),
+});
+
+const AmbitionRewardSchema = z.object({
+  lifetimeDignitas: z.number().optional(),
+  fides: z.number().optional(),
+  denarii: z.number().optional(),
+  traitId: z.string().optional(),
+  assetId: z.string().optional(),
+});
+
+const ActiveAmbitionSchema = z.object({
+  id: z.string(),
+  scope: z.enum(['family', 'character', 'dynastic']),
+  source: z.enum(['player', 'story', 'tutorial', 'dynastic']),
+  title: z.string(),
+  criterion: AmbitionCriterionSchema,
+  baseline: z.object({ value: z.number(), turnNumber: z.number() }),
+  assignedCharacterId: z.string().optional(),
+  status: z.enum(['active', 'completed', 'failed', 'superseded']),
+  turnSet: z.number(),
+  deadlineTurn: z.number().optional(),
+  turnResolved: z.number().optional(),
+  reward: AmbitionRewardSchema,
+  failureDignitas: z.number(),
+  refusable: z.boolean(),
+  onCompleteEventId: z.string().optional(),
+  onFailEventId: z.string().optional(),
+});
+
+const AmbitionOfferSchema = z.object({
+  id: z.string(),
+  scope: z.enum(['family', 'character', 'dynastic']),
+  assignedCharacterId: z.string().optional(),
+  title: z.string(),
+  criterion: AmbitionCriterionSchema,
+  deadlineSeasons: z.number().optional(),
+  onCompleteEventId: z.string().optional(),
+  onFailEventId: z.string().optional(),
+  turnOffered: z.number(),
+});
+
 // Phase 5, Chunk P5-I — saveVersion tracks which phase's shape a save was
 // last WRITTEN against (1-5, matching the phase-plan sequence: pre-P3 saves
 // predate this field entirely and read as `undefined`, not 1 — there was no
@@ -79,6 +136,26 @@ export const SaveSchema = z.object({
     currentValue: z.number(),
     milestonesReached: z.array(z.number()),
   })).default([]),
+  // Ambition system rework, ticket 06 — closes the gap flagged since ticket 01
+  // (SITEMAP.md's ambitionEngine.ts entry): `ambitions` was never in this
+  // schema, so nothing validated it. Each element is checked against the
+  // real ActiveAmbition shape OR passed through as a loose object — a
+  // pre-rework save's ambitions carry the deleted old shape (`definitionId`/
+  // `turnActivated`, no `criterion`/`baseline` to price a reward against),
+  // and rejecting that shape here would throw SaveSchema.parse() for the
+  // WHOLE save, not just this field. The loose fallback keeps parse() from
+  // treating an old save as corrupted; gameStore.loadGame's ambitions
+  // migration is what actually drops any entry that isn't real
+  // ActiveAmbition shape (mirrors the trialQueue -> trials precedent above —
+  // silent, no player-facing notice).
+  ambitions: z.array(z.union([ActiveAmbitionSchema, z.record(z.string(), z.any())])).default([]),
+  // Staged AmbitionOffers (ticket 05's offer-then-accept narrative hook) —
+  // didn't exist before this rework, so .default({}) alone covers every
+  // pre-rework save; no legacy shape to reconcile, unlike ambitions above.
+  pendingAmbitionOffers: z.object({
+    family: AmbitionOfferSchema.optional(),
+    character: AmbitionOfferSchema.optional(),
+  }).default({}),
   // Legacy shape (pre-P4-C saves) — kept optional so old saves still
   // validate; gameStore.loadGame migrates any entries here into `trials`
   // (mirrors the wars/P3-A per-element migration pattern).

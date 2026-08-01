@@ -1640,6 +1640,23 @@ function backfillLegacyObjectives(objectives: GameState['legacyObjectives']): Ga
 }
 
 /**
+ * Ambition system rework, ticket 06 — a save written before the rework has
+ * `ambitions` entries in the deleted old shape (`definitionId`/
+ * `turnActivated`, models/ambition.ts pre-ticket-01). They reference deleted
+ * definition ids and were never baseline-snapshotted, so there's no
+ * meaningful way to convert them into the new ActiveAmbition shape — dropped
+ * silently on load instead, matching the trialQueue -> trials migration
+ * precedent (saveLoad.ts's SaveSchema.ambitions entry lets both shapes
+ * through parse() unrejected; this is what actually enforces the new shape).
+ */
+function isActiveAmbitionShape(a: any): a is ActiveAmbition {
+  return !!a && typeof a === 'object'
+    && typeof a.criterion === 'object' && a.criterion !== null
+    && typeof a.baseline === 'object' && a.baseline !== null
+    && typeof a.reward === 'object' && a.reward !== null;
+}
+
+/**
  * Phase 4, Chunk P4-E — shared by answerTrialBeat (last beat) and
  * fastResolveTrialSession: once a trial's session has no more beats to
  * answer, compute the deterministic verdict + apply every consequence via
@@ -4047,6 +4064,12 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     cadetBranch: savedState.cadetBranch ?? generateCadet((savedState as any).gensName ?? 'Brutia'),
     // Phase 4, Chunk P4-F — see backfillLegacyObjectives's doc comment.
     legacyObjectives: backfillLegacyObjectives(savedState.legacyObjectives),
+    // Ambition system rework, ticket 06 — see isActiveAmbitionShape's doc
+    // comment. A missing key (pre-rework save) reads as [] the same as an
+    // empty array of old-shape entries; `pendingAmbitionOffers` needs no
+    // matching migration since it never existed pre-rework, so a missing key
+    // is a total-miss backfilled by the top-level INITIAL_STATE spread above.
+    ambitions: (savedState.ambitions ?? []).filter(isActiveAmbitionShape),
     // Phase 4, Chunk P4-G — a save written before the Claudius arc existed
     // has no secret-claudius-arc entry at all; inject it now so an
     // in-progress pre-P4-G run still gets the arc (design invariant 9).

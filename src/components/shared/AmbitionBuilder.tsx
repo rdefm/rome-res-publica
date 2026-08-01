@@ -31,6 +31,7 @@ import { ASSET_DEFINITIONS } from '../../data/assetDefinitions';
 import { REGIONS } from '../../data/theatreMap';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import ScrollModal, { PARCHMENT } from './ScrollModal';
+import InfoTap from './InfoTap';
 
 interface Props {
   visible: boolean;
@@ -165,7 +166,7 @@ export default function AmbitionBuilder({ visible, scope, onClose }: Props) {
       subtitle="Choose a goal, set your own target, and see the reward before you commit."
       animationType="fade"
     >
-      <Text style={styles.sectionLabel}>CRITERION</Text>
+      <InfoTap termId="ambition"><Text style={styles.sectionLabel}>CRITERION</Text></InfoTap>
       <View style={styles.criterionGrid}>
         {CRITERION_OPTIONS.map(opt => (
           <TouchableOpacity
@@ -289,7 +290,7 @@ export default function AmbitionBuilder({ visible, scope, onClose }: Props) {
           own amount above IS its deadline (no separate control needed). */}
       {criterionId !== 'survive_seasons' && (
         <>
-          <Text style={styles.sectionLabel}>DEADLINE</Text>
+          <InfoTap termId="ambition-deadline"><Text style={styles.sectionLabel}>DEADLINE</Text></InfoTap>
           {criterionId === 'office_held' ? (
             <View style={styles.choiceRow}>
               {nextEligibleElectionTurns(officeId, state).map(turn => (
@@ -307,7 +308,7 @@ export default function AmbitionBuilder({ visible, scope, onClose }: Props) {
         </>
       )}
 
-      <Text style={styles.sectionLabel}>READOUT</Text>
+      <InfoTap termId="ambition-difficulty"><Text style={styles.sectionLabel}>READOUT</Text></InfoTap>
       <View style={styles.readout}>
         {preview ? (
           <>

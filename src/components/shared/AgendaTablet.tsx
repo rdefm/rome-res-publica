@@ -25,6 +25,7 @@ import type { ActiveAmbition, AmbitionOffer, AmbitionScope } from '../../models/
 import type { AgendaItem, AgendaSeverity } from '../../models/agenda';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import AmbitionBuilder from './AmbitionBuilder';
+import InfoTap from './InfoTap';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -112,9 +113,11 @@ function AmbitionSlotCard({
     // deliberately not a preview, since nothing is priced until commitment.
     return (
       <View style={styles.slotCard}>
-        <Text style={styles.slotLabel}>{icon} {label}</Text>
+        <InfoTap termId="ambition"><Text style={styles.slotLabel}>{icon} {label}</Text></InfoTap>
         <Text style={styles.slotTitle}>{offer.title}</Text>
-        <Text style={styles.slotMuted}>A pending offer — awaiting your decision.</Text>
+        <InfoTap termId="ambition-offer">
+          <Text style={styles.slotMuted}>A pending offer — awaiting your decision.</Text>
+        </InfoTap>
         <View style={styles.offerActionsRow}>
           <TouchableOpacity style={styles.setBtn} onPress={() => onAccept(offer.id)} activeOpacity={0.75}>
             <Text style={styles.setBtnText}>Accept</Text>
@@ -130,7 +133,7 @@ function AmbitionSlotCard({
   if (!ambition) {
     return (
       <View style={styles.slotCard}>
-        <Text style={styles.slotLabel}>{icon} {label}</Text>
+        <InfoTap termId="ambition"><Text style={styles.slotLabel}>{icon} {label}</Text></InfoTap>
         <TouchableOpacity style={styles.setBtn} onPress={onSet} activeOpacity={0.75}>
           <Text style={styles.setBtnText}>Set an ambition ›</Text>
         </TouchableOpacity>
@@ -144,13 +147,15 @@ function AmbitionSlotCard({
 
   return (
     <View style={styles.slotCard}>
-      <Text style={styles.slotLabel}>{icon} {label}</Text>
+      <InfoTap termId="ambition"><Text style={styles.slotLabel}>{icon} {label}</Text></InfoTap>
       <Text style={styles.slotTitle}>{ambition.title}</Text>
       <ProgressBar fraction={fraction} />
       <View style={styles.slotMetaRow}>
         <Text style={styles.slotMuted}>{Math.round(current)} / {Math.round(target)} {progressLabel}</Text>
         {seasonsRemaining !== undefined && (
-          <Text style={styles.slotMuted}>{seasonsRemaining} {seasonsRemaining === 1 ? 'season' : 'seasons'} left</Text>
+          <InfoTap termId="ambition-deadline">
+            <Text style={styles.slotMuted}>{seasonsRemaining} {seasonsRemaining === 1 ? 'season' : 'seasons'} left</Text>
+          </InfoTap>
         )}
       </View>
       {ambition.refusable && (
@@ -225,7 +230,7 @@ function AmbitionesLeaf({ onOpenBuilder }: { onOpenBuilder: (scope: AmbitionScop
         onAccept={acceptStoryAmbition}
         onRefuse={refuseStoryAmbition}
       />
-      <Text style={styles.dynasticHeading}>DYNASTIC LEGACY</Text>
+      <InfoTap termId="dynastic-ambition"><Text style={styles.dynasticHeading}>DYNASTIC LEGACY</Text></InfoTap>
       {dynastic.map(d => <DynasticRow key={d.id} ambition={d} state={state} />)}
     </ScrollView>
   );
