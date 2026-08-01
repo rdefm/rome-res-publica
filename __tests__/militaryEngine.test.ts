@@ -13,6 +13,7 @@ import {
   calcConsularArmyArrivalTurn,
   tickSenateResponse,
   capitulate,
+  bribeCommission,
   type SenateResponseState,
 } from '../src/engine/senateResponseEngine';
 import type { TroopUnit } from '../src/models/troop';
@@ -20,7 +21,7 @@ import type { Army, ArmyUnit } from '../src/models/army';
 import type { Character } from '../src/models/character';
 import type { Clan } from '../src/models/clan';
 import type { GameState } from '../src/state/gameStore';
-import { INITIAL_STATE } from '../src/state/gameStore';
+import { INITIAL_STATE, useGameStore } from '../src/state/gameStore';
 import { processSeason } from '../src/engine/turnSequencer';
 import type { Bill } from '../src/models/bill';
 
@@ -624,6 +625,28 @@ describe('tickSenateResponse / capitulate — Chunk C3 Army-sourced branch', () 
     expect(patch.armies).toEqual(state.armies); // present but untouched
   });
 
+  // tickets/senate-response-3-bribe-commission-ui.md — bribeCommission was
+  // fully implemented but had zero test coverage before this ticket.
+  test('bribeCommission clears the response for 50 Denarii during censure phase', () => {
+    const state = makeState({
+      senateResponse: { ...armySourcedResponse, phase: 'censure' },
+      denarii: 100,
+    } as any);
+    const patch = bribeCommission(state as any);
+    expect((patch.senateResponse as SenateResponseState).active).toBe(false);
+    expect(patch.denarii).toBe(50);
+  });
+
+  test('bribeCommission no-ops outside censure phase', () => {
+    const state = makeState({ senateResponse: { ...armySourcedResponse, phase: 'hostis' }, denarii: 100 } as any);
+    expect(bribeCommission(state as any)).toEqual({});
+  });
+
+  test('bribeCommission no-ops without enough denarii', () => {
+    const state = makeState({ senateResponse: { ...armySourcedResponse, phase: 'censure' }, denarii: 10 } as any);
+    expect(bribeCommission(state as any)).toEqual({});
+  });
+
   test('the debate-phase censure bill is a real Bill the Curia UI can render and resolve', () => {
     const state = makeState({
       senateResponse: { ...armySourcedResponse, phase: null, sourceArmyId: undefined },
@@ -696,5 +719,67 @@ describe('senate response — disband parity fix (processSeason)', () => {
     // must not clear it. It should keep escalating via the pre-existing
     // Army-sourced machinery instead.
     expect((nextState as any).senateResponse).not.toBeNull();
+  });
+});
+
+// tickets/senate-response-3-bribe-commission-ui.md /
+// tickets/senate-response-4-capitulate-ui.md — the gameStore wrapper
+// actions, exercised against the real store (bribeCommission/capitulate
+// themselves are already covered directly, against the pure engine
+// functions, in the describe block above). Follows the resetStore-via-
+// INITIAL_STATE pattern __tests__/training.test.ts already uses for
+// store-action tests.
+describe('bribeSenateCommission / capitulateToSenate store actions', () => {
+  function resetStore(overrides: Partial<ReturnType<typeof useGameStore.getState>> = {}) {
+    useGameStore.setState({ ...INITIAL_STATE, log: [], ...overrides } as any);
+  }
+
+  const activeResponse: SenateResponseState = {
+    active: true, seasonDetected: 1, phase: 'censure', musterProvinceId: null,
+    consularArmyStrength: 999, debateSuppressed: false, consularArmyArrivesOnTurn: 20,
+    sourceArmyId: undefined,
+  };
+
+  test('bribeSenateCommission spends 50 Denarii and deactivates the response', () => {
+    resetStore({ senateResponse: activeResponse, denarii: 100 });
+    useGameStore.getState().bribeSenateCommission();
+    const after = useGameStore.getState();
+    expect(after.senateResponse?.active).toBe(false);
+    expect(after.denarii).toBe(50);
+    expect(after.log.length).toBe(1);
+  });
+
+  test('bribeSenateCommission is a no-op with insufficient Denarii', () => {
+    resetStore({ senateResponse: activeResponse, denarii: 10 });
+    useGameStore.getState().bribeSenateCommission();
+    const after = useGameStore.getState();
+    expect(after.senateResponse?.active).toBe(true);
+    expect(after.denarii).toBe(10);
+    expect(after.log.length).toBe(0);
+  });
+
+  test('capitulateToSenate clears the response, disbands raisedLegions, applies the Dignitas penalty, and clears an active Fides block', () => {
+    const family = INITIAL_STATE.family.map(c =>
+      c.isPlayer ? { ...c, raisedLegions: [{ id: 't1' } as any] } : c
+    );
+    resetStore({
+      family, senateResponse: activeResponse, lifetimeDignitas: 20,
+      flags: { fidesIncomeBlocked: true },
+    });
+    useGameStore.getState().capitulateToSenate();
+    const after = useGameStore.getState();
+    expect(after.senateResponse).toBeNull();
+    expect(after.family.find(c => c.isPlayer)?.raisedLegions).toEqual([]);
+    expect(after.lifetimeDignitas).toBe(5);
+    expect(after.flags['fidesIncomeBlocked']).toBe(false);
+    expect(after.log.length).toBe(1);
+  });
+
+  test('capitulateToSenate is a no-op with no active response', () => {
+    resetStore({ senateResponse: null, denarii: 100, lifetimeDignitas: 20 });
+    useGameStore.getState().capitulateToSenate();
+    const after = useGameStore.getState();
+    expect(after.lifetimeDignitas).toBe(20);
+    expect(after.log.length).toBe(0);
   });
 });

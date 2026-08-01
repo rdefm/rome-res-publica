@@ -109,6 +109,9 @@ export default function MilitaryTab({
         />
       )}
 
+      {/* ── Senate Response (unsanctioned levy) ─────────────────────────────── */}
+      <SenateResponseBanner province={province} />
+
       {/* ── Revolt Warning ────────────────────────────────────────────────── */}
       {province.revoltActive && !campaign && (
         <View style={styles.revoltBanner}>
@@ -247,6 +250,89 @@ export default function MilitaryTab({
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+// tickets/senate-response-3-bribe-commission-ui.md /
+// tickets/senate-response-4-capitulate-ui.md — the only UI surface for an
+// active Senate Response (unsanctioned levy). Shown in the muster
+// province's Military tab, independent of the censura bill's own lifespan
+// in the Curia LEGES tab (that bill resolves/expires after a few seasons;
+// this banner has to keep working through hostis/consular_army, long after
+// the bill is gone). Bribe the Commission is gated to the 'censure' phase
+// (matches bribeCommission()'s own gate); Capitulate is available in any
+// active phase (matches capitulate()'s own — no phase gate).
+function SenateResponseBanner({ province }: { province: CityState }) {
+  const senateResponse = useGameStore(s => s.senateResponse);
+  const denarii = useGameStore(s => s.denarii);
+  const bribeSenateCommission = useGameStore(s => s.bribeSenateCommission);
+  const capitulateToSenate = useGameStore(s => s.capitulateToSenate);
+  const [showCapitulateConfirm, setShowCapitulateConfirm] = useState(false);
+
+  if (!senateResponse?.active) return null;
+  if (senateResponse.musterProvinceId !== province.id) return null;
+
+  const PHASE_COPY: Record<string, { title: string; desc: string }> = {
+    debate: {
+      title: 'The Senate is debating your legions',
+      desc: 'A censure motion is before the Curia — check the LEGES tab to vote, speak, or filibuster it.',
+    },
+    censure: {
+      title: 'The Senate has censured your family',
+      desc: 'The matter can still be made to quietly disappear — for a price.',
+    },
+    hostis: {
+      title: 'You have been declared hostis',
+      desc: 'A treason trial is underway in the Courts. A consular army is being prepared.',
+    },
+    consular_army: {
+      title: 'A consular army marches against you',
+      desc: `Arrives turn ${senateResponse.consularArmyArrivesOnTurn}. Your legions will need to hold, or you'll face capture.`,
+    },
+  };
+  const copy = senateResponse.phase ? PHASE_COPY[senateResponse.phase] : null;
+
+  return (
+    <View style={styles.senateResponseBanner}>
+      <Text style={styles.senateResponseBannerTitle}>⚖ {copy?.title ?? 'The Senate has taken notice'}</Text>
+      <Text style={styles.senateResponseBannerDesc}>
+        {copy?.desc ?? 'Your unsanctioned levy has been reported to the Curia.'}
+      </Text>
+
+      {senateResponse.phase === 'censure' && (
+        <TouchableOpacity
+          style={[styles.bribeBtn, denarii < 50 && styles.btnDisabled]}
+          onPress={bribeSenateCommission}
+          disabled={denarii < 50}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.bribeBtnText}>
+            Bribe the Commission (−50 Denarii)
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      <TouchableOpacity
+        style={styles.capitulateBtn}
+        onPress={() => setShowCapitulateConfirm(true)}
+        activeOpacity={0.75}
+      >
+        <Text style={styles.capitulateBtnText}>
+          Capitulate — Disband & Submit (−15 Dignitas)
+        </Text>
+      </TouchableOpacity>
+
+      <ConfirmModal
+        visible={showCapitulateConfirm}
+        title="Capitulate to the Senate"
+        message="Every illegal legion your family raised will be disbanded immediately, and your family loses 15 lifetime Dignitas. This cannot be undone."
+        confirmLabel="Capitulate"
+        cancelLabel="Not Yet"
+        destructive
+        onConfirm={() => { capitulateToSenate(); setShowCapitulateConfirm(false); }}
+        onCancel={() => setShowCapitulateConfirm(false)}
+      />
+    </View>
+  );
+}
 
 // Military Overhaul M8 — army roster. `owners` is pre-filtered to units
 // stationed in this province; a Donative applies to that character's WHOLE
@@ -1013,5 +1099,57 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: COLORS.crimson,
     letterSpacing: 0.3,
+  },
+
+  // tickets/senate-response-3-bribe-commission-ui.md /
+  // tickets/senate-response-4-capitulate-ui.md
+  senateResponseBanner: {
+    backgroundColor: COLORS.crimson + '22',
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.crimson,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    borderRadius: RADIUS.md,
+  },
+  senateResponseBannerTitle: {
+    fontFamily: FONTS.display,
+    fontSize: 14,
+    color: COLORS.crimson,
+    marginBottom: 4,
+  },
+  senateResponseBannerDesc: {
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    color: COLORS.dust,
+    lineHeight: 17,
+    marginBottom: SPACING.sm,
+  },
+  bribeBtn: {
+    backgroundColor: COLORS.panelElevated,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.gold,
+    padding: SPACING.sm,
+    alignItems: 'center',
+    marginTop: SPACING.xs,
+  },
+  bribeBtnText: {
+    fontFamily: FONTS.display,
+    fontSize: 12,
+    color: COLORS.gold,
+    letterSpacing: 0.3,
+  },
+  capitulateBtn: {
+    backgroundColor: COLORS.crimson,
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    alignItems: 'center',
+    marginTop: SPACING.xs,
+  },
+  capitulateBtnText: {
+    fontFamily: FONTS.display,
+    fontSize: 13,
+    color: COLORS.marble,
+    letterSpacing: 0.5,
   },
 });

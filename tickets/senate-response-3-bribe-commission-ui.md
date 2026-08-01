@@ -1,5 +1,10 @@
 # Ticket: Surface "Bribe the Commission" as a real player action
 
+**STATUS: RESOLVED.** Implemented per the plan below, alongside Ticket 4 in
+the same pass (both needed the same `SenateResponseBanner`) — see "What
+actually shipped" at the bottom. Left in place per this repo's convention of
+keeping past plan docs rather than deleting them.
+
 **Depends on nothing else in this batch (independent of Tickets 1/2).
 Shares a new UI component with Ticket 4 ("Capitulate ui") — read the
 "Shared component" section below carefully before writing code, since
@@ -252,3 +257,47 @@ existing `makeState` function in this file).
   Military tab, confirm the banner shows with a working "Bribe the
   Commission" button that's disabled below 50 Denarii, and tapping it with
   enough Denarii clears the banner and deducts the cost.
+
+## What actually shipped
+
+Implemented together with Ticket 4 in one pass (both needed the same new
+banner), no deviations from the plan:
+
+- **`src/state/gameStore.ts`** — added `bribeCommission` (and Ticket 4's
+  `capitulate`) to the existing `senateResponseEngine` import block.
+  `bribeSenateCommission: () => void` added to `GameActions` next to
+  `raiseLevy`'s declaration; implemented right after `raiseLevy`'s own
+  function body, calling `bribeCommission(s)` and no-opping via
+  `Object.keys(patch).length === 0`, exactly as planned.
+- **`src/components/provinciae/MilitaryTab.tsx`** — added
+  `SenateResponseBanner` (shared with Ticket 4) as a new sub-component,
+  inserted into the main render right before the Revolt Warning block. Bribe
+  button gated to `phase === 'censure'`, disabled below 50 Denarii, styled
+  with new `bribeBtn`/`bribeBtnText` (gold-outlined, modeled on the
+  existing `donativeBtn` rather than `suppressionBtn` — checked its actual
+  styles while implementing and found `suppressionBtn` is solid crimson,
+  not gold/laurel as this ticket's draft assumed; `donativeBtn`'s gold
+  outline fits "spend money to make a problem go away" better anyway).
+  `senateResponseBanner`/`senateResponseBannerTitle`/
+  `senateResponseBannerDesc` copy `revoltBanner`'s existing values exactly.
+- **`__tests__/militaryEngine.test.ts`** — added the three
+  `bribeCommission` engine-function tests verbatim from the plan (import
+  extended, no `denarii` needed in `makeState`'s base since each test
+  overrides it directly). Also added a `bribeSenateCommission /
+  capitulateToSenate store actions` describe block (shared with Ticket 4)
+  exercising the real store via `useGameStore.setState({ ...INITIAL_STATE,
+  ... })` / `useGameStore.getState().bribeSenateCommission()`, matching
+  `training.test.ts`'s existing store-action test convention.
+- Verified: `npx tsc --noEmit` zero-error; `npm test` — 60/60 suites, 1490
+  tests (1488 passed, 2 pre-existing skips) across three consecutive full
+  runs. One transient failure was observed on an earlier full-suite run in
+  `__tests__/tutorialPrologueActs.test.ts` ("Act V: declares Quaestor,
+  canvasses Flaccus...") — reproduced in isolation and in combination with
+  this ticket's own test file with no failure, and the full suite then
+  passed clean on two subsequent runs with no changes. That test's
+  `canvassFlaccusUntilLocked` helper loops on a `Math.random()`-driven
+  canvass roll; this reads as a pre-existing flake in that loop, unrelated
+  to this ticket's changes (nothing here touches `Math.random`, tutorial
+  state, or election/canvassing code) — flagging it rather than silently
+  fixing or ignoring it, per this repo's convention for out-of-scope issues
+  found along the way.

@@ -38,6 +38,8 @@ import { calcLevyCost } from '../engine/troopEngine';
 import {
   calcConsularArmyStrength,
   calcConsularArmyArrivalTurn,
+  bribeCommission,
+  capitulate,
 } from '../engine/senateResponseEngine';
 import {
   calcOfficeThreshold,
@@ -967,6 +969,15 @@ export interface GameActions {
   raiseLevy: (characterId: string, musterProvinceId: string) => void;
   musterVeterans: (characterId: string) => void;
   disbandTroops: (characterId: string, troopIds: string[]) => void;
+  /** tickets/senate-response-3-bribe-commission-ui.md — ends an active
+   *  Senate Response in 'censure' phase for 50 Denarii, no further
+   *  consequence. No-op outside 'censure' phase or if denarii < 50. */
+  bribeSenateCommission: () => void;
+  /** tickets/senate-response-4-capitulate-ui.md — disbands every illegal
+   *  legion (or the offending Army) and ends an active Senate Response
+   *  immediately, in any phase, for −15 lifetime Dignitas. No-op if no
+   *  response is active. */
+  capitulateToSenate: () => void;
   /** Military Overhaul M8 — army-scope, once per year (see the action's own comment). */
   payDonative: (characterId: string) => void;
   updateLocalSupportForPlayer: (provinceId: string, delta: number) => void;
@@ -4872,6 +4883,38 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       log: [...s.log, mkLog(label, `${character.name} raises a legion in ${musterProvinceId}. (−${cost} Denarii)`, 'neutral')],
       ...bumpActions(s),
       ...bumpSpend(s, { denarii: cost }),
+    });
+  },
+
+  // tickets/senate-response-3-bribe-commission-ui.md
+  bribeSenateCommission: () => {
+    const s = get();
+    const patch = bribeCommission(s as any);
+    if (Object.keys(patch).length === 0) return;
+    const label = turnLabel(s);
+    set({
+      ...patch,
+      log: [...s.log, mkLog(label, 'A discreet payment to the censure commission makes the matter disappear. (−50 Denarii)', 'neutral')],
+    });
+  },
+
+  // tickets/senate-response-4-capitulate-ui.md — the explicit flags clear
+  // below (unlike bribeSenateCommission, and unlike capitulate()'s own
+  // return) is deliberate: capitulating is meant to fully and immediately
+  // end the situation, including any active Fides block, whereas bribing
+  // ends the Senate's investigation without undoing a block already tied to
+  // actually disbanding (see bribeSenateCommission's ticket for why).
+  capitulateToSenate: () => {
+    const s = get();
+    const player = s.family.find(c => c.isPlayer);
+    if (!player) return;
+    const patch = capitulate(s as any, player.id);
+    if (Object.keys(patch).length === 0) return;
+    const label = turnLabel(s);
+    set({
+      ...patch,
+      flags: s.flags['fidesIncomeBlocked'] ? { ...s.flags, fidesIncomeBlocked: false } : s.flags,
+      log: [...s.log, mkLog(label, `${player.name} disbands every illegal legion and submits to the Senate's judgment. (−15 Dignitas)`, 'neutral')],
     });
   },
 

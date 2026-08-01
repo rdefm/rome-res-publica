@@ -1,5 +1,10 @@
 # Ticket: Surface "Capitulate" as a real player action
 
+**STATUS: RESOLVED.** Implemented per the plan below, alongside Ticket 3 in
+the same pass (both needed the same `SenateResponseBanner`) — see "What
+actually shipped" at the bottom. Left in place per this repo's convention of
+keeping past plan docs rather than deleting them.
+
 **Depends on nothing else in this batch (independent of Tickets 1/2).
 Shares a new UI component with Ticket 3 ("Bribe Commission ui") — read the
 "Shared component" section below carefully before writing code, since
@@ -239,3 +244,43 @@ store state if one already exists in this test suite.
   confirming disbands all raised legions, deducts 15 Dignitas, clears the
   banner, and (if a hostis-phase treason trial had been filed) removes it
   from the Courts.
+
+## What actually shipped
+
+Implemented together with Ticket 3 in one pass (both needed the same new
+banner), no deviations from the plan:
+
+- **`src/state/gameStore.ts`** — `capitulate` added to the same
+  `senateResponseEngine` import block Ticket 3 uses. `capitulateToSenate:
+  () => void` added to `GameActions` next to `bribeSenateCommission`;
+  implemented right after it, calling `capitulate(s, player.id)`, no-opping
+  via the same `Object.keys(patch).length === 0` guard, and explicitly
+  clearing `flags.fidesIncomeBlocked` on top of the engine function's own
+  patch — exactly as planned.
+- **`src/components/provinciae/MilitaryTab.tsx`** — Capitulate button added
+  to the shared `SenateResponseBanner` (created fresh in this pass, so
+  there was no pre-existing banner to check for/extend — both tickets'
+  buttons went in together). Always visible while `senateResponse.active`,
+  wired through a `showCapitulateConfirm` local state + `ConfirmModal`
+  (`destructive`, `cancelLabel="Not Yet"`, matching the exact prop shape
+  already used by this file's per-unit disband confirm). `capitulateBtn`/
+  `capitulateBtnText` styled solid crimson, matching `suppressionBtn`'s
+  actual existing weight (see Ticket 3's "what shipped" note — this ticket's
+  draft's assumption that `suppressionBtn` was gold/laurel toned was wrong;
+  it's crimson, which if anything reinforces reusing that same accent for
+  a destructive action like this one).
+- **`__tests__/militaryEngine.test.ts`** — added the
+  `bribeSenateCommission / capitulateToSenate store actions` describe block
+  (shared with Ticket 3) covering: clears response + disbands
+  `raisedLegions` + applies the −15 Dignitas penalty + clears an active
+  `fidesIncomeBlocked` flag; and the no-op-with-no-active-response case.
+  Built via `useGameStore.setState({ ...INITIAL_STATE, ... })` /
+  `useGameStore.getState().capitulateToSenate()`, matching
+  `training.test.ts`'s existing convention, per the ticket's own guidance.
+  The plan's two placeholder test bodies were filled in with real
+  assertions rather than left as comments.
+- Verified: `npx tsc --noEmit` zero-error; `npm test` — 60/60 suites, 1490
+  tests (1488 passed, 2 pre-existing skips) across three consecutive full
+  runs. See Ticket 3's "what shipped" note for a transient, unrelated
+  `tutorialPrologueActs.test.ts` flake observed once and not reproduced —
+  same finding applies here since both tickets landed in the same commit.
