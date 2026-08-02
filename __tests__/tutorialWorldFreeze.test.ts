@@ -144,6 +144,21 @@ describe('world freeze — random events and war ignition', () => {
       startId: 'guided',
       flags: { 'tutorial-embassy-complete': true },
       wars: [],
+      // Ticket 08 — an UNFROZEN/null-arc state opens every WorldGateCategory,
+      // including foreignWarDeclarations, which runs earlier in processSeason
+      // (cityEngine.checkForeignWarDeclarations) than this test's own step-12
+      // assertion. Carthage's INITIAL_STATE startingRelationship sits exactly
+      // AT the 'hostile' threshold (<=15, models/city.ts:265), so left as
+      // default it carries an unconditional 8% per-season chance
+      // (AI_DECLARE_WAR_CHANCE, cityEngine.ts:497) of declaring war before
+      // step 12 runs — which would defeat evt-messana-appeal's forced-
+      // injection guard (`!wars.some(w => w.enemyId === 'carthage')`,
+      // turnSequencer.ts:1928) on ~1-in-12 runs. Pushing every foreign
+      // city's relationshipScore comfortably clear of that threshold keeps
+      // this test deterministic without touching real game balance
+      // (checkForeignWarDeclarations/AI_DECLARE_WAR_CHANCE/Carthage's own
+      // startingRelationship are all out of scope — see ticket 08).
+      cities: INITIAL_STATE.cities.map(c => c.status === 'foreign' ? { ...c, relationshipScore: 50 } : c),
     });
     const { nextState } = processSeason(state);
     expect(nextState.pendingEvents.some(e => e.defId === 'evt-messana-appeal')).toBe(true);
