@@ -1,7 +1,7 @@
-import React, { useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Modal, ImageBackground, Dimensions, ViewStyle, TextStyle,
+  Modal, Image, ImageBackground, Dimensions, LayoutChangeEvent, ViewStyle, TextStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
@@ -36,11 +36,28 @@ import { remeasureAllTargets } from '../engine/tutorialTargets';
 // onLayout measurement round-trip is needed — same idiom as
 // TutorialCaption.tsx's SCREEN_W/CARD_W.
 const { width: FORUM_SCREEN_W } = Dimensions.get('window');
-// Deliberately taller than the source image's own ~10:3 ratio — resizeMode
-// "cover" fills this box by cropping overflow, so a taller box crops more
-// off the image's left/right edges, which both enlarges it on screen and
-// tightens the crop onto its central focal point (the temple facade).
-const HEADER_BANNER_HEIGHT = Math.round(FORUM_SCREEN_W / 2);
+// Matches the banner art's own ~3:1 aspect ratio (current asset: 2172x724)
+// so resizeMode="cover" shows it close to full width instead of cropping in
+// from the sides. An earlier version deliberately used a taller (2:1) box
+// to crop tighter onto the art's focal point — reverted per live feedback
+// that it was cropping too aggressively once the fresco-redesign art
+// (forum-fresco-header-plan.md) landed. If the banner art changes aspect
+// ratio again, retune this to match rather than re-widening the crop.
+const HEADER_BANNER_HEIGHT = Math.round(FORUM_SCREEN_W / 3);
+
+// headerBackground crop/zoom — RN's built-in resizeMode="cover" always
+// centers on both axes with no way to bias the crop toward one edge, which
+// with this asset's proportions (688x1529, ~0.45:1 portrait) against a wider
+// container meant width was the binding "cover" constraint: zero left/right
+// crop, but a large, evenly-split top/bottom crop that cut off the frieze
+// detail at the top of the art. Fixed by computing the display box by hand
+// (below, in the component body) instead of relying on resizeMode: anchor
+// top (0 vertical crop) since the top is the focal point, and scale a bit
+// beyond the minimum "cover" fit so the sides crop in too, per live
+// feedback that the plain cover fit read as too wide/uncropped.
+const HEADER_BACKGROUND_IMG_W = 688;
+const HEADER_BACKGROUND_IMG_H = 1529;
+const HEADER_BACKGROUND_ZOOM = 1.15;
 
 // ─── Canvassing Event Modal ───────────────────────────────────────────────────
 
@@ -385,6 +402,38 @@ export default function ForumScreen() {
   // active target (see useTutorialTarget.ts's scrollRef param).
   const scrollRef = useRef<ScrollView>(null);
 
+  // headerBackground sizing fix — ImageBackground's usual `style={{flex:1}}`
+  // shape (DomusScreen.tsx:51-56's pattern, which this was meant to mirror
+  // per forum-fresco-header-plan.md) only measures correctly when the
+  // ImageBackground itself is the outermost element. Here it's a flex:1
+  // sibling *after* the fixed-height header banner rather than the root, and
+  // that nesting reproduces the same "percentage/flex-based Image sizing
+  // unreliable in this layout position" bug FrescoBackground.tsx documents
+  // and works around — image rendered at its own intrinsic size anchored
+  // top-left instead of stretched/cropped to the container, i.e. only the
+  // image's own top-left corner visible, badly "zoomed in". Same fix:
+  // measure the container via onLayout, render the image at that explicit
+  // pixel size instead of relying on flex/percentage sizing.
+  const [bgSize, setBgSize] = useState<{ width: number; height: number } | null>(null);
+  const onBackgroundLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setBgSize({ width, height });
+  }, []);
+  // See HEADER_BACKGROUND_ZOOM's comment above for why this is computed by
+  // hand rather than left to resizeMode="cover": top-anchored (no vertical
+  // crop), horizontally centered, scaled past the minimum cover fit to also
+  // crop in from the sides.
+  const bgDisplay = bgSize && (() => {
+    const coverScale = Math.max(
+      bgSize.width / HEADER_BACKGROUND_IMG_W,
+      bgSize.height / HEADER_BACKGROUND_IMG_H,
+    );
+    const scale = coverScale * HEADER_BACKGROUND_ZOOM;
+    const width = Math.round(HEADER_BACKGROUND_IMG_W * scale);
+    const height = Math.round(HEADER_BACKGROUND_IMG_H * scale);
+    return { width, height, left: Math.round((bgSize.width - width) / 2) };
+  })();
+
   const screenContent = (
     <>
       <ScrollView
@@ -457,11 +506,18 @@ export default function ForumScreen() {
         <View style={styles.header} />
       )}
       {forumAssets.headerBackground ? (
-        <ImageBackground source={forumAssets.headerBackground} style={styles.safeContent} resizeMode="cover">
+        <View style={styles.headerBackgroundContainer} onLayout={onBackgroundLayout}>
+          {bgDisplay && (
+            <Image
+              source={forumAssets.headerBackground}
+              resizeMode="cover"
+              style={[styles.headerBackgroundImage, bgDisplay]}
+            />
+          )}
           <SafeAreaView style={styles.safeContent} edges={['left', 'right']}>
             {screenContent}
           </SafeAreaView>
-        </ImageBackground>
+        </View>
       ) : (
         <SafeAreaView style={styles.safeContent} edges={['left', 'right']}>
           {screenContent}
@@ -474,6 +530,18 @@ export default function ForumScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.bg, paddingTop: RESOURCE_BAR_HEIGHT },
   safeContent: { flex: 1 },
+  // overflow: 'hidden' is required here (unlike safeContent) — bgDisplay
+  // deliberately sizes the image larger than this container (top-anchored
+  // crop + zoom, see HEADER_BACKGROUND_ZOOM's comment), so without a clip
+  // boundary the excess would bleed into the screens above/below it.
+  headerBackgroundContainer: { flex: 1, overflow: 'hidden' },
+  // Explicit pixel width/height/left from bgDisplay, not percentage/flex
+  // sizing — see the onBackgroundLayout comment above for why. top is
+  // always 0 (anchored, not centered — see HEADER_BACKGROUND_ZOOM comment).
+  headerBackgroundImage: {
+    position: 'absolute',
+    top: 0,
+  },
   header: { padding: SPACING.md, borderBottomColor: COLORS.border, borderBottomWidth: 1 },
   // Forum redesign, Chunk C1 (revised) — matches forumAssets.headerBanner's
   // asset. Explicit pixel height (HEADER_BANNER_HEIGHT, computed once

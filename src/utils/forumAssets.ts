@@ -29,6 +29,12 @@ type RequiredAsset = any; // matches the untyped require() convention already us
 // as-is, worth recompressing next time this art gets touched.
 const FORUM_HEADER_BANNER = require('../assets/forum/header-banner.png');
 
+// Background socle/dado layer behind the scrollable content (forum-fresco-
+// header-plan.md §3.2/§4.2). Asset landed as a .png (~478KB), not the .jpg
+// the plan called for — fine as-is, same "recompress later" situation as
+// headerBanner above.
+const FORUM_HEADER_BACKGROUND = require('../assets/forum/header-background.png');
+
 // Per-clan medallion icons, replacing ClanGridTile's emoji `clan.sigil`
 // fallback (🦅/🐺/🐗/⚖️ for cornelii/valerii/fabii/claudii — see
 // data/startingClans.ts). Keyed by Clan.id; a clan with no entry here (a
@@ -41,19 +47,13 @@ const CLAN_SIGILS: Record<string, RequiredAsset> = {
   claudii: require('../assets/forum/icon-claudii.png'),
 };
 
-// Background socle/dado layer behind the scrollable content (forum-fresco-
-// header-plan.md §3.2/§4.2). Not yet generated — ships commented out per
-// this file's usual contract; ForumScreen.tsx falls back to a flat
-// COLORS.bg fill for this case.
-// const FORUM_HEADER_BACKGROUND = require('../assets/forum/header-background.jpg');
-
 export const forumAssets = {
-  /** 10:3 aspect (actual: 1888x560, ~3.37:1 — close enough that cover-mode
-   *  crop is negligible). */
+  /** Fresco header banner (forum-fresco-header-plan.md art direction).
+   *  Current asset: 2172x724, ~3:1 — see ForumScreen.tsx's
+   *  HEADER_BANNER_HEIGHT comment for how the display box is sized to it. */
   headerBanner: FORUM_HEADER_BANNER as RequiredAsset,
-  /** Non-scrolling background strip below the frieze. Undefined until
-   *  assets/forum/header-background.jpg exists — see comment above. */
-  headerBackground: undefined as RequiredAsset | undefined,
+  /** Non-scrolling background strip below the frieze. */
+  headerBackground: FORUM_HEADER_BACKGROUND as RequiredAsset,
   /** Per-clan medallion icon for ClanGridTile's sigil ring. */
   clanSigil: (id: string): RequiredAsset | undefined => CLAN_SIGILS[id],
 };
