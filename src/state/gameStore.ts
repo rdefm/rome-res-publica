@@ -436,6 +436,14 @@ export interface GameState {
   // Legislation
   activeLaws: ActiveLaw[];
   passedBills: { id: string; name: string; passedOnTurn: number }[];
+  /** Ambition rework, ticket 03 — lifetime count of bills that passed while
+   *  `Bill.playerVote === 'vote_for'` was still set on them. Incremented
+   *  alongside `passedBills` itself in turnSequencer.ts's passive bill
+   *  resolution (the only site that ever marks a bill "passed" — see that
+   *  file's step 4 comment), matching `lifetimeBattlesWon`'s pattern for
+   *  `battles_won` elsewhere in this file. Feeds the `bill_passed` ambition criterion
+   *  (engine/ambitionEngine.ts). */
+  lifetimeBillsPassedVotedFor: number;
 
   // Event queue
   pendingEvents: EventInstance[];
@@ -1435,6 +1443,7 @@ export const INITIAL_STATE: GameState = {
 
   activeLaws: [],
   passedBills: [],
+  lifetimeBillsPassedVotedFor: 0,
 
   pendingEvents: [],
   activeEvent: null,

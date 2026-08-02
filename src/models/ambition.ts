@@ -7,7 +7,8 @@ export type AmbitionSource = 'player' | 'story' | 'tutorial' | 'dynastic';
 
 export type AmbitionCriterionId =
   | 'resource_threshold' | 'office_held' | 'clan_standing' | 'asset_tier'
-  | 'client_count' | 'battles_won' | 'region_control' | 'survive_seasons' | 'trial_won';
+  | 'client_count' | 'battles_won' | 'region_control' | 'survive_seasons' | 'trial_won'
+  | 'bill_passed';
 
 export interface AmbitionCriterion {
   id: AmbitionCriterionId;

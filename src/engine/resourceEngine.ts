@@ -321,6 +321,8 @@ function parseAmbitionCriterionToken(criterionId: AmbitionCriterionId, target: s
       return { id: 'survive_seasons', amount: parseInt(target, 10) };
     case 'trial_won':
       return { id: 'trial_won', amount: parseInt(target, 10) };
+    case 'bill_passed':
+      return { id: 'bill_passed', amount: parseInt(target, 10) };
     default:
       return { id: criterionId };
   }

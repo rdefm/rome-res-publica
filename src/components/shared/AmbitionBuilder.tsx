@@ -51,6 +51,7 @@ const CRITERION_OPTIONS: { id: AmbitionCriterionId; label: string; icon: string 
   { id: 'region_control',     label: 'Take a Region',        icon: '🗺️' },
   { id: 'survive_seasons',    label: 'Keep the Gens Intact', icon: '🕊️' },
   { id: 'trial_won',          label: 'Win Trials',           icon: '⚖️' },
+  { id: 'bill_passed',        label: 'Pass Bills You Voted For', icon: '📜' },
 ];
 
 const OFFICE_IDS = Object.keys(BALANCE.ambitions.officeBaseline) as OfficeId[];
@@ -70,6 +71,7 @@ const AMOUNT_CONFIG: Partial<Record<AmbitionCriterionId, { step: number; min: nu
   battles_won:        { step: 1,  min: 1,  default: 2 },
   trial_won:          { step: 1,  min: 1,  default: 2 },
   survive_seasons:    { step: 2,  min: 2,  default: 8 },
+  bill_passed:        { step: 1,  min: 1,  default: 1 },
 };
 
 const DEFAULT_DEADLINE_SEASONS = 4;
@@ -114,6 +116,7 @@ export default function AmbitionBuilder({ visible, scope, onClose }: Props) {
       case 'region_control':     return { id: 'region_control', regionId: regionId ?? undefined };
       case 'survive_seasons':    return { id: 'survive_seasons', amount };
       case 'trial_won':          return { id: 'trial_won', amount };
+      case 'bill_passed':        return { id: 'bill_passed', amount };
     }
   }
 
@@ -282,6 +285,15 @@ export default function AmbitionBuilder({ visible, scope, onClose }: Props) {
           min={AMOUNT_CONFIG.trial_won!.min}
           onChange={setAmount}
           suffix="trials"
+        />
+      )}
+      {criterionId === 'bill_passed' && (
+        <AmountStepper
+          value={amount}
+          step={AMOUNT_CONFIG.bill_passed!.step}
+          min={AMOUNT_CONFIG.bill_passed!.min}
+          onChange={setAmount}
+          suffix="bills"
         />
       )}
 

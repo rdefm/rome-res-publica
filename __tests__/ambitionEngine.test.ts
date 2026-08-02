@@ -52,6 +52,7 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
     clients: [],
     theatre: { controllers: {} as Record<RegionId, Controller>, contested: {}, musteredThisYear: {} },
     lifetimeBattlesWon: 0,
+    lifetimeBillsPassedVotedFor: 0,
     legacyObjectives: initLegacyObjectives(),
     denarii: 0,
     fides: 0,
@@ -177,6 +178,17 @@ describe('battles_won', () => {
     expect(measureCriterion(criterion, state)).toBe(3);
     expect(checkCriterion(criterion, state)).toBe(false);
     expect(checkCriterion(criterion, makeState({ lifetimeBattlesWon: 5 }))).toBe(true);
+  });
+});
+
+describe('bill_passed', () => {
+  test('reads GameState.lifetimeBillsPassedVotedFor directly', () => {
+    const criterion: AmbitionCriterion = { id: 'bill_passed', amount: 2 };
+    const state = makeState({ lifetimeBillsPassedVotedFor: 1 });
+    expect(measureCriterion(criterion, state)).toBe(1);
+    expect(checkCriterion(criterion, state)).toBe(false);
+    expect(checkCriterion(criterion, makeState({ lifetimeBillsPassedVotedFor: 2 }))).toBe(true);
+    expect(getProgress({ ...makeAmbition(), criterion }, state)).toEqual({ current: 1, target: 2, label: 'bills passed' });
   });
 });
 

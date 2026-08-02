@@ -1647,6 +1647,13 @@ export const BALANCE = {
       region_control:     { divisor: 1,   dignitas: 30, fides: 0 },
       survive_seasons:    { divisor: 20,  dignitas: 20, fides: 10 },
       trial_won:          { divisor: 5,   dignitas: 25, fides: 5 },
+      // Ticket 03 — "pass a bill you voted for" as a real, settable ambition
+      // criterion (not just a tutorial-only display fake). First-pass/
+      // unverified like every other entry in this group; divisor/reward
+      // pitched between trial_won and battles_won (a specific, deliberately-
+      // pursued win-event, same shape as those two, not a passive accrual
+      // like client_count).
+      bill_passed:        { divisor: 5,   dignitas: 25, fides: 10 },
     } as Record<Exclude<AmbitionCriterionId, 'office_held'>, { divisor: number; dignitas: number; fides: number }>,
     /** `office_held`'s baseline Dignitas reward per office, before the
      *  first-time multipliers below. Mirrors `BALANCE.elections.officePrestige`'s

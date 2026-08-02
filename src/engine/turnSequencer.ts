@@ -522,6 +522,12 @@ export function processSeason(state: GameState): {
   const passedBills: Bill[] = [];
   const resolvedLogs: string[] = [];
   const remainingBills: Bill[] = [];
+  // Ambition rework, ticket 03 — `bill_passed` criterion feed. Counted
+  // alongside `passedBills.push(bill)` below (the only site a bill is ever
+  // marked passed), not derived from `passedBills` after the fact — that
+  // array drops `playerVote` (models/bill.ts's field only lives on `Bill`,
+  // not the trimmed `{id,name,passedOnTurn}` shape stored there).
+  let billsPassedVotedFor = 0;
   // Tutorial redesign, Chunk T7 — Philon's reaction to the Embassy sting's
   // refuse-branch bill resolving, either way. Not folded into the generic
   // resolvedLogs string (no per-bill flavour-text field exists on Bill, and
@@ -560,6 +566,7 @@ export function processSeason(state: GameState): {
 
         if (effectiveSupport > passThresholdBonus) {
           passedBills.push(bill);
+          if (bill.playerVote === 'vote_for') billsPassedVotedFor += 1;
           const patch = applyEffectString(bill.passEffect, s);
           s = { ...s, ...patch };
           resolvedLogs.push(`✓ ${bill.name} passes.`);
@@ -604,6 +611,7 @@ export function processSeason(state: GameState): {
           ...(s.passedBills ?? []),
           ...passedBills.filter(b => b.type !== 'repeal').map(b => ({ id: b.id, name: b.name, passedOnTurn: s.turnNumber })),
         ],
+        lifetimeBillsPassedVotedFor: (s.lifetimeBillsPassedVotedFor ?? 0) + billsPassedVotedFor,
         activeLaws: [
           ...(s.activeLaws ?? []).filter(l => !repealedLawIds.includes(l.billId)),
           ...newActiveLaws,

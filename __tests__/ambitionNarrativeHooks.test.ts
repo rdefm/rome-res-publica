@@ -136,6 +136,12 @@ describe('applyEffectString — setAmbition: token (direct-write, ticket 05)', (
     expect(a.reward.lifetimeDignitas).toBeGreaterThan(0);
   });
 
+  test('bill_passed (ticket 03) parses its bare-number target the same as battles_won/trial_won', () => {
+    const state = makeState();
+    const patch = applyEffectString('setAmbition:family:bill_passed:2:6', state);
+    expect(patch.ambitions![0].criterion).toEqual({ id: 'bill_passed', amount: 2 });
+  });
+
   test('force-evicts an occupied slot: occupant is superseded, partial reward paid, no failureDignitas, new ambition installed', () => {
     const occupant = makeOccupant({ baseline: { value: 0, turnNumber: 5 } });
     const state = makeState({

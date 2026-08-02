@@ -113,6 +113,8 @@ export function describeCriterionTitle(criterion: AmbitionCriterion, state: Game
       return `Keep the Gens Intact ${criterion.amount ?? 0} More Seasons`;
     case 'trial_won':
       return `Win ${criterion.amount ?? 0} Trials`;
+    case 'bill_passed':
+      return `Pass ${criterion.amount ?? 0} Bills You Voted For`;
     default:
       return 'Ambition';
   }
@@ -194,6 +196,8 @@ export function measureCriterion(
       return state.turnNumber;
     case 'trial_won':
       return countTrialsWon(state);
+    case 'bill_passed':
+      return state.lifetimeBillsPassedVotedFor;
     default:
       return 0;
   }
@@ -257,6 +261,8 @@ export function getProgress(ambition: ActiveAmbition, state: GameState): Ambitio
       return { current, target: criterion.amount ?? current, label: 'seasons survived' };
     case 'trial_won':
       return { current, target: criterion.amount ?? 0, label: 'trials won' };
+    case 'bill_passed':
+      return { current, target: criterion.amount ?? 0, label: 'bills passed' };
     default:
       return { current, target: criterion.amount ?? 0, label: '' };
   }

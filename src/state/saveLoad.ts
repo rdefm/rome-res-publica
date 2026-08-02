@@ -16,6 +16,7 @@ const AmbitionCriterionSchema = z.object({
   id: z.enum([
     'resource_threshold', 'office_held', 'clan_standing', 'asset_tier',
     'client_count', 'battles_won', 'region_control', 'survive_seasons', 'trial_won',
+    'bill_passed',
   ]),
   resource: z.enum(['denarii', 'fides']).optional(),
   officeId: z.string().optional(),
@@ -131,6 +132,9 @@ export const SaveSchema = z.object({
   // as a fresh cycle (portraitAssets.assignVariant's own convention).
   portraitVariantCycles: z.record(z.string(), z.array(z.number())).default({}),
   lifetimeDignitas: z.number(),
+  // Ambition rework, ticket 03 — .default(0) ensures pre-ticket-03 saves
+  // (every one, since this field is new) load cleanly.
+  lifetimeBillsPassedVotedFor: z.number().default(0),
   legacyObjectives: z.array(z.object({
     definitionId: z.string(),
     currentValue: z.number(),
