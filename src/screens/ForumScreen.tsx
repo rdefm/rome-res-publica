@@ -385,22 +385,6 @@ export default function ForumScreen() {
   // active target (see useTutorialTarget.ts's scrollRef param).
   const scrollRef = useRef<ScrollView>(null);
 
-  // Forum redesign, Chunk C1 (revised) — a fixed-height header banner
-  // (10:3, forumAssets.headerBanner) instead of a full-screen background
-  // (see forumAssets.ts's header comment for why a full-bleed image was
-  // reverted: Forum's scrollable body is almost entirely opaque panels, so
-  // most of a tall background would sit permanently hidden behind them).
-  // Undefined until real art lands — falls back to today's plain bordered
-  // header for that case.
-  const headerContent = (
-    <>
-      <Text style={styles.title}>FORUM</Text>
-      <Text style={styles.subtitle}>
-        {campaigning ? `Campaign Active — Canvass for Votes` : 'Clans & Political Alliances'}
-      </Text>
-    </>
-  );
-
   const screenContent = (
     <>
       <ScrollView
@@ -468,17 +452,21 @@ export default function ForumScreen() {
     // comment below) is untouched.
     <View style={styles.screen}>
       {forumAssets.headerBanner ? (
-        <ImageBackground source={forumAssets.headerBanner} style={styles.headerBanner} resizeMode="cover">
-          {headerContent}
+        <ImageBackground source={forumAssets.headerBanner} style={styles.headerBanner} resizeMode="cover" />
+      ) : (
+        <View style={styles.header} />
+      )}
+      {forumAssets.headerBackground ? (
+        <ImageBackground source={forumAssets.headerBackground} style={styles.safeContent} resizeMode="cover">
+          <SafeAreaView style={styles.safeContent} edges={['left', 'right']}>
+            {screenContent}
+          </SafeAreaView>
         </ImageBackground>
       ) : (
-        <View style={styles.header}>
-          {headerContent}
-        </View>
+        <SafeAreaView style={styles.safeContent} edges={['left', 'right']}>
+          {screenContent}
+        </SafeAreaView>
       )}
-      <SafeAreaView style={styles.safeContent} edges={['left', 'right']}>
-        {screenContent}
-      </SafeAreaView>
     </View>
   );
 }
@@ -490,8 +478,6 @@ const styles = StyleSheet.create({
   // Forum redesign, Chunk C1 (revised) — matches forumAssets.headerBanner's
   // asset. Explicit pixel height (HEADER_BANNER_HEIGHT, computed once
   // above) rather than `aspectRatio` — see that constant's comment for why.
-  // Text anchored toward the bottom edge, same "float over the art"
-  // treatment DomusScreen's header uses over its fresco.
   // marginTop: -RESOURCE_BAR_HEIGHT — `styles.screen`'s own paddingTop is
   // redundant (ResourceBar is a real sibling above the tab navigator in
   // App.tsx, already occupying that space in normal flow; every screen's
@@ -505,29 +491,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: HEADER_BANNER_HEIGHT,
     marginTop: -RESOURCE_BAR_HEIGHT,
-    justifyContent: 'flex-end',
-    padding: SPACING.md,
     overflow: 'hidden',
-  },
-  title: {
-    color: COLORS.gold,
-    fontFamily: FONTS.display,
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: 2,
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
-  },
-  subtitle: {
-    color: COLORS.dust,
-    fontFamily: FONTS.ui,
-    fontSize: 11,
-    letterSpacing: 1,
-    marginTop: 2,
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
   },
   scroll: { flex: 1, padding: SPACING.md },
   sectionLabel: {
