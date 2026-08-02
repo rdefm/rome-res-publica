@@ -6,7 +6,15 @@ import type { TabName } from './agenda';
 // every file needing to know it actually lives in models/agenda.ts.
 export type { TabName };
 
-export type TutorialArcId = 'prologue' | 'embassy' | 'war' | 'courts';
+// Tutorial rebuild, ticket 04 — 'beat-house' is the first of three planned
+// "beats" (tutorial-rebuild-plan.md §2.1) replacing the old prologue's Acts
+// I-II (Domus/Forum). Acts III-V stay under 'prologue' for now — tickets 05
+// ('beat-chamber', Act III/Curia) and 06 ('beat-ladder', Act V/Cursus) retire
+// them individually; Act IV/Provinciae was already superseded by ticket 02's
+// just-in-time lessons. TUTORIAL_ARC_ORDER chains 'beat-house' straight into
+// 'prologue' (now starting at Act III) so the rest of the guided chain works
+// unchanged until those tickets land.
+export type TutorialArcId = 'beat-house' | 'prologue' | 'embassy' | 'war' | 'courts';
 
 /** T10 — standalone just-in-time micro-lessons, on the same arc/step engine
  *  as the four main arcs above but deliberately NOT part of
@@ -40,7 +48,7 @@ export type TutorialAdvance =
   | { kind: 'eventResolved'; defId: string };    // an EventDef finished resolving
 
 export interface TutorialStep {
-  id: string;                        // globally unique, e.g. 'prologue.act2.court-flaccus'
+  id: string;                        // globally unique, e.g. 'beat-house.court-flaccus'
   arc: TutorialAnyArcId;
   actLabel?: string;                 // display only, e.g. 'Act II — The Forum'
   rail: TutorialRail;

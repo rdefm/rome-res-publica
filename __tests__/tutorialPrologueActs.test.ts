@@ -1,8 +1,18 @@
-// Tutorial redesign, Chunks T5a (Acts I-IV) + T5b (Act V) — integration
+// Tutorial redesign, Chunks T5a (Acts III-IV) + T5b (Act V) — integration
 // coverage for the prologue's real authored content. Drives the actual
 // store actions a player would trigger from each screen, not synthetic
 // fixtures — this is the same guided run a real session would produce,
 // one step at a time.
+//
+// Tutorial rebuild, ticket 04 — Acts I-II moved into 'beat-house'
+// (tutorialBeatHouse.test.ts now covers them); what remains here starts at
+// Act III. Jumps straight in via setState (same "skipping earlier content is
+// safe" convention tutorialEmbassyArc/tutorialWarArc/tutorialCourtsArc.test.ts
+// already use) rather than replaying the whole of beat-house first — Act
+// III-V's own predicates never read anything beat-house's steps would have
+// set beyond unlockedTabs, which is seeded here to exactly what a real
+// beat-house completion would have left (Forum + Curia, from that arc's own
+// two unlocksTab steps).
 //
 // advanceTutorialStep() itself never checks whether the current step's
 // advance condition is actually satisfied — that gating is the caller's
@@ -17,7 +27,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
-import { useGameStore } from '../src/state/gameStore';
+import { useGameStore, INITIAL_STATE } from '../src/state/gameStore';
 import { validateTutorialScript, getStep, isStepSatisfied } from '../src/engine/tutorialEngine';
 import { TUTORIAL_ARCS } from '../src/data/tutorialScript';
 import { isDeterred } from '../src/engine/secretEngine';
@@ -32,42 +42,23 @@ function currentStep() {
   return getStep(s.tutorial.stepId!)!;
 }
 
-/** Advance to Act I's completion step (5 taps from act1.intro). */
-function reachAct1Train() {
-  tapThrough(5);
-  expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act1.train');
-}
-
-/** Train, then advance once (director's move once satisfied) into Act II.
- *  Trains martial (cost 12 Fides from level 3), not rhetoric (cost 21 from
- *  level 6) — leaves enough Fides for Act II's alternate-action regression
- *  test (buyInfluence, 10 Fides) below; the real narration leaves the skill
- *  choice up to the player either way. */
-function completeAct1() {
-  reachAct1Train();
-  const player = useGameStore.getState().family.find(c => c.isPlayer)!;
-  useGameStore.getState().trainCharacter(player.id, 'martial');
-  expect(isStepSatisfied(currentStep(), useGameStore.getState())).toBe(true);
-  useGameStore.getState().advanceTutorialStep();
-  expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act2.intro');
-}
-
-function reachAct2CourtFlaccus() {
-  completeAct1();
-  tapThrough(5);
-  expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act2.court-flaccus');
-}
-
-function completeAct2() {
-  reachAct2CourtFlaccus();
-  useGameStore.getState().inviteToDinner('valerius-flaccus');
-  expect(isStepSatisfied(currentStep(), useGameStore.getState())).toBe(true);
-  useGameStore.getState().advanceTutorialStep();
-  expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act3.intro');
+/** Enters 'prologue' at Act III's first step, seeded as if beat-house had
+ *  just completed for real (see this file's header comment). */
+function enterProloguePostBeatHouse() {
+  useGameStore.getState().startGame('guided');
+  useGameStore.setState({
+    tutorial: {
+      activeArc: 'prologue',
+      stepId: TUTORIAL_ARCS.prologue.steps[0]!.id,
+      completedArcs: ['beat-house'],
+      unlockedTabs: ['Domus', 'Forum', 'Curia'],
+      skipped: false,
+    },
+  });
 }
 
 function reachAct3Vote() {
-  completeAct2();
+  enterProloguePostBeatHouse();
   tapThrough(4);
   expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act3.vote');
 }
@@ -173,9 +164,9 @@ describe('prologue script — structural sanity', () => {
     expect(() => validateTutorialScript()).not.toThrow();
   });
 
-  test('Acts I-V are present with a reasonable step count each', () => {
+  test('Acts III-V are present with a reasonable step count each', () => {
     const ids = TUTORIAL_ARCS.prologue.steps.map(s => s.id);
-    for (const act of ['act1', 'act2', 'act3', 'act4', 'act5']) {
+    for (const act of ['act3', 'act4', 'act5']) {
       const count = ids.filter(id => id.startsWith(`prologue.${act}.`)).length;
       expect(count).toBeGreaterThanOrEqual(5);
       expect(count).toBeLessThanOrEqual(10); // Act V ("why all of it existed") runs a beat longer
@@ -185,52 +176,18 @@ describe('prologue script — structural sanity', () => {
   test('every act except the last ends with an unlocksTab, in the right order', () => {
     const steps = TUTORIAL_ARCS.prologue.steps;
     const unlocks = steps.filter(s => s.unlocksTab).map(s => s.unlocksTab);
-    expect(unlocks).toEqual(['Forum', 'Curia', 'Provinciae', 'Cursus']);
+    expect(unlocks).toEqual(['Provinciae', 'Cursus']);
   });
 
-  test('the arc\'s last step is Act V\'s closing beat', () => {
+  test('the arc\'s first step is Act III\'s intro and its last step is Act V\'s closing beat', () => {
     const steps = TUTORIAL_ARCS.prologue.steps;
+    expect(steps[0].id).toBe('prologue.act3.intro');
     expect(steps[steps.length - 1].id).toBe('prologue.act5.standoff');
   });
 });
 
-describe('guided run — Acts I-V end to end', () => {
-  beforeEach(() => {
-    useGameStore.getState().startGame('guided');
-  });
-
-  test('Act I: training a skill on Marcus completes the act and unseals Forum', () => {
-    reachAct1Train();
-    let s = useGameStore.getState();
-    expect(isStepSatisfied(currentStep(), s)).toBe(false);
-
-    const player = s.family.find(c => c.isPlayer)!;
-    useGameStore.getState().trainCharacter(player.id, 'rhetoric');
-    s = useGameStore.getState();
-    expect(isStepSatisfied(currentStep(), s)).toBe(true);
-
-    useGameStore.getState().advanceTutorialStep();
-    s = useGameStore.getState();
-    expect(s.tutorial.stepId).toBe('prologue.act2.intro');
-    expect(s.tutorial.unlockedTabs).toEqual(['Domus', 'Forum']);
-  });
-
-  test('Act II: courting Flaccus via ANY real action (not just the spotlighted one) completes the act and unseals Curia', () => {
-    reachAct2CourtFlaccus();
-    let s = useGameStore.getState();
-    const before = s.clans.flatMap(c => c.leaders).find(l => l.id === 'valerius-flaccus')!.relationship;
-
-    useGameStore.getState().buyInfluence('valerius-flaccus'); // deliberately not Invite to Dinner
-    s = useGameStore.getState();
-    const after = s.clans.flatMap(c => c.leaders).find(l => l.id === 'valerius-flaccus')!.relationship;
-    expect(after).toBeGreaterThan(before);
-    expect(isStepSatisfied(currentStep(), s)).toBe(true);
-
-    useGameStore.getState().advanceTutorialStep();
-    s = useGameStore.getState();
-    expect(s.tutorial.stepId).toBe('prologue.act3.intro');
-    expect(s.tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia']);
-  });
+describe('guided run — Acts III-V end to end', () => {
+  afterEach(() => useGameStore.setState(INITIAL_STATE));
 
   test('Act III: voting Bellum Punicum moves the War crisis track and unseals Provinciae', () => {
     reachAct3Vote();
@@ -314,17 +271,17 @@ describe('guided run — Acts I-V end to end', () => {
     s = useGameStore.getState();
     expect(s.tutorial.activeArc).toBe('embassy');
     expect(s.tutorial.stepId).toBe('embassy.intro');
-    expect(s.tutorial.completedArcs).toEqual(['prologue']);
+    expect(s.tutorial.completedArcs).toEqual(['beat-house', 'prologue']);
     expect(s.tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia', 'Provinciae', 'Cursus']);
   });
 
-  test('sealed tabs are actually sealed until each act completes', () => {
-    let s = useGameStore.getState();
-    expect(s.tutorial.unlockedTabs).toEqual(['Domus']);
+  test('Provinciae and Cursus stay sealed until Acts III/IV actually unseal them', () => {
+    enterProloguePostBeatHouse();
+    expect(useGameStore.getState().tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia']);
 
-    reachAct1Train();
-    useGameStore.getState().trainCharacter(s.family.find(c => c.isPlayer)!.id, 'rhetoric');
+    reachAct3Vote();
+    useGameStore.getState().voteBill('start-2', 'vote_for');
     useGameStore.getState().advanceTutorialStep();
-    expect(useGameStore.getState().tutorial.unlockedTabs).toEqual(['Domus', 'Forum']);
+    expect(useGameStore.getState().tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia', 'Provinciae']);
   });
 });

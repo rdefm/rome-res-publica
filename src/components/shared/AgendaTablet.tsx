@@ -92,7 +92,7 @@ function ProgressBar({ fraction }: { fraction: number }) {
 }
 
 function AmbitionSlotCard({
-  icon, label, ambition, offer, turnNumber, state, onSet, onAbandon, onAccept, onRefuse,
+  icon, label, ambition, offer, turnNumber, state, canSet, onSet, onAbandon, onAccept, onRefuse,
 }: {
   icon: string;
   label: string;
@@ -100,6 +100,13 @@ function AmbitionSlotCard({
   offer: AmbitionOffer | undefined;
   turnNumber: number;
   state: GameState;
+  // Tutorial rebuild, ticket 04 — philonAdvisoryUnlocked now gates ONLY this
+  // builder button (agendaTabletUnlocked, a separate flag, gates the tablet
+  // itself — see both fields' own doc comments on GameState). An empty slot
+  // with the builder still locked renders with no button at all rather than
+  // a dead one, same as a locked tab renders sealed rather than a disabled
+  // control.
+  canSet: boolean;
   onSet: () => void;
   onAbandon: (id: string) => void;
   onAccept: (offerId: string) => void;
@@ -136,9 +143,13 @@ function AmbitionSlotCard({
     return (
       <View style={styles.slotCard}>
         {slotLabel}
-        <TouchableOpacity style={styles.setBtn} onPress={onSet} activeOpacity={0.75}>
-          <Text style={styles.setBtnText}>Set an ambition ›</Text>
-        </TouchableOpacity>
+        {canSet ? (
+          <TouchableOpacity style={styles.setBtn} onPress={onSet} activeOpacity={0.75}>
+            <Text style={styles.setBtnText}>Set an ambition ›</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.slotMuted}>Nothing set yet.</Text>
+        )}
       </View>
     );
   }
@@ -186,6 +197,10 @@ function AmbitionesLeaf({ onOpenBuilder }: { onOpenBuilder: (scope: AmbitionScop
   const pendingAmbitionOffers = useGameStore(s => s.pendingAmbitionOffers);
   const turnNumber = useGameStore(s => s.turnNumber);
   const family = useGameStore(s => s.family);
+  // Tutorial rebuild, ticket 04 — gates only the "Set an ambition" builder
+  // now; the tablet's own reachability is agendaTabletUnlocked, checked
+  // upstream (App.tsx/AgendaBadge.tsx) before this component ever mounts.
+  const canSetAmbition = useGameStore(s => s.philonAdvisoryUnlocked);
   const abandonAmbition = useGameStore(s => s.abandonAmbition);
   const acceptStoryAmbition = useGameStore(s => s.acceptStoryAmbition);
   const refuseStoryAmbition = useGameStore(s => s.refuseStoryAmbition);
@@ -215,6 +230,7 @@ function AmbitionesLeaf({ onOpenBuilder }: { onOpenBuilder: (scope: AmbitionScop
         offer={pendingAmbitionOffers.family}
         turnNumber={turnNumber}
         state={state}
+        canSet={canSetAmbition}
         onSet={() => onOpenBuilder('family')}
         onAbandon={abandonAmbition}
         onAccept={acceptStoryAmbition}
@@ -227,6 +243,7 @@ function AmbitionesLeaf({ onOpenBuilder }: { onOpenBuilder: (scope: AmbitionScop
         offer={pendingAmbitionOffers.character}
         turnNumber={turnNumber}
         state={state}
+        canSet={canSetAmbition}
         onSet={() => onOpenBuilder('character')}
         onAbandon={abandonAmbition}
         onAccept={acceptStoryAmbition}

@@ -336,6 +336,8 @@ describe('gameStore tutorial actions', () => {
     expect(tutorial.skipped).toBe(true);
     expect(new Set(tutorial.completedArcs)).toEqual(new Set(['prologue', 'embassy', 'war', 'courts']));
     expect(tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia']);
+    expect(useGameStore.getState().agendaTabletUnlocked).toBe(true);
+    expect(useGameStore.getState().philonAdvisoryUnlocked).toBe(true);
   });
 
   it('skipTutorialArc is a no-op when no arc is active', () => {
@@ -344,14 +346,16 @@ describe('gameStore tutorial actions', () => {
     expect(useGameStore.getState().tutorial).toEqual(INITIAL_STATE.tutorial);
   });
 
-  it('skipAllTutorials completes all four arcs and unlocks every tab', () => {
+  it('skipAllTutorials completes every arc in TUTORIAL_ARC_ORDER and unlocks every tab', () => {
     useGameStore.setState(INITIAL_STATE);
     useGameStore.getState().skipAllTutorials();
 
     const tutorial = useGameStore.getState().tutorial;
     expect(tutorial.activeArc).toBeNull();
-    expect(tutorial.completedArcs).toEqual(['prologue', 'embassy', 'war', 'courts']);
+    expect(tutorial.completedArcs).toEqual(['beat-house', 'prologue', 'embassy', 'war', 'courts']);
     expect(tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia']);
     expect(tutorial.skipped).toBe(true);
+    expect(useGameStore.getState().agendaTabletUnlocked).toBe(true);
+    expect(useGameStore.getState().philonAdvisoryUnlocked).toBe(true);
   });
 });

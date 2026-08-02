@@ -6,6 +6,7 @@
 import type { GameState } from '../state/gameStore';
 import type { TutorialArcId, TutorialAnyArcId, TutorialLessonId, TutorialStep, TabName } from '../models/tutorial';
 import type { Army } from '../models/army';
+import type { AmbitionCriterion } from '../models/ambition';
 import { TUTORIAL_ARCS } from '../data/tutorialScript';
 import { applyEffectString } from './resourceEngine';
 import { isDeterred } from './secretEngine';
@@ -14,6 +15,7 @@ import { buildCarthageReinforcementUnits } from './campaignAi';
 import { COMMAND_CANVASS_MIN_RELATIONSHIP } from './commandEngine';
 import { buildTrialState } from './trialEngine';
 import { TRIAL_PREP_VERBS } from '../data/trialPrep';
+import { buildAmbition, describeCriterionTitle } from './ambitionEngine';
 import { BALANCE } from '../data/balance';
 
 export const ALL_TABS: TabName[] = ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'];
@@ -31,8 +33,13 @@ export const TUTORIAL_CARTHAGE_GARRISON_ID = 'tutorial-carthage-garrison-lilybae
 // runs, and this id is only ever used by this one call site).
 export const TUTORIAL_COURTS_TRIAL_ID = 'tutorial-courts-repetundae';
 
-/** Order arcs resolve in — used by skipTutorialArc to cascade downstream arcs. */
-export const TUTORIAL_ARC_ORDER: TutorialArcId[] = ['prologue', 'embassy', 'war', 'courts'];
+/** Order arcs resolve in — used by skipTutorialArc to cascade downstream arcs.
+ *  Tutorial rebuild, ticket 04 — 'beat-house' now leads, chaining into
+ *  'prologue' (which starts at the old Act III/Curia now that Acts I-II have
+ *  moved into 'beat-house' — see models/tutorial.ts's TutorialArcId comment).
+ *  Tickets 05/06 will insert 'beat-chamber'/'beat-ladder' here and shrink
+ *  'prologue' further. */
+export const TUTORIAL_ARC_ORDER: TutorialArcId[] = ['beat-house', 'prologue', 'embassy', 'war', 'courts'];
 
 // Populated by each content chunk (T5 prologue, T7 embassy, T8 war, T9
 // courts) alongside the useTutorialTarget(id) call sites they instrument.
@@ -139,21 +146,47 @@ function trialUsedSection(s: GameState, trialId: string, section: 'logos' | 'pat
 }
 
 export const TUTORIAL_PREDICATES: Record<string, (s: GameState) => boolean> = {
-  // Act I — Domus: any skill trained on the player this season.
-  act1SkillTrained: (s) => {
+  // Beat I — The House (ticket 04), Domus half: any skill trained on the
+  // player this season. Formerly prologue Act I's act1SkillTrained — renamed
+  // on the move, same check.
+  houseSkillTrained: (s) => {
     const player = s.family.find(c => c.isPlayer);
     return !!player && s.trainedThisSeason.includes(player.id);
   },
 
-  // Act II — Forum: Flaccus's relationship is higher than when the act
-  // began (act2SnapshotFlaccusRel takes the snapshot on entry) — any real
-  // courting action qualifies, not just Invite to Dinner specifically.
+  // Beat I — Forum half: Flaccus's relationship is higher than when the
+  // beat's Forum section began (houseSnapshotFlaccusRel takes the snapshot
+  // on entry) — any real courting action qualifies, not just Invite to
+  // Dinner specifically. Formerly prologue Act II's own predicate of the
+  // same name.
   flaccusRelationshipRaised: (s) => {
     const flaccus = findFlaccus(s);
     if (!flaccus) return false;
     const snapshot = (s.flags['tutorial-flaccus-rel-snapshot'] as number | undefined) ?? -Infinity;
     return flaccus.relationship > snapshot;
   },
+
+  // Beat I — income section: the player's starter house (Subura, 2 free
+  // shopfronts from game start — gameStore.ts's INITIAL_STATE) has any
+  // storefront rented. No snapshot needed, same reasoning as
+  // campaniaAssetOwned below: house.shops starts all-null.
+  houseShopRented: (s) => s.house.shops.some(shop => shop !== null),
+
+  // Beat I — the ambition itself. Matched by shape (scope/source/criterion),
+  // not a stored id — GameState.flags is Record<string, boolean | number>,
+  // no room for a generated ambition id — which is safe here specifically
+  // because this predicate is only ever evaluated while
+  // tutorial.activeArc === 'beat-house', a window that ends the moment this
+  // very predicate first holds; nothing else can set a matching row before
+  // then (philonAdvisoryUnlocked — gating the player's own ambition builder
+  // — is still false throughout Beat I, and Beats II/III use different
+  // criteria entirely). tickAmbitions (turnSequencer step 13) is what
+  // actually flips status to 'completed' once denarii >= 250, at
+  // season-end — this predicate only reads that result.
+  houseAmbitionMet: (s) => s.ambitions.some(a =>
+    a.scope === 'family' && a.source === 'tutorial' && a.status === 'completed' &&
+    a.criterion.id === 'resource_threshold' && a.criterion.resource === 'denarii' && a.criterion.amount === 250
+  ),
 
   // Act III — Curia: the teaching bill's support differs from its snapshot
   // at act entry. Not keyed on Bill.playerVote — at the time this act was
@@ -292,11 +325,60 @@ export const TUTORIAL_PREDICATES: Record<string, (s: GameState) => boolean> = {
 };
 
 export const TUTORIAL_EFFECTS: Record<string, (s: GameState) => Partial<GameState>> = {
-  // Act II — Forum: snapshot Flaccus's relationship the moment the act
-  // begins, so flaccusRelationshipRaised can detect a real increase rather
-  // than assuming any particular starting value.
-  act2SnapshotFlaccusRel: (s) => ({
+  // Beat I — Forum half: snapshot Flaccus's relationship the moment that
+  // section begins, so flaccusRelationshipRaised can detect a real increase
+  // rather than assuming any particular starting value. Formerly prologue
+  // Act II's act2SnapshotFlaccusRel.
+  houseSnapshotFlaccusRel: (s) => ({
     flags: { ...s.flags, 'tutorial-flaccus-rel-snapshot': findFlaccus(s)?.relationship ?? 0 },
+  }),
+
+  // Beat I (ticket 04) — fires on 'beat-house.goal's onCompleteEffectId, the
+  // moment the teach portion ends. Builds the beat's real ActiveAmbition
+  // directly via buildAmbition (the same single construction path the player
+  // builder and the setAmbition: narrative-hook token both go through — see
+  // resourceEngine.ts's own header comment on that token) rather than routing
+  // through the setAmbition: effect-string grammar: that token's deadlineSeasons
+  // field is always a parsed number, never undefined (parseAmbitionTokenHead
+  // defaults it to 0), which would give this ambition an immediate deadline —
+  // exactly what "no deadline, cannot fail" (ticket 04) rules out. scope
+  // 'family' (not 'character'): Denarii is a household resource, not tied to
+  // one member — measureCriterion's resource_threshold case reads
+  // state.denarii directly regardless of scope. refusable: false — per the
+  // rebuild plan §1, the player cannot refuse an in-tutorial goal (only
+  // leave the guided path entirely, skipTutorialArc). title comes from
+  // describeCriterionTitle, the same phrasing table the player builder and
+  // narrative-hook tokens use, rather than restating "Hold 250 Denarii" as a
+  // second literal that could drift from it.
+  //
+  // Also flips agendaTabletUnlocked (spec review, ticket 04) — the Agenda
+  // Tablet (badge + auto-open, App.tsx/AgendaBadge.tsx) needs to be
+  // reachable the instant this ambition exists for it to actually be
+  // "visible on the Ambitions tablet leaf" as the ticket requires.
+  // philonAdvisoryUnlocked is now a SEPARATE, narrower flag — it still only
+  // gates the player's OWN "Set an ambition" builder (AgendaTablet.tsx),
+  // still moved to end of Beat II by ticket 05 per the plan (§2.6), not
+  // touched here.
+  houseSetAmbition: (s) => {
+    const criterion: AmbitionCriterion = { id: 'resource_threshold', resource: 'denarii', amount: 250 };
+    const ambition = buildAmbition({
+      scope: 'family',
+      source: 'tutorial',
+      title: describeCriterionTitle(criterion, s),
+      criterion,
+      refusable: false,
+    }, s);
+    return {
+      ambitions: [...s.ambitions, ambition],
+      agendaTabletUnlocked: true,
+    };
+  },
+
+  // Beat I — fires on the arc's final step's (beat-house.sandbox)
+  // onCompleteEffectId, same "set the precedent up now" pattern as
+  // warSetCompleteFlag/embassySetCompleteFlag — nothing consumes it yet.
+  houseSetCompleteFlag: (s) => ({
+    flags: { ...s.flags, 'tutorial-house-complete': true },
   }),
 
   // Act III — Curia: snapshot the teaching bill's support on act entry.
@@ -545,6 +627,11 @@ export const ALL_WORLD_GATE_CATEGORIES: readonly WorldGateCategory[] = [
  */
 const WORLD_GATE_POLICY: Partial<Record<TutorialAnyArcId, 'all' | readonly WorldGateCategory[]>> = {
   prologue: 'all',
+  // Tutorial rebuild, ticket 04 — Beat I runs fully world-frozen too, same as
+  // the old prologue it partially replaces (tutorial-rebuild-plan.md §2.1's
+  // table: Beat I is 'frozen' across every category). Tickets 05/06 give
+  // 'beat-chamber'/'beat-ladder' their own, partially-thawed entries here.
+  'beat-house': 'all',
 };
 
 /**

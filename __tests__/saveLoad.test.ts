@@ -295,3 +295,34 @@ describe('Ambition save schema + migration', () => {
     expect(useGameStore.getState().pendingAmbitionOffers).toEqual({});
   });
 });
+
+// Tutorial rebuild, ticket 04 — 'beat-house' added to the tutorial.activeArc
+// enum, plus the new agendaTabletUnlocked field (split off
+// philonAdvisoryUnlocked — see both fields' own doc comments on GameState).
+describe('Beat I save schema (tutorial rebuild, ticket 04)', () => {
+  test('SaveSchema accepts activeArc: "beat-house" and a mid-Beat-I save loads correctly', () => {
+    useGameStore.getState().startGame('guided');
+    useGameStore.setState({ denarii: 220 });
+    const midBeatHouse = JSON.parse(JSON.stringify(useGameStore.getState()));
+    expect(midBeatHouse.tutorial.activeArc).toBe('beat-house');
+    expect(midBeatHouse.agendaTabletUnlocked).toBe(false);
+
+    expect(() => SaveSchema.parse(midBeatHouse)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(midBeatHouse)).not.toThrow();
+    const s = useGameStore.getState();
+    expect(s.tutorial.activeArc).toBe('beat-house');
+    expect(s.denarii).toBe(220);
+    expect(s.agendaTabletUnlocked).toBe(false);
+  });
+
+  test('a save written before ticket 04 (no agendaTabletUnlocked key) defaults to unlocked, matching pre-split behavior', () => {
+    useGameStore.getState().startGame('standard');
+    const base = useGameStore.getState() as any;
+    const { agendaTabletUnlocked: _omitted, ...preTicket04State } = base;
+    const roundTripped = JSON.parse(JSON.stringify(preTicket04State));
+
+    expect(() => SaveSchema.parse(roundTripped)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(roundTripped)).not.toThrow();
+    expect(useGameStore.getState().agendaTabletUnlocked).toBe(true);
+  });
+});

@@ -355,10 +355,10 @@ function GameRoot() {
     const checkAndMaybeOpen = () => {
       const s = useGameStore.getState();
       if (!s.gameStarted)                              return;
-      // Tutorial redesign — held back for a guided run until Philon's
-      // explicit hand-off (courts.philon-handoff); see
-      // philonAdvisoryUnlocked's own doc comment on GameState.
-      if (!s.philonAdvisoryUnlocked)                   return;
+      // Tutorial redesign — held back for a guided run until beat-house's
+      // houseSetAmbition (tutorial rebuild ticket 04); see
+      // agendaTabletUnlocked's own doc comment on GameState.
+      if (!s.agendaTabletUnlocked)                     return;
       if (s.agendaVisible)                             return;
       if (s.seasonOverlayVisible)                      return;
       if (s.activeEvent)                               return;

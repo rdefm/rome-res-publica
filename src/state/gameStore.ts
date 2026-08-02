@@ -685,15 +685,39 @@ export interface GameState {
   /** True while the Agenda Tablet modal is open. */
   agendaVisible: boolean;
   /**
-   * Gates the Agenda Tablet (Ex Tabulis Philonis, auto-open + badge). True
-   * for every start except guided, where it would otherwise surface within
-   * the first turn or two — before the player has any context for it — on
-   * top of Philon's own scripted beats. Set false at guided-start time
-   * (startGame), flipped true by
-   * courts.philon-handoff's onCompleteEffectId (the arc's actual last step)
-   * once Philon explicitly hands off — and unconditionally by
+   * Gates the Agenda Tablet itself (Ex Tabulis Philonis, auto-open + badge —
+   * App.tsx/AgendaBadge.tsx). True for every start except guided, where it
+   * would otherwise surface within the first turn or two — before the player
+   * has any context for it — on top of Philon's own scripted beats. Set
+   * false at guided-start time (startGame), flipped true by
+   * beat-house's houseSetAmbition (tutorialEngine.ts, tutorial rebuild
+   * ticket 04) the moment the player's first real ambition exists — the
+   * tablet's Ambitiones leaf needs to be reachable for that ambition to
+   * actually be visible — and unconditionally by
    * skipTutorialArc/skipAllTutorials, so skipping never leaves a save
    * permanently unable to reach it.
+   *
+   * Split from philonAdvisoryUnlocked (ticket 04's spec review) — that flag
+   * used to gate this AND the player's own "Set an ambition" builder with
+   * one boolean, which would have made the builder reachable from partway
+   * through Beat I too. Tablet reachability and "can the player set their
+   * OWN ambition yet" are different questions (the plan's §2.6 deliberately
+   * defers the latter to end of Beat II) — this field answers only the
+   * first one now.
+   */
+  agendaTabletUnlocked: boolean;
+  /**
+   * Gates ONLY the player's own "Set an ambition" builder
+   * (AgendaTablet.tsx's AmbitionSlotCard/AmbitionBuilder) — NOT the tablet
+   * itself, see agendaTabletUnlocked above for that split (ticket 04). True
+   * for every start except guided, same reasoning as agendaTabletUnlocked.
+   * Set false at guided-start time (startGame), flipped true by
+   * courts.philon-handoff's onCompleteEffectId today — tutorial-rebuild-
+   * plan.md §2.6 moves this to the end of Beat II once ticket 05 lands, since
+   * the player shouldn't be offered their own ambition slot before the
+   * ambition system itself has been taught via Beats I-II's own goals — and
+   * unconditionally by skipTutorialArc/skipAllTutorials, so skipping never
+   * leaves a save permanently unable to reach it.
    */
   philonAdvisoryUnlocked: boolean;
   /** Snapshot of the last completed season's resource/crisis/rome deltas. Displayed in SeasonOverlay and welcome-back recap (P1-D). */
@@ -1181,8 +1205,8 @@ export interface GameActions {
    *  unlocks every tab. No-op if no arc is active. Confirm via dialog before
    *  calling — this is a one-way action. */
   skipTutorialArc: () => void;
-  /** Completes all four arcs and unlocks every tab. Confirm via dialog
-   *  before calling. */
+  /** Completes every arc in TUTORIAL_ARC_ORDER and unlocks every tab.
+   *  Confirm via dialog before calling. */
   skipAllTutorials: () => void;
   /** Tutorial rebuild, ticket 02 — call once from CitySheet.tsx's own
    *  mount-once effect (the component fully unmounts/remounts on
@@ -1530,6 +1554,7 @@ export const INITIAL_STATE: GameState = {
   },
   agendaViewedTurn: -1,
   agendaVisible: false,
+  agendaTabletUnlocked: true,
   philonAdvisoryUnlocked: true,
   lastSeasonLedger: null,
   lastActiveAt: Date.now(),
@@ -1810,31 +1835,47 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       gameStarted: true,
       debugMode: mode === 'debug',
       startId: startId as StartId,
-      // Tutorial redesign — a guided start (tutorialScriptId set) begins the
-      // prologue arc hard-railed to Domus only; every other start gets the
-      // inert, fully-unlocked value. tutorial-redesign-plan.md §2.3.
+      // Tutorial redesign — a guided start (tutorialScriptId set) begins
+      // hard-railed to Domus only; every other start gets the inert,
+      // fully-unlocked value. tutorial-redesign-plan.md §2.3. Tutorial
+      // rebuild, ticket 04 — the entry arc is now 'beat-house' (Acts I-II's
+      // replacement), not 'prologue' directly; see models/tutorial.ts's
+      // TutorialArcId comment.
       tutorial: scriptId
         ? {
-            activeArc: 'prologue' as TutorialArcId,
-            stepId: TUTORIAL_ARCS.prologue.steps[0]?.id ?? null,
+            activeArc: 'beat-house' as TutorialArcId,
+            stepId: TUTORIAL_ARCS['beat-house'].steps[0]?.id ?? null,
             completedArcs: [],
             unlockedTabs: ['Domus'],
             skipped: false,
           }
         : INITIAL_STATE.tutorial,
       // Tutorial redesign — a guided start begins in Autumn (seasonIndex 2),
-      // not Spring. Acts I-IV never end a season (everything happens within
-      // the same turn while the world is frozen — isWorldFrozen's own
-      // comment), so Act V's single `shared.end-season` tap is the guided
-      // run's first-ever season-end. resolveElection only fires when the
-      // POST-increment season is Winter (turnSequencer.ts, `newSeasonIndex
-      // === 3`) — starting one season early means that first tap lands
-      // directly on Winter and resolves the Quaestor race immediately,
-      // instead of requiring several taps against a caption
-      // (prologue.act5.wait-for-election) that reads identically every
-      // season and gives no sign anything is progressing. Every other start
-      // is unaffected (INITIAL_STATE.seasonIndex, i.e. Spring).
+      // not Spring, so a Winter crossing (and whatever it resolves —
+      // originally Act V's Quaestor election) comes sooner than a Spring
+      // start would. resolveElection only fires when the POST-increment
+      // season is Winter (turnSequencer.ts, `newSeasonIndex === 3`).
+      //
+      // Tutorial rebuild, ticket 04 — this head start's original rationale
+      // ("Act V's wait-for-election tap is the run's first-ever season-end,
+      // so start one season early and it resolves in exactly one tap") no
+      // longer holds: beat-house.sandbox (tutorialScript.ts) now spends
+      // however many real end-season taps Beat I's own ambition takes,
+      // BEFORE Act III/IV/V are ever reached — unlike Act V's old
+      // wait-for-election caption, that wait has real visible progress (the
+      // Ambitions tablet leaf's denarii bar), so it doesn't have the same
+      // "reads identically every season" staleness problem Act V's own step
+      // was written to dodge. Act V's own election still resolves correctly
+      // on whatever Winter crossing comes next, just not necessarily on the
+      // very first post-Beat-I tap. Kept anyway: harmless for Beat I itself
+      // (nothing in it is season-specific), and ticket 06 revisits Act V's
+      // own pacing when it becomes 'beat-ladder'. Every other start is
+      // unaffected (INITIAL_STATE.seasonIndex, i.e. Spring).
       seasonIndex: scriptId ? 2 : INITIAL_STATE.seasonIndex,
+      // Held back for a guided start until beat-house's houseSetAmbition
+      // flips it (tutorial rebuild ticket 04) — see this field's own doc
+      // comment on GameState.
+      agendaTabletUnlocked: scriptId ? false : INITIAL_STATE.agendaTabletUnlocked,
       // Held back for a guided start until Philon's explicit hand-off
       // (courts.philon-handoff, the arc's actual last step) — see this
       // field's own doc comment on GameState.
@@ -3929,11 +3970,12 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     } else {
       // Arc finished — auto-chain into the next arc in TUTORIAL_ARC_ORDER
       // (mirrors startTutorialArc's own enter logic) rather than going idle,
-      // so the guided run flows prologue -> embassy -> war -> courts without
-      // requiring some other call site to notice completion and re-invoke
-      // startTutorialArc itself. Only truly goes idle once courts finishes.
+      // so the guided run flows beat-house -> prologue -> embassy -> war ->
+      // courts without requiring some other call site to notice completion
+      // and re-invoke startTutorialArc itself. Only truly goes idle once
+      // courts finishes.
       const completedArcs = [...s.tutorial.completedArcs, current.arc];
-      // TUTORIAL_ARC_ORDER only ever lists the four main arcs (T10's
+      // TUTORIAL_ARC_ORDER only ever lists the main chain's arcs (T10's
       // standalone lessons are deliberately excluded — see its own header
       // comment); .indexOf's signature wants a TutorialArcId, but a lesson
       // id compares safely against it at runtime (=== comparisons, -1 for
@@ -3987,12 +4029,15 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         unlockedTabs: ALL_TUTORIAL_TABS,
         skipped: true,
       },
-      // Skipping cascades past courts.philon-handoff too — its own unlock
-      // (courtsSetCompleteFlag) never fires, so without this a skipped
-      // guided run would leave Ambitions/Ex Tabulis Philonis permanently
-      // dark for that save. Skipping is an explicit "I don't need this
-      // explained" signal either way, so unlocking silently (no hand-off
-      // narration) is correct here.
+      // Skipping cascades past both beat-house's houseSetAmbition and
+      // courts.philon-handoff — neither fires, so without this a skipped
+      // guided run would leave the Agenda Tablet AND Ambitions permanently
+      // dark for that save (ticket 04's agendaTabletUnlocked/
+      // philonAdvisoryUnlocked split — see their own doc comments on
+      // GameState). Skipping is an explicit "I don't need this explained"
+      // signal either way, so unlocking silently (no hand-off narration) is
+      // correct here.
+      agendaTabletUnlocked: true,
       philonAdvisoryUnlocked: true,
     });
   },
@@ -4006,6 +4051,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         unlockedTabs: ALL_TUTORIAL_TABS,
         skipped: true,
       },
+      agendaTabletUnlocked: true,
       philonAdvisoryUnlocked: true,
     });
   },

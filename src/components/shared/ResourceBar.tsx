@@ -87,7 +87,7 @@ export default function ResourceBar() {
   const shownCriticals  = criticalItems.slice(0, 3);
   const hiddenCount     = criticalItems.length - 3;
 
-  // prologue.act1.fides ("you will spend two currencies...") spotlights
+  // beat-house.fides ("you will spend two currencies...") spotlights
   // this row — previously that step had no `target` at all.
   const tutorialTarget = useTutorialTarget('shared.resource-bar');
 

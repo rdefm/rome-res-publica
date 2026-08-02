@@ -1911,8 +1911,11 @@ export function processSeason(state: GameState): {
     // World gate rework, ticket 01 — split from a single isWorldFrozen check
     // into its two constituent categories (randomEvents, warIgnition) so a
     // future curated beat can leave one open while the other stays frozen.
-    // Today both always move together (only 'prologue' has a policy, and it
-    // freezes both), so this is behavior-equivalent to the old single check.
+    // Today both always move together ('beat-house' and 'prologue' are the
+    // only arcs with a policy, and both freeze everything — tutorialEngine.ts's
+    // WORLD_GATE_POLICY), so this is behavior-equivalent to the old single
+    // check. Tickets 05/06 are what first exercise a policy where these two
+    // diverge — see those tickets' own "implementation note".
     const randomEventsFrozen = isWorldCategoryFrozen(s, 'randomEvents');
     const warIgnitionFrozen = isWorldCategoryFrozen(s, 'warIgnition');
 

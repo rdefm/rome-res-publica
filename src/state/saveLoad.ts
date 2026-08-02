@@ -272,9 +272,25 @@ export const SaveSchema = z.object({
   // skipTutorialArc/skipAllTutorials). parse()'s result is discarded here,
   // same as gensId/difficulty above — this default only matters for
   // validation, not migration.
+  //
+  // Tutorial rebuild, ticket 04 — split off agendaTabletUnlocked (below):
+  // philonAdvisoryUnlocked now gates ONLY the player's own ambition builder,
+  // moving (ticket 05) to end of Beat II; this field keeps its original
+  // courts.philon-handoff default for now — see both fields' own doc
+  // comments on GameState.
   philonAdvisoryUnlocked: z.boolean().default(true),
+  // Tutorial rebuild, ticket 04 — gates the Agenda Tablet itself (badge +
+  // auto-open), split off philonAdvisoryUnlocked so Beat I's ambition can be
+  // visible on the tablet leaf well before the player-ambition-builder
+  // unlocks (see GameState's own doc comment on this field). Same
+  // .default(true)/discarded-parse()-result reasoning as philonAdvisoryUnlocked
+  // above — a pre-ticket-04 save has no notion of this field and must read
+  // as unlocked.
+  agendaTabletUnlocked: z.boolean().default(true),
   tutorial: z.object({
     activeArc:     z.enum([
+      // Tutorial rebuild, ticket 04.
+      'beat-house',
       'prologue', 'embassy', 'war', 'courts',
       // T10 — standalone just-in-time lessons (models/tutorial.ts's TutorialLessonId).
       'lesson-trial', 'lesson-battle', 'lesson-death', 'lesson-succession',

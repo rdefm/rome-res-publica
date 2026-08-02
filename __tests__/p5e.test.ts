@@ -86,7 +86,7 @@ describe('gameStore.startGame — alternate family stateOverrides', () => {
     useGameStore.getState().startGame('guided');
     const s = useGameStore.getState();
     expect(s.gensId).toBe('brutii');
-    expect(s.tutorial.activeArc).toBe('prologue'); // guided start begins the tutorial arc
+    expect(s.tutorial.activeArc).toBe('beat-house'); // guided start begins the tutorial arc
   });
 
   test('duilia start applies the full stateOverrides bundle', () => {

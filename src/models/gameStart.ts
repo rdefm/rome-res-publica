@@ -58,8 +58,9 @@ export interface StartDefinition {
   /**
    * Tutorial redesign, Chunk T4 — no longer a registry key (TUTORIAL_SCRIPTS/
    * tutorialEvents.ts are retired). A plain truthy sentinel: when set, the
-   * new-game action begins the 'prologue' tutorial arc. Only the 'guided'
-   * start sets this.
+   * new-game action begins the guided tutorial's entry arc (tutorial rebuild
+   * ticket 04 — 'beat-house', formerly 'prologue'). Only the 'guided' start
+   * sets this.
    */
   tutorialScriptId?: string;
   /**
