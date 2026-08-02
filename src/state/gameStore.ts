@@ -7,7 +7,9 @@ import type { Client, ClientType } from '../models/client';
 import type { EventInstance, EventChoice } from '../models/event';
 import type { OwnedAsset } from '../models/asset';
 import type { OwnedHouse, RoomType, BusinessType } from '../models/house';
-import type { ActiveAmbition } from '../models/ambition';
+import type { ActiveAmbition, AmbitionOffer } from '../models/ambition';
+import { buildAmbition, buildAmbitionOffer, evictOccupantForDirectWrite, findActiveAmbitionInSlot } from '../engine/ambitionEngine';
+import type { BuildAmbitionInput, BuildAmbitionOfferInput } from '../engine/ambitionEngine';
 import type { LegacyObjective } from '../models/legacyObjective';
 import type { PatronTier } from '../models/patronLadder';
 import type { TrialState, TrialApproach, ChargeId, ChargeSource } from '../models/trial';
@@ -24,7 +26,7 @@ import type { AgendaTarget } from '../models/agenda';
 import type { CuriaSubTab } from '../models/curia';
 import type { SeasonLedger } from '../models/ledger';
 // ── Tutorial redesign ──────────────────────────────────────────────────────────
-import type { TutorialState, TutorialArcId, TutorialAnyArcId } from '../models/tutorial';
+import type { TutorialState, TutorialArcId, TutorialAnyArcId, TutorialBeatId } from '../models/tutorial';
 import { TUTORIAL_ARCS } from '../data/tutorialScript';
 import {
   getStep as getTutorialStep,
@@ -33,11 +35,15 @@ import {
   ALL_TABS as ALL_TUTORIAL_TABS,
   TUTORIAL_ARC_ORDER,
   TUTORIAL_CARTHAGE_GARRISON_ID,
+  BEAT_GOAL_STEP_ID,
+  BEAT_ENTRY_UNLOCKED_TABS,
 } from '../engine/tutorialEngine';
 import { calcLevyCost } from '../engine/troopEngine';
 import {
   calcConsularArmyStrength,
   calcConsularArmyArrivalTurn,
+  bribeCommission,
+  capitulate,
 } from '../engine/senateResponseEngine';
 import {
   calcOfficeThreshold,
@@ -371,7 +377,6 @@ export interface GameState {
   campaigningCharacterId: string | null;
   campaignVotes: Record<string, 'for' | 'against' | 'neutral'>;
   electionRivals: ElectionRival[];
-  pendingAmbitionScopes: ('family' | 'character')[];
 
   // Clientela Network
   clients: Client[];
@@ -386,8 +391,12 @@ export interface GameState {
   // INITIAL_STATE below) so the player is never "homeless."
   house: OwnedHouse;
 
-  // Ambitions (Feature 3)
+  // Ambitions (rework — spec: plans/ambition-system-rework/ambition-system-rework-spec.md)
   ambitions: ActiveAmbition[];
+  /** Staged AmbitionOffers reserving the family/character slot, awaiting an
+   *  accept/refuse decision (ticket 05's narrative-hook offer-then-accept
+   *  flow — offerAmbition/acceptStoryAmbition/refuseStoryAmbition below). */
+  pendingAmbitionOffers: { family?: AmbitionOffer; character?: AmbitionOffer };
 
   // Legacy Objectives (Feature 4)
   legacyObjectives: LegacyObjective[];
@@ -429,6 +438,14 @@ export interface GameState {
   // Legislation
   activeLaws: ActiveLaw[];
   passedBills: { id: string; name: string; passedOnTurn: number }[];
+  /** Ambition rework, ticket 03 — lifetime count of bills that passed while
+   *  `Bill.playerVote === 'vote_for'` was still set on them. Incremented
+   *  alongside `passedBills` itself in turnSequencer.ts's passive bill
+   *  resolution (the only site that ever marks a bill "passed" — see that
+   *  file's step 4 comment), matching `lifetimeBattlesWon`'s pattern for
+   *  `battles_won` elsewhere in this file. Feeds the `bill_passed` ambition criterion
+   *  (engine/ambitionEngine.ts). */
+  lifetimeBillsPassedVotedFor: number;
 
   // Event queue
   pendingEvents: EventInstance[];
@@ -476,6 +493,18 @@ export interface GameState {
   // full reasoning). No movement yet (C5); no muster (C3) — armies exist
   // here only via debug spawn/combine/divide.
   armies: Army[];
+  /** Ambition system rework — lifetime count of engagements the player's own
+   *  side has won, across every war. Incremented in both production
+   *  battle-resolution paths: resolveEngagementAbstract (an abstractly-
+   *  resolved engagement) and resolveCampaignBattleOutcome (the tactical
+   *  write-back once the player fights it out and returns via
+   *  returnFromBattle) — a battle can end through either, and both compute
+   *  their own winning army the same way. Feeds the `battles_won` ambition
+   *  criterion (engine/ambitionEngine.ts) — no such lifetime counter existed
+   *  anywhere in GameState before this. Not yet in the save schema
+   *  (state/saveLoad.ts) — flagged as a follow-up for the ambition rework's
+   *  schema ticket. */
+  lifetimeBattlesWon: number;
 
   // ── Campaign Map plan, Chunk C4 — the theatre command. A NEW, PARALLEL
   // election track to Cursus's Winter magistracy campaigns (campaigning/
@@ -658,15 +687,39 @@ export interface GameState {
   /** True while the Agenda Tablet modal is open. */
   agendaVisible: boolean;
   /**
-   * Gates the Agenda Tablet (Ex Tabulis Philonis, auto-open + badge) and
-   * AmbitionSelectionModal. True for every start except guided, where both
-   * would otherwise surface within the first turn or two — before the
-   * player has any context for either — on top of Philon's own scripted
-   * beats. Set false at guided-start time (startGame), flipped true by
-   * courts.philon-handoff's onCompleteEffectId (the arc's actual last step)
-   * once Philon explicitly hands off — and unconditionally by
+   * Gates the Agenda Tablet itself (Ex Tabulis Philonis, auto-open + badge —
+   * App.tsx/AgendaBadge.tsx). True for every start except guided, where it
+   * would otherwise surface within the first turn or two — before the player
+   * has any context for it — on top of Philon's own scripted beats. Set
+   * false at guided-start time (startGame), flipped true by
+   * beat-house's houseSetAmbition (tutorialEngine.ts, tutorial rebuild
+   * ticket 04) the moment the player's first real ambition exists — the
+   * tablet's Ambitiones leaf needs to be reachable for that ambition to
+   * actually be visible — and unconditionally by
    * skipTutorialArc/skipAllTutorials, so skipping never leaves a save
-   * permanently unable to reach either system.
+   * permanently unable to reach it.
+   *
+   * Split from philonAdvisoryUnlocked (ticket 04's spec review) — that flag
+   * used to gate this AND the player's own "Set an ambition" builder with
+   * one boolean, which would have made the builder reachable from partway
+   * through Beat I too. Tablet reachability and "can the player set their
+   * OWN ambition yet" are different questions (the plan's §2.6 deliberately
+   * defers the latter to end of Beat II) — this field answers only the
+   * first one now.
+   */
+  agendaTabletUnlocked: boolean;
+  /**
+   * Gates ONLY the player's own "Set an ambition" builder
+   * (AgendaTablet.tsx's AmbitionSlotCard/AmbitionBuilder) — NOT the tablet
+   * itself, see agendaTabletUnlocked above for that split (ticket 04). True
+   * for every start except guided, same reasoning as agendaTabletUnlocked.
+   * Set false at guided-start time (startGame), flipped true by
+   * beat-chamber.philon-handoff's onCompleteEffectId (tutorial rebuild,
+   * ticket 05 — moved here from courts.philon-handoff per tutorial-rebuild-
+   * plan.md §2.6, since the player shouldn't be offered their own ambition
+   * slot before the ambition system itself has been taught via Beats I-II's
+   * own goals) — and unconditionally by skipTutorialArc/skipAllTutorials, so
+   * skipping never leaves a save permanently unable to reach it.
    */
   philonAdvisoryUnlocked: boolean;
   /** Snapshot of the last completed season's resource/crisis/rome deltas. Displayed in SeasonOverlay and welcome-back recap (P1-D). */
@@ -680,6 +733,10 @@ export interface GameState {
   saveVersion?: number;
   /** One-shot deep-link request. Set by agenda item taps; consumed and cleared by the App.tsx navigator (P1-C). */
   uiNavRequest: AgendaTarget | null;
+  /** One-shot request to open the Agenda Tablet directly on its Ambitiones
+   *  leaf (ambition rework ticket 02) — same idiom as curiaSubTabRequest.
+   *  Consumed and cleared by AgendaTablet itself. */
+  agendaTabletLeafRequest: 'ambitiones' | null;
 
   // ── App lifecycle (previously untyped — formalised here) ──────────────────
   gameStarted: boolean;
@@ -823,11 +880,38 @@ export interface GameActions {
   // Cursus — family member campaigns
   declareFamilyCampaign: (characterId: string, officeId: OfficeId) => void;
 
-  // Ambitions
-  selectAmbition: (definitionId: string, scope: 'family' | 'character', assignedCharacterId?: string) => void;
-  dismissAmbitionSelection: () => void;
-  clearAmbitionScope: (scope: 'family' | 'character') => void;
-  requestAmbitionChange: (scope: 'family' | 'character') => void;
+  // Ambitions (rework — spec: plans/ambition-system-rework/ambition-system-rework-spec.md)
+  /** Builds and installs an ambition into its target slot (input.scope,
+   *  input.assignedCharacterId for 'character'). If the slot already holds
+   *  an active ambition, that occupant is superseded first (partial,
+   *  progress-scaled payout, no failureDignitas) — the same construction
+   *  path the player builder and later direct-write story/tutorial effect
+   *  strings (ticket 05) both call. */
+  setAmbition: (input: BuildAmbitionInput) => void;
+  /** Removes an active ambition from its slot — only when `refusable` is
+   *  true (always true for source 'player'; per-instance for 'story'/
+   *  'tutorial'). No reward, no penalty, no cooldown; the slot is free
+   *  immediately. */
+  abandonAmbition: (id: string) => void;
+  /** Narrative-hook (ticket 05, spec §1 "Story/tutorial entry" /
+   *  offer-then-accept): stages an AmbitionOffer into
+   *  pendingAmbitionOffers[scope], reserving that slot until the player
+   *  accepts or refuses on the Ambitiones leaf. Does NOT evict an occupant —
+   *  an offer can only be staged into an empty slot (the direct-write path,
+   *  setAmbition, is what force-evicts). */
+  offerAmbition: (input: BuildAmbitionOfferInput) => void;
+  /** Converts a pending offer into a real ActiveAmbition: baseline snapshotted
+   *  and reward frozen NOW, at accept time (not offer time, spec §2.4), via
+   *  the same buildAmbition construction path as everything else.
+   *  `refusable` is always true on accept — choosing a story ambition
+   *  doesn't forfeit the later right to abandon it (spec §2.3's
+   *  acceptStoryAmbition bullet). */
+  acceptStoryAmbition: (offerId: string) => void;
+  /** Discards a pending offer and frees its slot — no reward, no penalty. */
+  refuseStoryAmbition: (offerId: string) => void;
+  /** Opens the Agenda Tablet directly on the Ambitiones leaf (or null to
+   *  clear a consumed request) — same idiom as requestCuriaSubTab. */
+  requestAgendaTabletLeaf: (leaf: 'ambitiones' | null) => void;
 
   // Reputation
   adjustClanReputation: (clanId: string, delta: number, clanName: string) => void;
@@ -869,7 +953,11 @@ export interface GameActions {
 
   // App flow
   /** Start a new game with the chosen start configuration. Default is standard (no tutorial). */
-  startGame: (startId?: StartId, mode?: 'senator' | 'debug', difficulty?: DifficultyId) => void;
+  /** startArc — tutorial rebuild, ticket 07: the act selector's chapter
+   *  picker (StartMenuScreen) lets a new guided game begin at any of the
+   *  three beats, not just 'beat-house'. Ignored for every non-guided
+   *  startId. Defaults to 'beat-house' (unchanged behavior). */
+  startGame: (startId?: StartId, mode?: 'senator' | 'debug', difficulty?: DifficultyId, startArc?: TutorialBeatId) => void;
 
   // Log
   addLog: (text: string, type?: LogEntry['type']) => void;
@@ -967,6 +1055,15 @@ export interface GameActions {
   raiseLevy: (characterId: string, musterProvinceId: string) => void;
   musterVeterans: (characterId: string) => void;
   disbandTroops: (characterId: string, troopIds: string[]) => void;
+  /** tickets/senate-response-3-bribe-commission-ui.md — ends an active
+   *  Senate Response in 'censure' phase for 50 Denarii, no further
+   *  consequence. No-op outside 'censure' phase or if denarii < 50. */
+  bribeSenateCommission: () => void;
+  /** tickets/senate-response-4-capitulate-ui.md — disbands every illegal
+   *  legion (or the offending Army) and ends an active Senate Response
+   *  immediately, in any phase, for −15 lifetime Dignitas. No-op if no
+   *  response is active. */
+  capitulateToSenate: () => void;
   /** Military Overhaul M8 — army-scope, once per year (see the action's own comment). */
   payDonative: (characterId: string) => void;
   updateLocalSupportForPlayer: (provinceId: string, delta: number) => void;
@@ -1112,11 +1209,41 @@ export interface GameActions {
   /** Completes the active arc and every arc after it in TUTORIAL_ARC_ORDER
    *  (an arc's later beats depend on earlier ones having "happened"), and
    *  unlocks every tab. No-op if no arc is active. Confirm via dialog before
-   *  calling — this is a one-way action. */
+   *  calling — this is a one-way action. Also ends any in-flight replay
+   *  (ticket 07) — leaving the guided path shouldn't leave a review dangling
+   *  over a run that just declared itself finished. */
   skipTutorialArc: () => void;
-  /** Completes all four arcs and unlocks every tab. Confirm via dialog
-   *  before calling. */
+  /** Completes every arc in TUTORIAL_ARC_ORDER and unlocks every tab.
+   *  Confirm via dialog before calling. Also ends any in-flight replay,
+   *  same as skipTutorialArc. */
   skipAllTutorials: () => void;
+  // ── Tutorial rebuild, ticket 07 — act selector replay ──────────────────────
+  // A replay walks a beat's teach steps for recap only: no tutorial-authored
+  // effect ever fires (applyTutorialEffect short-circuits on replayingArc),
+  // and it never touches the real activeArc/stepId/completedArcs — those
+  // keep tracking whatever the player's actual progress is, untouched,
+  // throughout. tutorial-rebuild-plan.md §2.4.
+  /** Begins reviewing `arc`'s teach content from its first step. Leaves
+   *  activeArc/stepId (real progress) untouched. */
+  startTutorialReplay: (arc: TutorialBeatId) => void;
+  /** Every replay step advances on tap regardless of its real authored
+   *  `advance` kind — a replay never requires performing (or waits on) the
+   *  real action a live teach step gates on. Reaching the beat's goal step
+   *  (BEAT_GOAL_STEP_ID) or the end of its steps ends the replay cleanly,
+   *  same as tapping "end review" would. */
+  advanceTutorialReplayStep: () => void;
+  /** Bails out of a replay early. Fully reversible — nothing was ever
+   *  granted or recorded, so no confirmation is needed before calling. */
+  exitTutorialReplay: () => void;
+  /** Tutorial rebuild, ticket 02 — call once from CitySheet.tsx's own
+   *  mount-once effect (the component fully unmounts/remounts on
+   *  close/open, so mount IS "opened"). No-op once lesson-provinciae is
+   *  taught or already pending; otherwise stamps 'pending-lesson-provinciae'
+   *  for tutorialEngine.getEligibleLesson to pick up on the next commit. */
+  openedProvinciaeCitySheet: () => void;
+  /** Same as openedProvinciaeCitySheet, for HoldingsModal.tsx and
+   *  'pending-lesson-assets'/lesson-assets. */
+  openedAssetPurchaseModal: () => void;
 
   // ── Phase 1 — Season ledger + autosave (P1-D) ─────────────────────────────
   /**
@@ -1344,7 +1471,6 @@ export const INITIAL_STATE: GameState = {
   campaigningCharacterId: null,
   campaignVotes: {},
   electionRivals: [],
-  pendingAmbitionScopes: ['family', 'character'],
 
   clients: [],
 
@@ -1360,6 +1486,7 @@ export const INITIAL_STATE: GameState = {
   },
   familyReputations: INITIAL_FAMILY_REPUTATIONS,
   ambitions: [],
+  pendingAmbitionOffers: {},
   legacyObjectives: initLegacyObjectives(),
   patronTier: 0,
   lifetimeDignitas: 0,
@@ -1367,6 +1494,7 @@ export const INITIAL_STATE: GameState = {
 
   activeLaws: [],
   passedBills: [],
+  lifetimeBillsPassedVotedFor: 0,
 
   pendingEvents: [],
   activeEvent: null,
@@ -1384,6 +1512,7 @@ export const INITIAL_STATE: GameState = {
   lifetimeImperium: 0,
   theatre: buildInitialTheatreState(),
   armies: [],
+  lifetimeBattlesWon: 0,
   activeCommand: null,
   commandElection: null,
   campaignLog: null,
@@ -1449,13 +1578,16 @@ export const INITIAL_STATE: GameState = {
     activeArc: null, stepId: null, completedArcs: [],
     unlockedTabs: ALL_TUTORIAL_TABS, // free start / no active script: all open
     skipped: false,
+    replayingArc: null, replayStepId: null,
   },
   agendaViewedTurn: -1,
   agendaVisible: false,
+  agendaTabletUnlocked: true,
   philonAdvisoryUnlocked: true,
   lastSeasonLedger: null,
   lastActiveAt: Date.now(),
   uiNavRequest: null,
+  agendaTabletLeafRequest: null,
 
   gameStarted: false,
   debugMode: false,
@@ -1479,6 +1611,16 @@ const SEASON_NAMES = ['Spring', 'Summer', 'Autumn', 'Winter'];
 
 function turnLabel(state: GameState): string {
   return `${Math.abs(state.year)} BC · ${SEASON_NAMES[state.seasonIndex]}`;
+}
+
+/** Which slot (if any) of pendingAmbitionOffers holds the given offer id —
+ *  shared by acceptStoryAmbition/refuseStoryAmbition below so both look it
+ *  up identically. */
+function findOfferScope(
+  offers: GameState['pendingAmbitionOffers'],
+  offerId: string,
+): 'family' | 'character' | undefined {
+  return (['family', 'character'] as const).find(key => offers[key]?.id === offerId);
 }
 
 /** Campaign Map plan, Chunk C9 — a DEFERRED battle's momentum feed + warScore
@@ -1569,6 +1711,28 @@ function backfillLegacyObjectives(objectives: GameState['legacyObjectives']): Ga
 }
 
 /**
+ * Ambition system rework, ticket 06 — a save written before the rework has
+ * `ambitions` entries in the deleted old shape (`definitionId`/
+ * `turnActivated`, models/ambition.ts pre-ticket-01). They reference deleted
+ * definition ids and were never baseline-snapshotted, so there's no
+ * meaningful way to convert them into the new ActiveAmbition shape — dropped
+ * silently on load instead, matching the trialQueue -> trials migration
+ * precedent (saveLoad.ts's SaveSchema.ambitions entry lets both shapes
+ * through parse() unrejected; this is what actually enforces the new shape).
+ *
+ * Deliberately shallow: it only needs to tell old shape from new shape, not
+ * fully validate the new one (SaveSchema's ActiveAmbitionSchema already did
+ * the strict per-field validation at the parse layer before this ever runs).
+ * Named for that — don't read this as a general ActiveAmbition validator.
+ */
+function isPostReworkAmbitionShape(a: any): a is ActiveAmbition {
+  return !!a && typeof a === 'object'
+    && typeof a.criterion === 'object' && a.criterion !== null
+    && typeof a.baseline === 'object' && a.baseline !== null
+    && typeof a.reward === 'object' && a.reward !== null;
+}
+
+/**
  * Phase 4, Chunk P4-E — shared by answerTrialBeat (last beat) and
  * fastResolveTrialSession: once a trial's session has no more beats to
  * answer, compute the deterministic verdict + apply every consequence via
@@ -1645,7 +1809,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     }));
   },
 
-  startGame: (startId = 'standard', mode = 'senator', difficulty = 'aequus') => {
+  startGame: (startId = 'standard', mode = 'senator', difficulty = 'aequus', startArc = 'beat-house') => {
     // Phase 5, Chunk P5-G — the guided start's tutorial numbers are authored
     // against Aequus; StartMenuScreen never routes 'guided' through the
     // difficulty picker, but this is the belt-and-braces guarantee (same
@@ -1699,35 +1863,70 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       gameStarted: true,
       debugMode: mode === 'debug',
       startId: startId as StartId,
-      // Tutorial redesign — a guided start (tutorialScriptId set) begins the
-      // prologue arc hard-railed to Domus only; every other start gets the
-      // inert, fully-unlocked value. tutorial-redesign-plan.md §2.3.
+      // Tutorial redesign — a guided start (tutorialScriptId set) begins
+      // hard-railed to Domus only; every other start gets the inert,
+      // fully-unlocked value. tutorial-redesign-plan.md §2.3. Tutorial
+      // rebuild, ticket 04 — the entry arc is now 'beat-house' (Acts I-II's
+      // replacement), not 'prologue' directly; see models/tutorial.ts's
+      // TutorialArcId comment.
+      //
+      // Tutorial rebuild, ticket 07 — the act selector's chapter picker
+      // (StartMenuScreen) can start a fresh guided game at any of the three
+      // beats via startArc, not just 'beat-house'. unlockedTabs comes from
+      // BEAT_ENTRY_UNLOCKED_TABS (tutorialEngine.ts) so a game starting
+      // straight at beat-chamber/beat-ladder doesn't softlock against a
+      // sealed tab its own teach content immediately requires.
       tutorial: scriptId
         ? {
-            activeArc: 'prologue' as TutorialArcId,
-            stepId: TUTORIAL_ARCS.prologue.steps[0]?.id ?? null,
+            activeArc: startArc,
+            stepId: TUTORIAL_ARCS[startArc].steps[0]?.id ?? null,
             completedArcs: [],
-            unlockedTabs: ['Domus'],
+            unlockedTabs: BEAT_ENTRY_UNLOCKED_TABS[startArc],
             skipped: false,
+            replayingArc: null,
+            replayStepId: null,
           }
         : INITIAL_STATE.tutorial,
       // Tutorial redesign — a guided start begins in Autumn (seasonIndex 2),
-      // not Spring. Acts I-IV never end a season (everything happens within
-      // the same turn while the world is frozen — isWorldFrozen's own
-      // comment), so Act V's single `shared.end-season` tap is the guided
-      // run's first-ever season-end. resolveElection only fires when the
-      // POST-increment season is Winter (turnSequencer.ts, `newSeasonIndex
-      // === 3`) — starting one season early means that first tap lands
-      // directly on Winter and resolves the Quaestor race immediately,
-      // instead of requiring several taps against a caption
-      // (prologue.act5.wait-for-election) that reads identically every
-      // season and gives no sign anything is progressing. Every other start
-      // is unaffected (INITIAL_STATE.seasonIndex, i.e. Spring).
+      // not Spring, so a Winter crossing (and whatever it resolves —
+      // originally Act V's Quaestor election) comes sooner than a Spring
+      // start would. resolveElection only fires when the POST-increment
+      // season is Winter (turnSequencer.ts, `newSeasonIndex === 3`).
+      //
+      // Tutorial rebuild, ticket 04 — this head start's original rationale
+      // ("Act V's wait-for-election tap is the run's first-ever season-end,
+      // so start one season early and it resolves in exactly one tap") no
+      // longer holds: beat-house.sandbox (tutorialScript.ts) now spends
+      // however many real end-season taps Beat I's own ambition takes,
+      // BEFORE beat-chamber/beat-ladder/prologue are ever reached — unlike
+      // the old wait-for-election caption, that wait has real visible
+      // progress (the Ambitions tablet leaf's denarii bar), so it doesn't
+      // have the same "reads identically every season" staleness problem
+      // that step was written to dodge. Kept anyway: harmless for Beat I
+      // itself (nothing in it is season-specific). Tutorial rebuild, ticket
+      // 06 confirmed beat-ladder.wait-for-election (the same content,
+      // renamed off prologue.act5) still resolves correctly on whatever
+      // Winter crossing comes next regardless of which tap it lands on —
+      // see tutorialBeatLadder.test.ts's teach-portion coverage — so this
+      // head start needed no further changes. Every other start is
+      // unaffected (INITIAL_STATE.seasonIndex, i.e. Spring).
       seasonIndex: scriptId ? 2 : INITIAL_STATE.seasonIndex,
+      // Held back for a guided start until beat-house's houseSetAmbition
+      // flips it (tutorial rebuild ticket 04) — see this field's own doc
+      // comment on GameState.
+      // Tutorial rebuild, ticket 07 — starting straight at beat-chamber or
+      // beat-ladder (chapter picker) skips beat-house.goal entirely, the
+      // only step that would otherwise ever flip this true; held back only
+      // for a fresh 'beat-house' entry, same as before.
+      agendaTabletUnlocked: scriptId ? startArc !== 'beat-house' : INITIAL_STATE.agendaTabletUnlocked,
       // Held back for a guided start until Philon's explicit hand-off
       // (courts.philon-handoff, the arc's actual last step) — see this
-      // field's own doc comment on GameState.
-      philonAdvisoryUnlocked: scriptId ? false : INITIAL_STATE.philonAdvisoryUnlocked,
+      // field's own doc comment on GameState. Tutorial rebuild, ticket 07 —
+      // starting straight at beat-ladder skips beat-chamber.philon-handoff
+      // (§2.6's own unlock point) entirely, so it's granted immediately
+      // instead; a beat-chamber entry still unlocks it the normal way, at
+      // that beat's own hand-off step.
+      philonAdvisoryUnlocked: scriptId ? startArc === 'beat-ladder' : INITIAL_STATE.philonAdvisoryUnlocked,
       pendingEvents: pendingGameStart,
       lastActiveAt: Date.now(),
       log: [mkLog(`264 BC · ${scriptId ? 'Autumn' : 'Spring'}`, `The ${gensPlural} begin their ascent.`, 'neutral')],
@@ -2712,55 +2911,127 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     });
   },
 
-  // ─── Ambitions ──────────────────────────────────────────────────────────────
+  // ─── Ambitions (rework) ─────────────────────────────────────────────────────
+  // spec: plans/ambition-system-rework/ambition-system-rework-spec.md. Single
+  // construction path (buildAmbition) for both the player builder and later
+  // direct-write story/tutorial effect strings (ticket 05) — setAmbition
+  // itself doesn't care which called it.
 
-  selectAmbition: (definitionId, scope, assignedCharacterId) => {
+  setAmbition: (input) => {
     const s = get();
-    const { getAmbitionDefinition } = require('../engine/ambitionEngine');
-    const def = getAmbitionDefinition(definitionId);
-    if (!def) return;
-    const newAmbition = {
-      definitionId,
-      scope,
-      assignedCharacterId,
-      status: 'active' as const,
-      turnActivated: s.turnNumber,
-      turnsRemaining: def.expiresInTurns,
-    };
-    // Picking a new ambition for a scope (initial selection or a deliberate change from
-    // the Domus tab) always supersedes whatever's currently active there — dropped for
-    // free, with no reward or expiry consequence, since it's a choice, not a timeout.
-    const survivingAmbitions = s.ambitions.filter(a =>
-      !(a.status === 'active' && a.scope === scope &&
-        (scope !== 'character' || a.assignedCharacterId === assignedCharacterId))
+    const label = turnLabel(s);
+    const { ambitions: postEviction, resources, evicted } = evictOccupantForDirectWrite(
+      s.ambitions,
+      input.scope,
+      input.assignedCharacterId,
+      { denarii: s.denarii, fides: s.fides, lifetimeDignitas: s.lifetimeDignitas },
+      s,
     );
-    const newFamily = assignedCharacterId
-      ? s.family.map(c =>
-          c.id === assignedCharacterId
-            ? { ...c, ambitionIds: [...c.ambitionIds.filter(id => id !== definitionId), definitionId] }
-            : c
-        )
-      : s.family;
+
+    const logEntries: LogEntry[] = [];
+    if (evicted) {
+      logEntries.push(mkLog(label, `Ambition superseded: "${evicted.title}". Partial reward paid.`, 'neutral'));
+    }
+
+    const newAmbition = buildAmbition(input, s);
+    const ambitions = [...postEviction, newAmbition];
+    logEntries.push(mkLog(label, `Ambition set: "${newAmbition.title}".`, 'neutral'));
+
+    // A direct-write (ticket 05's setAmbition: effect-string token) can target
+    // a slot a pending AmbitionOffer has reserved — a real ActiveAmbition
+    // trumps an unresolved offer, and a stale offer left behind would mask
+    // the new ambition forever (AgendaTablet's AmbitionSlotCard renders the
+    // offer branch before the active-ambition branch). Silently drop it;
+    // there's no consequence to the player either way, since an offer never
+    // committed them to anything.
+    const pendingAmbitionOffers = { ...s.pendingAmbitionOffers };
+    if (input.scope === 'family' || input.scope === 'character') {
+      delete pendingAmbitionOffers[input.scope];
+    }
+
     set({
-      ambitions: [...survivingAmbitions, newAmbition],
-      family: newFamily,
-      pendingAmbitionScopes: s.pendingAmbitionScopes.filter(sc => sc !== scope),
+      ambitions,
+      pendingAmbitionOffers,
+      ...resources,
+      log: [...s.log, ...logEntries],
     });
   },
 
-  dismissAmbitionSelection: () => set({ pendingAmbitionScopes: [] }),
+  abandonAmbition: (id) => {
+    const s = get();
+    const ambition = s.ambitions.find(a => a.id === id && a.status === 'active');
+    if (!ambition || !ambition.refusable) return;
+    set({
+      ambitions: s.ambitions.filter(a => a.id !== id),
+      log: [...s.log, mkLog(turnLabel(s), `Ambition abandoned: "${ambition.title}".`, 'neutral')],
+    });
+  },
 
-  clearAmbitionScope: (scope) => set((s) => ({
-    pendingAmbitionScopes: s.pendingAmbitionScopes.filter(sc => sc !== scope),
-  })),
+  // Narrative-hook offer-then-accept flow (ticket 05, spec §1/§2.4). Distinct
+  // from setAmbition: an offer never evicts an occupant. Guarded (not just
+  // documented) — a producer firing this against an already-occupied slot
+  // is a no-op rather than silently masking the live ActiveAmbition behind
+  // an offer card (AgendaTablet's AmbitionSlotCard renders the offer branch
+  // before the active-ambition branch, so an unguarded stage here would hide
+  // a ticking ambition with no warning).
+  offerAmbition: (input) => {
+    const s = get();
+    if (findActiveAmbitionInSlot(s.ambitions, input.scope, input.assignedCharacterId)) return;
 
-  // Opens the ambition picker for a scope on demand (e.g. tapping an ambition in the
-  // Domus character modal to change it), independent of the season-end auto-prompt.
-  requestAmbitionChange: (scope) => set((s) => ({
-    pendingAmbitionScopes: s.pendingAmbitionScopes.includes(scope)
-      ? s.pendingAmbitionScopes
-      : [...s.pendingAmbitionScopes, scope],
-  })),
+    const offer = buildAmbitionOffer(input, s);
+    const scopeKey = input.scope as 'family' | 'character';
+    set({
+      pendingAmbitionOffers: { ...s.pendingAmbitionOffers, [scopeKey]: offer },
+      log: [...s.log, mkLog(turnLabel(s), `Ambition offered: "${offer.title}".`, 'neutral')],
+    });
+  },
+
+  acceptStoryAmbition: (offerId) => {
+    const s = get();
+    const scopeKey = findOfferScope(s.pendingAmbitionOffers, offerId);
+    const offer = scopeKey ? s.pendingAmbitionOffers[scopeKey] : undefined;
+    if (!offer) return;
+
+    const newAmbition = buildAmbition({
+      scope: offer.scope,
+      source: 'story',
+      title: offer.title,
+      criterion: offer.criterion,
+      assignedCharacterId: offer.assignedCharacterId,
+      deadlineSeasons: offer.deadlineSeasons,
+      // Accepting a staged choice never forfeits the later right to abandon
+      // it — refusal already happened at the offer stage (spec §2.3).
+      refusable: true,
+      onCompleteEventId: offer.onCompleteEventId,
+      onFailEventId: offer.onFailEventId,
+    }, s);
+
+    const pendingAmbitionOffers = { ...s.pendingAmbitionOffers };
+    delete pendingAmbitionOffers[scopeKey!];
+
+    set({
+      ambitions: [...s.ambitions, newAmbition],
+      pendingAmbitionOffers,
+      log: [...s.log, mkLog(turnLabel(s), `Ambition accepted: "${newAmbition.title}".`, 'neutral')],
+    });
+  },
+
+  refuseStoryAmbition: (offerId) => {
+    const s = get();
+    const scopeKey = findOfferScope(s.pendingAmbitionOffers, offerId);
+    const offer = scopeKey ? s.pendingAmbitionOffers[scopeKey] : undefined;
+    if (!offer) return;
+
+    const pendingAmbitionOffers = { ...s.pendingAmbitionOffers };
+    delete pendingAmbitionOffers[scopeKey!];
+
+    set({
+      pendingAmbitionOffers,
+      log: [...s.log, mkLog(turnLabel(s), `Ambition offer refused: "${offer.title}".`, 'neutral')],
+    });
+  },
+
+  requestAgendaTabletLeaf: (leaf) => set({ agendaTabletLeafRequest: leaf }),
 
   // ─── Clientela ──────────────────────────────────────────────────────────────
 
@@ -3746,11 +4017,12 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     } else {
       // Arc finished — auto-chain into the next arc in TUTORIAL_ARC_ORDER
       // (mirrors startTutorialArc's own enter logic) rather than going idle,
-      // so the guided run flows prologue -> embassy -> war -> courts without
-      // requiring some other call site to notice completion and re-invoke
-      // startTutorialArc itself. Only truly goes idle once courts finishes.
+      // so the guided run flows beat-house -> beat-chamber -> beat-ladder ->
+      // prologue -> embassy -> war -> courts without requiring some other
+      // call site to notice completion and re-invoke startTutorialArc
+      // itself. Only truly goes idle once courts finishes.
       const completedArcs = [...s.tutorial.completedArcs, current.arc];
-      // TUTORIAL_ARC_ORDER only ever lists the four main arcs (T10's
+      // TUTORIAL_ARC_ORDER only ever lists the main chain's arcs (T10's
       // standalone lessons are deliberately excluded — see its own header
       // comment); .indexOf's signature wants a TutorialArcId, but a lesson
       // id compares safely against it at runtime (=== comparisons, -1 for
@@ -3803,28 +4075,98 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         completedArcs: Array.from(new Set([...s.tutorial.completedArcs, ...cascaded])),
         unlockedTabs: ALL_TUTORIAL_TABS,
         skipped: true,
+        // Tutorial rebuild, ticket 07 (code-review fix) — a replay in
+        // progress at the moment the player leaves the guided path would
+        // otherwise dangle: TutorialLayer would keep showing "End review"
+        // over a run that just declared itself finished. Leaving always
+        // ends any in-flight review too.
+        replayingArc: null,
+        replayStepId: null,
       },
-      // Skipping cascades past courts.philon-handoff too — its own unlock
-      // (courtsSetCompleteFlag) never fires, so without this a skipped
-      // guided run would leave Ambitions/Ex Tabulis Philonis permanently
-      // dark for that save. Skipping is an explicit "I don't need this
-      // explained" signal either way, so unlocking silently (no hand-off
-      // narration) is correct here.
+      // Skipping cascades past both beat-house's houseSetAmbition and
+      // courts.philon-handoff — neither fires, so without this a skipped
+      // guided run would leave the Agenda Tablet AND Ambitions permanently
+      // dark for that save (ticket 04's agendaTabletUnlocked/
+      // philonAdvisoryUnlocked split — see their own doc comments on
+      // GameState). Skipping is an explicit "I don't need this explained"
+      // signal either way, so unlocking silently (no hand-off narration) is
+      // correct here.
+      agendaTabletUnlocked: true,
       philonAdvisoryUnlocked: true,
     });
   },
 
   skipAllTutorials: () => {
-    set({
+    set(s => ({
       tutorial: {
+        ...s.tutorial,
         activeArc: null,
         stepId: null,
         completedArcs: [...TUTORIAL_ARC_ORDER],
         unlockedTabs: ALL_TUTORIAL_TABS,
         skipped: true,
+        // See skipTutorialArc's identical comment.
+        replayingArc: null,
+        replayStepId: null,
       },
+      agendaTabletUnlocked: true,
       philonAdvisoryUnlocked: true,
+    }));
+  },
+
+  // ── Tutorial rebuild, ticket 07 — act selector replay ──────────────────────
+  startTutorialReplay: (arc) => {
+    const s = get();
+    const firstStep = TUTORIAL_ARCS[arc]?.steps[0] ?? null;
+    // Deliberately does NOT call applyTutorialEffect for firstStep's
+    // onEnterEffectId (a beat's first teach step never carries one today,
+    // but replay must stay side-effect-free even if that changes) and does
+    // NOT touch activeArc/stepId/completedArcs — see this action's own
+    // interface doc comment.
+    set({
+      tutorial: { ...s.tutorial, replayingArc: arc, replayStepId: firstStep?.id ?? null },
     });
+  },
+
+  advanceTutorialReplayStep: () => {
+    const s = get();
+    const { replayingArc, replayStepId } = s.tutorial;
+    if (!replayingArc || !replayStepId) return;
+    const current = getTutorialStep(replayStepId);
+    if (!current) return;
+    const nextStep = getNextTutorialStep(current, s);
+    const goalStepId = BEAT_GOAL_STEP_ID[replayingArc];
+    if (!nextStep || nextStep.id === goalStepId) {
+      // End of replayable teach content — exit cleanly. Never enters the
+      // beat's goal/sandbox tail, never calls applyTutorialEffect, never
+      // touches completedArcs.
+      set({ tutorial: { ...s.tutorial, replayingArc: null, replayStepId: null } });
+    } else {
+      set({ tutorial: { ...s.tutorial, replayStepId: nextStep.id } });
+    }
+  },
+
+  exitTutorialReplay: () => {
+    const s = get();
+    set({ tutorial: { ...s.tutorial, replayingArc: null, replayStepId: null } });
+  },
+
+  // Tutorial rebuild, ticket 02 — the two new lessons' "true trigger" is a
+  // component mount rather than engine code, so (unlike lesson-death/
+  // lesson-succession's inline stamps inside turnSequencer.ts/
+  // inheritanceEngine.ts) this needs a callable action. Guarded against
+  // already-taught AND already-pending so a component that happens to
+  // mount repeatedly (it won't, per CitySheet/HoldingsModal's own
+  // mount-once effects, but defensively) never writes the same flag twice.
+  openedProvinciaeCitySheet: () => {
+    const s = get();
+    if (s.flags['lesson-provinciae-taught'] || s.flags['pending-lesson-provinciae']) return;
+    set({ flags: { ...s.flags, 'pending-lesson-provinciae': true } });
+  },
+  openedAssetPurchaseModal: () => {
+    const s = get();
+    if (s.flags['lesson-assets-taught'] || s.flags['pending-lesson-assets']) return;
+    set({ flags: { ...s.flags, 'pending-lesson-assets': true } });
   },
 
   // ── Phase 1 — Season ledger + autosave (P1-D) ─────────────────────────────
@@ -3880,6 +4222,15 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       ...savedState.theatre,
       musteredThisYear: savedState.theatre?.musteredThisYear ?? buildInitialTheatreState().musteredThisYear,
     },
+    // Tutorial rebuild, ticket 07 — a save written before this ticket has a
+    // real `tutorial` object but no replayingArc/replayStepId keys at all;
+    // same "missing key inside an already-present nested object" case as
+    // `theatre` above, not a whole-field miss the top-level spread would
+    // catch on its own.
+    tutorial: {
+      ...INITIAL_STATE.tutorial,
+      ...savedState.tutorial,
+    },
     // P3-A — a save written before phase/ignitedYear/endedYear/terminalOutcome
     // existed on WarState has wars entries missing them; the top-level
     // INITIAL_STATE spread above only backfills whole missing FIELDS, not
@@ -3904,6 +4255,12 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     cadetBranch: savedState.cadetBranch ?? generateCadet((savedState as any).gensName ?? 'Brutia'),
     // Phase 4, Chunk P4-F — see backfillLegacyObjectives's doc comment.
     legacyObjectives: backfillLegacyObjectives(savedState.legacyObjectives),
+    // Ambition system rework, ticket 06 — see isPostReworkAmbitionShape's doc
+    // comment. A missing key (pre-rework save) reads as [] the same as an
+    // empty array of old-shape entries; `pendingAmbitionOffers` needs no
+    // matching migration since it never existed pre-rework, so a missing key
+    // is a total-miss backfilled by the top-level INITIAL_STATE spread above.
+    ambitions: (savedState.ambitions ?? []).filter(isPostReworkAmbitionShape),
     // Phase 4, Chunk P4-G — a save written before the Claudius arc existed
     // has no secret-claudius-arc entry at all; inject it now so an
     // in-progress pre-P4-G run still gets the arc (design invariant 9).
@@ -4572,6 +4929,11 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     // without it. Feed this battle's result in now, at the moment it actually
     // resolves.
     let wars = s.wars;
+    // Ambition system rework — battles_won ambition criterion counter. This
+    // is the abstract-resolution half of the count; resolveCampaignBattleOutcome
+    // (the tactical write-back) increments the other half — see this field's
+    // own doc comment above for why both are needed.
+    let lifetimeBattlesWon = s.lifetimeBattlesWon;
     const battleEntry = result.logEntries.find(
       (e): e is Extract<CampaignLogEntry, { type: 'battle' }> => e.type === 'battle',
     );
@@ -4583,6 +4945,9 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         wars = applyDeferredBattleToWarStanding(
           s.wars, result.armies, s.cities, armyPowerOf(winnerArmy.owner), battleEntry.tier,
         );
+        if (winnerArmy.owner === 'player') {
+          lifetimeBattlesWon = lifetimeBattlesWon + 1;
+        }
       }
     }
 
@@ -4592,6 +4957,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       pendingEngagements: s.pendingEngagements.filter(e => e.id !== engagementId),
       log: [...s.log, ...[...result.logEntries.map(e => e.text), ...fateNotes].map(text => mkLog(label, text, 'neutral'))],
       wars,
+      lifetimeBattlesWon,
     });
   },
 
@@ -4793,6 +5159,11 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     // side was the campaign-layer attacker.
     const winnerPower = romeWon ? 'rome' : 'carthage';
     const wars = applyDeferredBattleToWarStanding(s.wars, continuation.armies, s.cities, winnerPower, outcome.tier);
+    // Ambition system rework — the tactical-battle sibling of
+    // resolveEngagementAbstract's own lifetimeBattlesWon increment (see that
+    // action's comment): a player who takes the field and wins is a second,
+    // equally live production path to a win, not a corner case.
+    const lifetimeBattlesWon = winnerArmy?.owner === 'player' ? s.lifetimeBattlesWon + 1 : s.lifetimeBattlesWon;
 
     set({
       armies: continuation.armies,
@@ -4803,6 +5174,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       pendingEngagements: s.pendingEngagements.filter(e => e.id !== ctx.engagementId),
       log: [...s.log, ...[...romeResult.ledgerNotes, ...continuation.logEntries.map(e => e.text), ...triumphNotes].map(text => mkLog(label, text, 'neutral'))],
       wars,
+      lifetimeBattlesWon,
     });
   },
 
@@ -4872,6 +5244,38 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       log: [...s.log, mkLog(label, `${character.name} raises a legion in ${musterProvinceId}. (−${cost} Denarii)`, 'neutral')],
       ...bumpActions(s),
       ...bumpSpend(s, { denarii: cost }),
+    });
+  },
+
+  // tickets/senate-response-3-bribe-commission-ui.md
+  bribeSenateCommission: () => {
+    const s = get();
+    const patch = bribeCommission(s as any);
+    if (Object.keys(patch).length === 0) return;
+    const label = turnLabel(s);
+    set({
+      ...patch,
+      log: [...s.log, mkLog(label, 'A discreet payment to the censure commission makes the matter disappear. (−50 Denarii)', 'neutral')],
+    });
+  },
+
+  // tickets/senate-response-4-capitulate-ui.md — the explicit flags clear
+  // below (unlike bribeSenateCommission, and unlike capitulate()'s own
+  // return) is deliberate: capitulating is meant to fully and immediately
+  // end the situation, including any active Fides block, whereas bribing
+  // ends the Senate's investigation without undoing a block already tied to
+  // actually disbanding (see bribeSenateCommission's ticket for why).
+  capitulateToSenate: () => {
+    const s = get();
+    const player = s.family.find(c => c.isPlayer);
+    if (!player) return;
+    const patch = capitulate(s as any, player.id);
+    if (Object.keys(patch).length === 0) return;
+    const label = turnLabel(s);
+    set({
+      ...patch,
+      flags: s.flags['fidesIncomeBlocked'] ? { ...s.flags, fidesIncomeBlocked: false } : s.flags,
+      log: [...s.log, mkLog(label, `${player.name} disbands every illegal legion and submits to the Senate's judgment. (−15 Dignitas)`, 'neutral')],
     });
   },
 

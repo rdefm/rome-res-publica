@@ -24,7 +24,6 @@ export default function AchievementToast() {
   const activeEvent = useGameStore(s => s.activeEvent);
   const seasonOverlayVisible = useGameStore(s => s.seasonOverlayVisible);
   const pendingBirthNaming = useGameStore(s => s.pendingBirthNaming);
-  const pendingAmbitionScopes = useGameStore(s => s.pendingAmbitionScopes);
   const trials = useGameStore(s => s.trials);
   const runFinished = useGameStore(s => s.runFinished);
 
@@ -37,7 +36,6 @@ export default function AchievementToast() {
     !!activeEvent ||
     seasonOverlayVisible ||
     !!pendingBirthNaming ||
-    (pendingAmbitionScopes ?? []).length > 0 ||
     trials.some(t => t.status === 'in_session') ||
     runFinished;
 

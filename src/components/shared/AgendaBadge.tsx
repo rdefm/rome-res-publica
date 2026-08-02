@@ -11,7 +11,7 @@ import { COLORS, FONTS } from '../../utils/theme';
 export default function AgendaBadge() {
   const showAgenda    = useGameStore(s => s.showAgenda);
   const agendaVisible = useGameStore(s => s.agendaVisible);
-  const philonAdvisoryUnlocked = useGameStore(s => s.philonAdvisoryUnlocked);
+  const agendaTabletUnlocked = useGameStore(s => s.agendaTabletUnlocked);
 
   // Compute badge count reactively. Selector returns a number (primitive) so
   // Zustand's default Object.is comparison correctly suppresses unnecessary renders.
@@ -25,9 +25,9 @@ export default function AgendaBadge() {
   );
 
   // Don't render when there's nothing to surface, tablet is already open, or
-  // (tutorial redesign) Philon hasn't handed the advisory off yet in a
-  // guided run — see philonAdvisoryUnlocked's own doc comment on GameState.
-  if (badgeCount === 0 || agendaVisible || !philonAdvisoryUnlocked) return null;
+  // (tutorial redesign) the tablet itself hasn't unlocked yet in a guided
+  // run — see agendaTabletUnlocked's own doc comment on GameState.
+  if (badgeCount === 0 || agendaVisible || !agendaTabletUnlocked) return null;
 
   return (
     <TouchableOpacity

@@ -9,6 +9,12 @@
 // headerBanner instead: a fixed-height banner in the header zone, 10:3
 // aspect, always fully visible, never covered by scroll content.
 //
+// forum-fresco-header-plan.md reopens that background decision on purpose
+// (its Finding 3 + §3.2): headerBackground below is scoped to just the strip
+// below the locked frieze, not the whole screen, and the "mostly hidden
+// behind opaque panels" tradeoff is accepted, not silently reintroduced —
+// see that plan for the reasoning.
+//
 // Same graceful-degradation shape as utils/cursusAssets.ts / utils/curiaAssets.ts:
 // Metro resolves require() at BUNDLE time, so this ships commented out until
 // the file exists in assets/forum/. Missing/commented → `undefined` — the
@@ -35,10 +41,19 @@ const CLAN_SIGILS: Record<string, RequiredAsset> = {
   claudii: require('../assets/forum/icon-claudii.png'),
 };
 
+// Background socle/dado layer behind the scrollable content (forum-fresco-
+// header-plan.md §3.2/§4.2). Not yet generated — ships commented out per
+// this file's usual contract; ForumScreen.tsx falls back to a flat
+// COLORS.bg fill for this case.
+// const FORUM_HEADER_BACKGROUND = require('../assets/forum/header-background.jpg');
+
 export const forumAssets = {
   /** 10:3 aspect (actual: 1888x560, ~3.37:1 — close enough that cover-mode
    *  crop is negligible). */
   headerBanner: FORUM_HEADER_BANNER as RequiredAsset,
+  /** Non-scrolling background strip below the frieze. Undefined until
+   *  assets/forum/header-background.jpg exists — see comment above. */
+  headerBackground: undefined as RequiredAsset | undefined,
   /** Per-clan medallion icon for ClanGridTile's sigil ring. */
   clanSigil: (id: string): RequiredAsset | undefined => CLAN_SIGILS[id],
 };

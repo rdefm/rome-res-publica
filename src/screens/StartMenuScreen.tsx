@@ -30,10 +30,21 @@ import { loadHall } from '../state/ancestorStore';
 import { BALANCE } from '../data/balance';
 import type { AncestorRecord } from '../models/epilogue';
 import type { DifficultyId } from '../models/gameStart';
+import type { TutorialBeatId } from '../models/tutorial';
+import { TUTORIAL_ARCS, TUTORIAL_BEAT_PICKS } from '../data/tutorialScript';
 import { COLORS, FONTS, SPACING, RADIUS } from '../utils/theme';
 import HallOfAncestorsScreen from './HallOfAncestorsScreen';
 import InfoTap from '../components/shared/InfoTap';
 import ConfirmModal from '../components/shared/ConfirmModal';
+
+// Tutorial rebuild, ticket 07 — the act selector's chapter picker. All three
+// beats are always enterable (tutorial-rebuild-plan.md §2.4's "locked until
+// the previous is complete" only ever applies to REVIEWING an existing
+// save's real progress — see TutorialActSelectorModal.tsx, the in-game
+// counterpart reachable from Settings; a brand-new game has no progress to
+// gate against, so this picker is a free chapter-select instead).
+// TUTORIAL_BEAT_PICKS (tutorialScript.ts) is shared with that counterpart so
+// the two entry points' copy can't drift.
 
 const BG = (() => {
   try { return require('../assets/images/menu-bg.png'); } catch { return null; }
@@ -52,6 +63,9 @@ export default function StartMenuScreen() {
   // Phase 5, Chunk P5-G — the difficulty-picker step. Set once a non-guided
   // family card is tapped; startGame doesn't fire until the picker confirms.
   const [pendingStart, setPendingStart] = useState<{ def: typeof START_DEFINITIONS[number]; mode: 'senator' | 'debug' } | null>(null);
+  // Tutorial rebuild, ticket 07 — the guided card no longer starts the game
+  // directly; it opens the beat picker below first.
+  const [pendingBeatPick, setPendingBeatPick] = useState<{ mode: 'senator' | 'debug' } | null>(null);
   // Alert.alert no-ops on react-native-web, so these single-button info
   // alerts route through a real ConfirmModal instead (see ConfirmModal's
   // own header comment).
@@ -74,6 +88,18 @@ export default function StartMenuScreen() {
         onConfirm={(difficulty) => {
           startGame(pendingStart.def.id, pendingStart.mode, difficulty);
           setPendingStart(null);
+        }}
+      />
+    );
+  }
+
+  if (pendingBeatPick) {
+    return (
+      <TutorialBeatPickerScreen
+        onBack={() => setPendingBeatPick(null)}
+        onConfirm={(beat) => {
+          startGame('guided', pendingBeatPick.mode, 'aequus', beat);
+          setPendingBeatPick(null);
         }}
       />
     );
@@ -110,11 +136,14 @@ export default function StartMenuScreen() {
   function handleStartPress(def: typeof START_DEFINITIONS[number], unlocked: boolean) {
     if (!unlocked) return; // locked cards are inert without the debug toggle
     const mode = debugUnlockAll ? 'debug' : 'senator';
-    // Phase 5, Chunk P5-G — guided skips the picker entirely (its tutorial
-    // numbers are authored against Aequus; startGame enforces this too).
-    // Every other start routes through the difficulty picker first.
+    // Phase 5, Chunk P5-G — guided skips the DIFFICULTY picker entirely (its
+    // tutorial numbers are authored against Aequus; startGame enforces this
+    // too). Every other start routes through the difficulty picker first.
+    // Tutorial rebuild, ticket 07 — guided instead routes through its own
+    // beat picker (act selector's chapter-select — see TUTORIAL_BEAT_PICKS'
+    // own comment above).
     if (def.id === 'guided') {
-      startGame(def.id, mode);
+      setPendingBeatPick({ mode });
     } else {
       setPendingStart({ def, mode });
     }
@@ -288,6 +317,59 @@ function DifficultyPickerScreen({
           >
             <Text style={[styles.loadLabel, styles.loadLabelActive]}>Begin</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.loadBtn} onPress={onBack} activeOpacity={0.75}>
+            <Text style={styles.loadLabel}>‹ Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </ImageBackground>
+  );
+}
+
+// ─── Tutorial beat picker (Tutorial rebuild, ticket 07) ──────────────────────
+// The guided path's act selector, pre-game half — see TUTORIAL_BEAT_PICKS'
+// own comment above for why every card here is always enterable (no locked
+// state, unlike the in-game act selector at TutorialActSelectorModal.tsx).
+// Tapping a card starts the game immediately, at that beat — no separate
+// confirm step, unlike the difficulty picker above.
+function TutorialBeatPickerScreen({
+  onBack,
+  onConfirm,
+}: {
+  onBack: () => void;
+  onConfirm: (beat: TutorialBeatId) => void;
+}) {
+  return (
+    <ImageBackground
+      source={BG ?? undefined}
+      style={styles.bg}
+      resizeMode="cover"
+      imageStyle={{ backgroundColor: COLORS.terracotta }}
+    >
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.titleBlock}>
+          <Text style={styles.title}>THE GUIDED PATH</Text>
+          <Text style={styles.subtitle}>BEGIN AT ANY BEAT</Text>
+          <View style={styles.titleRule} />
+        </View>
+
+        <ScrollView style={styles.cardsScroll} contentContainerStyle={styles.cardsBlock}>
+          <Text style={styles.sectionLabel}>THREE BEATS — PHILON TEACHES EACH IN FULL</Text>
+
+          {TUTORIAL_BEAT_PICKS.map(pick => (
+            <TouchableOpacity
+              key={pick.id}
+              style={styles.startCard}
+              onPress={() => onConfirm(pick.id)}
+              activeOpacity={0.82}
+            >
+              <Text style={styles.cardName}>{TUTORIAL_ARCS[pick.id].title}</Text>
+              <Text style={styles.cardDesc}>{pick.subtitle}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={styles.loadBlock}>
           <TouchableOpacity style={styles.loadBtn} onPress={onBack} activeOpacity={0.75}>
             <Text style={styles.loadLabel}>‹ Back</Text>
           </TouchableOpacity>

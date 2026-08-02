@@ -1264,9 +1264,13 @@ export const EVENT_DEFS: EventDef[] = [
   },
 
   // ─── Phase 5, Chunk P5-B — Domestic life (unconditioned, can fire any season) ─
+  // World gate rework, ticket 01 — initial tutorialSafe-tagged set: household/
+  // family flavour only (fides/denarii/lifetimeDignitas/plebs effects), no
+  // war/crisis/office/court content, safe for a curated guided-beat pool.
 
   {
     id: 'evt-dom-tutor',
+    tutorialSafe: true,
     title: 'A Tutor for the Household',
     bodyText:
       'A Greek tutor named Philocrates presents himself at the door with letters of recommendation ' +
@@ -1301,6 +1305,7 @@ export const EVENT_DEFS: EventDef[] = [
 
   {
     id: 'evt-dom-freedman-petition',
+    tutorialSafe: true,
     title: 'A Freedman\'s Request',
     bodyText:
       'Eros, freed from your household three years ago and prosperous enough since to have opinions ' +
@@ -1334,6 +1339,7 @@ export const EVENT_DEFS: EventDef[] = [
 
   {
     id: 'evt-dom-illness-scare',
+    tutorialSafe: true,
     title: 'A Fever in the House',
     bodyText:
       'One of the household children has taken a fever — nothing the physician thinks serious, but ' +
@@ -1367,6 +1373,7 @@ export const EVENT_DEFS: EventDef[] = [
 
   {
     id: 'evt-dom-sibling-friction',
+    tutorialSafe: true,
     title: 'Words Between Brothers',
     bodyText:
       'Your heir and his younger brother have been circling the same argument for weeks — about money, ' +
@@ -1401,6 +1408,7 @@ export const EVENT_DEFS: EventDef[] = [
   // Pattern D delayed follow-up to evt-dom-sibling-friction.
   {
     id: 'evt-dom-sibling-reconciliation',
+    tutorialSafe: true,
     title: 'What the Brothers Never Finished',
     bodyText:
       'The argument between your heir and his younger brother never properly ended — it just stopped, ' +
@@ -1436,6 +1444,7 @@ export const EVENT_DEFS: EventDef[] = [
 
   {
     id: 'evt-dom-marriage-feeler',
+    tutorialSafe: true,
     title: 'A Quiet Inquiry',
     bodyText:
       'A minor family from the Aventine — respectable, solvent, entirely below the notice of the great ' +
@@ -1469,6 +1478,7 @@ export const EVENT_DEFS: EventDef[] = [
 
   {
     id: 'evt-dom-old-friend',
+    tutorialSafe: true,
     title: 'An Old Friend, Diminished',
     bodyText:
       'Publius Herennius — a friend of your father\'s generation, once a man of real means — arrives ' +
@@ -1503,6 +1513,7 @@ export const EVENT_DEFS: EventDef[] = [
 
   {
     id: 'evt-dom-steward-request',
+    tutorialSafe: true,
     title: 'Nicanor Asks for Himself',
     bodyText:
       'Nicanor, who has managed your household accounts for eleven years without once asking for' +
@@ -1536,6 +1547,7 @@ export const EVENT_DEFS: EventDef[] = [
 
   {
     id: 'evt-dom-neighbor-dispute',
+    tutorialSafe: true,
     title: 'The Wall Between the Gardens',
     bodyText:
       'Your neighbour on the eastern boundary — a minor equestrian named Voconius with more temper than ' +
@@ -1573,6 +1585,7 @@ export const EVENT_DEFS: EventDef[] = [
 
   {
     id: 'evt-dom-family-heirloom',
+    tutorialSafe: true,
     title: 'The Signet in the Strongbox',
     bodyText:
       'Clearing out a storeroom, your steward finds a signet ring that belonged to your grandfather — ' +
@@ -3727,6 +3740,56 @@ export const EVENT_DEFS: EventDef[] = [
           'The distancing itself becomes the story — a household that steadied the grain market and then ' +
           'tried to pretend it hadn\'t, which the Forum finds considerably more interesting than the ' +
           'original arrangement.',
+      },
+    ],
+  },
+
+  // ── QA harness only (ambition rework ticket 05) ─────────────────────────
+  // weight: 0 excludes both from pickRandomEvent (isEventEligible,
+  // eventEngine.ts) — they only ever fire when explicitly picked by id from
+  // DebugPanel.tsx's EventsSection, which is exactly the point: these exist
+  // so the setAmbition:/offerAmbition: narrative-hook tokens are demoable
+  // end-to-end through the real event-resolution pipeline (resolveEvent ->
+  // resolveEventChoice -> applyEffectString), not just at the unit-test
+  // level. Not narrative content — no per-gens flavor, never author real
+  // story beats here (spec §4's "author content later").
+  {
+    id: 'evt-qa-ambition-direct-write',
+    title: 'QA: Direct-Write Ambition',
+    bodyText:
+      'Debug harness only. Applying this fires setAmbition:family:battles_won:2:6:refusable, writing a ' +
+      'story-sourced family ambition straight into the family slot and force-evicting whatever currently ' +
+      'occupies it (with a progress-scaled partial payout to the evicted ambition, per the ambition ' +
+      'rework spec\'s supersede rule).',
+    imageKey: 'qa-harness',
+    conditions: [],
+    weight: 0,
+    choices: [
+      {
+        id: 'apply',
+        label: 'Apply',
+        successEffect: 'setAmbition:family:battles_won:2:6:refusable',
+        failureEffect: '',
+        successText: 'A family ambition to win 2 battles within 6 seasons is now active, evicting any prior occupant of that slot.',
+      },
+    ],
+  },
+  {
+    id: 'evt-qa-ambition-offer',
+    title: 'QA: Offer an Ambition',
+    bodyText:
+      'Debug harness only. Applying this fires offerAmbition:character:client_count:5:6, staging an ' +
+      'AmbitionOffer on the character slot. Open the Agenda Tablet\'s Ambitiones leaf to Accept or Refuse it.',
+    imageKey: 'qa-harness',
+    conditions: [],
+    weight: 0,
+    choices: [
+      {
+        id: 'apply',
+        label: 'Apply',
+        successEffect: 'offerAmbition:character:client_count:5:6',
+        failureEffect: '',
+        successText: 'An offer to hold 5 clients within 6 seasons is now staged on the character slot, awaiting Accept/Refuse from the Ambitiones leaf.',
       },
     ],
   },

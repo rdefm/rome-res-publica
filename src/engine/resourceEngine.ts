@@ -5,6 +5,10 @@ import type { CrisisTrackId } from '../models/crisis';
 import type { WarState, WarScale } from '../models/war';
 import type { Bill } from '../models/bill';
 import { parseEffect } from '../models/bill';
+import type { AmbitionCriterion, AmbitionCriterionId, AmbitionScope } from '../models/ambition';
+import type { OfficeId } from '../models/office';
+import type { RegionId } from '../models/theatre';
+import { buildAmbition, buildAmbitionOffer, evictOccupantForDirectWrite, findActiveAmbitionInSlot, describeCriterionTitle } from './ambitionEngine';
 import { generateClientName } from '../data/clientNames';
 import { computeTotalAssetBonuses } from './assetEngine';
 import { computeHouseBonuses } from './houseEngine';
@@ -256,8 +260,17 @@ export function calcResourceIncome(state: GameState): {
   // is a no-op for every state that predates this chunk.
   const incomeMult = BALANCE.difficulty[state.difficulty ?? 'aequus'].incomeMult;
 
+  // tickets/senate-response-2-fides-income-block.md — the censura bill's
+  // passEffect (senateResponseEngine.ts) sets this flag via the generic
+  // setFlag: token when the Senate's censure motion passes. Only Fides is
+  // blocked, matching the bill's own "Fides income is suspended" text —
+  // Denarii/Plebs are untouched. Cleared by turnSequencer.ts's season-end
+  // Senate response tick once the triggering character's raisedLegions are
+  // empty (or immediately by capitulating/bribing the commission).
   return {
-    fidesIncome: Math.max(0, Math.round(fidesIncome * incomeMult)),
+    fidesIncome: state.flags?.['fidesIncomeBlocked']
+      ? 0
+      : Math.max(0, Math.round(fidesIncome * incomeMult)),
     denariiIncome: Math.round(denariiIncome * incomeMult),
     plebsDelta,
   };
@@ -270,6 +283,102 @@ export function calcResourceIncome(state: GameState): {
 /** Fides cost to train a skill from currentLevel to currentLevel + 1. */
 export function calcTrainingCost(currentLevel: number): number {
   return BALANCE.training.fidesCostPerTargetLevel * (currentLevel + 1);
+}
+
+// ─── Ambition narrative-hook token helpers (ambition rework ticket 05) ────────
+// setAmbition:/offerAmbition: (below) share this criterion-token grammar:
+//   <scope>:<criterionId>:<target>:<deadlineSeasons>[...trailing flags]
+// `target` is always exactly one colon-delimited field — comma-separated for
+// the three criteria that need two values (resource+amount, clan+amount,
+// asset+tier), a bare id for office/region, a bare number for the rest. The
+// rework spec §4 only sketches resource_threshold's shape; every other
+// criterion still needs some way to carry its id, and this keeps the field
+// count fixed regardless of which criterion an author picks.
+
+function parseAmbitionCriterionToken(criterionId: AmbitionCriterionId, target: string): AmbitionCriterion {
+  switch (criterionId) {
+    case 'resource_threshold': {
+      const [resource, amountStr] = target.split(',');
+      return { id: 'resource_threshold', resource: resource as 'denarii' | 'fides', amount: parseInt(amountStr, 10) };
+    }
+    case 'office_held':
+      return { id: 'office_held', officeId: target as OfficeId };
+    case 'clan_standing': {
+      const [clanId, amountStr] = target.split(',');
+      return { id: 'clan_standing', clanId, amount: parseInt(amountStr, 10) };
+    }
+    case 'asset_tier': {
+      const [assetId, tierStr] = target.split(',');
+      return { id: 'asset_tier', assetId, amount: parseInt(tierStr, 10) };
+    }
+    case 'client_count':
+      return { id: 'client_count', amount: parseInt(target, 10) };
+    case 'battles_won':
+      return { id: 'battles_won', amount: parseInt(target, 10) };
+    case 'region_control':
+      return { id: 'region_control', regionId: target as RegionId };
+    case 'survive_seasons':
+      return { id: 'survive_seasons', amount: parseInt(target, 10) };
+    case 'trial_won':
+      return { id: 'trial_won', amount: parseInt(target, 10) };
+    case 'bill_passed':
+      return { id: 'bill_passed', amount: parseInt(target, 10) };
+    default:
+      return { id: criterionId };
+  }
+}
+
+/** Scans any trailing parts (after the fixed scope/criterion/target/deadline
+ *  fields) for the `refusable` bare flag and `onComplete`/`onFail` key-value
+ *  pairs. The spec §4 token sketch doesn't show these, but ActiveAmbition/
+ *  AmbitionOffer both carry onCompleteEventId/onFailEventId (models/
+ *  ambition.ts) and ticket 05 requires them settable from content — this is
+ *  the grammar's place for them. Order-independent so an author never has to
+ *  remember a fixed position for an optional field. */
+function parseAmbitionTrailingFlags(parts: string[]): {
+  refusable: boolean;
+  onCompleteEventId?: string;
+  onFailEventId?: string;
+} {
+  let refusable = false;
+  let onCompleteEventId: string | undefined;
+  let onFailEventId: string | undefined;
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i] === 'refusable') refusable = true;
+    else if (parts[i] === 'onComplete') onCompleteEventId = parts[++i];
+    else if (parts[i] === 'onFail') onFailEventId = parts[++i];
+  }
+  return { refusable, onCompleteEventId, onFailEventId };
+}
+
+/** Parses the fixed `<scope>:<criterionId>:<target>:<deadlineSeasons>` head
+ *  shared by both setAmbition:/offerAmbition: (trailing flags are handled
+ *  separately, above, since setAmbition: supports one setAmbition-only flag
+ *  offerAmbition: doesn't). `patch` is folded in via `workingState` so a
+ *  criterion measured against `state.family` (character-scope's player
+ *  lookup) sees any same-segment family patch that ran earlier in this same
+ *  effect string. */
+function parseAmbitionTokenHead(
+  parts: string[],
+  state: GameState,
+  patch: Partial<GameState>,
+): {
+  scope: AmbitionScope;
+  criterion: AmbitionCriterion;
+  deadlineSeasons: number;
+  assignedCharacterId: string | undefined;
+  workingState: GameState;
+} {
+  const scope = parts[1] as AmbitionScope;
+  const criterionId = parts[2] as AmbitionCriterionId;
+  const target = parts[3];
+  const deadlineSeasons = parseInt(parts[4] ?? '0', 10);
+  const criterion = parseAmbitionCriterionToken(criterionId, target);
+  const workingState = { ...state, ...patch } as GameState;
+  const assignedCharacterId = scope === 'character'
+    ? workingState.family.find(c => c.isPlayer)?.id
+    : undefined;
+  return { scope, criterion, deadlineSeasons, assignedCharacterId, workingState };
 }
 
 // ─── Effect string ────────────────────────────────────────────────────────────
@@ -687,6 +796,104 @@ export function applyEffectString(
           const bribed = { ...currentVotes };
           for (const l of targets) bribed[l.id] = 'for';
           patch.campaignVotes = bribed;
+        }
+        continue;
+      }
+
+      // ── setAmbition:<scope>:<criterionId>:<target>:<deadlineSeasons>[:refusable][:onComplete:<eventId>][:onFail:<eventId>] ──
+      // Narrative-hook direct-write (ambition rework ticket 05, spec §4-2): an
+      // event/tutorial beat sets an ambition into the family/character slot
+      // immediately, no player decision point. Routes through the exact same
+      // buildAmbition/supersedeAmbition construction path as the player
+      // builder and the store's setAmbition action (spec §2.3's "one
+      // construction path regardless of source"), so a story-set ambition
+      // behaves identically once live. Force-evicts an occupied slot with the
+      // standard partial-progress payout (no failureDignitas — this isn't the
+      // player's fault) rather than refusing to fire. `scope` is always
+      // 'family' or 'character' — dynastic rows are a read-only projection
+      // (ambitionEngine.projectDynasticAmbitions), never authored this way.
+      if (key === 'setAmbition') {
+        const { scope, criterion, deadlineSeasons, assignedCharacterId, workingState } =
+          parseAmbitionTokenHead(parts, state, patch);
+        const { refusable, onCompleteEventId, onFailEventId } = parseAmbitionTrailingFlags(parts.slice(5));
+
+        const { ambitions: postEviction, resources } = evictOccupantForDirectWrite(
+          patch.ambitions ?? state.ambitions,
+          scope,
+          assignedCharacterId,
+          {
+            denarii: patch.denarii ?? state.denarii,
+            fides: patch.fides ?? state.fides,
+            lifetimeDignitas: patch.lifetimeDignitas ?? state.lifetimeDignitas,
+          },
+          workingState,
+        );
+        patch.denarii = resources.denarii;
+        patch.fides = resources.fides;
+        patch.lifetimeDignitas = resources.lifetimeDignitas;
+
+        const newAmbition = buildAmbition({
+          scope,
+          source: 'story',
+          title: describeCriterionTitle(criterion, workingState),
+          criterion,
+          assignedCharacterId,
+          deadlineSeasons,
+          refusable,
+          onCompleteEventId,
+          onFailEventId,
+        }, workingState);
+
+        patch.ambitions = [...postEviction, newAmbition];
+
+        // A direct-write can also land on a slot a pending offer reserved —
+        // same "real ambition trumps an unresolved offer" rule the store's
+        // setAmbition action applies (gameStore.ts), repeated here since this
+        // token bypasses that action entirely.
+        if (scope === 'family' || scope === 'character') {
+          const pendingAmbitionOffers = { ...(patch.pendingAmbitionOffers ?? state.pendingAmbitionOffers) };
+          delete pendingAmbitionOffers[scope];
+          patch.pendingAmbitionOffers = pendingAmbitionOffers;
+        }
+        continue;
+      }
+
+      // ── offerAmbition:<scope>:<criterionId>:<target>:<deadlineSeasons>[:onComplete:<eventId>][:onFail:<eventId>] ──
+      // Narrative-hook offer-then-accept (ticket 05, spec §4-3): stages an
+      // AmbitionOffer reserving the slot instead of writing an ActiveAmbition
+      // directly — the player must acceptStoryAmbition/refuseStoryAmbition
+      // explicitly from the Ambitiones leaf. Always a real choice, so there's
+      // no `refusable` flag here (an offer is refusable by construction —
+      // refusing it costs nothing, spec §1). No-ops against a slot an
+      // ActiveAmbition already occupies — same guard as the store's
+      // offerAmbition action, repeated here since this token bypasses that
+      // action entirely; an unguarded stage would silently mask the live
+      // ambition behind the offer card (AgendaTablet's AmbitionSlotCard
+      // renders the offer branch first).
+      if (key === 'offerAmbition') {
+        const { scope, criterion, deadlineSeasons, assignedCharacterId, workingState } =
+          parseAmbitionTokenHead(parts, state, patch);
+        const { onCompleteEventId, onFailEventId } = parseAmbitionTrailingFlags(parts.slice(5));
+
+        if (findActiveAmbitionInSlot(patch.ambitions ?? state.ambitions, scope, assignedCharacterId)) {
+          continue;
+        }
+
+        const offer = buildAmbitionOffer({
+          scope,
+          title: describeCriterionTitle(criterion, workingState),
+          criterion,
+          assignedCharacterId,
+          deadlineSeasons,
+          onCompleteEventId,
+          onFailEventId,
+        }, workingState);
+
+        if (scope === 'family' || scope === 'character') {
+          patch.pendingAmbitionOffers = {
+            ...(patch.pendingAmbitionOffers ?? state.pendingAmbitionOffers),
+            [scope]: offer,
+          };
         }
         continue;
       }

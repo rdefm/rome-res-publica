@@ -60,6 +60,11 @@ export interface EventDef {
   choices: EventChoice[];
   seasons?: number[];   // 0=Spring 1=Summer 2=Autumn 3=Winter; absent = season-neutral
   isTutorial?: boolean; // excluded from pickRandomEvent (P1-G); fires only via explicit injection
+  /** Safe to surface during a curated (partially-thawed) guided beat — touches
+   *  only mechanics already taught by that point, no war/crisis/office/court
+   *  content (tutorial-rebuild-plan.md §2.2's "curated pool"). Does not affect
+   *  eligibility for the normal, uncurated random pool. */
+  tutorialSafe?: boolean;
 }
 
 // ─── Event instance ──────────────────────────────────────────────────────────

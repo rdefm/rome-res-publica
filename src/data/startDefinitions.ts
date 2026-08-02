@@ -10,8 +10,8 @@ import { ALT_FAMILIES } from './altFamilies';
 // Tutorial redesign, Chunk T4 — tutorialScriptId is no longer a key into a
 // script registry (TUTORIAL_SCRIPTS/tutorialEvents.ts, both retired this
 // chunk); it's now a plain truthy sentinel gameStore.startGame checks to
-// decide whether this start begins the 'prologue' tutorial arc. Only
-// 'guided' sets it.
+// decide whether this start begins the guided tutorial (entry arc
+// 'beat-house' — tutorial rebuild ticket 04). Only 'guided' sets it.
 
 export const START_DEFINITIONS: StartDefinition[] = [
   {
@@ -24,7 +24,7 @@ export const START_DEFINITIONS: StartDefinition[] = [
       'and the Cursus — no tutorial screens, only Rome doing what Rome does. ' +
       'The Tablet opens each season with your priorities.',
     recommended: true,
-    tutorialScriptId: 'prologue',
+    tutorialScriptId: 'beat-house',
   },
   {
     id: 'standard',

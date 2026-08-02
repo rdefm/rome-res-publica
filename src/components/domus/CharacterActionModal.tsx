@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { Character } from '../../models/character';
 import { useGameStore } from '../../state/gameStore';
-import { getAmbitionDefinition } from '../../engine/ambitionEngine';
 import { TRAIT_DEFINITIONS } from '../../data/traits';
 import { BALANCE } from '../../data/balance';
 import { calcTrainingCost } from '../../engine/resourceEngine';
@@ -24,13 +23,18 @@ const SKILL_LABELS: Record<string, string> = {
 };
 
 // ─── Ambition tracker (player) ────────────────────────────────────────────────
+// Ambition rework, ticket 02 — ambitions are now set/changed/abandoned from
+// the Agenda Tablet's Ambitiones leaf, not an in-modal picker. This section
+// is a read-only status display that deep-links there (requestAgendaTabletLeaf
+// + showAgenda), replacing the old requestAmbitionChange affordance.
 
-function PlayerAmbitionTracker({ characterId }: { characterId: string }) {
-  const { ambitions, requestAmbitionChange } = useGameStore();
+function PlayerAmbitionTracker({ characterId, onManage }: { characterId: string; onManage: () => void }) {
+  const ambitions   = useGameStore(s => s.ambitions);
+  const turnNumber  = useGameStore(s => s.turnNumber);
   const familyAmbition    = ambitions.find(a => a.status === 'active' && a.scope === 'family');
   const characterAmbition = ambitions.find(a => a.status === 'active' && a.scope === 'character' && a.assignedCharacterId === characterId);
   const completed = ambitions.filter(a => a.status === 'completed');
-  const expired   = ambitions.filter(a => a.status === 'expired');
+  const failed    = ambitions.filter(a => a.status === 'failed');
 
   return (
     <View style={at.container}>
@@ -39,24 +43,26 @@ function PlayerAmbitionTracker({ characterId }: { characterId: string }) {
         icon="🏛️"
         emptyLabel="No family ambition set"
         ambition={familyAmbition}
-        onPress={() => requestAmbitionChange('family')}
+        turnNumber={turnNumber}
+        onPress={onManage}
       />
       <AmbitionSlot
         icon="👤"
         emptyLabel="No personal ambition set"
         ambition={characterAmbition}
-        onPress={() => requestAmbitionChange('character')}
+        turnNumber={turnNumber}
+        onPress={onManage}
       />
       {completed.length > 0 && (
         <>
           <Text style={at.subheading}>COMPLETED</Text>
-          {completed.map(a => <CompletedAmbitionRow key={a.definitionId} ambition={a} />)}
+          {completed.map(a => <CompletedAmbitionRow key={a.id} ambition={a} />)}
         </>
       )}
-      {expired.length > 0 && (
+      {failed.length > 0 && (
         <>
-          <Text style={[at.subheading, { color: COLORS.crimson }]}>EXPIRED</Text>
-          {expired.map(a => <ExpiredAmbitionRow key={a.definitionId} ambition={a} />)}
+          <Text style={[at.subheading, { color: COLORS.crimson }]}>FAILED</Text>
+          {failed.map(a => <ExpiredAmbitionRow key={a.id} ambition={a} />)}
         </>
       )}
     </View>
@@ -64,40 +70,37 @@ function PlayerAmbitionTracker({ characterId }: { characterId: string }) {
 }
 
 // Tappable slot for the player's family/personal ambition — shown whether or not one
-// is currently active, since tapping either opens the picker to set or change it.
+// is currently active; tapping either opens the Agenda Tablet's Ambitiones leaf to
+// set, change, or abandon it.
 function AmbitionSlot({
-  icon, emptyLabel, ambition, onPress,
+  icon, emptyLabel, ambition, turnNumber, onPress,
 }: {
   icon: string;
   emptyLabel: string;
   ambition: ActiveAmbition | undefined;
+  turnNumber: number;
   onPress: () => void;
 }) {
-  const def = ambition ? getAmbitionDefinition(ambition.definitionId) : undefined;
-  const isExpiring = ambition?.turnsRemaining !== undefined && ambition.turnsRemaining <= 5;
+  const seasonsRemaining = ambition?.deadlineTurn !== undefined ? ambition.deadlineTurn - turnNumber : undefined;
+  const isExpiring = seasonsRemaining !== undefined && seasonsRemaining <= 2;
   return (
     <TouchableOpacity style={at.row} onPress={onPress} activeOpacity={0.7}>
       <View style={at.rowHeader}>
         <Text style={at.scopeBadge}>{icon}</Text>
-        <Text style={at.rowTitle}>{def ? def.title : emptyLabel}</Text>
-        {ambition?.turnsRemaining !== undefined && (
-          <Text style={[at.turns, isExpiring && at.turnsUrgent]}>{ambition.turnsRemaining}t</Text>
+        <Text style={at.rowTitle}>{ambition ? ambition.title : emptyLabel}</Text>
+        {seasonsRemaining !== undefined && (
+          <Text style={[at.turns, isExpiring && at.turnsUrgent]}>{Math.max(0, seasonsRemaining)}t</Text>
         )}
-        <Text style={at.changeHint}>{def ? 'Change ›' : 'Choose ›'}</Text>
+        <Text style={at.changeHint}>{ambition ? 'Manage ›' : 'Set ›'}</Text>
       </View>
-      {def && <Text style={at.rowDesc}>{def.description}</Text>}
     </TouchableOpacity>
   );
 }
 function CompletedAmbitionRow({ ambition: a }: { ambition: ActiveAmbition }) {
-  const def = getAmbitionDefinition(a.definitionId);
-  if (!def) return null;
-  return <View style={[at.row, at.rowDone]}><Text style={at.rowTitleDone}>✓ {def.title}</Text></View>;
+  return <View style={[at.row, at.rowDone]}><Text style={at.rowTitleDone}>✓ {a.title}</Text></View>;
 }
 function ExpiredAmbitionRow({ ambition: a }: { ambition: ActiveAmbition }) {
-  const def = getAmbitionDefinition(a.definitionId);
-  if (!def) return null;
-  return <View style={[at.row, at.rowExpired]}><Text style={at.rowTitleExpired}>✗ {def.title}</Text></View>;
+  return <View style={[at.row, at.rowExpired]}><Text style={at.rowTitleExpired}>✗ {a.title}</Text></View>;
 }
 
 const at = StyleSheet.create({
@@ -121,22 +124,17 @@ const at = StyleSheet.create({
 // ─── NPC ambition display ─────────────────────────────────────────────────────
 
 function NpcAmbitionDisplay({ character }: { character: Character }) {
-  const { ambitions } = useGameStore();
+  const ambitions = useGameStore(s => s.ambitions);
   const charAmbitions = ambitions.filter(a => a.assignedCharacterId === character.id && a.status === 'active');
   if (charAmbitions.length === 0 && character.ambitionIds.length === 0) return null;
   return (
     <View style={npc.container}>
       <Text style={npc.heading}>AMBITION</Text>
-      {charAmbitions.map(a => {
-        const def = getAmbitionDefinition(a.definitionId);
-        if (!def) return null;
-        return (
-          <View key={a.definitionId} style={npc.row}>
-            <Text style={npc.title}>{def.title}</Text>
-            <Text style={npc.desc}>{def.description}</Text>
-          </View>
-        );
-      })}
+      {charAmbitions.map(a => (
+        <View key={a.id} style={npc.row}>
+          <Text style={npc.title}>{a.title}</Text>
+        </View>
+      ))}
       {charAmbitions.length === 0 && (
         <Text style={npc.desc}>
           {character.ambition ? `Aspires to: ${character.ambition.type.replace(/_/g, ' ')}` : 'No current ambition'}
@@ -315,6 +313,15 @@ function TrainingSection({ character }: { character: Character }) {
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 export default function CharacterActionModal({ character, visible, onClose }: Props) {
+  const showAgenda = useGameStore(s => s.showAgenda);
+  const requestAgendaTabletLeaf = useGameStore(s => s.requestAgendaTabletLeaf);
+
+  function openAmbitionsLeaf() {
+    onClose();
+    requestAgendaTabletLeaf('ambitiones');
+    showAgenda();
+  }
+
   return (
     <ScrollModal
       visible={visible}
@@ -326,7 +333,7 @@ export default function CharacterActionModal({ character, visible, onClose }: Pr
       {character.isPlayer ? (
         <>
           <TraitBadges character={character} />
-          <PlayerAmbitionTracker characterId={character.id} />
+          <PlayerAmbitionTracker characterId={character.id} onManage={openAmbitionsLeaf} />
         </>
       ) : (
         <>

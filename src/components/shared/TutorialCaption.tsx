@@ -17,7 +17,13 @@ interface TutorialCaptionProps {
   actLabel?: string;
   dock: TutorialCaptionDock;
   onTapAdvance?: () => void; // present when the step's advance is `{ kind: 'tap' }`
-  onSkipPress?: () => void;  // "Philon, I know this" — wired to skipTutorialArc in T2
+  onSkipPress?: () => void;  // wired to skipTutorialArc (real steps) or exitTutorialReplay (replay)
+  /** Tutorial rebuild, ticket 07 — the skip link's label, always supplied by
+   *  the one caller (App.tsx's TutorialLayer): "Leave the guided path" for a
+   *  real step (copy that reads as "the game continues", not "skip" — see
+   *  that callsite's own comment), "End review" while replaying a beat from
+   *  the act selector. Only rendered when onSkipPress is also provided. */
+  skipLabel?: string;
 }
 
 export default function TutorialCaption({
@@ -26,6 +32,7 @@ export default function TutorialCaption({
   dock,
   onTapAdvance,
   onSkipPress,
+  skipLabel = 'Leave the guided path',
 }: TutorialCaptionProps) {
   const content = (
     <>
@@ -42,7 +49,7 @@ export default function TutorialCaption({
             onPress={onSkipPress}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={styles.skipText}>Philon, I know this</Text>
+            <Text style={styles.skipText}>{skipLabel}</Text>
           </TouchableOpacity>
         ) : null}
       </View>

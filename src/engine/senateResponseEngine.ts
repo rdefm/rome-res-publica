@@ -6,6 +6,7 @@ import type { GameState } from '../state/gameStore';
 import { calcEffectiveForce, getLocalSupportModifier } from './troopEngine';
 import { buildTrialState } from './trialEngine';
 import { armyStrength } from './armyEngine';
+import type { Bill } from '../models/bill';
 
 // ─── Senate Response State ────────────────────────────────────────────────────
 
@@ -130,19 +131,30 @@ export function tickSenateResponse(
     };
 
     if (!response.debateSuppressed) {
-      const censuraBill = {
-        id:              `senate-censura-${turnNumber}`,
-        title:           'Senatus Consultum de Censura',
+      // tickets/senate-response-1-fix-censura-bill-shape.md — was pushed as
+      // an ad-hoc object (title/description/forVotes/passThreshold/
+      // effectOnPass) cast through `as any`, none of which match the real
+      // Bill interface's fields. That
+      // silently broke rendering (BillCard/BillDetailModal read bill.name/
+      // bill.desc, both undefined) AND resolution (turnSequencer's season-end
+      // bill loop reads bill.support/bill.turnsLeft, both undefined, so the
+      // pass/expire checks never fired and the bill sat forever). Now a real
+      // Bill, resolved through the same generic pipeline as every other bill.
+      // support/turnsLeft are first-pass/unverified balance numbers, same
+      // convention as every other bill's numbers in this codebase — see
+      // resourceEngine.ts's tableRefuseMamertineBill comment.
+      const censuraBill: Bill = {
+        id:         `senate-censura-${turnNumber}`,
+        name:       'Senatus Consultum de Censura',
         // Phase 5, Chunk P5-E — was hardcoded 'the Brutii', found during the
         // gens-neutrality sweep.
-        description:     `The Senate moves to censure the ${state.gensPlural} for raising an unsanctioned personal levy. If passed, Fides income is suspended until all illegal troops are disbanded.`,
-        type:            'censure',
-        forVotes:        0,
-        againstVotes:    0,
-        playerCanVote:   true,
-        passThreshold:   50,
-        effectOnPass:    'fides_income_blocked',
-      } as any;
+        desc:       `The Senate moves to censure the ${state.gensPlural} for raising an unsanctioned personal levy. If passed, Fides income is suspended until all illegal troops are disbanded.`,
+        type:       'constitutional',
+        support:    20,
+        turnsLeft:  3,
+        passEffect: 'setFlag:fidesIncomeBlocked:true',
+        failEffect: '',
+      };
       patch.bills = [...state.bills, censuraBill];
     }
 

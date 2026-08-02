@@ -55,6 +55,8 @@ const CHARACTER_FIELDS: { key: string; label: string }[] = [
   { key: 'skills.rhetoric',   label: 'Skill: Rhetoric'   },
   { key: 'skills.martial',    label: 'Skill: Martial'    },
   { key: 'skills.intrigus',   label: 'Skill: Intrigus'   },
+  { key: 'formalImperium',   label: 'Formal Imperium'   },
+  { key: 'militaryImperium', label: 'Military Imperium' },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -146,6 +148,10 @@ function ResourceSection() {
 
 // ─── Section: Character Stats ─────────────────────────────────────────────────
 
+// militaryImperium is recalculated from raisedLegions/veterans every season
+// end (turnSequencer.ts step 9e) — a manual override here holds until the
+// next "End Season," not permanently. formalImperium is only reassigned when
+// office-holding changes (officeActionEngine), so it sticks longer.
 function CharacterSection() {
   const family = useGameStore(s => s.family);
   const [selectedId, setSelectedId] = useState<string>(family[0]?.id ?? '');

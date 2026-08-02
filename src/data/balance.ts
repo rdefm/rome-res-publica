@@ -32,6 +32,8 @@ import {
   CANVASS_FIDES_COST_BY_OFFICE_RANK,
 } from '../engine/electionEngine';
 import type { UnitClass, Veterancy, FormationId, TerrainMod } from '../models/battle';
+import type { OfficeId } from '../models/office';
+import type { AmbitionCriterionId } from '../models/ambition';
 
 export const BALANCE = {
   // ─── Fides income formula (resourceEngine.calcResourceIncome) ─────────────
@@ -1611,6 +1613,78 @@ export const BALANCE = {
    *  rollCityEventTick). First-pass/unverified, per this file's convention. */
   cityEvents: {
     tickChance: 0.25,
+  },
+
+  // ─── Ambition system rework — deadline-pressure, delta-difficulty, and
+  // reward math for the player-authored ambition builder (see
+  // engine/ambitionEngine.ts and models/ambition.ts). Every number here is
+  // FIRST-PASS/UNVERIFIED, same treatment as every other constant group in
+  // this file — tune after play-testing. No cooldown-related constant here:
+  // a failed ambition's slot is available again immediately (deliberate
+  // design decision — a cooldown would only stack extra punishment on top of
+  // the failureDignitas ding, since the delta rule already closes the
+  // set-a-near-met-target exploit on its own).
+  ambitions: {
+    /** deadlinePressure = clamp(pressureBase / seasonsAllowed, min, max) — a
+     *  short deadline scales reward up, a long one scales it down. */
+    deadlinePressure: {
+      pressureBase: 6,
+      min: 0.5,
+      max: 2.5,
+    },
+    /** Per-criterion delta-difficulty divisor (deltaScore = |target −
+     *  baseline.value| / divisor, clamped 0..1) and base reward (scaled by
+     *  the resulting difficultyScore). `office_held` is deliberately absent
+     *  here — it uses `officeBaseline`/`firstCharacterMult`/`firstFamilyMult`
+     *  below instead of delta-from-baseline, since a binary office win has
+     *  no "current standing" to measure a delta against. */
+    criteria: {
+      resource_threshold: { divisor: 500, dignitas: 20, fides: 10 },
+      clan_standing:      { divisor: 100, dignitas: 20, fides: 15 },
+      asset_tier:         { divisor: 3,   dignitas: 20, fides: 0 },
+      client_count:       { divisor: 10,  dignitas: 15, fides: 0 },
+      battles_won:        { divisor: 5,   dignitas: 25, fides: 0 },
+      region_control:     { divisor: 1,   dignitas: 30, fides: 0 },
+      survive_seasons:    { divisor: 20,  dignitas: 20, fides: 10 },
+      trial_won:          { divisor: 5,   dignitas: 25, fides: 5 },
+      // Ticket 03 — "pass a bill you voted for" as a real, settable ambition
+      // criterion (not just a tutorial-only display fake). First-pass/
+      // unverified like every other entry in this group; divisor/reward
+      // pitched between trial_won and battles_won (a specific, deliberately-
+      // pursued win-event, same shape as those two, not a passive accrual
+      // like client_count).
+      bill_passed:        { divisor: 5,   dignitas: 25, fides: 10 },
+    } as Record<Exclude<AmbitionCriterionId, 'office_held'>, { divisor: number; dignitas: number; fides: number }>,
+    /** `office_held`'s baseline Dignitas reward per office, before the
+     *  first-time multipliers below. Mirrors `BALANCE.elections.officePrestige`'s
+     *  keyed-by-office-id shape (electionEngine.ts) — not a novel registry
+     *  pattern, just scaled for a "won it, self-chosen" payout rather than an
+     *  election-score weight. 8 office ids (`OFFICES` + `TRIBUNE_OFFICE`). */
+    officeBaseline: {
+      vigintivirate: 15,
+      quaestor: 25,
+      tribune: 30,
+      aedile: 35,
+      praetor: 45,
+      consul: 60,
+      censor: 65,
+      dictator: 70,
+    } as Record<OfficeId, number>,
+    /** Multiplies `officeBaseline` when the win is a first for the acting
+     *  character and/or a first for the family. "The acting character" is
+     *  always the player character — the only family member who ever
+     *  campaigns for office today (gameStore.declareCampaign hardcodes
+     *  campaigningCharacterId to the player) — so this reads
+     *  `state.family.find(isPlayer).heldOffices`, not a per-ambition
+     *  assignedCharacterId. Both can apply at once (a fresh family's first
+     *  Consul multiplies by both). */
+    firstCharacterMult: 1.5,
+    firstFamilyMult: 1.25,
+    /** Failure: `-min(round(reward.lifetimeDignitas × failureRatio), failureDignitasCap)` —
+     *  the cap is the whole point: a failed ambitious goal stings
+     *  proportionally but never catastrophically. */
+    failureRatio: 0.3,
+    failureDignitasCap: 15,
   },
 };
 

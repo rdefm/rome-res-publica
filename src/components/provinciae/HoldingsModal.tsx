@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -142,6 +142,15 @@ export default function HoldingsModal({ def, locationId = 'latium', onClose }: H
   );
   const purchaseAsset = useGameStore(s => s.purchaseAsset);
   const upgradeAsset = useGameStore(s => s.upgradeAsset);
+  const openedAssetPurchaseModal = useGameStore(s => s.openedAssetPurchaseModal);
+
+  // Tutorial rebuild, ticket 02 — mount-once: HoldingsPanel mounts a fresh
+  // HoldingsModal per asset-card tap and unmounts it on close
+  // (selectedDef -> null), so mount IS "the player opened the modal."
+  useEffect(() => {
+    openedAssetPurchaseModal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const owned = ownedAssets.find(a => a.definitionId === def.id);
   const currentTier = owned?.currentTier ?? null;

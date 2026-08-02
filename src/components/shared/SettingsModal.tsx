@@ -9,6 +9,7 @@ import { GLOSSARY_TERMS } from '../../data/glossaryTerms';
 import GlossaryPopup from './GlossaryPopup';
 import InfoTap from './InfoTap';
 import ConfirmModal from './ConfirmModal';
+import TutorialActSelectorModal from './TutorialActSelectorModal';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../utils/theme';
 import ScrollModal, { PARCHMENT } from './ScrollModal';
 
@@ -24,6 +25,8 @@ export default function SettingsModal({ visible, onClose }: Props) {
   const [status, setStatus] = useState<Status>('idle');
   const [statusMsg, setStatusMsg] = useState('');
   const [tabulariumOpen, setTabulariumOpen] = useState(false);
+  // Tutorial rebuild, ticket 07 — the guided path's in-game entry point.
+  const [guidedPathOpen, setGuidedPathOpen] = useState(false);
   const [selectedTermId, setSelectedTermId] = useState<string | null>(null);
   const [newGameConfirmOpen, setNewGameConfirmOpen] = useState(false);
 
@@ -145,6 +148,17 @@ export default function SettingsModal({ visible, onClose }: Props) {
         )}
 
         <View style={s.divider} />
+        <Text style={s.sectionLabel}>GUIDED PATH</Text>
+
+        <SettingsButton
+          label="The Guided Path"
+          desc="Review any beat's teaching, or leave the guided path"
+          icon="🗺️"
+          onPress={() => setGuidedPathOpen(true)}
+          disabled={busy}
+        />
+
+        <View style={s.divider} />
         <Text style={s.sectionLabel}>REFERENCE</Text>
 
         <SettingsButton
@@ -199,6 +213,11 @@ export default function SettingsModal({ visible, onClose }: Props) {
         destructive
         onConfirm={confirmNewGame}
         onCancel={() => setNewGameConfirmOpen(false)}
+      />
+
+      <TutorialActSelectorModal
+        visible={guidedPathOpen}
+        onClose={() => setGuidedPathOpen(false)}
       />
     </Modal>
   );

@@ -16,6 +16,9 @@ import {
   isStepSatisfied,
   isTabSealed,
   isWorldFrozen,
+  isWorldCategoryFrozen,
+  categoryFrozenUnderPolicy,
+  ALL_WORLD_GATE_CATEGORIES,
   applyTutorialEffect,
   validateTutorialScript,
   TUTORIAL_PREDICATES,
@@ -102,7 +105,7 @@ describe('tutorialEngine — pure step resolution', () => {
 
   it('isTabSealed reflects tutorial.unlockedTabs', () => {
     const s = makeState({
-      tutorial: { activeArc: 'prologue', stepId: null, completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'prologue', stepId: null, completedArcs: [], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
     expect(isTabSealed('Domus', s)).toBe(false);
     expect(isTabSealed('Forum', s)).toBe(true);
@@ -110,21 +113,21 @@ describe('tutorialEngine — pure step resolution', () => {
 
   it('isWorldFrozen is true only while the prologue arc is active', () => {
     expect(isWorldFrozen(makeState({
-      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     }))).toBe(true);
 
     expect(isWorldFrozen(makeState({
-      tutorial: { activeArc: 'embassy', stepId: 's1', completedArcs: ['prologue'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false },
+      tutorial: { activeArc: 'embassy', stepId: 's1', completedArcs: ['prologue'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false, replayingArc: null, replayStepId: null },
     }))).toBe(false);
 
     expect(isWorldFrozen(makeState({
-      tutorial: { activeArc: null, stepId: null, completedArcs: [], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false },
+      tutorial: { activeArc: null, stepId: null, completedArcs: [], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false, replayingArc: null, replayStepId: null },
     }))).toBe(false);
   });
 
   it('isWorldFrozen is false once the prologue is skipped (activeArc clears to null)', () => {
     const s = makeState({
-      tutorial: { activeArc: null, stepId: null, completedArcs: ['prologue', 'embassy', 'war', 'courts'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: true },
+      tutorial: { activeArc: null, stepId: null, completedArcs: ['prologue', 'embassy', 'war', 'courts'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: true, replayingArc: null, replayStepId: null },
     });
     expect(isWorldFrozen(s)).toBe(false);
   });
@@ -132,6 +135,48 @@ describe('tutorialEngine — pure step resolution', () => {
   it('isWorldFrozen defensively reads undefined tutorial as not frozen (bespoke test fixtures)', () => {
     const s = { ...makeState(), tutorial: undefined } as any;
     expect(isWorldFrozen(s)).toBe(false);
+  });
+
+  it('isWorldCategoryFrozen freezes every one of the eight categories during the prologue (no behavior change from the old all-or-nothing boolean)', () => {
+    const s = makeState({
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
+    });
+    for (const category of ALL_WORLD_GATE_CATEGORIES) {
+      expect(isWorldCategoryFrozen(s, category)).toBe(true);
+    }
+  });
+
+  it('isWorldCategoryFrozen leaves every category open once the prologue has ended', () => {
+    const s = makeState({
+      tutorial: { activeArc: 'embassy', stepId: 's1', completedArcs: ['prologue'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false, replayingArc: null, replayStepId: null },
+    });
+    for (const category of ALL_WORLD_GATE_CATEGORIES) {
+      expect(isWorldCategoryFrozen(s, category)).toBe(false);
+    }
+  });
+
+  // No real arc is wired to a partial policy yet — doing so would itself be
+  // a behavior change for that arc, which the ticket's own "no behavior
+  // change" acceptance criterion rules out until a later ticket adds a real
+  // guided beat with one. So the partial-thaw case is proven at the policy-
+  // resolution layer instead: categoryFrozenUnderPolicy is the exact
+  // function isWorldCategoryFrozen delegates to once it has looked up an
+  // arc's policy value, so exercising it directly with a hand-built partial
+  // array is genuine coverage of the same per-category logic, just without
+  // a production arc attached to it yet.
+  it('categoryFrozenUnderPolicy supports a partially-thawed policy — the mechanism future guided beats will plug into, ahead of any real arc using it yet', () => {
+    const partial = ['crisisDrift', 'births'] as const;
+    expect(categoryFrozenUnderPolicy(partial, 'crisisDrift')).toBe(true);
+    expect(categoryFrozenUnderPolicy(partial, 'births')).toBe(true);
+    expect(categoryFrozenUnderPolicy(partial, 'randomEvents')).toBe(false);
+    expect(categoryFrozenUnderPolicy(partial, 'warIgnition')).toBe(false);
+  });
+
+  it('categoryFrozenUnderPolicy: "all" freezes every category; undefined freezes none', () => {
+    for (const category of ALL_WORLD_GATE_CATEGORIES) {
+      expect(categoryFrozenUnderPolicy('all', category)).toBe(true);
+      expect(categoryFrozenUnderPolicy(undefined, category)).toBe(false);
+    }
   });
 
   it('applyTutorialEffect applies a registered effect and no-ops for undefined/unknown ids', () => {
@@ -190,7 +235,7 @@ describe('gameStore tutorial actions', () => {
     TUTORIAL_ARCS.prologue.steps = [makeStep({ id: 's1' }), makeStep({ id: 's2', requiresTab: 'Curia' })];
     useGameStore.setState({
       ...INITIAL_STATE,
-      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
     useGameStore.getState().advanceTutorialStep();
     expect(useGameStore.getState().uiNavRequest).toBeNull();
@@ -200,7 +245,7 @@ describe('gameStore tutorial actions', () => {
     TUTORIAL_ARCS.prologue.steps = [makeStep({ id: 's1' }), makeStep({ id: 's2' })];
     useGameStore.setState({
       ...INITIAL_STATE,
-      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
 
     useGameStore.getState().advanceTutorialStep();
@@ -218,7 +263,7 @@ describe('gameStore tutorial actions', () => {
     ];
     useGameStore.setState({
       ...INITIAL_STATE,
-      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
 
     useGameStore.getState().advanceTutorialStep();
@@ -238,7 +283,7 @@ describe('gameStore tutorial actions', () => {
     TUTORIAL_ARCS.prologue.steps = [makeStep({ id: 's1', unlocksTab: 'Cursus' })];
     useGameStore.setState({
       ...INITIAL_STATE,
-      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
 
     useGameStore.getState().advanceTutorialStep();
@@ -258,7 +303,7 @@ describe('gameStore tutorial actions', () => {
     TUTORIAL_ARCS.courts.steps = [makeStep({ id: 'c1', arc: 'courts', unlocksTab: 'Cursus' })];
     useGameStore.setState({
       ...INITIAL_STATE,
-      tutorial: { activeArc: 'courts', stepId: 'c1', completedArcs: ['prologue', 'embassy', 'war'], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'courts', stepId: 'c1', completedArcs: ['prologue', 'embassy', 'war'], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
 
     useGameStore.getState().advanceTutorialStep();
@@ -280,7 +325,7 @@ describe('gameStore tutorial actions', () => {
   it('skipTutorialArc cascades to every arc after the active one and unlocks all tabs', () => {
     useGameStore.setState({
       ...INITIAL_STATE,
-      tutorial: { activeArc: 'embassy', stepId: 'x', completedArcs: ['prologue'], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'embassy', stepId: 'x', completedArcs: ['prologue'], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
 
     useGameStore.getState().skipTutorialArc();
@@ -291,6 +336,8 @@ describe('gameStore tutorial actions', () => {
     expect(tutorial.skipped).toBe(true);
     expect(new Set(tutorial.completedArcs)).toEqual(new Set(['prologue', 'embassy', 'war', 'courts']));
     expect(tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia']);
+    expect(useGameStore.getState().agendaTabletUnlocked).toBe(true);
+    expect(useGameStore.getState().philonAdvisoryUnlocked).toBe(true);
   });
 
   it('skipTutorialArc is a no-op when no arc is active', () => {
@@ -299,14 +346,16 @@ describe('gameStore tutorial actions', () => {
     expect(useGameStore.getState().tutorial).toEqual(INITIAL_STATE.tutorial);
   });
 
-  it('skipAllTutorials completes all four arcs and unlocks every tab', () => {
+  it('skipAllTutorials completes every arc in TUTORIAL_ARC_ORDER and unlocks every tab', () => {
     useGameStore.setState(INITIAL_STATE);
     useGameStore.getState().skipAllTutorials();
 
     const tutorial = useGameStore.getState().tutorial;
     expect(tutorial.activeArc).toBeNull();
-    expect(tutorial.completedArcs).toEqual(['prologue', 'embassy', 'war', 'courts']);
+    expect(tutorial.completedArcs).toEqual(['beat-house', 'beat-chamber', 'beat-ladder', 'prologue', 'embassy', 'war', 'courts']);
     expect(tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia']);
     expect(tutorial.skipped).toBe(true);
+    expect(useGameStore.getState().agendaTabletUnlocked).toBe(true);
+    expect(useGameStore.getState().philonAdvisoryUnlocked).toBe(true);
   });
 });

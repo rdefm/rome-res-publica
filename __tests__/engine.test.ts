@@ -225,6 +225,21 @@ describe('calcResourceIncome', () => {
     const { plebsDelta } = calcResourceIncome(s as any);
     expect(plebsDelta).toBe(2); // provincial_ludus tier 1: plebsPerTurn 2, no unrest penalty at CRISIS_ALL_ZERO
   });
+
+  // tickets/senate-response-2-fides-income-block.md — set by the censura
+  // bill's passEffect (setFlag:fidesIncomeBlocked:true) when it passes.
+  test('fidesIncomeBlocked flag zeroes Fides income regardless of other bonuses', () => {
+    const s = makeState({ flags: { fidesIncomeBlocked: true } });
+    const { fidesIncome } = calcResourceIncome(s as any);
+    expect(fidesIncome).toBe(0);
+  });
+
+  test('fidesIncomeBlocked does not affect Denarii or Plebs', () => {
+    const blocked = calcResourceIncome(makeState({ flags: { fidesIncomeBlocked: true } }) as any);
+    const unblocked = calcResourceIncome(makeState({ flags: {} }) as any);
+    expect(blocked.denariiIncome).toBe(unblocked.denariiIncome);
+    expect(blocked.plebsDelta).toBe(unblocked.plebsDelta);
+  });
 });
 
 // ─── Training cost (P2-C) ─────────────────────────────────────────────────────

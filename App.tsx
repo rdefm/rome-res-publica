@@ -13,7 +13,6 @@ import ProvinciaeScreen from './src/screens/ProvinciaeScreen';
 import ResourceBar from './src/components/shared/ResourceBar';
 import EventModal from './src/components/shared/EventModal';
 import CityEventModal from './src/components/provinciae/CityEventModal';
-import AmbitionSelectionModal from './src/components/shared/AmbitionSelectionModal';
 import BirthNamingModal from './src/components/domus/BirthNamingModal';
 import AgendaTablet from './src/components/shared/AgendaTablet';
 import WelcomeBackModal from './src/components/shared/WelcomeBackModal';
@@ -35,6 +34,7 @@ import {
   validateTutorialScript,
   getEligibleLesson,
 } from './src/engine/tutorialEngine';
+import { LEAVE_GUIDED_PATH_COPY } from './src/data/tutorialScript';
 import type { TabName } from './src/models/agenda';
 import { generateAgenda } from './src/engine/agendaEngine';
 import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle, SEAL_CEREMONY_MS } from './src/components/shared/TabBar';
@@ -200,19 +200,18 @@ function TutorialLayer() {
     !!s.activeEvent ||
     s.seasonOverlayVisible ||
     !!s.pendingBirthNaming ||
-    // Not a bare pendingAmbitionScopes.length check — mirror
-    // AmbitionSelectionModal's own render gate exactly. During a guided run
-    // pendingAmbitionScopes stays non-empty for the ENTIRE tutorial by
-    // design (philonAdvisoryUnlocked's hold-back), so treating any pending
-    // scope as "the modal is covering the screen" made this permanently
-    // true from the very first step — Philon's caption never rendered at
-    // all, even though tabs still locked correctly (a separate gate). Only
-    // actually blocking once the modal would actually show.
-    (s.pendingAmbitionScopes.length > 0 && s.philonAdvisoryUnlocked) ||
     s.trials.some(t => t.status === 'in_session') ||
     !!s.activeBattle
   );
-  const currentStep = tutorial.stepId ? getTutorialStep(tutorial.stepId) : null;
+  // Tutorial rebuild, ticket 07 — a replay session (act selector's "review
+  // this beat" path) renders through replayingArc/replayStepId instead of
+  // the real activeArc/stepId, so it never disturbs genuinely in-progress
+  // or completed progress. See gameStore.ts's startTutorialReplay/
+  // advanceTutorialReplayStep/exitTutorialReplay and their own doc comments.
+  const isReplaying = !!tutorial.replayingArc;
+  const currentStep = isReplaying
+    ? (tutorial.replayStepId ? getTutorialStep(tutorial.replayStepId) : null)
+    : (tutorial.stepId ? getTutorialStep(tutorial.stepId) : null);
 
   // Tutorial fix — a step's requiresTab used to auto-navigate the player
   // there (gameStore's uiNavRequest stamp, now removed). Instead, while the
@@ -240,18 +239,33 @@ function TutorialLayer() {
         actLabel={currentStep.actLabel}
         dock={getCaptionDock(rect)}
         onTapAdvance={
-          !needsTabSwitch && currentStep.advance.kind === 'tap'
-            ? () => useGameStore.getState().advanceTutorialStep()
-            : undefined
+          needsTabSwitch
+            ? undefined
+            // Tutorial rebuild, ticket 07 — every replay step advances on
+            // tap regardless of its real authored advance kind (narration +
+            // spotlights only, per tutorial-rebuild-plan.md §2.4); a real,
+            // live step still only taps through on advance: { kind: 'tap' }.
+            : isReplaying
+              ? () => useGameStore.getState().advanceTutorialReplayStep()
+              : currentStep.advance.kind === 'tap'
+                ? () => useGameStore.getState().advanceTutorialStep()
+                : undefined
         }
-        onSkipPress={() => setSkipConfirmOpen(true)}
+        skipLabel={isReplaying ? 'End review' : 'Leave the guided path'}
+        onSkipPress={
+          isReplaying
+            // Fully reversible — nothing was ever granted or recorded — so
+            // no confirmation, unlike leaving the real guided path below.
+            ? () => useGameStore.getState().exitTutorialReplay()
+            : () => setSkipConfirmOpen(true)
+        }
       />
       <ConfirmModal
         visible={skipConfirmOpen}
-        title="Skip this lesson?"
-        message="Philon will stop guiding you — this arc, and everything after it, completes immediately. You can't come back to it."
-        confirmLabel="Skip"
-        cancelLabel="Cancel"
+        title={LEAVE_GUIDED_PATH_COPY.title}
+        message={LEAVE_GUIDED_PATH_COPY.message}
+        confirmLabel={LEAVE_GUIDED_PATH_COPY.confirmLabel}
+        cancelLabel={LEAVE_GUIDED_PATH_COPY.cancelLabel}
         destructive
         onConfirm={() => {
           setSkipConfirmOpen(false);
@@ -365,15 +379,14 @@ function GameRoot() {
     const checkAndMaybeOpen = () => {
       const s = useGameStore.getState();
       if (!s.gameStarted)                              return;
-      // Tutorial redesign — held back for a guided run until Philon's
-      // explicit hand-off (courts.philon-handoff); see
-      // philonAdvisoryUnlocked's own doc comment on GameState.
-      if (!s.philonAdvisoryUnlocked)                   return;
+      // Tutorial redesign — held back for a guided run until beat-house's
+      // houseSetAmbition (tutorial rebuild ticket 04); see
+      // agendaTabletUnlocked's own doc comment on GameState.
+      if (!s.agendaTabletUnlocked)                     return;
       if (s.agendaVisible)                             return;
       if (s.seasonOverlayVisible)                      return;
       if (s.activeEvent)                               return;
       if (s.pendingBirthNaming)                        return;
-      if ((s.pendingAmbitionScopes ?? []).length > 0)  return;
       if (s.trials.some(t => t.status === 'in_session')) return; // Phase 4, P4-E — trial day
       if (s.agendaViewedTurn >= s.turnNumber)          return;
 
@@ -405,15 +418,6 @@ function GameRoot() {
       if (s.activeEvent)                                 return;
       if (s.seasonOverlayVisible)                        return;
       if (s.pendingBirthNaming)                          return;
-      // See TutorialLayer's `blocked` comment — only actually blocking once
-      // AmbitionSelectionModal would render (its own gate), not just
-      // whenever a scope is pending. A guided run holds scopes pending for
-      // its entire duration by design (philonAdvisoryUnlocked), so the bare
-      // length check here would have permanently frozen every predicate-
-      // driven step (skill trained, Flaccus courted, election won, ...) for
-      // the whole tutorial — this subscription would never get past this
-      // line.
-      if ((s.pendingAmbitionScopes ?? []).length > 0 && s.philonAdvisoryUnlocked) return;
       if (s.trials.some(t => t.status === 'in_session')) return;
       if (s.activeBattle)                                return;
 
@@ -458,13 +462,13 @@ function GameRoot() {
             keep the JSX itself legible as a priority list. */}
         <TutorialLayer />
         <TutorialDeflectionToast />
-        {/* Modal priority: EventModal → AmbitionSelectionModal → BirthNamingModal → AgendaTablet → WelcomeBackModal.
+        {/* Modal priority: EventModal → BirthNamingModal → AgendaTablet → WelcomeBackModal.
             BirthNamingModal was imported but never mounted here until this fix — pendingBirthNaming
             was being set correctly by turnSequencer's passive birth check, but with no modal ever
             rendering, confirmBirthNaming (which actually appends the child to `family`) could never
             fire, and the stuck pendingBirthNaming silently blocked every future birth roll too
             (turnSequencer's `s.pendingBirthNaming === null` gate). Self-gated on pendingBirthNaming,
-            same idiom as AmbitionSelectionModal, so its position here is order-of-priority only.
+            same idiom as every other self-gated modal here, so its position here is order-of-priority only.
             BattleScreen is its own full-screen native Modal (Military Overhaul M5) — it takes
             over the whole screen whenever a battle is staging/active, regardless of DOM order.
             TrialSessionModal (Phase 4, P4-E) is the same idiom — a full-screen native Modal
@@ -482,7 +486,6 @@ function GameRoot() {
             tactical-vs-abstract choice, not this component's mounting or gating. */}
         <EventModal />
         <CityEventModal />
-        <AmbitionSelectionModal />
         <BirthNamingModal />
         <AgendaTablet />
         <WelcomeBackModal

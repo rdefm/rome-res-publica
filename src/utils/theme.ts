@@ -53,6 +53,9 @@ export const COLORS = {
   waxFrame,                      // warm wood brown — the tablet surround
   waxInscription:    '#d4c8a0',  // pale scratched text — primary item text
   waxInscriptionDim: '#7a6e50',  // dimmer secondary — detail lines, subheaders
+  // Ambition rework, ticket 02 — subtle raised-panel tint over waxSurface,
+  // used for the Ambitiones leaf's active tab pill and ambition slot cards.
+  waxHighlight:      'rgba(255,255,255,0.06)',
   // Chunk I of cursustabuifixesplan.md — TabBar.tsx's inactive icon/label
   // tint was a hardcoded '#9a8060' (light tan), too low-contrast against the
   // light marble tab-bar background. waxFrame is already a dark, warm brown

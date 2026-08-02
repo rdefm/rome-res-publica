@@ -24,7 +24,31 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   {
     id: 'ambition',
     term: 'Ambitions',
-    definition: 'Medium-term goals for your family (Family scope) or a specific character (Character scope), each with a time limit. Meet the condition to earn a reward; fail and consequences apply.',
+    definition: "Goals you build yourself for your family (Family scope) or a specific character (Character scope), choosing the target and a mandatory deadline. Meeting the target pays a reward priced by how much progress it actually took; missing the deadline costs a small, capped amount of Dignitas.",
+    relatedTab: 'Domus',
+  },
+  {
+    id: 'dynastic-ambition',
+    term: 'Dynastic Ambition',
+    definition: "A third, always-on ambition track alongside Family and Character — six long-term goals tracking your dynasty across generations, with no deadline and no failure. Shown on the Ambitiones leaf, absorbed from the older Legacy Objectives system.",
+    relatedTab: 'Domus',
+  },
+  {
+    id: 'ambition-deadline',
+    term: 'Ambition Deadline',
+    definition: "The season by which a player-set ambition must be met, chosen when you build it. Every player-set ambition carries one — it drives the reward's difficulty and is the reason a stalled goal eventually resolves instead of sitting forever.",
+    relatedTab: 'Domus',
+  },
+  {
+    id: 'ambition-difficulty',
+    term: 'Ambition Difficulty',
+    definition: "How hard a player-set ambition is judged, computed live as you build it from how far the target sits above your current standing and how tight the deadline is. Difficulty scales the reward directly, so a target you've nearly already met pays next to nothing.",
+    relatedTab: 'Domus',
+  },
+  {
+    id: 'ambition-offer',
+    term: 'Ambition Offer',
+    definition: "A story-originated ambition proposed to you rather than written straight into your slot. It reserves the Family or Character slot on the Ambitiones leaf until you Accept (it becomes a real ambition, priced at that moment) or Refuse (the slot frees, no consequence).",
     relatedTab: 'Domus',
   },
   {

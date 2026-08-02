@@ -21,11 +21,11 @@ import {
 import { getTierFromLevel } from '../models/crisis';
 import { tickNpcCareers, resolveElection } from './electionEngine';
 import { pickRandomEvent, evalCondition, injectNoticeEvent, getEventDef } from './eventEngine';
-import { isWorldFrozen } from './tutorialEngine';
+import { isWorldCategoryFrozen, isCuratedEventPoolActive } from './tutorialEngine';
 import { applyYearlyRelationshipDecay, ageAndProcessMortality } from './reputationEngine';
 import { genderForCharacter, genderForLeader } from './portraitEngine';
 import { portraitAssets } from '../utils/portraitAssets';
-import { tickAmbitions, getAmbitionDefinition } from './ambitionEngine';
+import { tickAmbitions, applyAmbitionReward } from './ambitionEngine';
 import { incrementLegacy, computeLegacyBonuses } from './legacyEngine';
 import {
   isBirthEligible,
@@ -61,7 +61,7 @@ import { computeHouseBonuses } from './houseEngine';
 import { tickAllCities } from './cityEngine';
 import { applyTroopAttrition, calcMilitaryImperium } from './troopEngine';
 import { processWarSeason, classifyTerminalOutcome, computeRipeness } from './warEngine';
-import { tickSenateResponse } from './senateResponseEngine';
+import { tickSenateResponse, type SenateResponseState } from './senateResponseEngine';
 import { calcAntagonismLevel, tickNpcConsul } from './npcConsulEngine';
 import {
   npcGatherTick,
@@ -522,6 +522,12 @@ export function processSeason(state: GameState): {
   const passedBills: Bill[] = [];
   const resolvedLogs: string[] = [];
   const remainingBills: Bill[] = [];
+  // Ambition rework, ticket 03 — `bill_passed` criterion feed. Counted
+  // alongside `passedBills.push(bill)` below (the only site a bill is ever
+  // marked passed), not derived from `passedBills` after the fact — that
+  // array drops `playerVote` (models/bill.ts's field only lives on `Bill`,
+  // not the trimmed `{id,name,passedOnTurn}` shape stored there).
+  let billsPassedVotedFor = 0;
   // Tutorial redesign, Chunk T7 — Philon's reaction to the Embassy sting's
   // refuse-branch bill resolving, either way. Not folded into the generic
   // resolvedLogs string (no per-bill flavour-text field exists on Bill, and
@@ -530,7 +536,7 @@ export function processSeason(state: GameState): {
   // one-off narrative beat in this codebase (evt-war-outcome-*, etc.).
   const billOutcomeNotices: EventInstance[] = [];
 
-  if (!isWorldFrozen(s)) {
+  if (!isWorldCategoryFrozen(s, 'passiveBills')) {
     const unrestTier = getTierFromLevel(s.crisis.unrest.level);
     const senateSessionSuspended = unrestTier >= 4 && Math.random() < 0.20;
     if (senateSessionSuspended) {
@@ -560,6 +566,7 @@ export function processSeason(state: GameState): {
 
         if (effectiveSupport > passThresholdBonus) {
           passedBills.push(bill);
+          if (bill.playerVote === 'vote_for') billsPassedVotedFor += 1;
           const patch = applyEffectString(bill.passEffect, s);
           s = { ...s, ...patch };
           resolvedLogs.push(`✓ ${bill.name} passes.`);
@@ -604,6 +611,7 @@ export function processSeason(state: GameState): {
           ...(s.passedBills ?? []),
           ...passedBills.filter(b => b.type !== 'repeal').map(b => ({ id: b.id, name: b.name, passedOnTurn: s.turnNumber })),
         ],
+        lifetimeBillsPassedVotedFor: (s.lifetimeBillsPassedVotedFor ?? 0) + billsPassedVotedFor,
         activeLaws: [
           ...(s.activeLaws ?? []).filter(l => !repealedLawIds.includes(l.billId)),
           ...newActiveLaws,
@@ -635,7 +643,7 @@ export function processSeason(state: GameState): {
 
   let updatedCrisis = { ...s.crisis };
 
-  if (!isWorldFrozen(s)) {
+  if (!isWorldCategoryFrozen(s, 'crisisDrift')) {
     for (const trackId of ['war', 'unrest', 'constitution', 'economy'] as const) {
       const delta = calcIndividualEscalation(trackId, s);
       updatedCrisis = { ...updatedCrisis, [trackId]: applyTrackDelta(updatedCrisis[trackId], delta) };
@@ -1137,7 +1145,7 @@ export function processSeason(state: GameState): {
 
     // ── 9c-ii: City tick ─────────────────────────────────────────────────────
     const { updatedCities, totalGoldDelta, totalImperiumDelta, totalTreasuryDelta, newWars, events: cityEvents, newCityEvent } =
-      tickAllCities(s.cities, s, isWorldFrozen(s));
+      tickAllCities(s.cities, s, isWorldCategoryFrozen(s, 'foreignWarDeclarations'));
 
     s = {
       ...s,
@@ -1363,9 +1371,31 @@ export function processSeason(state: GameState): {
 
   // 9f. Senate response tick
   if ((s as any).senateResponse?.active) {
-    const playerCharacterId = s.family.find(c => c.isPlayer)?.id ?? 'pc-1';
-    const patch = tickSenateResponse(s as any, playerCharacterId);
-    s = { ...s, ...patch };
+    const response = (s as any).senateResponse as SenateResponseState;
+    const player = s.family.find(c => c.isPlayer);
+
+    // tickets/senate-response-2-fides-income-block.md — personal-levy path
+    // only; the Army-sourced path already self-clears in tickSenateResponse
+    // when its Army no longer exists (senateResponseEngine.ts's
+    // hostis/consular_army branch). Same "nothing left to prosecute" idea
+    // for the older raisedLegions-based levy: if the player has disbanded
+    // every illegal legion (whether via the dedicated Capitulate action or
+    // just the Military tab's per-unit Disband), there's nothing left to
+    // escalate against. Checked before tickSenateResponse runs so a
+    // same-season "reached zero" doesn't still advance one more phase.
+    const compliedByDisbanding = !response.sourceArmyId && (player?.raisedLegions.length ?? 0) === 0;
+
+    if (compliedByDisbanding) {
+      s = {
+        ...s,
+        senateResponse: null,
+        flags: s.flags['fidesIncomeBlocked'] ? { ...s.flags, fidesIncomeBlocked: false } : s.flags,
+      };
+    } else {
+      const playerCharacterId = player?.id ?? 'pc-1';
+      const patch = tickSenateResponse(s as any, playerCharacterId);
+      s = { ...s, ...patch };
+    }
   }
 
   // 9g. Resolve campaigns with completed officer volunteers
@@ -1619,7 +1649,7 @@ export function processSeason(state: GameState): {
     // isDeterred-consuming sites depend on this NOT ticking ahead of Act V's
     // audit resolving the standoff on-screen. One of the six isWorldFrozen
     // call sites (tutorial-redesign-plan.md §3 T4).
-    if (!isWorldFrozen(s)) {
+    if (!isWorldCategoryFrozen(s, 'claudiusDemands')) {
       // Patience countdown first — may cancel (deterrence) or auto-resolve to
       // defiance before the demand-injection check below runs this same
       // season, so order matters here.
@@ -1742,7 +1772,7 @@ export function processSeason(state: GameState): {
     // the guided prologue (one of the six isWorldFrozen call sites); aging
     // continues regardless, that's cosmetic and expected every Winter→Spring
     // rollover either way.
-    if (crossedNewYear && !s.pendingSuccession && !isWorldFrozen(s)) {
+    if (crossedNewYear && !s.pendingSuccession && !isWorldCategoryFrozen(s, 'mortality')) {
       const deceased = aged.find(c => rollsDead(c));
       if (deceased) {
         const result = detectPaterfamiliasDeath(aged, deceased.id, s.heldOffices);
@@ -1821,7 +1851,7 @@ export function processSeason(state: GameState): {
   // reasoning as step 4: new bills (emergency or top-up) appearing in the
   // background isn't "the world frozen," and every one of these can only
   // ever be resolved by step 4's own (now-frozen) passive pass.
-  if (!isWorldFrozen(s)) {
+  if (!isWorldCategoryFrozen(s, 'passiveBills')) {
     {
       const economyTier = getTierFromLevel(s.crisis.economy.level);
       const needsVectigalis = s.rome.treasury <= 9 || economyTier >= 2;
@@ -1874,13 +1904,27 @@ export function processSeason(state: GameState): {
   //      guided start — Free Start/Duilia/Manlia never run an Embassy arc,
   //      so they keep the exact unconditional guard they've always had
   //      (design decision: no behavior change for non-guided starts).
-  //   3. Otherwise → pickRandomEvent as normal.
+  //   3. Otherwise → pickRandomEvent as normal — narrowed to `tutorialSafe`
+  //      events only during a curated guided beat (tutorial rebuild, ticket
+  //      05; see isCuratedEventPoolActive's own comment).
   {
     let chosenDef: import('../models/event').EventDef | undefined;
 
-    if (isWorldFrozen(s)) {
+    // World gate rework, ticket 01 — split from a single isWorldFrozen check
+    // into its two constituent categories (randomEvents, warIgnition) so a
+    // future curated beat can leave one open while the other stays frozen.
+    // Today both always move together ('beat-house' and 'prologue' are the
+    // only arcs with a policy, and both freeze everything — tutorialEngine.ts's
+    // WORLD_GATE_POLICY), so this is behavior-equivalent to the old single
+    // check. Tickets 05/06 are what first exercise a policy where these two
+    // diverge — see those tickets' own "implementation note".
+    const randomEventsFrozen = isWorldCategoryFrozen(s, 'randomEvents');
+    const warIgnitionFrozen = isWorldCategoryFrozen(s, 'warIgnition');
+
+    if (randomEventsFrozen && warIgnitionFrozen) {
       // No story event fires while the prologue hard-rail is active.
     } else if (
+      !warIgnitionFrozen &&
       !(s.wars ?? []).some(w => w.enemyId === 'carthage') &&
       !s.flags['messanaResolved'] &&
       (s.startId !== 'guided' || !!s.flags['tutorial-embassy-complete'])
@@ -1907,9 +1951,19 @@ export function processSeason(state: GameState): {
       // T7), so the appeal's envoy is always someone the player has already
       // met (Vibius) by the time it fires.
       chosenDef = getEventDef('evt-messana-appeal') as typeof chosenDef;
-    } else {
-      // Normal random event
-      chosenDef = pickRandomEvent([...EVENT_DEFS, ...WAR_EVENT_DEFS, ...CADET_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS], s);
+    } else if (!randomEventsFrozen) {
+      // Normal random event — or, during a curated guided beat (Beat II/
+      // 'beat-chamber', tutorial rebuild ticket 05), restricted to the
+      // `tutorialSafe`-tagged subset (data/events.ts) so the player only
+      // ever meets events that touch mechanics already taught. This is
+      // deliberately a pool filter, not a freeze: `randomEventsFrozen` above
+      // stays false throughout, so this branch (not the "no story event"
+      // branch above it) is the one that runs — see
+      // isCuratedEventPoolActive's own comment (tutorialEngine.ts) for why
+      // the restriction lives here rather than as a third WorldGateCategory
+      // state.
+      const pool = [...EVENT_DEFS, ...WAR_EVENT_DEFS, ...CADET_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS];
+      chosenDef = pickRandomEvent(isCuratedEventPoolActive(s) ? pool.filter(d => d.tutorialSafe) : pool, s);
     }
 
     if (chosenDef) {
@@ -1946,74 +2000,59 @@ export function processSeason(state: GameState): {
   }
 
   // 13. Tick ambitions
-  const { updatedAmbitions, completed, expired } = tickAmbitions(s.ambitions, s);
-  s = { ...s, ambitions: updatedAmbitions };
+  //
+  // Ambition system rework (spec: plans/ambition-system-rework/ambition-
+  // system-rework-spec.md) — rewards and failure/supersede payouts are
+  // frozen ON each ActiveAmbition instance at construction time
+  // (buildAmbition), so this block reads `a.reward`/`a.failureDignitas`/
+  // `partialReward` directly. No re-offer step follows (ticket 02 dropped
+  // the old pendingAmbitionScopes re-offer flow): a failed/completed/
+  // superseded slot is simply empty again, ready for setAmbition, no
+  // cooldown.
+  const { updated, completed, failed, superseded } = tickAmbitions(s.ambitions, s, s.turnNumber);
+  s = { ...s, ambitions: updated };
+
+  // Narrative-hook follow-up (ambition rework ticket 05, spec §4-1): a
+  // story/tutorial ambition's onCompleteEventId/onFailEventId queues the
+  // named event the same way any other scripted follow-up does (see
+  // `nextEvent:` in resourceEngine.ts) — pushed onto pendingEvents, not
+  // fired immediately, so it surfaces through the normal event-resolution
+  // flow next time one is due. Deliberately NOT checked for `superseded`
+  // ambitions: a supersede is an interruption outside the player's control,
+  // not a real completion or failure of the narrative beat (spec §2.3).
+  function queueAmbitionFollowUp(defId: string, assignedCharacterId: string | undefined) {
+    const instance: EventInstance = {
+      defId,
+      firedAtTurn: s.turnNumber,
+      targetCharacterId: assignedCharacterId ?? s.family.find(c => c.isPlayer)?.id ?? 'pc-1',
+    };
+    s = { ...s, pendingEvents: [...s.pendingEvents, instance] };
+  }
 
   for (const a of completed) {
-    const def = getAmbitionDefinition(a.definitionId);
-    if (!def) continue;
-    const r = def.reward;
-    if (r.gold)             s = { ...s, denarii:          s.denarii          + r.gold };
-    if (r.lifetimeDignitas) s = { ...s, lifetimeDignitas:  s.lifetimeDignitas + r.lifetimeDignitas };
-    if (r.fides)            s = { ...s, fides:             s.fides            + r.fides };
-    if (r.imperium)         s = { ...s, imperium:          s.imperium         + r.imperium };
-    if (r.assetId) {
+    s = { ...s, ...applyAmbitionReward(s, a.reward) };
+    if (a.reward.assetId) {
       s = {
         ...s,
         ownedAssets: [
           ...s.ownedAssets,
-          { definitionId: r.assetId, currentTier: 1, turnAcquired: s.turnNumber },
+          { definitionId: a.reward.assetId, currentTier: 1, turnAcquired: s.turnNumber },
         ],
       };
     }
-    if (r.reputationBonus) {
-      const newReps = { ...s.familyReputations };
-      for (const { clanId, delta } of r.reputationBonus) {
-        newReps[clanId] = Math.min(100, Math.max(-100, (newReps[clanId] ?? 0) + delta));
-      }
-      s = { ...s, familyReputations: newReps };
-    }
-    events.push(`Ambition complete: "${def.title}". Rewards applied.`);
+    if (a.onCompleteEventId) queueAmbitionFollowUp(a.onCompleteEventId, a.assignedCharacterId);
+    events.push(`Ambition complete: "${a.title}". Rewards applied.`);
   }
 
-  for (const a of expired) {
-    const def = getAmbitionDefinition(a.definitionId);
-    if (!def?.consequence) continue;
-    const c = def.consequence;
-    if (c.gold)             s = { ...s, denarii:         Math.max(0, s.denarii + c.gold) };
-    if (c.lifetimeDignitas) s = { ...s, lifetimeDignitas: Math.max(0, s.lifetimeDignitas + c.lifetimeDignitas) };
-    if (c.familyTrustDelta) {
-      s = {
-        ...s,
-        family: s.family.map(m =>
-          m.isPlayer
-            ? { ...m, familyTrust: Math.max(0, Math.min(100, m.familyTrust + c.familyTrustDelta!)) }
-            : m
-        ),
-      };
-    }
-    events.push(`Ambition expired: "${def.title}". Consequences applied.`);
+  for (const a of failed) {
+    s = { ...s, lifetimeDignitas: Math.max(0, s.lifetimeDignitas + a.failureDignitas) };
+    if (a.onFailEventId) queueAmbitionFollowUp(a.onFailEventId, a.assignedCharacterId);
+    events.push(`Ambition failed: "${a.title}".`);
   }
 
-  // 13b. Re-offer ambition selection for any scope left without an active ambition —
-  // covers a scope that was skipped/dismissed earlier as well as one that just
-  // completed or expired above. Without this, dismissing the prompt once meant it
-  // never returned, since pendingAmbitionScopes was only ever cleared, not refilled.
-  {
-    const scopesNeeded: ('family' | 'character')[] = [];
-    if (!s.ambitions.some(a => a.status === 'active' && a.scope === 'family')) {
-      scopesNeeded.push('family');
-    }
-    const player = s.family.find(c => c.isPlayer);
-    if (!s.ambitions.some(a => a.status === 'active' && a.scope === 'character' && a.assignedCharacterId === player?.id)) {
-      scopesNeeded.push('character');
-    }
-    if (scopesNeeded.length > 0) {
-      s = {
-        ...s,
-        pendingAmbitionScopes: Array.from(new Set([...s.pendingAmbitionScopes, ...scopesNeeded])),
-      };
-    }
+  for (const { ambition, partialReward } of superseded) {
+    s = { ...s, ...applyAmbitionReward(s, partialReward) };
+    events.push(`Ambition superseded: "${ambition.title}".`);
   }
 
   // 14. Corruption tick
@@ -2223,7 +2262,7 @@ export function processSeason(state: GameState): {
   // Tutorial redesign, Chunk T4 — frozen during the guided prologue (one of
   // the six isWorldFrozen call sites): a BirthNamingModal mid-hard-rail
   // would compete with the scripted narration for the same screen.
-  if (isBirthEligible(s.family) && s.pendingBirthNaming === null && !isWorldFrozen(s)) {
+  if (isBirthEligible(s.family) && s.pendingBirthNaming === null && !isWorldCategoryFrozen(s, 'births')) {
     const prob = calcBirthProbability(s.family);
     if (Math.random() < prob) {
       const player  = s.family.find(c => c.isPlayer)!;

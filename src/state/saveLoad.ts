@@ -7,6 +7,64 @@ import type { GameState } from './gameStore';
 
 const SAVE_KEY = 'rome_save_v1';
 
+// ─── Ambition rework, ticket 06 — shared sub-schemas ────────────────────────
+// Mirrors models/ambition.ts's AmbitionCriterion/ActiveAmbition/AmbitionOffer
+// exactly (keep in sync by hand — same convention as the rest of this file's
+// hand-maintained shapes, e.g. `clients.type`'s enum).
+
+const AmbitionCriterionSchema = z.object({
+  id: z.enum([
+    'resource_threshold', 'office_held', 'clan_standing', 'asset_tier',
+    'client_count', 'battles_won', 'region_control', 'survive_seasons', 'trial_won',
+    'bill_passed',
+  ]),
+  resource: z.enum(['denarii', 'fides']).optional(),
+  officeId: z.string().optional(),
+  clanId: z.string().optional(),
+  assetId: z.string().optional(),
+  regionId: z.string().optional(),
+  amount: z.number().optional(),
+});
+
+const AmbitionRewardSchema = z.object({
+  lifetimeDignitas: z.number().optional(),
+  fides: z.number().optional(),
+  denarii: z.number().optional(),
+  traitId: z.string().optional(),
+  assetId: z.string().optional(),
+});
+
+const ActiveAmbitionSchema = z.object({
+  id: z.string(),
+  scope: z.enum(['family', 'character', 'dynastic']),
+  source: z.enum(['player', 'story', 'tutorial', 'dynastic']),
+  title: z.string(),
+  criterion: AmbitionCriterionSchema,
+  baseline: z.object({ value: z.number(), turnNumber: z.number() }),
+  assignedCharacterId: z.string().optional(),
+  status: z.enum(['active', 'completed', 'failed', 'superseded']),
+  turnSet: z.number(),
+  deadlineTurn: z.number().optional(),
+  turnResolved: z.number().optional(),
+  reward: AmbitionRewardSchema,
+  failureDignitas: z.number(),
+  refusable: z.boolean(),
+  onCompleteEventId: z.string().optional(),
+  onFailEventId: z.string().optional(),
+});
+
+const AmbitionOfferSchema = z.object({
+  id: z.string(),
+  scope: z.enum(['family', 'character', 'dynastic']),
+  assignedCharacterId: z.string().optional(),
+  title: z.string(),
+  criterion: AmbitionCriterionSchema,
+  deadlineSeasons: z.number().optional(),
+  onCompleteEventId: z.string().optional(),
+  onFailEventId: z.string().optional(),
+  turnOffered: z.number(),
+});
+
 // Phase 5, Chunk P5-I — saveVersion tracks which phase's shape a save was
 // last WRITTEN against (1-5, matching the phase-plan sequence: pre-P3 saves
 // predate this field entirely and read as `undefined`, not 1 — there was no
@@ -74,11 +132,34 @@ export const SaveSchema = z.object({
   // as a fresh cycle (portraitAssets.assignVariant's own convention).
   portraitVariantCycles: z.record(z.string(), z.array(z.number())).default({}),
   lifetimeDignitas: z.number(),
+  // Ambition rework, ticket 03 — .default(0) ensures pre-ticket-03 saves
+  // (every one, since this field is new) load cleanly.
+  lifetimeBillsPassedVotedFor: z.number().default(0),
   legacyObjectives: z.array(z.object({
     definitionId: z.string(),
     currentValue: z.number(),
     milestonesReached: z.array(z.number()),
   })).default([]),
+  // Ambition system rework, ticket 06 — closes the gap flagged since ticket 01
+  // (SITEMAP.md's ambitionEngine.ts entry): `ambitions` was never in this
+  // schema, so nothing validated it. Each element is checked against the
+  // real ActiveAmbition shape OR passed through as a loose object — a
+  // pre-rework save's ambitions carry the deleted old shape (`definitionId`/
+  // `turnActivated`, no `criterion`/`baseline` to price a reward against),
+  // and rejecting that shape here would throw SaveSchema.parse() for the
+  // WHOLE save, not just this field. The loose fallback keeps parse() from
+  // treating an old save as corrupted; gameStore.loadGame's ambitions
+  // migration is what actually drops any entry that isn't real
+  // ActiveAmbition shape (mirrors the trialQueue -> trials precedent above —
+  // silent, no player-facing notice).
+  ambitions: z.array(z.union([ActiveAmbitionSchema, z.record(z.string(), z.any())])).default([]),
+  // Staged AmbitionOffers (ticket 05's offer-then-accept narrative hook) —
+  // didn't exist before this rework, so .default({}) alone covers every
+  // pre-rework save; no legacy shape to reconcile, unlike ambitions above.
+  pendingAmbitionOffers: z.object({
+    family: AmbitionOfferSchema.optional(),
+    character: AmbitionOfferSchema.optional(),
+  }).default({}),
   // Legacy shape (pre-P4-C saves) — kept optional so old saves still
   // validate; gameStore.loadGame migrates any entries here into `trials`
   // (mirrors the wars/P3-A per-element migration pattern).
@@ -187,25 +268,57 @@ export const SaveSchema = z.object({
   // Tutorial redesign — .default(true) ensures every pre-existing save (and
   // every non-guided start) reads as unlocked; a guided start's startGame
   // call is the only writer of `false`, flipped back by
-  // courts.philon-handoff's onCompleteEffectId (or immediately by
-  // skipTutorialArc/skipAllTutorials). parse()'s result is discarded here,
-  // same as gensId/difficulty above — this default only matters for
-  // validation, not migration.
+  // beat-chamber.philon-handoff's onCompleteEffectId (tutorial rebuild,
+  // ticket 05 — moved from courts.philon-handoff, see GameState's own doc
+  // comment on this field) or immediately by skipTutorialArc/
+  // skipAllTutorials. parse()'s result is discarded here, same as gensId/
+  // difficulty above — this default only matters for validation, not
+  // migration.
+  //
+  // Tutorial rebuild, ticket 04 — split off agendaTabletUnlocked (below):
+  // philonAdvisoryUnlocked gates ONLY the player's own ambition builder.
   philonAdvisoryUnlocked: z.boolean().default(true),
+  // Tutorial rebuild, ticket 04 — gates the Agenda Tablet itself (badge +
+  // auto-open), split off philonAdvisoryUnlocked so Beat I's ambition can be
+  // visible on the tablet leaf well before the player-ambition-builder
+  // unlocks (see GameState's own doc comment on this field). Same
+  // .default(true)/discarded-parse()-result reasoning as philonAdvisoryUnlocked
+  // above — a pre-ticket-04 save has no notion of this field and must read
+  // as unlocked.
+  agendaTabletUnlocked: z.boolean().default(true),
   tutorial: z.object({
     activeArc:     z.enum([
+      // Tutorial rebuild, ticket 04.
+      'beat-house',
+      // Tutorial rebuild, ticket 05.
+      'beat-chamber',
+      // Tutorial rebuild, ticket 06.
+      'beat-ladder',
       'prologue', 'embassy', 'war', 'courts',
       // T10 — standalone just-in-time lessons (models/tutorial.ts's TutorialLessonId).
       'lesson-trial', 'lesson-battle', 'lesson-death', 'lesson-succession',
+      // Tutorial rebuild, ticket 02.
+      'lesson-provinciae', 'lesson-assets',
     ]).nullable().default(null),
     stepId:        z.string().nullable().default(null),
     completedArcs: z.array(z.string()).default([]),
     unlockedTabs:  z.array(z.string()).default(['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia']),
     skipped:       z.boolean().default(false),
+    // Tutorial rebuild, ticket 07 — act selector replay. Deliberately the
+    // narrow 3-beat enum (not activeArc's full 13-value one above): only
+    // 'beat-house'/'beat-chamber'/'beat-ladder' are ever replayable
+    // (models/tutorial.ts's TutorialBeatId), and this is the one boundary
+    // (save load) the compiler can't check that narrowing at — a malformed
+    // or tampered save claiming e.g. replayingArc: 'lesson-death' should
+    // fail validation here rather than silently flowing through as a
+    // TutorialBeatId the rest of the app trusts.
+    replayingArc:  z.enum(['beat-house', 'beat-chamber', 'beat-ladder']).nullable().default(null),
+    replayStepId:  z.string().nullable().default(null),
   }).default({
     activeArc: null, stepId: null, completedArcs: [],
     unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'],
     skipped: false,
+    replayingArc: null, replayStepId: null,
   }),
 });
 
@@ -236,6 +349,7 @@ export class LocalSaveProvider implements SaveProvider {
       selectedTrialId: _sti,
       curiaSubTabRequest: _cstr,
       curiaBillTargetRequest: _cbtr,
+      agendaTabletLeafRequest: _atlr,
       ...persistedState
     } = state as any;
     const json = JSON.stringify({ ...persistedState, saveVersion: CURRENT_SAVE_VERSION });

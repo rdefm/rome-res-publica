@@ -123,16 +123,22 @@ export const OFFICES: Office[] = [
           const actingCharacter = state.family.find((c) => c.id === characterId);
           const chance = calcAuditChance(actingCharacter?.skills.intrigus ?? 0, target.corruptionScore);
 
-          // Tutorial redesign, Act V's audit step (prologue.act5.audit) — a
-          // real roll here would let Philon's scripted "standoff" beat
-          // (claudiusDeterred) simply not happen on an unlucky roll, with no
-          // retry taught and no other way to progress. Guaranteed only for
-          // this exact step, against this exact leader — every other audit,
-          // including a later free-play audit of Claudius himself outside
-          // this step, still rolls for real.
+          // Tutorial redesign, Act V's audit step — moved into Beat III
+          // ('beat-ladder.audit') by tutorial rebuild ticket 06, same
+          // guarantee, same reasoning: a real roll here would let Philon's
+          // scripted "standoff" beat (claudiusDeterred) simply not happen on
+          // an unlucky roll, with no retry taught and no other way to
+          // progress. Guaranteed only for this exact step, against this
+          // exact leader — every other audit, including a later free-play
+          // audit of Claudius himself outside this step, still rolls for
+          // real. This condition checks the arc/step ids directly (not a
+          // generic "any tutorial audit step" check) — if this content ever
+          // moves again, this must be updated by hand; tsc/tests won't catch
+          // a stale string literal here (ticket 06's own implementation
+          // note, inherited from ticket 04's review of the same hazard).
           const tutorialGuaranteed =
-            state.tutorial?.activeArc === 'prologue' &&
-            state.tutorial?.stepId === 'prologue.act5.audit' &&
+            state.tutorial?.activeArc === 'beat-ladder' &&
+            state.tutorial?.stepId === 'beat-ladder.audit' &&
             leaderId === CLAUDIUS_LEADER_ID;
 
           if (tutorialGuaranteed || Math.random() < chance) {

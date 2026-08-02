@@ -72,14 +72,6 @@ function makeState(overrides: Record<string, any> = {}) {
     consultatumUsedThisTerm: false,
     senatePacked: false,
     dictatorOverstaySeasons: 0,
-    // QA Audit Fix Plan, Chunk E — a real GameState field (gameStore.ts's
-    // INITIAL_STATE default), unconditionally spread by turnSequencer.ts's
-    // step (`Array.from(new Set([...s.pendingAmbitionScopes, ...]))`).
-    // Missing here, every processSeason() call through this fixture threw
-    // TypeError: undefined is not iterable — not a type error, a currently-
-    // failing runtime bug the three "Triumph bill generation" tests below
-    // (and this file's own NPC Tribune veto tests) all depend on.
-    pendingAmbitionScopes: ['family', 'character'],
     ...overrides,
   };
 }

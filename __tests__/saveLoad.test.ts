@@ -196,3 +196,231 @@ describe('Provincial client save-corruption fix', () => {
     expect(useGameStore.getState().clients).toHaveLength(1);
   });
 });
+
+// ─── Ambition system rework, ticket 06 — save schema + migration ───────────
+// `ambitions` was never in SaveSchema before this ticket (verified by grep,
+// plan §0.6) — nothing validated it, it just round-tripped raw. This closes
+// that gap for the new ActiveAmbition/AmbitionOffer shape while still
+// letting a pre-rework save (old definitionId/turnActivated shape, deleted
+// ticket 01) load cleanly, with its unconvertable ambitions dropped silently
+// by gameStore.loadGame rather than the whole save being rejected.
+
+describe('Ambition save schema + migration', () => {
+  const freshAmbition = {
+    id: 'amb-1',
+    scope: 'family',
+    source: 'player',
+    title: 'Hold 500 Denarii',
+    criterion: { id: 'resource_threshold', resource: 'denarii', amount: 500 },
+    baseline: { value: 200, turnNumber: 3 },
+    status: 'active',
+    turnSet: 3,
+    deadlineTurn: 7,
+    reward: { lifetimeDignitas: 4, fides: 2 },
+    failureDignitas: -2,
+    refusable: true,
+  };
+
+  const oldShapeAmbition = {
+    definitionId: 'grand_estate',
+    scope: 'family',
+    status: 'active',
+    turnActivated: 2,
+    turnsRemaining: 6,
+  };
+
+  test('SaveSchema accepts a fresh-shape ambitions array and pendingAmbitionOffers', () => {
+    const withFreshAmbitions = {
+      year: -264, turnNumber: 3, seasonIndex: 0,
+      fides: 30, denarii: 200, crisisLevel: 0,
+      family: [{ id: 'pc-1', name: 'Marcus' }],
+      bills: [], clans: [],
+      lifetimeDignitas: 0,
+      ambitions: [freshAmbition],
+      pendingAmbitionOffers: {
+        character: {
+          id: 'offer-1', scope: 'character', title: 'Win the Consulship',
+          criterion: { id: 'office_held', officeId: 'consul' },
+          deadlineSeasons: 8, turnOffered: 3,
+        },
+      },
+    };
+    expect(() => SaveSchema.parse(withFreshAmbitions)).not.toThrow();
+  });
+
+  test('SaveSchema does not reject a save whose ambitions carry the pre-rework shape', () => {
+    const withOldAmbitions = {
+      year: -264, turnNumber: 3, seasonIndex: 0,
+      fides: 30, denarii: 200, crisisLevel: 0,
+      family: [{ id: 'pc-1', name: 'Marcus' }],
+      bills: [], clans: [],
+      lifetimeDignitas: 0,
+      ambitions: [oldShapeAmbition],
+    };
+    expect(() => SaveSchema.parse(withOldAmbitions)).not.toThrow();
+  });
+
+  function roundTrip(state: unknown) {
+    return JSON.parse(JSON.stringify(state));
+  }
+
+  test('loadGame round-trips a fresh-shape save keeping its ambitions intact', () => {
+    useGameStore.getState().startGame('standard');
+    const base = useGameStore.getState();
+    const stateWithAmbitions = { ...base, ambitions: [freshAmbition] };
+    const roundTripped = roundTrip(stateWithAmbitions);
+    expect(() => SaveSchema.parse(roundTripped)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(roundTripped)).not.toThrow();
+    expect(useGameStore.getState().ambitions).toEqual([freshAmbition]);
+  });
+
+  test('loadGame silently drops pre-rework-shape ambitions, leaving the slot empty', () => {
+    useGameStore.getState().startGame('standard');
+    const base = useGameStore.getState();
+    const stateWithOldAmbitions = { ...base, ambitions: [oldShapeAmbition] };
+    const roundTripped = roundTrip(stateWithOldAmbitions);
+    expect(() => SaveSchema.parse(roundTripped)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(roundTripped)).not.toThrow();
+    expect(useGameStore.getState().ambitions).toEqual([]);
+  });
+
+  test('a save from immediately before the rework (no ambitions key at all) still loads', () => {
+    useGameStore.getState().startGame('standard');
+    const base = useGameStore.getState() as any;
+    const { ambitions: _omitted, pendingAmbitionOffers: _omitted2, ...preReworkState } = base;
+    const roundTripped = roundTrip(preReworkState);
+    expect(() => SaveSchema.parse(roundTripped)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(roundTripped)).not.toThrow();
+    expect(useGameStore.getState().ambitions).toEqual([]);
+    expect(useGameStore.getState().pendingAmbitionOffers).toEqual({});
+  });
+});
+
+// Tutorial rebuild, ticket 04 — 'beat-house' added to the tutorial.activeArc
+// enum, plus the new agendaTabletUnlocked field (split off
+// philonAdvisoryUnlocked — see both fields' own doc comments on GameState).
+describe('Beat I save schema (tutorial rebuild, ticket 04)', () => {
+  test('SaveSchema accepts activeArc: "beat-house" and a mid-Beat-I save loads correctly', () => {
+    useGameStore.getState().startGame('guided');
+    useGameStore.setState({ denarii: 220 });
+    const midBeatHouse = JSON.parse(JSON.stringify(useGameStore.getState()));
+    expect(midBeatHouse.tutorial.activeArc).toBe('beat-house');
+    expect(midBeatHouse.agendaTabletUnlocked).toBe(false);
+
+    expect(() => SaveSchema.parse(midBeatHouse)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(midBeatHouse)).not.toThrow();
+    const s = useGameStore.getState();
+    expect(s.tutorial.activeArc).toBe('beat-house');
+    expect(s.denarii).toBe(220);
+    expect(s.agendaTabletUnlocked).toBe(false);
+  });
+
+  test('a save written before ticket 04 (no agendaTabletUnlocked key) defaults to unlocked, matching pre-split behavior', () => {
+    useGameStore.getState().startGame('standard');
+    const base = useGameStore.getState() as any;
+    const { agendaTabletUnlocked: _omitted, ...preTicket04State } = base;
+    const roundTripped = JSON.parse(JSON.stringify(preTicket04State));
+
+    expect(() => SaveSchema.parse(roundTripped)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(roundTripped)).not.toThrow();
+    expect(useGameStore.getState().agendaTabletUnlocked).toBe(true);
+  });
+});
+
+// Tutorial rebuild, ticket 05 — 'beat-chamber' added to the tutorial.activeArc
+// enum (models/tutorial.ts's TutorialArcId, saveLoad.ts's own z.enum). Same
+// discipline as the Beat I block above.
+describe('Beat II save schema (tutorial rebuild, ticket 05)', () => {
+  test('SaveSchema accepts activeArc: "beat-chamber" and a mid-Beat-II save loads correctly', () => {
+    useGameStore.getState().startGame('guided');
+    useGameStore.getState().startTutorialArc('beat-chamber');
+    useGameStore.getState().advanceTutorialStep(); // beat-chamber.intro -> bill-list
+    const midBeatChamber = JSON.parse(JSON.stringify(useGameStore.getState()));
+    expect(midBeatChamber.tutorial.activeArc).toBe('beat-chamber');
+    expect(midBeatChamber.tutorial.stepId).toBe('beat-chamber.bill-list');
+
+    expect(() => SaveSchema.parse(midBeatChamber)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(midBeatChamber)).not.toThrow();
+    const s = useGameStore.getState();
+    expect(s.tutorial.activeArc).toBe('beat-chamber');
+    expect(s.tutorial.stepId).toBe('beat-chamber.bill-list');
+  });
+});
+
+// Tutorial rebuild, ticket 06 — 'beat-ladder' added to the tutorial.activeArc
+// enum (models/tutorial.ts's TutorialArcId, saveLoad.ts's own z.enum). Same
+// discipline as the Beat I/II blocks above.
+describe('Beat III save schema (tutorial rebuild, ticket 06)', () => {
+  test('SaveSchema accepts activeArc: "beat-ladder" and a mid-Beat-III save loads correctly', () => {
+    useGameStore.getState().startGame('guided');
+    useGameStore.getState().startTutorialArc('beat-ladder');
+    useGameStore.getState().advanceTutorialStep(); // beat-ladder.intro -> find-quaestor
+    const midBeatLadder = JSON.parse(JSON.stringify(useGameStore.getState()));
+    expect(midBeatLadder.tutorial.activeArc).toBe('beat-ladder');
+    expect(midBeatLadder.tutorial.stepId).toBe('beat-ladder.find-quaestor');
+
+    expect(() => SaveSchema.parse(midBeatLadder)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(midBeatLadder)).not.toThrow();
+    const s = useGameStore.getState();
+    expect(s.tutorial.activeArc).toBe('beat-ladder');
+    expect(s.tutorial.stepId).toBe('beat-ladder.find-quaestor');
+  });
+});
+
+// Tutorial rebuild, ticket 07 — replayingArc/replayStepId added to the
+// tutorial object (act selector replay). Same discipline as the Beat I/II/III
+// blocks above, plus the ticket's own "a save made mid-replay ... loads
+// correctly" checklist item.
+describe('Act selector replay save schema (tutorial rebuild, ticket 07)', () => {
+  test('SaveSchema accepts a mid-replay save (replayingArc/replayStepId set) and it loads correctly, real progress intact', () => {
+    useGameStore.getState().startGame('guided');
+    useGameStore.getState().startTutorialArc('beat-ladder'); // real progress, elsewhere
+    useGameStore.getState().startTutorialReplay('beat-house');
+    useGameStore.getState().advanceTutorialReplayStep(); // beat-house.intro -> meet-marcus
+    const midReplay = JSON.parse(JSON.stringify(useGameStore.getState()));
+    expect(midReplay.tutorial.replayingArc).toBe('beat-house');
+    expect(midReplay.tutorial.replayStepId).toBe('beat-house.meet-marcus');
+    expect(midReplay.tutorial.activeArc).toBe('beat-ladder');
+
+    expect(() => SaveSchema.parse(midReplay)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(midReplay)).not.toThrow();
+    const s = useGameStore.getState();
+    expect(s.tutorial.replayingArc).toBe('beat-house');
+    expect(s.tutorial.replayStepId).toBe('beat-house.meet-marcus');
+    expect(s.tutorial.activeArc).toBe('beat-ladder');
+  });
+
+  test('a save written before ticket 07 (no replayingArc/replayStepId keys on tutorial) defaults to not-replaying', () => {
+    useGameStore.getState().startGame('guided');
+    const base = useGameStore.getState();
+    const { replayingArc: _a, replayStepId: _b, ...preTicket07Tutorial } = base.tutorial as any;
+    const preTicket07State = { ...base, tutorial: preTicket07Tutorial };
+    const roundTripped = JSON.parse(JSON.stringify(preTicket07State));
+
+    expect(() => SaveSchema.parse(roundTripped)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(roundTripped)).not.toThrow();
+    const s = useGameStore.getState();
+    expect(s.tutorial.replayingArc).toBeNull();
+    expect(s.tutorial.replayStepId).toBeNull();
+    expect(s.tutorial.activeArc).toBe('beat-house'); // real progress preserved
+  });
+
+  test('leaving the guided path from mid-replay leaves real activeArc/completedArcs correctly cascaded and the replay cleared', () => {
+    useGameStore.getState().startGame('guided');
+    useGameStore.getState().startTutorialReplay('beat-chamber');
+    useGameStore.getState().advanceTutorialReplayStep();
+
+    useGameStore.getState().skipTutorialArc();
+
+    const s = useGameStore.getState();
+    expect(s.tutorial.activeArc).toBeNull();
+    expect(new Set(s.tutorial.completedArcs)).toEqual(
+      new Set(['beat-house', 'beat-chamber', 'beat-ladder', 'prologue', 'embassy', 'war', 'courts']),
+    );
+    // Code-review fix — skipTutorialArc also ends any in-flight replay, so a
+    // review session never dangles ("End review" showing over a run that
+    // just declared itself finished).
+    expect(s.tutorial.replayingArc).toBeNull();
+    expect(s.tutorial.replayStepId).toBeNull();
+  });
+});
