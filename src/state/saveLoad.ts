@@ -268,16 +268,15 @@ export const SaveSchema = z.object({
   // Tutorial redesign — .default(true) ensures every pre-existing save (and
   // every non-guided start) reads as unlocked; a guided start's startGame
   // call is the only writer of `false`, flipped back by
-  // courts.philon-handoff's onCompleteEffectId (or immediately by
-  // skipTutorialArc/skipAllTutorials). parse()'s result is discarded here,
-  // same as gensId/difficulty above — this default only matters for
-  // validation, not migration.
+  // beat-chamber.philon-handoff's onCompleteEffectId (tutorial rebuild,
+  // ticket 05 — moved from courts.philon-handoff, see GameState's own doc
+  // comment on this field) or immediately by skipTutorialArc/
+  // skipAllTutorials. parse()'s result is discarded here, same as gensId/
+  // difficulty above — this default only matters for validation, not
+  // migration.
   //
   // Tutorial rebuild, ticket 04 — split off agendaTabletUnlocked (below):
-  // philonAdvisoryUnlocked now gates ONLY the player's own ambition builder,
-  // moving (ticket 05) to end of Beat II; this field keeps its original
-  // courts.philon-handoff default for now — see both fields' own doc
-  // comments on GameState.
+  // philonAdvisoryUnlocked gates ONLY the player's own ambition builder.
   philonAdvisoryUnlocked: z.boolean().default(true),
   // Tutorial rebuild, ticket 04 — gates the Agenda Tablet itself (badge +
   // auto-open), split off philonAdvisoryUnlocked so Beat I's ambition can be
@@ -291,6 +290,8 @@ export const SaveSchema = z.object({
     activeArc:     z.enum([
       // Tutorial rebuild, ticket 04.
       'beat-house',
+      // Tutorial rebuild, ticket 05.
+      'beat-chamber',
       'prologue', 'embassy', 'war', 'courts',
       // T10 — standalone just-in-time lessons (models/tutorial.ts's TutorialLessonId).
       'lesson-trial', 'lesson-battle', 'lesson-death', 'lesson-succession',

@@ -6,10 +6,10 @@
 // Steps were authored incrementally per the plan's chunk order: T5 (prologue),
 // T7 (embassy), T8 (war), T9 (courts), T10 (the four lessons) — all landed.
 // Tutorial rebuild, ticket 04 added 'beat-house', peeling Acts I-II off the
-// original prologue arc (models/tutorial.ts's TutorialArcId comment); Acts
-// III-V still live under 'prologue' below until tickets 05/06 retire them the
-// same way. The lesson arcs are additions from T10 (models/tutorial.ts's
-// TutorialLessonId).
+// original prologue arc (models/tutorial.ts's TutorialArcId comment); ticket
+// 05 added 'beat-chamber', peeling off Act III the same way. Act V still
+// lives under 'prologue' below until ticket 06 retires it the same way. The
+// lesson arcs are additions from T10 (models/tutorial.ts's TutorialLessonId).
 
 import type { TutorialArc, TutorialAnyArcId, TutorialStep } from '../models/tutorial';
 
@@ -109,10 +109,19 @@ const BEAT_HOUSE_DOMUS_STEPS: TutorialStep[] = [
 // LeaderDetailPanel already renders his held-secret line the moment the
 // player selects him (his starting Secret is discovered: true from game
 // start), so there's nothing to force the player to go look at — Philon
-// just tells them plainly, matching the retired tut-04's beat. unlocksTab
-// here is 'Curia' (not deferred to a later beat) — the remaining prologue
-// Act III still needs it the instant beat-house's sandbox resolves, since
-// that act's own steps aren't being touched by this ticket.
+// just tells them plainly, matching the retired tut-04's beat.
+//
+// No unlocksTab in this half. Ticket 04 originally put 'Curia' here
+// (mid-Forum, well before beat-house even finished) purely so the old
+// prologue's Act III could open immediately once beat-house's ambition
+// resolved — a deliberate, minimal-diff call for that ticket's own scope,
+// explicitly flagged as not a claim it was the right place once a real arc
+// owned Curia's teaching. Ticket 05 (Beat II: The Chamber) now owns that
+// teaching, so per that same note the unlock moves to keep Curia sealed
+// until Beat II is about to explain it — see BEAT_HOUSE_GOAL_STEPS' own
+// 'beat-house.sandbox' step below for exactly where, and why it has to be
+// that step specifically (not 'beat-chamber.intro' itself) and not a
+// design preference.
 const BEAT_HOUSE_FORUM_STEPS: TutorialStep[] = [
   {
     id: 'beat-house.forum-intro',
@@ -177,7 +186,6 @@ const BEAT_HOUSE_FORUM_STEPS: TutorialStep[] = [
     target: 'forum.action.invite-dinner',
     narration: "Court Flaccus, then. An invitation to dinner is the simplest opening — but the choice of gesture is yours.",
     advance: { kind: 'predicate', predicateId: 'flaccusRelationshipRaised' },
-    unlocksTab: 'Curia',
   },
 ];
 
@@ -227,6 +235,18 @@ const BEAT_HOUSE_INCOME_STEPS: TutorialStep[] = [
 // already use for their own "go do this yourself, however long it takes"
 // waiting steps) and carries no `target`/`requiresTab`, so nothing here
 // blocks free play while the player works toward it.
+//
+// unlocksTab: 'Curia' lives on THIS step (ticket 05), not on beat-chamber's
+// own first step — mechanically required, not a style choice: unlockedTabs
+// only picks up a completing step's unlocksTab in the SAME store update
+// that advances to the next step (gameStore.advanceTutorialStep), so the
+// unlock has to land on whichever step's completion IS the transition into
+// the first Curia-requiring step. beat-house.sandbox's completion is that
+// transition (it auto-chains straight into 'beat-chamber.intro', which
+// requiresTab: 'Curia') — putting the unlock on 'beat-chamber.intro' itself
+// instead would leave Curia still sealed at the exact moment that step
+// needs it, softlocking a fresh guided run on a tab button the player can
+// never tap (App.tsx's screenListeners.tabPress e.preventDefault()).
 const BEAT_HOUSE_GOAL_STEPS: TutorialStep[] = [
   {
     id: 'beat-house.goal',
@@ -250,28 +270,36 @@ const BEAT_HOUSE_GOAL_STEPS: TutorialStep[] = [
       "best. I'll know the moment the coffers reach it.",
     advance: { kind: 'predicate', predicateId: 'houseAmbitionMet' },
     onCompleteEffectId: 'houseSetCompleteFlag',
+    unlocksTab: 'Curia',
   },
 ];
 
-// ─── Arc I — The Prologue (Acts III-V) ──────────────────────────────────────
-// Chained straight from 'beat-house' (TUTORIAL_ARC_ORDER, tutorialEngine.ts)
-// once its ambition resolves. Acts I-II used to open this arc — ticket 04
-// moved them into 'beat-house' above; what remains starts at Act III on
-// purpose (see models/tutorial.ts's TutorialArcId comment) and is otherwise
-// untouched by this ticket. Tickets 05/06 retire Acts III and V respectively
-// into their own 'beat-chamber'/'beat-ladder' arcs.
+// ─── Beat II: The Chamber ───────────────────────────────────────────────────
+// Tutorial rebuild, ticket 05. Chained straight from 'beat-house'
+// (TUTORIAL_ARC_ORDER, tutorialEngine.ts) once its ambition resolves. Teach
+// content below is the old prologue Act III verbatim (same narration, same
+// predicates where unrenamed), moved wholesale rather than rewritten — only
+// ids/arc and the chamber-prefixed predicate/effect names changed (see
+// tutorialEngine.ts's own renamed-on-the-move comments). What's new is the
+// goal + sandbox + closing/hand-off tail: a real `bill_passed` ActiveAmbition
+// with a deadline (unlike Beat I's, this beat CAN fail —
+// tutorial-rebuild-plan.md §2.3), and the move of philonAdvisoryUnlocked to
+// this beat's own end (§2.6, ticket 04's own implementation note).
 
-// ── Act III — Curia: Rome's health is your income, bills, crisis tracks ────
+// ── Curia: Rome's health is your income, bills, crisis tracks ──────────────
 // Completion: the player votes on Bellum Punicum (STARTING_BILLS' 'start-2')
-// and the War crisis track visibly moves. The ordinary season-end passive
-// bill-resolution path is frozen throughout the prologue (T4), so this act's
-// "a track moves" moment is delivered directly by act3MoveWarTrack the
-// instant the vote registers — see that effect's own comment.
-const PROLOGUE_ACT3_STEPS: TutorialStep[] = [
+// and the War crisis track visibly moves. Passive bill resolution is OPEN
+// throughout Beat II (unlike the old frozen-prologue this replaces —
+// WORLD_GATE_POLICY['beat-chamber'], tutorialEngine.ts), but this specific
+// bill's "a track moves" moment still lands directly via chamberMoveWarTrack
+// the instant the vote registers, not through that real passive path — see
+// that effect's own comment for why (a real resolution of THIS bill would
+// likely fail and reverse the demonstration).
+const BEAT_CHAMBER_TEACH_STEPS: TutorialStep[] = [
   {
-    id: 'prologue.act3.intro',
-    arc: 'prologue',
-    actLabel: 'Act III — The Curia',
+    id: 'beat-chamber.intro',
+    arc: 'beat-chamber',
+    actLabel: 'Beat II — The Chamber',
     rail: 'hard',
     requiresTab: 'Curia',
     narration:
@@ -281,8 +309,8 @@ const PROLOGUE_ACT3_STEPS: TutorialStep[] = [
     advance: { kind: 'tap' },
   },
   {
-    id: 'prologue.act3.bill-list',
-    arc: 'prologue',
+    id: 'beat-chamber.bill-list',
+    arc: 'beat-chamber',
     rail: 'hard',
     requiresTab: 'Curia',
     target: 'curia.bill-list.first',
@@ -290,11 +318,11 @@ const PROLOGUE_ACT3_STEPS: TutorialStep[] = [
       "Bellum Punicum — war funding against Carthage, already before the House. Every bill " +
       "either buys calm, passed, or is simply left to die.",
     advance: { kind: 'tap' },
-    onEnterEffectId: 'act3SnapshotBillSupport',
+    onEnterEffectId: 'chamberSnapshotBillSupport',
   },
   {
-    id: 'prologue.act3.crisis-tracks',
-    arc: 'prologue',
+    id: 'beat-chamber.crisis-tracks',
+    arc: 'beat-chamber',
     rail: 'hard',
     requiresTab: 'Curia',
     target: 'curia.crisis-track.war',
@@ -305,25 +333,92 @@ const PROLOGUE_ACT3_STEPS: TutorialStep[] = [
     advance: { kind: 'tap' },
   },
   {
-    id: 'prologue.act3.cost-of-silence',
-    arc: 'prologue',
+    id: 'beat-chamber.cost-of-silence',
+    arc: 'beat-chamber',
     rail: 'hard',
     requiresTab: 'Curia',
     narration: "Your voice in there costs Fides. Your silence, in time, costs a great deal more.",
     advance: { kind: 'tap' },
   },
   {
-    id: 'prologue.act3.vote',
-    arc: 'prologue',
+    id: 'beat-chamber.vote',
+    arc: 'beat-chamber',
     rail: 'hard',
     requiresTab: 'Curia',
     target: 'curia.action.vote-for',
     narration: "Tap VOTE beneath it, then Vote For. Commit your voice.",
     advance: { kind: 'predicate', predicateId: 'billVotedThisSeason' },
-    onCompleteEffectId: 'act3MoveWarTrack',
+    onCompleteEffectId: 'chamberMoveWarTrack',
     unlocksTab: 'Provinciae',
   },
 ];
+
+// ── Goal + sandbox: a real ambition, WITH a deadline, CAN fail ─────────────
+// tutorial-rebuild-plan.md §2.3: unlike Beat I, a missed deadline here
+// resolves the ambition 'failed' (the ambition system's own capped Dignitas
+// ding — computeReward, ambitionEngine.ts) rather than leaving it open
+// forever. beat-chamber.sandbox waits on EITHER outcome
+// (chamberAmbitionResolved) and beat-chamber.closing's narration is written
+// to read correctly under either one, same discipline war.closing/
+// courts.closing already use for their own outcome-agnostic beats — this
+// satisfies the ticket's "Philon acknowledges it once" without a second,
+// branching step the step-chain engine has no mechanism for anyway
+// (TutorialStep.narration supports no templating, and getNextStep is
+// strictly linear — see models/tutorial.ts).
+const BEAT_CHAMBER_GOAL_STEPS: TutorialStep[] = [
+  {
+    id: 'beat-chamber.goal',
+    arc: 'beat-chamber',
+    rail: 'hard',
+    requiresTab: 'Curia',
+    narration:
+      "You have felt what a single vote costs, and watched it move something real. Now prove it " +
+      "in earnest: see a bill you yourself vote for actually pass into law, within three seasons. " +
+      "Not every vote carries — that is as much the lesson as the vote itself.",
+    advance: { kind: 'tap' },
+    onCompleteEffectId: 'chamberSetAmbition',
+  },
+  {
+    id: 'beat-chamber.sandbox',
+    arc: 'beat-chamber',
+    rail: 'guided',
+    narration:
+      "The Curia is yours to work now, Domine — vote, speak, filibuster, court a bloc's support, " +
+      "whatever new business the Senate brings before you. I'll know the moment one you " +
+      "championed becomes law.",
+    advance: { kind: 'predicate', predicateId: 'chamberAmbitionResolved' },
+  },
+  {
+    id: 'beat-chamber.closing',
+    arc: 'beat-chamber',
+    rail: 'guided',
+    narration:
+      "Whatever became of it, Domine — carried into law or left to lapse — you were the one who " +
+      "stood and was counted, and Rome answered you either way. Not every vote wins. Every vote " +
+      "is still yours to spend.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'beat-chamber.philon-handoff',
+    arc: 'beat-chamber',
+    rail: 'guided',
+    narration:
+      "One thing more, Domine, before the Cursus claims your attention: you may set your own " +
+      "ambitions on the tablet from here on, alongside whatever I still bring before you. The " +
+      "choosing widens. I have not yet stepped back.",
+    advance: { kind: 'tap' },
+    onCompleteEffectId: 'chamberSetCompleteFlag',
+  },
+];
+
+// ─── Arc I — The Prologue (Acts IV-V) ───────────────────────────────────────
+// Chained straight from 'beat-chamber' (TUTORIAL_ARC_ORDER, tutorialEngine.ts)
+// once its ambition resolves (met or failed — the beat "still advances"
+// either way, ticket 05's own checklist). Acts I-III used to open this arc —
+// ticket 04 moved Acts I-II into 'beat-house', ticket 05 moved Act III into
+// 'beat-chamber' above; what remains starts at Act IV on purpose (see
+// models/tutorial.ts's TutorialArcId comment) and is otherwise untouched by
+// this ticket. Ticket 06 retires Act V into its own 'beat-ladder' arc.
 
 // ── Act IV — Provinciae: denarii loop, the map, Campania ────────────────────
 // Completion: the player buys one asset in Campania. The purchase confirm
@@ -1172,11 +1267,17 @@ export const TUTORIAL_ARCS: Record<TutorialAnyArcId, TutorialArc> = {
       ...BEAT_HOUSE_INCOME_STEPS, ...BEAT_HOUSE_GOAL_STEPS,
     ],
   },
+  // Tutorial rebuild, ticket 05.
+  'beat-chamber': {
+    id: 'beat-chamber',
+    title: 'Beat II — The Chamber',
+    steps: [...BEAT_CHAMBER_TEACH_STEPS, ...BEAT_CHAMBER_GOAL_STEPS],
+  },
   prologue: {
     id: 'prologue',
     title: 'The First Year',
     steps: [
-      ...PROLOGUE_ACT3_STEPS, ...PROLOGUE_ACT4_STEPS, ...PROLOGUE_ACT5_STEPS,
+      ...PROLOGUE_ACT4_STEPS, ...PROLOGUE_ACT5_STEPS,
     ],
   },
   embassy:  { id: 'embassy',  title: 'The Embassy',     steps: [...EMBASSY_STEPS] },

@@ -34,12 +34,13 @@ export const TUTORIAL_CARTHAGE_GARRISON_ID = 'tutorial-carthage-garrison-lilybae
 export const TUTORIAL_COURTS_TRIAL_ID = 'tutorial-courts-repetundae';
 
 /** Order arcs resolve in — used by skipTutorialArc to cascade downstream arcs.
- *  Tutorial rebuild, ticket 04 — 'beat-house' now leads, chaining into
- *  'prologue' (which starts at the old Act III/Curia now that Acts I-II have
- *  moved into 'beat-house' — see models/tutorial.ts's TutorialArcId comment).
- *  Tickets 05/06 will insert 'beat-chamber'/'beat-ladder' here and shrink
- *  'prologue' further. */
-export const TUTORIAL_ARC_ORDER: TutorialArcId[] = ['beat-house', 'prologue', 'embassy', 'war', 'courts'];
+ *  Tutorial rebuild, ticket 04 — 'beat-house' leads. Ticket 05 inserted
+ *  'beat-chamber' next, chaining into 'prologue' (which now starts at the
+ *  old Act IV/Provinciae, Act III/Curia having moved into 'beat-chamber' —
+ *  see models/tutorial.ts's TutorialArcId comment). Ticket 06 will insert
+ *  'beat-ladder' between 'beat-chamber' and 'prologue' and shrink 'prologue'
+ *  further still. */
+export const TUTORIAL_ARC_ORDER: TutorialArcId[] = ['beat-house', 'beat-chamber', 'prologue', 'embassy', 'war', 'courts'];
 
 // Populated by each content chunk (T5 prologue, T7 embassy, T8 war, T9
 // courts) alongside the useTutorialTarget(id) call sites they instrument.
@@ -72,7 +73,8 @@ export const TUTORIAL_TARGET_IDS = new Set<string>([
   'forum.clan.valeria',
   'forum.leader.valerius-flaccus',
   'forum.action.invite-dinner',
-  // Act III — Curia
+  // Beat II — The Chamber (ticket 05, formerly Act III — target ids
+  // unchanged on the move, just the arc that owns them)
   'curia.bill-list.first',
   'curia.crisis-track.war',
   'curia.action.vote-for',
@@ -120,12 +122,13 @@ export const TUTORIAL_TARGET_IDS = new Set<string>([
   'curia.trial-banner',
 ]);
 
-// Act III's teaching bill — STARTING_BILLS' 'start-2' (Bellum Punicum), the
+// Beat II's teaching bill — STARTING_BILLS' 'start-2' (Bellum Punicum), the
 // only starting bill whose passEffect touches a crisis track directly
 // (crisis-war-10|fides+4). Not literally array index 0 (that's 'start-1'
 // Lex Agraria) — "first" in the target id names the bill the tutorial walks
-// the player through, not its position in the list.
-const ACT3_BILL_ID = 'start-2';
+// the player through, not its position in the list. Formerly Act III's
+// ACT3_BILL_ID — renamed on the move (tutorial rebuild, ticket 05).
+const CHAMBER_BILL_ID = 'start-2';
 
 function findFlaccus(s: GameState) {
   return s.clans.flatMap(c => c.leaders).find(l => l.id === 'valerius-flaccus');
@@ -188,24 +191,40 @@ export const TUTORIAL_PREDICATES: Record<string, (s: GameState) => boolean> = {
     a.criterion.id === 'resource_threshold' && a.criterion.resource === 'denarii' && a.criterion.amount === 250
   ),
 
-  // Act III — Curia: the teaching bill's support differs from its snapshot
-  // at act entry. Not keyed on Bill.playerVote — at the time this act was
-  // authored, voteBill/speechBill/filibusterBill never actually set that
+  // Beat II — The Chamber (ticket 05, formerly Act III): the teaching bill's
+  // support differs from its snapshot at the beat's Curia entry. Not keyed
+  // on Bill.playerVote — at the time this content was first authored (as
+  // Act III), voteBill/speechBill/filibusterBill never actually set that
   // field (a pre-existing dead field, flagged separately, not fixed there).
   // QA Audit Fix Plan, Chunk C fixed voteBill/filibusterBill to set it for
   // real, but speechBill deliberately still doesn't (a persuasion speech
   // isn't a formal vote, and its 'for'/'against' direction has no lossless
   // mapping onto playerVote's vote_for/vote_against/filibuster union) — so
-  // this predicate still can't rely on playerVote alone (Act II's own
+  // this predicate still can't rely on playerVote alone (Beat I's own
   // "any real courting action counts" flexibility means the player may
-  // legitimately advance this act via a speech). Support deltas remain the
-  // one signal all three actions genuinely produce.
+  // legitimately advance this step via a speech too). Support deltas remain
+  // the one signal all three actions genuinely produce.
   billVotedThisSeason: (s) => {
-    const bill = s.bills.find(b => b.id === ACT3_BILL_ID);
+    const bill = s.bills.find(b => b.id === CHAMBER_BILL_ID);
     if (!bill) return false;
     const snapshot = s.flags['tutorial-bill-support-snapshot'] as number | undefined;
     return snapshot !== undefined && bill.support !== snapshot;
   },
+
+  // Beat II — the beat's own real ambition (bill_passed, "pass a bill you
+  // voted for") has resolved, met OR failed — ticket 05's own checklist:
+  // "the tutorial still advances to Beat III" regardless of which. Matched
+  // by shape, same reasoning as houseAmbitionMet above (no ambition-id
+  // storage on GameState.flags) — safe for the identical reason: this
+  // predicate only ever evaluates while tutorial.activeArc === 'beat-chamber',
+  // a window that closes the instant chamberSetCompleteFlag fires (this
+  // beat's own last step), and no other source ever writes a matching
+  // (family, tutorial, bill_passed, amount:1) row.
+  chamberAmbitionResolved: (s) => s.ambitions.some(a =>
+    a.scope === 'family' && a.source === 'tutorial' &&
+    a.criterion.id === 'bill_passed' && a.criterion.amount === 1 &&
+    (a.status === 'completed' || a.status === 'failed')
+  ),
 
   // Act IV — Provinciae: every city starts with ownedAssets: [] (buildCityState),
   // so no snapshot is needed — Campania having any owned asset at all means
@@ -381,22 +400,80 @@ export const TUTORIAL_EFFECTS: Record<string, (s: GameState) => Partial<GameStat
     flags: { ...s.flags, 'tutorial-house-complete': true },
   }),
 
-  // Act III — Curia: snapshot the teaching bill's support on act entry.
-  act3SnapshotBillSupport: (s) => ({
+  // Beat II — The Chamber (ticket 05, formerly Act III): snapshot the
+  // teaching bill's support on the beat's Curia entry.
+  chamberSnapshotBillSupport: (s) => ({
     flags: {
       ...s.flags,
-      'tutorial-bill-support-snapshot': s.bills.find(b => b.id === ACT3_BILL_ID)?.support ?? 0,
+      'tutorial-bill-support-snapshot': s.bills.find(b => b.id === CHAMBER_BILL_ID)?.support ?? 0,
     },
   }),
 
-  // Act III — Curia: applies Bellum Punicum's OWN real passEffect
+  // Beat II — applies Bellum Punicum's OWN real passEffect
   // (crisis-war-10|fides+4) the instant the player votes on it, rather than
-  // waiting for it to actually pass through turnSequencer's step 4 — which
-  // T4 freezes entirely during the prologue (see isWorldFrozen's comment),
-  // so the ordinary passive-resolution path can never fire here. Using the
-  // bill's real effect string keeps the moment thematically honest: this is
-  // what the bill would have done had it passed normally.
-  act3MoveWarTrack: (s) => applyEffectString('crisis-war-10|fides+4', s),
+  // waiting for it to actually pass through turnSequencer's step 4. Formerly
+  // necessary because T4 froze passive bill resolution entirely throughout
+  // the whole prologue (Acts III-V alike); Beat II's own world-gate policy
+  // (WORLD_GATE_POLICY['beat-chamber'] below) deliberately leaves
+  // `passiveBills` OPEN instead — "curated, not frozen" — so this bill COULD
+  // now resolve for real given enough seasons. It still doesn't, on purpose:
+  // Vote For alone only moves support from -30 to -15 (voteBill's default
+  // +15), nowhere near the 0 pass threshold, so an unassisted real
+  // resolution would fail this specific bill a season or two later
+  // (failEffect crisis-war+12) — directly UNDOING the demonstration this
+  // effect just gave, a confusing double-signal for a brand-new player. So
+  // this stays a direct, guaranteed demo (same "what the bill would have
+  // done had it passed normally" reasoning as the original Act III version)
+  // and additionally retires the bill from `s.bills` below so it can never
+  // reach step 4's real resolution a second time — the lesson is "you
+  // voted, the track moved," not "watch this specific bill's real fate."
+  // Every OTHER bill in play (the two other STARTING_BILLS, any auto-
+  // injected one) resolves through the genuine passiveBills-open path
+  // untouched.
+  chamberMoveWarTrack: (s) => {
+    const patch = applyEffectString('crisis-war-10|fides+4', s);
+    return { ...patch, bills: s.bills.filter(b => b.id !== CHAMBER_BILL_ID) };
+  },
+
+  // Beat II — fires on 'beat-chamber.goal's onCompleteEffectId, the moment
+  // the teach portion ends. Same buildAmbition construction path as
+  // houseSetAmbition (ticket 04) — see that effect's own comment for why
+  // buildAmbition directly, not the setAmbition: token grammar. scope
+  // 'family' (Denarii's own reasoning doesn't apply here, but bill_passed's
+  // measureCriterion reads state.lifetimeBillsPassedVotedFor directly,
+  // family-wide, not per-character). A real deadline this time (ticket 05's
+  // own checklist: Beat II "can fail", unlike Beat I) — 3 seasons, the
+  // upper end of the plan's "2-3 season sandbox" range: STARTING_BILLS'
+  // Lex Frumentaria ('start-3', support +20, already above the pass
+  // threshold) gives a well-informed player a 1-season win, but a player
+  // who instead backs a losing bill first needs real room to try again.
+  // agendaTabletUnlocked is NOT touched here (unlike houseSetAmbition) —
+  // it's already true from Beat I onward.
+  chamberSetAmbition: (s) => {
+    const criterion: AmbitionCriterion = { id: 'bill_passed', amount: 1 };
+    const ambition = buildAmbition({
+      scope: 'family',
+      source: 'tutorial',
+      title: describeCriterionTitle(criterion, s),
+      criterion,
+      deadlineSeasons: 3,
+      refusable: false,
+    }, s);
+    return { ambitions: [...s.ambitions, ambition] };
+  },
+
+  // Beat II — fires on the beat's own LAST step's ('beat-chamber.philon-
+  // handoff') onCompleteEffectId, i.e. after the bill_passed ambition has
+  // actually resolved (met or missed-deadline) — matching this beat's own
+  // checklist ("become available at the end of this beat... regardless of
+  // whether the tutorial goal succeeded or failed"). Moves
+  // philonAdvisoryUnlocked here from courts.philon-handoff/
+  // courtsSetCompleteFlag (tutorial-rebuild-plan.md §2.6) — see that
+  // effect's own updated comment below.
+  chamberSetCompleteFlag: (s) => ({
+    flags: { ...s.flags, 'tutorial-chamber-complete': true },
+    philonAdvisoryUnlocked: true,
+  }),
 
   // Embassy arc (T7) — fires on the arc's final step's onCompleteEffectId.
   // Consumed by turnSequencer.ts's evt-messana-appeal ignition gate (T4):
@@ -518,13 +595,18 @@ export const TUTORIAL_EFFECTS: Record<string, (s: GameState) => Partial<GameStat
   // authors), but it's the same "set the precedent up now" call T8 made for
   // warSetCompleteFlag before this arc existed — a natural hook for T10's
   // just-in-time lessons to gate "the guided tutorial has fully finished"
-  // on, without re-deriving it from tutorial.completedArcs. Also unlocks
-  // philonAdvisoryUnlocked — this is the literal hand-off moment the step's
-  // narration describes, so Ambitions/Ex Tabulis Philonis start surfacing
-  // from exactly here.
+  // on, without re-deriving it from tutorial.completedArcs.
+  //
+  // Used to ALSO unlock philonAdvisoryUnlocked here — the literal hand-off
+  // moment the step's narration describes. Tutorial rebuild, ticket 05
+  // moved that (tutorial-rebuild-plan.md §2.6) to chamberSetCompleteFlag,
+  // end of Beat II, well before courts ever runs — by the time a guided
+  // player reaches this step the flag is already true. Left off here
+  // deliberately rather than left in redundantly: a stray second writer of
+  // the same field is exactly the kind of drift CLAUDE.md's "single
+  // construction path" discipline warns about elsewhere in this codebase.
   courtsSetCompleteFlag: (s) => ({
     flags: { ...s.flags, 'tutorial-courts-complete': true },
-    philonAdvisoryUnlocked: true,
   }),
 
   // T10 — just-in-time lessons. Each just marks itself taught; the
@@ -629,9 +711,26 @@ const WORLD_GATE_POLICY: Partial<Record<TutorialAnyArcId, 'all' | readonly World
   prologue: 'all',
   // Tutorial rebuild, ticket 04 — Beat I runs fully world-frozen too, same as
   // the old prologue it partially replaces (tutorial-rebuild-plan.md §2.1's
-  // table: Beat I is 'frozen' across every category). Tickets 05/06 give
-  // 'beat-chamber'/'beat-ladder' their own, partially-thawed entries here.
+  // table: Beat I is 'frozen' across every category). Ticket 06 gives
+  // 'beat-ladder' its own entry here (randomEvents open, warIgnition still
+  // frozen per that ticket's own implementation note).
   'beat-house': 'all',
+  // Tutorial rebuild, ticket 05 — Beat II's per-category policy (plan §2.2's
+  // table): `randomEvents` is NOT listed here (curated, not frozen — see
+  // isCuratedEventPoolActive below, which turnSequencer.ts consults
+  // separately to restrict the pool to `tutorialSafe` events rather than
+  // shutting random events off outright), `crisisDrift`/`passiveBills` stay
+  // open too. The remaining four stay frozen: `warIgnition` explicitly (see
+  // this ticket's own implementation note — the combined event-injection
+  // block in turnSequencer.ts only re-checks `!warIgnitionFrozen` before
+  // force-injecting evt-messana-appeal, NOT `randomEventsFrozen`
+  // separately, so leaving warIgnition off this list would let the Messana
+  // ignition jump the gun on the scripted embassy sequencing the instant
+  // randomEvents stops being a flat freeze), plus claudiusDemands/births/
+  // mortality/foreignWarDeclarations — none of Beat II's own teaching
+  // content touches any of the four, so there's no reason to open them this
+  // early.
+  'beat-chamber': ['warIgnition', 'claudiusDemands', 'births', 'mortality', 'foreignWarDeclarations'],
 };
 
 /**
@@ -681,6 +780,21 @@ export function isWorldCategoryFrozen(s: GameState, category: WorldGateCategory)
  */
 export function isWorldFrozen(s: GameState): boolean {
   return ALL_WORLD_GATE_CATEGORIES.every(c => isWorldCategoryFrozen(s, c));
+}
+
+// Tutorial rebuild, ticket 05 — separate from WORLD_GATE_POLICY on purpose:
+// "curated pool only" (plan §2.2) isn't a third freeze state on the
+// `randomEvents` category (isWorldCategoryFrozen/categoryFrozenUnderPolicy
+// only ever answer frozen-or-not), it's a restriction on WHICH events are
+// eligible while that category is open. turnSequencer.ts's event-injection
+// step (12) consults this directly to filter its candidate pool down to
+// `EventDef.tutorialSafe` (data/events.ts) entries only, rather than the
+// full pool pickRandomEvent would otherwise draw from.
+const CURATED_EVENT_POOL_ARCS: ReadonlySet<TutorialAnyArcId> = new Set(['beat-chamber']);
+
+export function isCuratedEventPoolActive(s: GameState): boolean {
+  const arc = s.tutorial?.activeArc;
+  return !!arc && CURATED_EVENT_POOL_ARCS.has(arc);
 }
 
 /**

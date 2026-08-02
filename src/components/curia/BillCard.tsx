@@ -22,9 +22,10 @@ export default function BillCard({ bill }: { bill: Bill }) {
   const romeMod = calcRomeStatVoteModifier(bill, rome);
   const effectiveSupport = (bill.support ?? 0) + romeMod;
 
-  // Tutorial redesign, T5 — 'start-2' (Bellum Punicum) is Act III's teaching
-  // bill; see tutorialEngine.ts's ACT3_BILL_ID comment for why it, not
-  // literal array position, is "first."
+  // Tutorial redesign, T5 (moved into Beat II by tutorial rebuild ticket 05)
+  // — 'start-2' (Bellum Punicum) is Beat II's teaching bill; see
+  // tutorialEngine.ts's CHAMBER_BILL_ID comment for why it, not literal
+  // array position, is "first."
   const isTutorialBill = bill.id === 'start-2';
   const cardTarget = useTutorialTarget(isTutorialBill ? 'curia.bill-list.first' : undefined);
 

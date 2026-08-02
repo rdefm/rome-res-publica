@@ -5,14 +5,17 @@
 // one step at a time.
 //
 // Tutorial rebuild, ticket 04 — Acts I-II moved into 'beat-house'
-// (tutorialBeatHouse.test.ts now covers them); what remains here starts at
-// Act III. Jumps straight in via setState (same "skipping earlier content is
-// safe" convention tutorialEmbassyArc/tutorialWarArc/tutorialCourtsArc.test.ts
-// already use) rather than replaying the whole of beat-house first — Act
-// III-V's own predicates never read anything beat-house's steps would have
+// (tutorialBeatHouse.test.ts now covers them). Tutorial rebuild, ticket 05 —
+// Act III moved into 'beat-chamber' (tutorialBeatChamber.test.ts now covers
+// it); what remains here starts at Act IV. Jumps straight in via setState
+// (same "skipping earlier content is safe" convention
+// tutorialEmbassyArc/tutorialWarArc/tutorialCourtsArc.test.ts already use)
+// rather than replaying the whole of beat-house/beat-chamber first — Act
+// IV-V's own predicates never read anything those beats' steps would have
 // set beyond unlockedTabs, which is seeded here to exactly what a real
-// beat-house completion would have left (Forum + Curia, from that arc's own
-// two unlocksTab steps).
+// beat-chamber completion would have left (Forum + Curia + Provinciae, from
+// beat-house's own 'beat-house.sandbox' unlock plus beat-chamber's own
+// 'beat-chamber.vote' unlock).
 //
 // advanceTutorialStep() itself never checks whether the current step's
 // advance condition is actually satisfied — that gating is the caller's
@@ -42,37 +45,24 @@ function currentStep() {
   return getStep(s.tutorial.stepId!)!;
 }
 
-/** Enters 'prologue' at Act III's first step, seeded as if beat-house had
- *  just completed for real (see this file's header comment). */
-function enterProloguePostBeatHouse() {
+/** Enters 'prologue' at Act IV's first step, seeded as if beat-house and
+ *  beat-chamber had just completed for real (see this file's header
+ *  comment). */
+function enterProloguePostBeatChamber() {
   useGameStore.getState().startGame('guided');
   useGameStore.setState({
     tutorial: {
       activeArc: 'prologue',
       stepId: TUTORIAL_ARCS.prologue.steps[0]!.id,
-      completedArcs: ['beat-house'],
-      unlockedTabs: ['Domus', 'Forum', 'Curia'],
+      completedArcs: ['beat-house', 'beat-chamber'],
+      unlockedTabs: ['Domus', 'Forum', 'Curia', 'Provinciae'],
       skipped: false,
     },
   });
 }
 
-function reachAct3Vote() {
-  enterProloguePostBeatHouse();
-  tapThrough(4);
-  expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act3.vote');
-}
-
-function completeAct3() {
-  reachAct3Vote();
-  useGameStore.getState().voteBill('start-2', 'vote_for');
-  expect(isStepSatisfied(currentStep(), useGameStore.getState())).toBe(true);
-  useGameStore.getState().advanceTutorialStep();
-  expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act4.intro');
-}
-
 function reachAct4BuyAsset() {
-  completeAct3();
+  enterProloguePostBeatChamber();
   tapThrough(5);
   expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act4.buy-asset');
 }
@@ -106,10 +96,16 @@ function reachAct5Canvass() {
 }
 
 /** Canvassing has a real (usually-favourable, not guaranteed) RNG roll —
- *  retries up to 5 times, same as a real player just tapping again. */
+ *  retries up to 12 times, same as a real player just tapping again.
+ *  Pre-existing, documented flake (tutorial-rebuild-plan.md §4): unseeded
+ *  Math.random (calcCanvassRoll, electionEngine.ts) occasionally exhausts a
+ *  low retry count. Bumped from 5 (~98% pass) to 12 (P(12 straight misses)
+ *  is negligible at this roll's ~55% base success rate) rather than seeding
+ *  the roll outright — noted here, not silently reduced to a smaller
+ *  "fix", per this ticket's own end-of-task summary. */
 function canvassFlaccusUntilLocked() {
   let guard = 0;
-  while (useGameStore.getState().campaignVotes['valerius-flaccus'] !== 'for' && guard < 5) {
+  while (useGameStore.getState().campaignVotes['valerius-flaccus'] !== 'for' && guard < 12) {
     guard++;
     useGameStore.getState().canvassLeader('valerius-flaccus');
     const s = useGameStore.getState();
@@ -164,48 +160,30 @@ describe('prologue script — structural sanity', () => {
     expect(() => validateTutorialScript()).not.toThrow();
   });
 
-  test('Acts III-V are present with a reasonable step count each', () => {
+  test('Acts IV-V are present with a reasonable step count each', () => {
     const ids = TUTORIAL_ARCS.prologue.steps.map(s => s.id);
-    for (const act of ['act3', 'act4', 'act5']) {
+    for (const act of ['act4', 'act5']) {
       const count = ids.filter(id => id.startsWith(`prologue.${act}.`)).length;
       expect(count).toBeGreaterThanOrEqual(5);
       expect(count).toBeLessThanOrEqual(10); // Act V ("why all of it existed") runs a beat longer
     }
   });
 
-  test('every act except the last ends with an unlocksTab, in the right order', () => {
+  test('the only act with an unlocksTab is Act IV (Cursus)', () => {
     const steps = TUTORIAL_ARCS.prologue.steps;
     const unlocks = steps.filter(s => s.unlocksTab).map(s => s.unlocksTab);
-    expect(unlocks).toEqual(['Provinciae', 'Cursus']);
+    expect(unlocks).toEqual(['Cursus']);
   });
 
-  test('the arc\'s first step is Act III\'s intro and its last step is Act V\'s closing beat', () => {
+  test('the arc\'s first step is Act IV\'s intro and its last step is Act V\'s closing beat', () => {
     const steps = TUTORIAL_ARCS.prologue.steps;
-    expect(steps[0].id).toBe('prologue.act3.intro');
+    expect(steps[0].id).toBe('prologue.act4.intro');
     expect(steps[steps.length - 1].id).toBe('prologue.act5.standoff');
   });
 });
 
-describe('guided run — Acts III-V end to end', () => {
+describe('guided run — Acts IV-V end to end', () => {
   afterEach(() => useGameStore.setState(INITIAL_STATE));
-
-  test('Act III: voting Bellum Punicum moves the War crisis track and unseals Provinciae', () => {
-    reachAct3Vote();
-    let s = useGameStore.getState();
-    const warBefore = s.crisis.war.level;
-    const billBefore = s.bills.find(b => b.id === 'start-2')!.support;
-
-    useGameStore.getState().voteBill('start-2', 'vote_for');
-    s = useGameStore.getState();
-    expect(s.bills.find(b => b.id === 'start-2')!.support).toBe(billBefore + 15);
-    expect(isStepSatisfied(currentStep(), s)).toBe(true);
-
-    useGameStore.getState().advanceTutorialStep();
-    s = useGameStore.getState();
-    expect(s.crisis.war.level).toBe(warBefore - 10); // act3MoveWarTrack's crisis-war-10
-    expect(s.tutorial.stepId).toBe('prologue.act4.intro');
-    expect(s.tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia', 'Provinciae']);
-  });
 
   test('Act IV: buying any asset in Campania completes the act and unseals Cursus (the prologue itself is not done yet — Act V remains)', () => {
     reachAct4BuyAsset();
@@ -271,17 +249,17 @@ describe('guided run — Acts III-V end to end', () => {
     s = useGameStore.getState();
     expect(s.tutorial.activeArc).toBe('embassy');
     expect(s.tutorial.stepId).toBe('embassy.intro');
-    expect(s.tutorial.completedArcs).toEqual(['beat-house', 'prologue']);
+    expect(s.tutorial.completedArcs).toEqual(['beat-house', 'beat-chamber', 'prologue']);
     expect(s.tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia', 'Provinciae', 'Cursus']);
   });
 
-  test('Provinciae and Cursus stay sealed until Acts III/IV actually unseal them', () => {
-    enterProloguePostBeatHouse();
-    expect(useGameStore.getState().tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia']);
-
-    reachAct3Vote();
-    useGameStore.getState().voteBill('start-2', 'vote_for');
-    useGameStore.getState().advanceTutorialStep();
+  test('Cursus stays sealed until Act IV actually unseals it', () => {
+    enterProloguePostBeatChamber();
     expect(useGameStore.getState().tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia', 'Provinciae']);
+
+    reachAct4BuyAsset();
+    useGameStore.getState().purchaseAsset('campania', 'campania_holiday_estate');
+    useGameStore.getState().advanceTutorialStep();
+    expect(useGameStore.getState().tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia', 'Provinciae', 'Cursus']);
   });
 });

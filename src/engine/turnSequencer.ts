@@ -21,7 +21,7 @@ import {
 import { getTierFromLevel } from '../models/crisis';
 import { tickNpcCareers, resolveElection } from './electionEngine';
 import { pickRandomEvent, evalCondition, injectNoticeEvent, getEventDef } from './eventEngine';
-import { isWorldCategoryFrozen } from './tutorialEngine';
+import { isWorldCategoryFrozen, isCuratedEventPoolActive } from './tutorialEngine';
 import { applyYearlyRelationshipDecay, ageAndProcessMortality } from './reputationEngine';
 import { genderForCharacter, genderForLeader } from './portraitEngine';
 import { portraitAssets } from '../utils/portraitAssets';
@@ -1904,7 +1904,9 @@ export function processSeason(state: GameState): {
   //      guided start — Free Start/Duilia/Manlia never run an Embassy arc,
   //      so they keep the exact unconditional guard they've always had
   //      (design decision: no behavior change for non-guided starts).
-  //   3. Otherwise → pickRandomEvent as normal.
+  //   3. Otherwise → pickRandomEvent as normal — narrowed to `tutorialSafe`
+  //      events only during a curated guided beat (tutorial rebuild, ticket
+  //      05; see isCuratedEventPoolActive's own comment).
   {
     let chosenDef: import('../models/event').EventDef | undefined;
 
@@ -1950,8 +1952,18 @@ export function processSeason(state: GameState): {
       // met (Vibius) by the time it fires.
       chosenDef = getEventDef('evt-messana-appeal') as typeof chosenDef;
     } else if (!randomEventsFrozen) {
-      // Normal random event
-      chosenDef = pickRandomEvent([...EVENT_DEFS, ...WAR_EVENT_DEFS, ...CADET_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS], s);
+      // Normal random event — or, during a curated guided beat (Beat II/
+      // 'beat-chamber', tutorial rebuild ticket 05), restricted to the
+      // `tutorialSafe`-tagged subset (data/events.ts) so the player only
+      // ever meets events that touch mechanics already taught. This is
+      // deliberately a pool filter, not a freeze: `randomEventsFrozen` above
+      // stays false throughout, so this branch (not the "no story event"
+      // branch above it) is the one that runs — see
+      // isCuratedEventPoolActive's own comment (tutorialEngine.ts) for why
+      // the restriction lives here rather than as a third WorldGateCategory
+      // state.
+      const pool = [...EVENT_DEFS, ...WAR_EVENT_DEFS, ...CADET_EVENT_DEFS, ...COMPROMISING_EVENT_DEFS];
+      chosenDef = pickRandomEvent(isCuratedEventPoolActive(s) ? pool.filter(d => d.tutorialSafe) : pool, s);
     }
 
     if (chosenDef) {

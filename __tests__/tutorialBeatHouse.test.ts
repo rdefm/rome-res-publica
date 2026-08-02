@@ -148,7 +148,7 @@ describe('guided run — Beat I: The House, end to end', () => {
     expect(s.tutorial.unlockedTabs).toEqual(['Domus', 'Forum']);
   });
 
-  test('courting Flaccus via ANY real action (not just the spotlighted one) completes the Forum half and unseals Curia', () => {
+  test('courting Flaccus via ANY real action (not just the spotlighted one) completes the Forum half', () => {
     reachCourtFlaccus();
     let s = useGameStore.getState();
     const before = s.clans.flatMap(c => c.leaders).find(l => l.id === 'valerius-flaccus')!.relationship;
@@ -162,7 +162,10 @@ describe('guided run — Beat I: The House, end to end', () => {
     useGameStore.getState().advanceTutorialStep();
     s = useGameStore.getState();
     expect(s.tutorial.stepId).toBe('beat-house.income-intro');
-    expect(s.tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia']);
+    // Ticket 05 moved Curia's unlock to 'beat-house.sandbox' (this beat's
+    // real last step) — see that step's own comment for why it can't live
+    // on 'beat-chamber.intro' itself. Still sealed here.
+    expect(s.tutorial.unlockedTabs).toEqual(['Domus', 'Forum']);
   });
 
   test('renting a storefront completes the income section', () => {
@@ -220,7 +223,7 @@ describe('guided run — Beat I: The House, end to end', () => {
     expect(isWorldFrozen(useGameStore.getState())).toBe(true);
   });
 
-  test('meeting the goal (denarii >= 250) resolves the ambition and advances into Beat II (today: prologue\'s Act III)', () => {
+  test('meeting the goal (denarii >= 250) resolves the ambition and advances into Beat II (beat-chamber)', () => {
     reachSandbox();
     useGameStore.setState({ denarii: 250 });
     useGameStore.getState().endSeason();
@@ -234,11 +237,13 @@ describe('guided run — Beat I: The House, end to end', () => {
     useGameStore.getState().advanceTutorialStep();
     s = useGameStore.getState();
     expect(s.flags['tutorial-house-complete']).toBe(true);
-    expect(s.tutorial.activeArc).toBe('prologue');
-    expect(s.tutorial.stepId).toBe('prologue.act3.intro');
+    expect(s.tutorial.activeArc).toBe('beat-chamber');
+    expect(s.tutorial.stepId).toBe('beat-chamber.intro');
     expect(s.tutorial.completedArcs).toEqual(['beat-house']);
-    // beat-house.court-flaccus already unlocked Curia — Act III's own
-    // requiresTab depends on that having already happened.
+    // beat-house.sandbox (this beat's real last step) unlocked Curia in the
+    // SAME transition that entered beat-chamber.intro — requiresTab: 'Curia'
+    // depends on that having already happened (see that step's own comment
+    // in tutorialScript.ts for why it can't be beat-chamber.intro itself).
     expect(s.tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia']);
   });
 

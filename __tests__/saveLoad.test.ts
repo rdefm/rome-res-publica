@@ -326,3 +326,23 @@ describe('Beat I save schema (tutorial rebuild, ticket 04)', () => {
     expect(useGameStore.getState().agendaTabletUnlocked).toBe(true);
   });
 });
+
+// Tutorial rebuild, ticket 05 — 'beat-chamber' added to the tutorial.activeArc
+// enum (models/tutorial.ts's TutorialArcId, saveLoad.ts's own z.enum). Same
+// discipline as the Beat I block above.
+describe('Beat II save schema (tutorial rebuild, ticket 05)', () => {
+  test('SaveSchema accepts activeArc: "beat-chamber" and a mid-Beat-II save loads correctly', () => {
+    useGameStore.getState().startGame('guided');
+    useGameStore.getState().startTutorialArc('beat-chamber');
+    useGameStore.getState().advanceTutorialStep(); // beat-chamber.intro -> bill-list
+    const midBeatChamber = JSON.parse(JSON.stringify(useGameStore.getState()));
+    expect(midBeatChamber.tutorial.activeArc).toBe('beat-chamber');
+    expect(midBeatChamber.tutorial.stepId).toBe('beat-chamber.bill-list');
+
+    expect(() => SaveSchema.parse(midBeatChamber)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(midBeatChamber)).not.toThrow();
+    const s = useGameStore.getState();
+    expect(s.tutorial.activeArc).toBe('beat-chamber');
+    expect(s.tutorial.stepId).toBe('beat-chamber.bill-list');
+  });
+});

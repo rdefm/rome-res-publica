@@ -712,12 +712,12 @@ export interface GameState {
    * itself, see agendaTabletUnlocked above for that split (ticket 04). True
    * for every start except guided, same reasoning as agendaTabletUnlocked.
    * Set false at guided-start time (startGame), flipped true by
-   * courts.philon-handoff's onCompleteEffectId today — tutorial-rebuild-
-   * plan.md §2.6 moves this to the end of Beat II once ticket 05 lands, since
-   * the player shouldn't be offered their own ambition slot before the
-   * ambition system itself has been taught via Beats I-II's own goals — and
-   * unconditionally by skipTutorialArc/skipAllTutorials, so skipping never
-   * leaves a save permanently unable to reach it.
+   * beat-chamber.philon-handoff's onCompleteEffectId (tutorial rebuild,
+   * ticket 05 — moved here from courts.philon-handoff per tutorial-rebuild-
+   * plan.md §2.6, since the player shouldn't be offered their own ambition
+   * slot before the ambition system itself has been taught via Beats I-II's
+   * own goals) — and unconditionally by skipTutorialArc/skipAllTutorials, so
+   * skipping never leaves a save permanently unable to reach it.
    */
   philonAdvisoryUnlocked: boolean;
   /** Snapshot of the last completed season's resource/crisis/rome deltas. Displayed in SeasonOverlay and welcome-back recap (P1-D). */
