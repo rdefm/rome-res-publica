@@ -34,6 +34,7 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
 
 const IDLE_TUTORIAL: GameState['tutorial'] = {
   activeArc: null, stepId: null, completedArcs: [], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false,
+  replayingArc: null, replayStepId: null,
 };
 
 describe('getEligibleLesson — entry gating', () => {

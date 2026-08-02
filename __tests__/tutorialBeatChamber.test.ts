@@ -128,6 +128,7 @@ describe('world gate — beat-chamber is a partial thaw, not all-frozen', () => 
   const CHAMBER_TUTORIAL: GameState['tutorial'] = {
     activeArc: 'beat-chamber', stepId: 'beat-chamber.sandbox', completedArcs: ['beat-house'],
     unlockedTabs: ['Domus', 'Forum', 'Curia', 'Provinciae'], skipped: false,
+    replayingArc: null, replayStepId: null,
   };
 
   test('randomEvents, crisisDrift, passiveBills are OPEN', () => {

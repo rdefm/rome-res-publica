@@ -34,6 +34,7 @@ import {
   validateTutorialScript,
   getEligibleLesson,
 } from './src/engine/tutorialEngine';
+import { LEAVE_GUIDED_PATH_COPY } from './src/data/tutorialScript';
 import type { TabName } from './src/models/agenda';
 import { generateAgenda } from './src/engine/agendaEngine';
 import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle, SEAL_CEREMONY_MS } from './src/components/shared/TabBar';
@@ -202,7 +203,15 @@ function TutorialLayer() {
     s.trials.some(t => t.status === 'in_session') ||
     !!s.activeBattle
   );
-  const currentStep = tutorial.stepId ? getTutorialStep(tutorial.stepId) : null;
+  // Tutorial rebuild, ticket 07 — a replay session (act selector's "review
+  // this beat" path) renders through replayingArc/replayStepId instead of
+  // the real activeArc/stepId, so it never disturbs genuinely in-progress
+  // or completed progress. See gameStore.ts's startTutorialReplay/
+  // advanceTutorialReplayStep/exitTutorialReplay and their own doc comments.
+  const isReplaying = !!tutorial.replayingArc;
+  const currentStep = isReplaying
+    ? (tutorial.replayStepId ? getTutorialStep(tutorial.replayStepId) : null)
+    : (tutorial.stepId ? getTutorialStep(tutorial.stepId) : null);
 
   // Tutorial fix — a step's requiresTab used to auto-navigate the player
   // there (gameStore's uiNavRequest stamp, now removed). Instead, while the
@@ -230,18 +239,33 @@ function TutorialLayer() {
         actLabel={currentStep.actLabel}
         dock={getCaptionDock(rect)}
         onTapAdvance={
-          !needsTabSwitch && currentStep.advance.kind === 'tap'
-            ? () => useGameStore.getState().advanceTutorialStep()
-            : undefined
+          needsTabSwitch
+            ? undefined
+            // Tutorial rebuild, ticket 07 — every replay step advances on
+            // tap regardless of its real authored advance kind (narration +
+            // spotlights only, per tutorial-rebuild-plan.md §2.4); a real,
+            // live step still only taps through on advance: { kind: 'tap' }.
+            : isReplaying
+              ? () => useGameStore.getState().advanceTutorialReplayStep()
+              : currentStep.advance.kind === 'tap'
+                ? () => useGameStore.getState().advanceTutorialStep()
+                : undefined
         }
-        onSkipPress={() => setSkipConfirmOpen(true)}
+        skipLabel={isReplaying ? 'End review' : 'Leave the guided path'}
+        onSkipPress={
+          isReplaying
+            // Fully reversible — nothing was ever granted or recorded — so
+            // no confirmation, unlike leaving the real guided path below.
+            ? () => useGameStore.getState().exitTutorialReplay()
+            : () => setSkipConfirmOpen(true)
+        }
       />
       <ConfirmModal
         visible={skipConfirmOpen}
-        title="Skip this lesson?"
-        message="Philon will stop guiding you — this arc, and everything after it, completes immediately. You can't come back to it."
-        confirmLabel="Skip"
-        cancelLabel="Cancel"
+        title={LEAVE_GUIDED_PATH_COPY.title}
+        message={LEAVE_GUIDED_PATH_COPY.message}
+        confirmLabel={LEAVE_GUIDED_PATH_COPY.confirmLabel}
+        cancelLabel={LEAVE_GUIDED_PATH_COPY.cancelLabel}
         destructive
         onConfirm={() => {
           setSkipConfirmOpen(false);

@@ -176,6 +176,7 @@ describe('world gate — beat-ladder is a wider thaw than beat-chamber', () => {
   const LADDER_TUTORIAL: GameState['tutorial'] = {
     activeArc: 'beat-ladder', stepId: 'beat-ladder.sandbox', completedArcs: ['beat-house', 'beat-chamber'],
     unlockedTabs: ['Domus', 'Forum', 'Curia', 'Provinciae', 'Cursus'], skipped: false,
+    replayingArc: null, replayStepId: null,
   };
 
   test('randomEvents, crisisDrift, passiveBills, claudiusDemands, births, mortality are OPEN', () => {

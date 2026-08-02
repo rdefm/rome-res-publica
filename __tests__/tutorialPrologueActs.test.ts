@@ -54,6 +54,7 @@ function enterProloguePostBeatLadder() {
       completedArcs: ['beat-house', 'beat-chamber', 'beat-ladder'],
       unlockedTabs: ['Domus', 'Forum', 'Curia', 'Provinciae', 'Cursus'],
       skipped: false,
+      replayingArc: null, replayStepId: null,
     },
   });
 }

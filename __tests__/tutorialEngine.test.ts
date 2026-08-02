@@ -105,7 +105,7 @@ describe('tutorialEngine — pure step resolution', () => {
 
   it('isTabSealed reflects tutorial.unlockedTabs', () => {
     const s = makeState({
-      tutorial: { activeArc: 'prologue', stepId: null, completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'prologue', stepId: null, completedArcs: [], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
     expect(isTabSealed('Domus', s)).toBe(false);
     expect(isTabSealed('Forum', s)).toBe(true);
@@ -113,21 +113,21 @@ describe('tutorialEngine — pure step resolution', () => {
 
   it('isWorldFrozen is true only while the prologue arc is active', () => {
     expect(isWorldFrozen(makeState({
-      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     }))).toBe(true);
 
     expect(isWorldFrozen(makeState({
-      tutorial: { activeArc: 'embassy', stepId: 's1', completedArcs: ['prologue'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false },
+      tutorial: { activeArc: 'embassy', stepId: 's1', completedArcs: ['prologue'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false, replayingArc: null, replayStepId: null },
     }))).toBe(false);
 
     expect(isWorldFrozen(makeState({
-      tutorial: { activeArc: null, stepId: null, completedArcs: [], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false },
+      tutorial: { activeArc: null, stepId: null, completedArcs: [], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false, replayingArc: null, replayStepId: null },
     }))).toBe(false);
   });
 
   it('isWorldFrozen is false once the prologue is skipped (activeArc clears to null)', () => {
     const s = makeState({
-      tutorial: { activeArc: null, stepId: null, completedArcs: ['prologue', 'embassy', 'war', 'courts'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: true },
+      tutorial: { activeArc: null, stepId: null, completedArcs: ['prologue', 'embassy', 'war', 'courts'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: true, replayingArc: null, replayStepId: null },
     });
     expect(isWorldFrozen(s)).toBe(false);
   });
@@ -139,7 +139,7 @@ describe('tutorialEngine — pure step resolution', () => {
 
   it('isWorldCategoryFrozen freezes every one of the eight categories during the prologue (no behavior change from the old all-or-nothing boolean)', () => {
     const s = makeState({
-      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
     for (const category of ALL_WORLD_GATE_CATEGORIES) {
       expect(isWorldCategoryFrozen(s, category)).toBe(true);
@@ -148,7 +148,7 @@ describe('tutorialEngine — pure step resolution', () => {
 
   it('isWorldCategoryFrozen leaves every category open once the prologue has ended', () => {
     const s = makeState({
-      tutorial: { activeArc: 'embassy', stepId: 's1', completedArcs: ['prologue'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false },
+      tutorial: { activeArc: 'embassy', stepId: 's1', completedArcs: ['prologue'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false, replayingArc: null, replayStepId: null },
     });
     for (const category of ALL_WORLD_GATE_CATEGORIES) {
       expect(isWorldCategoryFrozen(s, category)).toBe(false);
@@ -235,7 +235,7 @@ describe('gameStore tutorial actions', () => {
     TUTORIAL_ARCS.prologue.steps = [makeStep({ id: 's1' }), makeStep({ id: 's2', requiresTab: 'Curia' })];
     useGameStore.setState({
       ...INITIAL_STATE,
-      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
     useGameStore.getState().advanceTutorialStep();
     expect(useGameStore.getState().uiNavRequest).toBeNull();
@@ -245,7 +245,7 @@ describe('gameStore tutorial actions', () => {
     TUTORIAL_ARCS.prologue.steps = [makeStep({ id: 's1' }), makeStep({ id: 's2' })];
     useGameStore.setState({
       ...INITIAL_STATE,
-      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
 
     useGameStore.getState().advanceTutorialStep();
@@ -263,7 +263,7 @@ describe('gameStore tutorial actions', () => {
     ];
     useGameStore.setState({
       ...INITIAL_STATE,
-      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
 
     useGameStore.getState().advanceTutorialStep();
@@ -283,7 +283,7 @@ describe('gameStore tutorial actions', () => {
     TUTORIAL_ARCS.prologue.steps = [makeStep({ id: 's1', unlocksTab: 'Cursus' })];
     useGameStore.setState({
       ...INITIAL_STATE,
-      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
 
     useGameStore.getState().advanceTutorialStep();
@@ -303,7 +303,7 @@ describe('gameStore tutorial actions', () => {
     TUTORIAL_ARCS.courts.steps = [makeStep({ id: 'c1', arc: 'courts', unlocksTab: 'Cursus' })];
     useGameStore.setState({
       ...INITIAL_STATE,
-      tutorial: { activeArc: 'courts', stepId: 'c1', completedArcs: ['prologue', 'embassy', 'war'], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'courts', stepId: 'c1', completedArcs: ['prologue', 'embassy', 'war'], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
 
     useGameStore.getState().advanceTutorialStep();
@@ -325,7 +325,7 @@ describe('gameStore tutorial actions', () => {
   it('skipTutorialArc cascades to every arc after the active one and unlocks all tabs', () => {
     useGameStore.setState({
       ...INITIAL_STATE,
-      tutorial: { activeArc: 'embassy', stepId: 'x', completedArcs: ['prologue'], unlockedTabs: ['Domus'], skipped: false },
+      tutorial: { activeArc: 'embassy', stepId: 'x', completedArcs: ['prologue'], unlockedTabs: ['Domus'], skipped: false, replayingArc: null, replayStepId: null },
     });
 
     useGameStore.getState().skipTutorialArc();

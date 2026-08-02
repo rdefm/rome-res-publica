@@ -4,7 +4,7 @@
 // logic in src/data/.
 
 import type { GameState } from '../state/gameStore';
-import type { TutorialArcId, TutorialAnyArcId, TutorialLessonId, TutorialStep, TabName } from '../models/tutorial';
+import type { TutorialArcId, TutorialAnyArcId, TutorialBeatId, TutorialLessonId, TutorialStep, TabName } from '../models/tutorial';
 import type { Army } from '../models/army';
 import type { AmbitionCriterion } from '../models/ambition';
 import { TUTORIAL_ARCS } from '../data/tutorialScript';
@@ -40,6 +40,35 @@ export const TUTORIAL_COURTS_TRIAL_ID = 'tutorial-courts-repetundae';
  *  TutorialArcId comment), leaving 'prologue' a single-act arc (just Act
  *  IV/Provinciae). */
 export const TUTORIAL_ARC_ORDER: TutorialArcId[] = ['beat-house', 'beat-chamber', 'beat-ladder', 'prologue', 'embassy', 'war', 'courts'];
+
+/** Tutorial rebuild, ticket 07 — the id of each beat's "goal" step: the
+ *  boundary between its replay-safe teach content (narration + spotlights,
+ *  no real predicate requirement, no tutorial-authored effects — see
+ *  gameStore.ts's advanceTutorialReplayStep) and its real ambition-granting
+ *  goal/sandbox tail, which a replay never enters. Explicit map rather than
+ *  sniffing the `${arc}.goal` naming convention at runtime, so a future
+ *  beat can't silently break replay by not following it. */
+export const BEAT_GOAL_STEP_ID: Record<TutorialBeatId, string> = {
+  'beat-house': 'beat-house.goal',
+  'beat-chamber': 'beat-chamber.goal',
+  'beat-ladder': 'beat-ladder.goal',
+};
+
+/** Tutorial rebuild, ticket 07 — the tab set each beat's teach content
+ *  requires to already be unlocked, used only when a new game starts
+ *  directly at a beat other than 'beat-house' via the act selector's
+ *  chapter picker (StartMenuScreen). Mirrors the real accretive unlock
+ *  order Beats I-II grant via `unlocksTab` in normal play (see
+ *  tutorialScript.ts's own comments on beat-house.train/beat-house.sandbox/
+ *  beat-chamber.vote/beat-chamber.philon-handoff) — a fresh game skipping
+ *  straight to beat-chamber or beat-ladder needs those same tabs already
+ *  open, or its own requiresTab steps would softlock against a sealed tab
+ *  button (App.tsx's screenListeners.tabPress). */
+export const BEAT_ENTRY_UNLOCKED_TABS: Record<TutorialBeatId, TabName[]> = {
+  'beat-house': ['Domus'],
+  'beat-chamber': ['Domus', 'Forum', 'Curia'],
+  'beat-ladder': ['Domus', 'Forum', 'Curia', 'Provinciae', 'Cursus'],
+};
 
 // Populated by each content chunk (T5 prologue, T7 embassy, T8 war, T9
 // courts) alongside the useTutorialTarget(id) call sites they instrument.
@@ -741,6 +770,13 @@ export function isStepSatisfied(step: TutorialStep, s: GameState): boolean {
 }
 
 export function isTabSealed(tab: TabName, s: GameState): boolean {
+  // Tutorial rebuild, ticket 07 — a replay session may walk through a beat
+  // whose teach content requires a tab the player's REAL progress hasn't
+  // unlocked yet (e.g. reviewing Beat III early in Beat I). Replay is a
+  // deliberate, transient preview the player opted into from the act
+  // selector, so every tab is reachable for its duration — the persisted,
+  // real unlockedTabs array is never touched by this.
+  if (s.tutorial.replayingArc) return false;
   return !s.tutorial.unlockedTabs.includes(tab);
 }
 
@@ -956,6 +992,14 @@ export function getEligibleLesson(s: GameState): TutorialLessonId | null {
 
 export function applyTutorialEffect(effectId: string | undefined, s: GameState): Partial<GameState> {
   if (!effectId) return {};
+  // Tutorial rebuild, ticket 07 — a replay session (act selector's "review
+  // this beat" path) never grants tutorial-authored effects: no ambition,
+  // no flag stamp, nothing that would corrupt a genuinely separate active/
+  // completed run's own bookkeeping. gameStore's replay actions never call
+  // this with an effectId in the first place, but this is the belt-and-
+  // braces guard the plan calls for (tutorial-rebuild-plan.md §2.4) in case
+  // any future call site routes an effect through here while replaying.
+  if (s.tutorial.replayingArc) return {};
   const effect = TUTORIAL_EFFECTS[effectId];
   return effect ? effect(s) : {};
 }

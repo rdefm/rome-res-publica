@@ -12,7 +12,32 @@
 // single-act arc, just Act IV/Provinciae. The lesson arcs are additions from
 // T10 (models/tutorial.ts's TutorialLessonId).
 
-import type { TutorialArc, TutorialAnyArcId, TutorialStep } from '../models/tutorial';
+import type { TutorialArc, TutorialAnyArcId, TutorialBeatId, TutorialStep } from '../models/tutorial';
+
+// Tutorial rebuild, ticket 07 — the act selector's beat-picker content,
+// shared verbatim by both entry points (StartMenuScreen.tsx's pre-game
+// chapter picker and TutorialActSelectorModal.tsx's in-game selector) so
+// the two can't drift on copy. Titles come from TUTORIAL_ARCS[id].title
+// below; only the subtitle needs its own home.
+export const TUTORIAL_BEAT_PICKS: { id: TutorialBeatId; subtitle: string }[] = [
+  { id: 'beat-house',   subtitle: 'Domus, Forum, income & relationships' },
+  { id: 'beat-chamber', subtitle: 'The Curia: bills, votes & crisis tracks' },
+  { id: 'beat-ladder',  subtitle: 'The Cursus: offices, canvassing & elections' },
+];
+
+// Tutorial rebuild, ticket 07 — "leave the guided path" copy, shared
+// verbatim by both surfaces that offer it (App.tsx's per-step caption skip
+// link and TutorialActSelectorModal.tsx's own button) so a future wording
+// pass can't update one and silently miss the other.
+export const LEAVE_GUIDED_PATH_COPY = {
+  title: 'Leave the guided path?',
+  message:
+    "Your game continues exactly as it is — Philon simply stops guiding you. This tutorial run, " +
+    "and every beat after it, will show as complete. You can still review any beat's teaching " +
+    "anytime from Settings → The Guided Path.",
+  confirmLabel: 'Leave the Guided Path',
+  cancelLabel: 'Stay',
+};
 
 // ─── Arc 0 — Beat I: The House ──────────────────────────────────────────────
 // Tutorial rebuild, ticket 04. Hard rail throughout the teach portion, per

@@ -304,10 +304,21 @@ export const SaveSchema = z.object({
     completedArcs: z.array(z.string()).default([]),
     unlockedTabs:  z.array(z.string()).default(['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia']),
     skipped:       z.boolean().default(false),
+    // Tutorial rebuild, ticket 07 — act selector replay. Deliberately the
+    // narrow 3-beat enum (not activeArc's full 13-value one above): only
+    // 'beat-house'/'beat-chamber'/'beat-ladder' are ever replayable
+    // (models/tutorial.ts's TutorialBeatId), and this is the one boundary
+    // (save load) the compiler can't check that narrowing at — a malformed
+    // or tampered save claiming e.g. replayingArc: 'lesson-death' should
+    // fail validation here rather than silently flowing through as a
+    // TutorialBeatId the rest of the app trusts.
+    replayingArc:  z.enum(['beat-house', 'beat-chamber', 'beat-ladder']).nullable().default(null),
+    replayStepId:  z.string().nullable().default(null),
   }).default({
     activeArc: null, stepId: null, completedArcs: [],
     unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'],
     skipped: false,
+    replayingArc: null, replayStepId: null,
   }),
 });
 

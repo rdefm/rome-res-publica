@@ -366,3 +366,61 @@ describe('Beat III save schema (tutorial rebuild, ticket 06)', () => {
     expect(s.tutorial.stepId).toBe('beat-ladder.find-quaestor');
   });
 });
+
+// Tutorial rebuild, ticket 07 — replayingArc/replayStepId added to the
+// tutorial object (act selector replay). Same discipline as the Beat I/II/III
+// blocks above, plus the ticket's own "a save made mid-replay ... loads
+// correctly" checklist item.
+describe('Act selector replay save schema (tutorial rebuild, ticket 07)', () => {
+  test('SaveSchema accepts a mid-replay save (replayingArc/replayStepId set) and it loads correctly, real progress intact', () => {
+    useGameStore.getState().startGame('guided');
+    useGameStore.getState().startTutorialArc('beat-ladder'); // real progress, elsewhere
+    useGameStore.getState().startTutorialReplay('beat-house');
+    useGameStore.getState().advanceTutorialReplayStep(); // beat-house.intro -> meet-marcus
+    const midReplay = JSON.parse(JSON.stringify(useGameStore.getState()));
+    expect(midReplay.tutorial.replayingArc).toBe('beat-house');
+    expect(midReplay.tutorial.replayStepId).toBe('beat-house.meet-marcus');
+    expect(midReplay.tutorial.activeArc).toBe('beat-ladder');
+
+    expect(() => SaveSchema.parse(midReplay)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(midReplay)).not.toThrow();
+    const s = useGameStore.getState();
+    expect(s.tutorial.replayingArc).toBe('beat-house');
+    expect(s.tutorial.replayStepId).toBe('beat-house.meet-marcus');
+    expect(s.tutorial.activeArc).toBe('beat-ladder');
+  });
+
+  test('a save written before ticket 07 (no replayingArc/replayStepId keys on tutorial) defaults to not-replaying', () => {
+    useGameStore.getState().startGame('guided');
+    const base = useGameStore.getState();
+    const { replayingArc: _a, replayStepId: _b, ...preTicket07Tutorial } = base.tutorial as any;
+    const preTicket07State = { ...base, tutorial: preTicket07Tutorial };
+    const roundTripped = JSON.parse(JSON.stringify(preTicket07State));
+
+    expect(() => SaveSchema.parse(roundTripped)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(roundTripped)).not.toThrow();
+    const s = useGameStore.getState();
+    expect(s.tutorial.replayingArc).toBeNull();
+    expect(s.tutorial.replayStepId).toBeNull();
+    expect(s.tutorial.activeArc).toBe('beat-house'); // real progress preserved
+  });
+
+  test('leaving the guided path from mid-replay leaves real activeArc/completedArcs correctly cascaded and the replay cleared', () => {
+    useGameStore.getState().startGame('guided');
+    useGameStore.getState().startTutorialReplay('beat-chamber');
+    useGameStore.getState().advanceTutorialReplayStep();
+
+    useGameStore.getState().skipTutorialArc();
+
+    const s = useGameStore.getState();
+    expect(s.tutorial.activeArc).toBeNull();
+    expect(new Set(s.tutorial.completedArcs)).toEqual(
+      new Set(['beat-house', 'beat-chamber', 'beat-ladder', 'prologue', 'embassy', 'war', 'courts']),
+    );
+    // Code-review fix — skipTutorialArc also ends any in-flight replay, so a
+    // review session never dangles ("End review" showing over a run that
+    // just declared itself finished).
+    expect(s.tutorial.replayingArc).toBeNull();
+    expect(s.tutorial.replayStepId).toBeNull();
+  });
+});

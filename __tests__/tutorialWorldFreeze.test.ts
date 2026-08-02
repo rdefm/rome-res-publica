@@ -12,9 +12,11 @@ import { processSeason } from '../src/engine/turnSequencer';
 
 const FROZEN: GameState['tutorial'] = {
   activeArc: 'prologue', stepId: 's1', completedArcs: [], unlockedTabs: ['Domus'], skipped: false,
+  replayingArc: null, replayStepId: null,
 };
 const UNFROZEN: GameState['tutorial'] = {
   activeArc: null, stepId: null, completedArcs: ['prologue'], unlockedTabs: ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'], skipped: false,
+  replayingArc: null, replayStepId: null,
 };
 
 function makeState(overrides: Partial<GameState> = {}): GameState {

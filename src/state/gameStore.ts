@@ -26,7 +26,7 @@ import type { AgendaTarget } from '../models/agenda';
 import type { CuriaSubTab } from '../models/curia';
 import type { SeasonLedger } from '../models/ledger';
 // ── Tutorial redesign ──────────────────────────────────────────────────────────
-import type { TutorialState, TutorialArcId, TutorialAnyArcId } from '../models/tutorial';
+import type { TutorialState, TutorialArcId, TutorialAnyArcId, TutorialBeatId } from '../models/tutorial';
 import { TUTORIAL_ARCS } from '../data/tutorialScript';
 import {
   getStep as getTutorialStep,
@@ -35,6 +35,8 @@ import {
   ALL_TABS as ALL_TUTORIAL_TABS,
   TUTORIAL_ARC_ORDER,
   TUTORIAL_CARTHAGE_GARRISON_ID,
+  BEAT_GOAL_STEP_ID,
+  BEAT_ENTRY_UNLOCKED_TABS,
 } from '../engine/tutorialEngine';
 import { calcLevyCost } from '../engine/troopEngine';
 import {
@@ -951,7 +953,11 @@ export interface GameActions {
 
   // App flow
   /** Start a new game with the chosen start configuration. Default is standard (no tutorial). */
-  startGame: (startId?: StartId, mode?: 'senator' | 'debug', difficulty?: DifficultyId) => void;
+  /** startArc — tutorial rebuild, ticket 07: the act selector's chapter
+   *  picker (StartMenuScreen) lets a new guided game begin at any of the
+   *  three beats, not just 'beat-house'. Ignored for every non-guided
+   *  startId. Defaults to 'beat-house' (unchanged behavior). */
+  startGame: (startId?: StartId, mode?: 'senator' | 'debug', difficulty?: DifficultyId, startArc?: TutorialBeatId) => void;
 
   // Log
   addLog: (text: string, type?: LogEntry['type']) => void;
@@ -1203,11 +1209,32 @@ export interface GameActions {
   /** Completes the active arc and every arc after it in TUTORIAL_ARC_ORDER
    *  (an arc's later beats depend on earlier ones having "happened"), and
    *  unlocks every tab. No-op if no arc is active. Confirm via dialog before
-   *  calling — this is a one-way action. */
+   *  calling — this is a one-way action. Also ends any in-flight replay
+   *  (ticket 07) — leaving the guided path shouldn't leave a review dangling
+   *  over a run that just declared itself finished. */
   skipTutorialArc: () => void;
   /** Completes every arc in TUTORIAL_ARC_ORDER and unlocks every tab.
-   *  Confirm via dialog before calling. */
+   *  Confirm via dialog before calling. Also ends any in-flight replay,
+   *  same as skipTutorialArc. */
   skipAllTutorials: () => void;
+  // ── Tutorial rebuild, ticket 07 — act selector replay ──────────────────────
+  // A replay walks a beat's teach steps for recap only: no tutorial-authored
+  // effect ever fires (applyTutorialEffect short-circuits on replayingArc),
+  // and it never touches the real activeArc/stepId/completedArcs — those
+  // keep tracking whatever the player's actual progress is, untouched,
+  // throughout. tutorial-rebuild-plan.md §2.4.
+  /** Begins reviewing `arc`'s teach content from its first step. Leaves
+   *  activeArc/stepId (real progress) untouched. */
+  startTutorialReplay: (arc: TutorialBeatId) => void;
+  /** Every replay step advances on tap regardless of its real authored
+   *  `advance` kind — a replay never requires performing (or waits on) the
+   *  real action a live teach step gates on. Reaching the beat's goal step
+   *  (BEAT_GOAL_STEP_ID) or the end of its steps ends the replay cleanly,
+   *  same as tapping "end review" would. */
+  advanceTutorialReplayStep: () => void;
+  /** Bails out of a replay early. Fully reversible — nothing was ever
+   *  granted or recorded, so no confirmation is needed before calling. */
+  exitTutorialReplay: () => void;
   /** Tutorial rebuild, ticket 02 — call once from CitySheet.tsx's own
    *  mount-once effect (the component fully unmounts/remounts on
    *  close/open, so mount IS "opened"). No-op once lesson-provinciae is
@@ -1551,6 +1578,7 @@ export const INITIAL_STATE: GameState = {
     activeArc: null, stepId: null, completedArcs: [],
     unlockedTabs: ALL_TUTORIAL_TABS, // free start / no active script: all open
     skipped: false,
+    replayingArc: null, replayStepId: null,
   },
   agendaViewedTurn: -1,
   agendaVisible: false,
@@ -1781,7 +1809,7 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     }));
   },
 
-  startGame: (startId = 'standard', mode = 'senator', difficulty = 'aequus') => {
+  startGame: (startId = 'standard', mode = 'senator', difficulty = 'aequus', startArc = 'beat-house') => {
     // Phase 5, Chunk P5-G — the guided start's tutorial numbers are authored
     // against Aequus; StartMenuScreen never routes 'guided' through the
     // difficulty picker, but this is the belt-and-braces guarantee (same
@@ -1841,13 +1869,22 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       // rebuild, ticket 04 — the entry arc is now 'beat-house' (Acts I-II's
       // replacement), not 'prologue' directly; see models/tutorial.ts's
       // TutorialArcId comment.
+      //
+      // Tutorial rebuild, ticket 07 — the act selector's chapter picker
+      // (StartMenuScreen) can start a fresh guided game at any of the three
+      // beats via startArc, not just 'beat-house'. unlockedTabs comes from
+      // BEAT_ENTRY_UNLOCKED_TABS (tutorialEngine.ts) so a game starting
+      // straight at beat-chamber/beat-ladder doesn't softlock against a
+      // sealed tab its own teach content immediately requires.
       tutorial: scriptId
         ? {
-            activeArc: 'beat-house' as TutorialArcId,
-            stepId: TUTORIAL_ARCS['beat-house'].steps[0]?.id ?? null,
+            activeArc: startArc,
+            stepId: TUTORIAL_ARCS[startArc].steps[0]?.id ?? null,
             completedArcs: [],
-            unlockedTabs: ['Domus'],
+            unlockedTabs: BEAT_ENTRY_UNLOCKED_TABS[startArc],
             skipped: false,
+            replayingArc: null,
+            replayStepId: null,
           }
         : INITIAL_STATE.tutorial,
       // Tutorial redesign — a guided start begins in Autumn (seasonIndex 2),
@@ -1877,11 +1914,19 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       // Held back for a guided start until beat-house's houseSetAmbition
       // flips it (tutorial rebuild ticket 04) — see this field's own doc
       // comment on GameState.
-      agendaTabletUnlocked: scriptId ? false : INITIAL_STATE.agendaTabletUnlocked,
+      // Tutorial rebuild, ticket 07 — starting straight at beat-chamber or
+      // beat-ladder (chapter picker) skips beat-house.goal entirely, the
+      // only step that would otherwise ever flip this true; held back only
+      // for a fresh 'beat-house' entry, same as before.
+      agendaTabletUnlocked: scriptId ? startArc !== 'beat-house' : INITIAL_STATE.agendaTabletUnlocked,
       // Held back for a guided start until Philon's explicit hand-off
       // (courts.philon-handoff, the arc's actual last step) — see this
-      // field's own doc comment on GameState.
-      philonAdvisoryUnlocked: scriptId ? false : INITIAL_STATE.philonAdvisoryUnlocked,
+      // field's own doc comment on GameState. Tutorial rebuild, ticket 07 —
+      // starting straight at beat-ladder skips beat-chamber.philon-handoff
+      // (§2.6's own unlock point) entirely, so it's granted immediately
+      // instead; a beat-chamber entry still unlocks it the normal way, at
+      // that beat's own hand-off step.
+      philonAdvisoryUnlocked: scriptId ? startArc === 'beat-ladder' : INITIAL_STATE.philonAdvisoryUnlocked,
       pendingEvents: pendingGameStart,
       lastActiveAt: Date.now(),
       log: [mkLog(`264 BC · ${scriptId ? 'Autumn' : 'Spring'}`, `The ${gensPlural} begin their ascent.`, 'neutral')],
@@ -4030,6 +4075,13 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
         completedArcs: Array.from(new Set([...s.tutorial.completedArcs, ...cascaded])),
         unlockedTabs: ALL_TUTORIAL_TABS,
         skipped: true,
+        // Tutorial rebuild, ticket 07 (code-review fix) — a replay in
+        // progress at the moment the player leaves the guided path would
+        // otherwise dangle: TutorialLayer would keep showing "End review"
+        // over a run that just declared itself finished. Leaving always
+        // ends any in-flight review too.
+        replayingArc: null,
+        replayStepId: null,
       },
       // Skipping cascades past both beat-house's houseSetAmbition and
       // courts.philon-handoff — neither fires, so without this a skipped
@@ -4045,17 +4097,58 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
   },
 
   skipAllTutorials: () => {
-    set({
+    set(s => ({
       tutorial: {
+        ...s.tutorial,
         activeArc: null,
         stepId: null,
         completedArcs: [...TUTORIAL_ARC_ORDER],
         unlockedTabs: ALL_TUTORIAL_TABS,
         skipped: true,
+        // See skipTutorialArc's identical comment.
+        replayingArc: null,
+        replayStepId: null,
       },
       agendaTabletUnlocked: true,
       philonAdvisoryUnlocked: true,
+    }));
+  },
+
+  // ── Tutorial rebuild, ticket 07 — act selector replay ──────────────────────
+  startTutorialReplay: (arc) => {
+    const s = get();
+    const firstStep = TUTORIAL_ARCS[arc]?.steps[0] ?? null;
+    // Deliberately does NOT call applyTutorialEffect for firstStep's
+    // onEnterEffectId (a beat's first teach step never carries one today,
+    // but replay must stay side-effect-free even if that changes) and does
+    // NOT touch activeArc/stepId/completedArcs — see this action's own
+    // interface doc comment.
+    set({
+      tutorial: { ...s.tutorial, replayingArc: arc, replayStepId: firstStep?.id ?? null },
     });
+  },
+
+  advanceTutorialReplayStep: () => {
+    const s = get();
+    const { replayingArc, replayStepId } = s.tutorial;
+    if (!replayingArc || !replayStepId) return;
+    const current = getTutorialStep(replayStepId);
+    if (!current) return;
+    const nextStep = getNextTutorialStep(current, s);
+    const goalStepId = BEAT_GOAL_STEP_ID[replayingArc];
+    if (!nextStep || nextStep.id === goalStepId) {
+      // End of replayable teach content — exit cleanly. Never enters the
+      // beat's goal/sandbox tail, never calls applyTutorialEffect, never
+      // touches completedArcs.
+      set({ tutorial: { ...s.tutorial, replayingArc: null, replayStepId: null } });
+    } else {
+      set({ tutorial: { ...s.tutorial, replayStepId: nextStep.id } });
+    }
+  },
+
+  exitTutorialReplay: () => {
+    const s = get();
+    set({ tutorial: { ...s.tutorial, replayingArc: null, replayStepId: null } });
   },
 
   // Tutorial rebuild, ticket 02 — the two new lessons' "true trigger" is a
@@ -4128,6 +4221,15 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     theatre: {
       ...savedState.theatre,
       musteredThisYear: savedState.theatre?.musteredThisYear ?? buildInitialTheatreState().musteredThisYear,
+    },
+    // Tutorial rebuild, ticket 07 — a save written before this ticket has a
+    // real `tutorial` object but no replayingArc/replayStepId keys at all;
+    // same "missing key inside an already-present nested object" case as
+    // `theatre` above, not a whole-field miss the top-level spread would
+    // catch on its own.
+    tutorial: {
+      ...INITIAL_STATE.tutorial,
+      ...savedState.tutorial,
     },
     // P3-A — a save written before phase/ignitedYear/endedYear/terminalOutcome
     // existed on WarState has wars entries missing them; the top-level
