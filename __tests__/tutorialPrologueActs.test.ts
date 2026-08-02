@@ -1,21 +1,24 @@
-// Tutorial redesign, Chunks T5a (Acts III-IV) + T5b (Act V) — integration
-// coverage for the prologue's real authored content. Drives the actual
-// store actions a player would trigger from each screen, not synthetic
-// fixtures — this is the same guided run a real session would produce,
-// one step at a time.
+// Tutorial redesign, Chunk T5a (Act IV) — integration coverage for the
+// prologue's real authored content. Drives the actual store actions a
+// player would trigger from the screen, not synthetic fixtures — this is
+// the same guided run a real session would produce, one step at a time.
 //
 // Tutorial rebuild, ticket 04 — Acts I-II moved into 'beat-house'
 // (tutorialBeatHouse.test.ts now covers them). Tutorial rebuild, ticket 05 —
 // Act III moved into 'beat-chamber' (tutorialBeatChamber.test.ts now covers
-// it); what remains here starts at Act IV. Jumps straight in via setState
-// (same "skipping earlier content is safe" convention
-// tutorialEmbassyArc/tutorialWarArc/tutorialCourtsArc.test.ts already use)
-// rather than replaying the whole of beat-house/beat-chamber first — Act
-// IV-V's own predicates never read anything those beats' steps would have
-// set beyond unlockedTabs, which is seeded here to exactly what a real
-// beat-chamber completion would have left (Forum + Curia + Provinciae, from
-// beat-house's own 'beat-house.sandbox' unlock plus beat-chamber's own
-// 'beat-chamber.vote' unlock).
+// it). Tutorial rebuild, ticket 06 — Act V moved into 'beat-ladder'
+// (tutorialBeatLadder.test.ts now covers it); 'prologue' is now a
+// single-act arc, just Act IV/Provinciae, and now runs AFTER 'beat-ladder'
+// in TUTORIAL_ARC_ORDER (tutorialEngine.ts) rather than before it — Cursus
+// is unlocked off 'beat-chamber.philon-handoff' now, not this arc's own
+// last step (tutorialScript.ts's own comment on that step explains why).
+// Jumps straight in via setState (same "skipping earlier content is safe"
+// convention tutorialEmbassyArc/tutorialWarArc/tutorialCourtsArc.test.ts
+// already use) rather than replaying beat-house/beat-chamber/beat-ladder
+// first — Act IV's own predicate never reads anything those beats' steps
+// would have set beyond unlockedTabs, seeded here to exactly what a real
+// beat-ladder completion would have left (every tab but none of the later
+// arcs' own content).
 //
 // advanceTutorialStep() itself never checks whether the current step's
 // advance condition is actually satisfied — that gating is the caller's
@@ -33,126 +36,32 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 import { useGameStore, INITIAL_STATE } from '../src/state/gameStore';
 import { validateTutorialScript, getStep, isStepSatisfied } from '../src/engine/tutorialEngine';
 import { TUTORIAL_ARCS } from '../src/data/tutorialScript';
-import { isDeterred } from '../src/engine/secretEngine';
-import { CLAUDIUS_LEADER_ID } from '../src/data/claudiusArc';
-
-function tapThrough(n: number) {
-  for (let i = 0; i < n; i++) useGameStore.getState().advanceTutorialStep();
-}
 
 function currentStep() {
   const s = useGameStore.getState();
   return getStep(s.tutorial.stepId!)!;
 }
 
-/** Enters 'prologue' at Act IV's first step, seeded as if beat-house and
- *  beat-chamber had just completed for real (see this file's header
- *  comment). */
-function enterProloguePostBeatChamber() {
+/** Enters 'prologue' at Act IV's first step, seeded as if beat-house,
+ *  beat-chamber and beat-ladder had just completed for real (see this
+ *  file's header comment). */
+function enterProloguePostBeatLadder() {
   useGameStore.getState().startGame('guided');
   useGameStore.setState({
     tutorial: {
       activeArc: 'prologue',
       stepId: TUTORIAL_ARCS.prologue.steps[0]!.id,
-      completedArcs: ['beat-house', 'beat-chamber'],
-      unlockedTabs: ['Domus', 'Forum', 'Curia', 'Provinciae'],
+      completedArcs: ['beat-house', 'beat-chamber', 'beat-ladder'],
+      unlockedTabs: ['Domus', 'Forum', 'Curia', 'Provinciae', 'Cursus'],
       skipped: false,
     },
   });
 }
 
 function reachAct4BuyAsset() {
-  enterProloguePostBeatChamber();
-  tapThrough(5);
+  enterProloguePostBeatLadder();
+  for (let i = 0; i < 5; i++) useGameStore.getState().advanceTutorialStep();
   expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act4.buy-asset');
-}
-
-function completeAct4() {
-  reachAct4BuyAsset();
-  useGameStore.getState().purchaseAsset('campania', 'campania_holiday_estate');
-  expect(isStepSatisfied(currentStep(), useGameStore.getState())).toBe(true);
-  useGameStore.getState().advanceTutorialStep();
-  expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act5.intro');
-}
-
-function reachAct5Declare() {
-  completeAct4();
-  tapThrough(2);
-  expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act5.declare');
-}
-
-function completeAct5Declare() {
-  reachAct5Declare();
-  useGameStore.getState().declareCampaign('quaestor' as any);
-  expect(isStepSatisfied(currentStep(), useGameStore.getState())).toBe(true);
-  useGameStore.getState().advanceTutorialStep();
-  expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act5.canvass-intro');
-}
-
-function reachAct5Canvass() {
-  completeAct5Declare();
-  tapThrough(1);
-  expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act5.canvass');
-}
-
-/** Canvassing has a real (usually-favourable, not guaranteed) RNG roll —
- *  retries up to 12 times, same as a real player just tapping again.
- *  Pre-existing, documented flake (tutorial-rebuild-plan.md §4): unseeded
- *  Math.random (calcCanvassRoll, electionEngine.ts) occasionally exhausts a
- *  low retry count. Bumped from 5 (~98% pass) to 12 (P(12 straight misses)
- *  is negligible at this roll's ~55% base success rate) rather than seeding
- *  the roll outright — noted here, not silently reduced to a smaller
- *  "fix", per this ticket's own end-of-task summary. */
-function canvassFlaccusUntilLocked() {
-  let guard = 0;
-  while (useGameStore.getState().campaignVotes['valerius-flaccus'] !== 'for' && guard < 12) {
-    guard++;
-    useGameStore.getState().canvassLeader('valerius-flaccus');
-    const s = useGameStore.getState();
-    if (s.activeCanvassingEvent) {
-      const ev = s.activeCanvassingEvent as any;
-      const optId = ev.choices?.[0]?.id ?? ev.options?.[0]?.id;
-      if (optId) useGameStore.getState().resolveCanvassingEvent(optId);
-    }
-  }
-}
-
-function completeAct5Canvass() {
-  reachAct5Canvass();
-  canvassFlaccusUntilLocked();
-  expect(isStepSatisfied(currentStep(), useGameStore.getState())).toBe(true);
-  useGameStore.getState().advanceTutorialStep();
-  expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act5.end-season-intro');
-}
-
-function reachAct5WaitForElection() {
-  completeAct5Canvass();
-  tapThrough(1);
-  expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act5.wait-for-election');
-}
-
-/** endSeason() repeatedly until the election resolves (Winter crossing). */
-function endSeasonsUntilElectionResolves() {
-  let guard = 0;
-  while (!isStepSatisfied(currentStep(), useGameStore.getState()) && guard < 6) {
-    useGameStore.getState().endSeason();
-    useGameStore.getState().dismissSeasonOverlay();
-    guard++;
-  }
-}
-
-function completeAct5WaitForElection() {
-  reachAct5WaitForElection();
-  endSeasonsUntilElectionResolves();
-  expect(isStepSatisfied(currentStep(), useGameStore.getState())).toBe(true);
-  useGameStore.getState().advanceTutorialStep();
-  expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act5.audit-intro');
-}
-
-function reachAct5Audit() {
-  completeAct5WaitForElection();
-  tapThrough(1);
-  expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act5.audit');
 }
 
 describe('prologue script — structural sanity', () => {
@@ -160,32 +69,30 @@ describe('prologue script — structural sanity', () => {
     expect(() => validateTutorialScript()).not.toThrow();
   });
 
-  test('Acts IV-V are present with a reasonable step count each', () => {
+  test('prologue is a single act (IV) with a reasonable step count', () => {
     const ids = TUTORIAL_ARCS.prologue.steps.map(s => s.id);
-    for (const act of ['act4', 'act5']) {
-      const count = ids.filter(id => id.startsWith(`prologue.${act}.`)).length;
-      expect(count).toBeGreaterThanOrEqual(5);
-      expect(count).toBeLessThanOrEqual(10); // Act V ("why all of it existed") runs a beat longer
-    }
+    expect(ids.every(id => id.startsWith('prologue.act4.'))).toBe(true);
+    expect(ids.length).toBeGreaterThanOrEqual(5);
+    expect(ids.length).toBeLessThanOrEqual(10);
   });
 
-  test('the only act with an unlocksTab is Act IV (Cursus)', () => {
+  test('prologue carries no unlocksTab — Cursus now unlocks off beat-chamber.philon-handoff (ticket 06)', () => {
     const steps = TUTORIAL_ARCS.prologue.steps;
     const unlocks = steps.filter(s => s.unlocksTab).map(s => s.unlocksTab);
-    expect(unlocks).toEqual(['Cursus']);
+    expect(unlocks).toEqual([]);
   });
 
-  test('the arc\'s first step is Act IV\'s intro and its last step is Act V\'s closing beat', () => {
+  test('the arc\'s first and last step are both Act IV\'s', () => {
     const steps = TUTORIAL_ARCS.prologue.steps;
     expect(steps[0].id).toBe('prologue.act4.intro');
-    expect(steps[steps.length - 1].id).toBe('prologue.act5.standoff');
+    expect(steps[steps.length - 1].id).toBe('prologue.act4.buy-asset');
   });
 });
 
-describe('guided run — Acts IV-V end to end', () => {
+describe('guided run — Act IV end to end', () => {
   afterEach(() => useGameStore.setState(INITIAL_STATE));
 
-  test('Act IV: buying any asset in Campania completes the act and unseals Cursus (the prologue itself is not done yet — Act V remains)', () => {
+  test('Act IV: buying any asset in Campania completes the prologue arc outright and auto-chains into embassy', () => {
     reachAct4BuyAsset();
     let s = useGameStore.getState();
     expect(s.cities.find(c => c.id === 'campania')?.ownedAssets ?? []).toEqual([]);
@@ -197,69 +104,11 @@ describe('guided run — Acts IV-V end to end', () => {
 
     useGameStore.getState().advanceTutorialStep();
     s = useGameStore.getState();
-    expect(s.tutorial.activeArc).toBe('prologue'); // still active — Act V is next
-    expect(s.tutorial.stepId).toBe('prologue.act5.intro');
-    expect(s.tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia', 'Provinciae', 'Cursus']);
-  });
-
-  test('Act V: declares Quaestor, canvasses Flaccus, wins the election, and audits Claudius into a mutual standoff — completing the whole prologue', () => {
-    reachAct5Declare();
-
-    // Declare
-    useGameStore.getState().declareCampaign('quaestor' as any);
-    let s = useGameStore.getState();
-    expect(s.campaigning).toBe('quaestor');
-    expect(isStepSatisfied(currentStep(), s)).toBe(true);
-    useGameStore.getState().advanceTutorialStep();
-
-    // Canvass Flaccus (real RNG roll — retried on failure, same as a player tapping again)
-    tapThrough(1); // canvass-intro -> canvass
-    canvassFlaccusUntilLocked();
-    s = useGameStore.getState();
-    expect(s.campaignVotes['valerius-flaccus']).toBe('for');
-    expect(isStepSatisfied(currentStep(), s)).toBe(true);
-    useGameStore.getState().advanceTutorialStep();
-
-    // End seasons until the election resolves at the Winter crossing
-    tapThrough(1); // end-season-intro -> wait-for-election
-    endSeasonsUntilElectionResolves();
-    s = useGameStore.getState();
-    expect(s.heldOffices).toContain('quaestor');
-    expect(isStepSatisfied(currentStep(), s)).toBe(true);
-    useGameStore.getState().advanceTutorialStep();
-
-    // Audit Claudius specifically — force success deterministically to
-    // assert the standoff mechanism itself, not re-litigate calcAuditChance
-    // (already covered by secretEngine.test.ts/officeAction.test.ts).
-    tapThrough(1); // audit-intro -> audit
-    s = useGameStore.getState();
-    expect(isDeterred(CLAUDIUS_LEADER_ID, s.secrets)).toBe(false);
-    const player = s.family.find(c => c.isPlayer)!;
-    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
-    useGameStore.getState().takeOfficeAction('audit-rival', player.id, { leaderId: CLAUDIUS_LEADER_ID });
-    randomSpy.mockRestore();
-
-    s = useGameStore.getState();
-    expect(isDeterred(CLAUDIUS_LEADER_ID, s.secrets)).toBe(true);
-    expect(isStepSatisfied(currentStep(), s)).toBe(true);
-    useGameStore.getState().advanceTutorialStep(); // audit -> standoff (closing narration)
-    expect(useGameStore.getState().tutorial.stepId).toBe('prologue.act5.standoff');
-
-    useGameStore.getState().advanceTutorialStep(); // standoff's own tap -> prologue complete, auto-chains into embassy
-    s = useGameStore.getState();
     expect(s.tutorial.activeArc).toBe('embassy');
     expect(s.tutorial.stepId).toBe('embassy.intro');
-    expect(s.tutorial.completedArcs).toEqual(['beat-house', 'beat-chamber', 'prologue']);
+    expect(s.tutorial.completedArcs).toEqual(['beat-house', 'beat-chamber', 'beat-ladder', 'prologue']);
+    // Cursus was already unlocked by beat-chamber.philon-handoff (seeded in
+    // enterProloguePostBeatLadder above) — this arc doesn't touch unlockedTabs.
     expect(s.tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia', 'Provinciae', 'Cursus']);
-  });
-
-  test('Cursus stays sealed until Act IV actually unseals it', () => {
-    enterProloguePostBeatChamber();
-    expect(useGameStore.getState().tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia', 'Provinciae']);
-
-    reachAct4BuyAsset();
-    useGameStore.getState().purchaseAsset('campania', 'campania_holiday_estate');
-    useGameStore.getState().advanceTutorialStep();
-    expect(useGameStore.getState().tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Curia', 'Provinciae', 'Cursus']);
   });
 });

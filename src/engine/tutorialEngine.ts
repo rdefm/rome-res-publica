@@ -15,7 +15,7 @@ import { buildCarthageReinforcementUnits } from './campaignAi';
 import { COMMAND_CANVASS_MIN_RELATIONSHIP } from './commandEngine';
 import { buildTrialState } from './trialEngine';
 import { TRIAL_PREP_VERBS } from '../data/trialPrep';
-import { buildAmbition, describeCriterionTitle } from './ambitionEngine';
+import { buildAmbition, describeCriterionTitle, nextEligibleElectionTurns } from './ambitionEngine';
 import { BALANCE } from '../data/balance';
 
 export const ALL_TABS: TabName[] = ['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia'];
@@ -35,12 +35,11 @@ export const TUTORIAL_COURTS_TRIAL_ID = 'tutorial-courts-repetundae';
 
 /** Order arcs resolve in — used by skipTutorialArc to cascade downstream arcs.
  *  Tutorial rebuild, ticket 04 — 'beat-house' leads. Ticket 05 inserted
- *  'beat-chamber' next, chaining into 'prologue' (which now starts at the
- *  old Act IV/Provinciae, Act III/Curia having moved into 'beat-chamber' —
- *  see models/tutorial.ts's TutorialArcId comment). Ticket 06 will insert
- *  'beat-ladder' between 'beat-chamber' and 'prologue' and shrink 'prologue'
- *  further still. */
-export const TUTORIAL_ARC_ORDER: TutorialArcId[] = ['beat-house', 'beat-chamber', 'prologue', 'embassy', 'war', 'courts'];
+ *  'beat-chamber' next. Ticket 06 inserted 'beat-ladder' after that (old Act
+ *  V/Cursus, retired out of 'prologue' — see models/tutorial.ts's
+ *  TutorialArcId comment), leaving 'prologue' a single-act arc (just Act
+ *  IV/Provinciae). */
+export const TUTORIAL_ARC_ORDER: TutorialArcId[] = ['beat-house', 'beat-chamber', 'beat-ladder', 'prologue', 'embassy', 'war', 'courts'];
 
 // Populated by each content chunk (T5 prologue, T7 embassy, T8 war, T9
 // courts) alongside the useTutorialTarget(id) call sites they instrument.
@@ -234,19 +233,37 @@ export const TUTORIAL_PREDICATES: Record<string, (s: GameState) => boolean> = {
     return (campania?.ownedAssets.length ?? 0) > 0;
   },
 
-  // Act V — Cursus
+  // Beat III — The Ladder (ticket 06, formerly Act V): the teach portion's
+  // deterministic declare/canvass/win/audit/standoff sequence — moved
+  // wholesale, same generically-named predicates as before (never
+  // "act5"-prefixed to begin with, so nothing to rename on the move — same
+  // reasoning as Beat II's billVotedThisSeason/flaccusRelationshipRaised).
   quaestorCampaignDeclared: (s) => s.campaigning === 'quaestor',
   flaccusCanvassedForQuaestor: (s) => s.campaignVotes['valerius-flaccus'] === 'for',
   // Verified via npm run sim:elections-equivalent (a targeted 2000-trial
   // simulation of this exact scripted sequence — see tutorialScript.ts's
-  // Act V header comment for the derived numbers): quaestorWon fires
-  // reliably. Quaestor's own generosity (8 seats, low rival bar at fresh
-  // game start) guarantees the win regardless of canvassing outcome;
-  // canvassing Flaccus is scripted as a teaching beat (Arc II's Command
-  // election re-tests the same verb, finding 16), not because the win
-  // depends on it.
+  // header comment for the derived numbers): quaestorWon fires reliably.
+  // Quaestor's own generosity (8 seats, low rival bar at fresh game start)
+  // guarantees the win regardless of canvassing outcome; canvassing Flaccus
+  // is scripted as a teaching beat (the war arc's Command election re-tests
+  // the same verb, finding 16), not because the win depends on it. This
+  // deterministic win is deliberately confined to the TEACH portion — see
+  // ladderSetAmbition below for why the beat's own real, fallible ambition
+  // targets a DIFFERENT office rather than re-measuring this one.
   quaestorWon: (s) => s.heldOffices.includes('quaestor'),
   claudiusDeterred: (s) => isDeterred(CLAUDIUS_LEADER_ID, s.secrets),
+
+  // Beat III's own real ambition (office_held, Aedile — see ladderSetAmbition
+  // below) has resolved, met OR failed. Same shape-matched, no-stored-id
+  // reasoning as chamberAmbitionResolved (Beat II) — safe for the identical
+  // reason: only ever evaluated while tutorial.activeArc === 'beat-ladder', a
+  // window that closes the instant ladderSetCompleteFlag fires, and nothing
+  // else ever writes a matching (character, tutorial, office_held/aedile) row.
+  ladderAmbitionResolved: (s) => s.ambitions.some(a =>
+    a.scope === 'character' && a.source === 'tutorial' &&
+    a.criterion.id === 'office_held' && a.criterion.officeId === 'aedile' &&
+    (a.status === 'completed' || a.status === 'failed')
+  ),
 
   // Embassy arc (T7). Mirrors CitySheet.tsx's own ambassadorBillPending
   // check exactly (fuzzy name match — the bill embeds the requesting
@@ -473,6 +490,61 @@ export const TUTORIAL_EFFECTS: Record<string, (s: GameState) => Partial<GameStat
   chamberSetCompleteFlag: (s) => ({
     flags: { ...s.flags, 'tutorial-chamber-complete': true },
     philonAdvisoryUnlocked: true,
+  }),
+
+  // Beat III — The Ladder (ticket 06) — fires on 'beat-ladder.goal's
+  // onCompleteEffectId, right after the teach portion's deterministic
+  // Quaestor win + guaranteed audit + standoff (see quaestorWon's own
+  // comment above). Deliberately does NOT target 'quaestor' again: by this
+  // point state.currentOffice already IS 'quaestor' (just won, term not yet
+  // expired), so an office_held/quaestor criterion would measure as already
+  // satisfied at construction and auto-resolve 'completed' on the very next
+  // season-end regardless of anything the player does — making "missing the
+  // deadline resolves failed" (this ticket's own checklist) structurally
+  // unreachable. Targets 'aedile' instead — the Cursus's own next rung
+  // (prerequisite: 'quaestor', just satisfied; minAge 36, already cleared —
+  // Marcus starts at 42), genuinely unheld at this moment, so the ambition
+  // is a real, fallible test of the SAME declare/canvass/win loop the teach
+  // portion just walked through, this time unassisted. scope 'character'
+  // (assignedCharacterId: player.id), not 'family' — office_held's own
+  // natural AmbitionBuilder shape (assignedCharacterId = scope==='character'
+  // ? player.id : undefined) and, per this ticket's own implementation note,
+  // it also leaves the 'family' ambition slot free so the player's own
+  // first self-set ambition (unlocked since end of Beat II) doesn't collide
+  // with this one (findActiveAmbitionInSlot/evictOccupantForDirectWrite key
+  // on (scope, assignedCharacterId), ambitionEngine.ts).
+  //
+  // deadlineTurn is computed via nextEligibleElectionTurns — the same
+  // Winter-aware helper the player's own office_held builder uses (spec
+  // §2.3/§0.18) — rather than a flat deadlineSeasons literal like Beat II's:
+  // elections only ever resolve at Winter (turnSequencer.ts's step 2b), so a
+  // naive "+N seasons" deadline could land on a non-Winter turn and make the
+  // ambition structurally unwinnable regardless of player skill. Picks the
+  // FIRST reachable window — one real shot, same "a real deadline, can
+  // fail" framing as Beat II, not multiple retries baked into one ambition.
+  ladderSetAmbition: (s) => {
+    const player = s.family.find(c => c.isPlayer);
+    const criterion: AmbitionCriterion = { id: 'office_held', officeId: 'aedile' };
+    const deadlineTurn = nextEligibleElectionTurns('aedile', s)[0];
+    const ambition = buildAmbition({
+      scope: 'character',
+      source: 'tutorial',
+      title: describeCriterionTitle(criterion, s),
+      criterion,
+      assignedCharacterId: player?.id,
+      deadlineSeasons: deadlineTurn !== undefined ? deadlineTurn - s.turnNumber : undefined,
+      refusable: false,
+    }, s);
+    return { ambitions: [...s.ambitions, ambition] };
+  },
+
+  // Beat III — fires on the beat's own last step's onCompleteEffectId, same
+  // "set the precedent up now" pattern as embassySetCompleteFlag/
+  // warSetCompleteFlag/courtsSetCompleteFlag. philonAdvisoryUnlocked is NOT
+  // touched here (unlike chamberSetCompleteFlag) — already true since end of
+  // Beat II (tutorial-rebuild-plan.md §2.6).
+  ladderSetCompleteFlag: (s) => ({
+    flags: { ...s.flags, 'tutorial-ladder-complete': true },
   }),
 
   // Embassy arc (T7) — fires on the arc's final step's onCompleteEffectId.
@@ -731,6 +803,26 @@ const WORLD_GATE_POLICY: Partial<Record<TutorialAnyArcId, 'all' | readonly World
   // content touches any of the four, so there's no reason to open them this
   // early.
   'beat-chamber': ['warIgnition', 'claudiusDemands', 'births', 'mortality', 'foreignWarDeclarations'],
+  // Tutorial rebuild, ticket 06 — Beat III's per-category policy (plan §2.2's
+  // table): only `warIgnition`/`foreignWarDeclarations` stay frozen —
+  // everything else (`randomEvents`, `crisisDrift`, `passiveBills`,
+  // `claudiusDemands`, `births`, `mortality`) opens up, and `randomEvents`
+  // draws from the FULL pool (this arc is not in CURATED_EVENT_POOL_ARCS
+  // below, unlike 'beat-chamber' — the ticket's own checklist: "the sandbox
+  // portion runs with the full open event pool"). `warIgnition` stays
+  // frozen for the same structural reason as Beat II (this ticket's own
+  // implementation note, from ticket 01's review): the combined
+  // event-injection block in turnSequencer.ts only re-checks
+  // `!warIgnitionFrozen` before force-injecting evt-messana-appeal, not
+  // `randomEventsFrozen` separately, so the Carthage war must stay gated
+  // behind the still-unrun scripted Embassy arc regardless of how open the
+  // rest of the pool is. `foreignWarDeclarations` stays frozen alongside it
+  // for the identical reason `isWorldFrozen`'s own header comment gives for
+  // adding that category in the first place — a hostile foreign power
+  // (Lilybaeum/Carthage) could otherwise declare war on Rome completely
+  // outside the scripted Embassy/Messana sequencing this and every earlier
+  // beat is built around.
+  'beat-ladder': ['warIgnition', 'foreignWarDeclarations'],
 };
 
 /**

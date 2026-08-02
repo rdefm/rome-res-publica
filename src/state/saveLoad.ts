@@ -292,6 +292,8 @@ export const SaveSchema = z.object({
       'beat-house',
       // Tutorial rebuild, ticket 05.
       'beat-chamber',
+      // Tutorial rebuild, ticket 06.
+      'beat-ladder',
       'prologue', 'embassy', 'war', 'courts',
       // T10 — standalone just-in-time lessons (models/tutorial.ts's TutorialLessonId).
       'lesson-trial', 'lesson-battle', 'lesson-death', 'lesson-succession',

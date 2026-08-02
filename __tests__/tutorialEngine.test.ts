@@ -352,7 +352,7 @@ describe('gameStore tutorial actions', () => {
 
     const tutorial = useGameStore.getState().tutorial;
     expect(tutorial.activeArc).toBeNull();
-    expect(tutorial.completedArcs).toEqual(['beat-house', 'beat-chamber', 'prologue', 'embassy', 'war', 'courts']);
+    expect(tutorial.completedArcs).toEqual(['beat-house', 'beat-chamber', 'beat-ladder', 'prologue', 'embassy', 'war', 'courts']);
     expect(tutorial.unlockedTabs).toEqual(['Domus', 'Forum', 'Cursus', 'Provinciae', 'Curia']);
     expect(tutorial.skipped).toBe(true);
     expect(useGameStore.getState().agendaTabletUnlocked).toBe(true);

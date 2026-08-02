@@ -9,14 +9,14 @@ export type { TabName };
 // Tutorial rebuild, ticket 04 — 'beat-house' is the first of three planned
 // "beats" (tutorial-rebuild-plan.md §2.1) replacing the old prologue's Acts
 // I-II (Domus/Forum). Ticket 05 added 'beat-chamber' (old Act III/Curia).
-// Act V stays under 'prologue' for now — ticket 06 ('beat-ladder') retires
-// it; Act IV/Provinciae was already superseded by ticket 02's just-in-time
-// lessons (it still runs as scripted content too — ticket 06's own review
-// flagged that overlap for the design lead, not resolved unilaterally).
-// TUTORIAL_ARC_ORDER chains 'beat-house' -> 'beat-chamber' -> 'prologue'
-// (now starting at Act IV) so the rest of the guided chain works unchanged
-// until ticket 06 lands.
-export type TutorialArcId = 'beat-house' | 'beat-chamber' | 'prologue' | 'embassy' | 'war' | 'courts';
+// Ticket 06 added 'beat-ladder' (old Act V/Cursus), retiring it out of
+// 'prologue'; Act IV/Provinciae was already superseded by ticket 02's
+// just-in-time lessons (it still runs as scripted content too — ticket 06's
+// own review flagged that overlap for the design lead, not resolved
+// unilaterally). TUTORIAL_ARC_ORDER chains 'beat-house' -> 'beat-chamber' ->
+// 'beat-ladder' -> 'prologue' (now a single-act arc, just Act IV) ->
+// 'embassy' -> 'war' -> 'courts'.
+export type TutorialArcId = 'beat-house' | 'beat-chamber' | 'beat-ladder' | 'prologue' | 'embassy' | 'war' | 'courts';
 
 /** T10 — standalone just-in-time micro-lessons, on the same arc/step engine
  *  as the four main arcs above but deliberately NOT part of

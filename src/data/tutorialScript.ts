@@ -7,9 +7,10 @@
 // T7 (embassy), T8 (war), T9 (courts), T10 (the four lessons) — all landed.
 // Tutorial rebuild, ticket 04 added 'beat-house', peeling Acts I-II off the
 // original prologue arc (models/tutorial.ts's TutorialArcId comment); ticket
-// 05 added 'beat-chamber', peeling off Act III the same way. Act V still
-// lives under 'prologue' below until ticket 06 retires it the same way. The
-// lesson arcs are additions from T10 (models/tutorial.ts's TutorialLessonId).
+// 05 added 'beat-chamber', peeling off Act III the same way; ticket 06 added
+// 'beat-ladder', peeling off Act V the same way — 'prologue' below is now a
+// single-act arc, just Act IV/Provinciae. The lesson arcs are additions from
+// T10 (models/tutorial.ts's TutorialLessonId).
 
 import type { TutorialArc, TutorialAnyArcId, TutorialStep } from '../models/tutorial';
 
@@ -398,6 +399,18 @@ const BEAT_CHAMBER_GOAL_STEPS: TutorialStep[] = [
       "is still yours to spend.",
     advance: { kind: 'tap' },
   },
+  // unlocksTab: 'Cursus' lives on THIS step (ticket 06), for the identical
+  // structural reason beat-house.sandbox's own comment gives for Curia's
+  // unlock: unlockedTabs only picks up a completing step's unlocksTab in the
+  // SAME store update that advances to the next step
+  // (gameStore.advanceTutorialStep), so the unlock has to land on whichever
+  // step's completion IS the transition into the first Cursus-requiring
+  // step. TUTORIAL_ARC_ORDER now chains 'beat-chamber' straight into
+  // 'beat-ladder' (tutorialEngine.ts), whose own first step requires Cursus
+  // — this step's completion is that transition, so the unlock lands here,
+  // not on prologue.act4.buy-asset (the old home of this unlock, back when
+  // Act IV/Provinciae ran BEFORE Act V/Cursus — ticket 06 reversed that
+  // order, see tutorialEngine.ts's TUTORIAL_ARC_ORDER comment).
   {
     id: 'beat-chamber.philon-handoff',
     arc: 'beat-chamber',
@@ -408,17 +421,216 @@ const BEAT_CHAMBER_GOAL_STEPS: TutorialStep[] = [
       "choosing widens. I have not yet stepped back.",
     advance: { kind: 'tap' },
     onCompleteEffectId: 'chamberSetCompleteFlag',
+    unlocksTab: 'Cursus',
   },
 ];
 
-// ─── Arc I — The Prologue (Acts IV-V) ───────────────────────────────────────
-// Chained straight from 'beat-chamber' (TUTORIAL_ARC_ORDER, tutorialEngine.ts)
-// once its ambition resolves (met or failed — the beat "still advances"
-// either way, ticket 05's own checklist). Acts I-III used to open this arc —
+// ─── Beat III: The Ladder ───────────────────────────────────────────────────
+// Tutorial rebuild, ticket 06. Chained straight from 'beat-chamber'
+// (TUTORIAL_ARC_ORDER, tutorialEngine.ts) once its ambition resolves. Teach
+// content below is the old prologue Act V verbatim (same narration, same
+// generically-named predicates — quaestorCampaignDeclared/
+// flaccusCanvassedForQuaestor/quaestorWon/claudiusDeterred, tutorialEngine.ts
+// — carried over unrenamed, same reasoning as Beat II's own reused
+// predicates), moved wholesale rather than rewritten — only ids/arc changed.
+// What's new is the goal + sandbox tail: a real, fallible `office_held`
+// ActiveAmbition with a deadline. Deliberately does NOT re-target 'quaestor'
+// — see ladderSetAmbition's own comment (tutorialEngine.ts) for why the
+// teach portion's deterministic win would make an office_held/quaestor
+// ambition trivially, unfailably already-satisfied the instant it's
+// created. Targets 'aedile' instead: the Cursus's own next rung, genuinely
+// unheld at that point, so the ambition is a real, unassisted retest of the
+// same declare/canvass/win loop teach just walked through.
+
+// ── Cursus: offices, canvassing, elections — deterministic teach, same
+// numbers as the old Act V ───────────────────────────────────────────────────
+// Completion: Marcus declares for Quaestor, canvasses Flaccus, wins the
+// election, then uses Audit a Rival on Claudius — a mutual standoff
+// (isDeterred), Claudius's blackmail neutralised on screen, mechanically
+// real per the plan's own framing. Keeping this deterministic (not deferred
+// into the beat's own real ambition) also matters structurally: Beat III's
+// own world-gate policy (WORLD_GATE_POLICY['beat-ladder'], tutorialEngine.ts)
+// leaves `claudiusDemands` OPEN for the first time in the guided chain — an
+// undeterred Claudius could otherwise start a real demand/countdown arc
+// mid-beat. Landing the guaranteed standoff early, inside teach, closes that
+// door before it can open.
+//
+// Guaranteed-win numbers (per the plan's "do not invent numbers" instruction
+// — derived, not assumed): calcOfficeThreshold('quaestor') = 40 + 1*5 = 45
+// (Quaestor is OFFICES[1]). A targeted 2000-trial simulation of this EXACT
+// scripted sequence (fresh guided start -> Invite Flaccus to Dinner (Beat I)
+// -> declare Quaestor -> canvass Flaccus, retrying on failure/event up to 3
+// times -> advance to Winter) won 2000/2000 (100%). Canvassing Flaccus
+// itself only actually locks his vote in ~87% of individual trials (roll vs.
+// threshold, retried), yet the election was won 100% of the time regardless
+// — Quaestor's 8 seats and the fresh-game rival pool's low bar guarantee the
+// win on their own; canvassing Flaccus is scripted here as a teaching beat
+// (the war arc's Command election re-tests the same verb — finding 16), not
+// because the win depends on it. No relationship-gain adjustment needed.
+//
+// Audit a Rival's own button lives inside OfficeActionsModal (a native
+// Modal, same as Beat I's training and Act IV's asset purchase) — that step
+// is narration-only, predicate-driven, no spotlight cutout.
+const BEAT_LADDER_TEACH_STEPS: TutorialStep[] = [
+  {
+    id: 'beat-ladder.intro',
+    arc: 'beat-ladder',
+    actLabel: 'Beat III — The Ladder',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    narration:
+      "The Cursus Honorum, Domine — why any of it existed. Family, friendships, income, " +
+      "the Curia's patience: every one of them was spent so that a name could climb this ladder.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'beat-ladder.find-quaestor',
+    arc: 'beat-ladder',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    target: 'cursus.office.quaestor',
+    narration:
+      "There: Quaestor. Financial magistrate, and the first rung nearly every serious career " +
+      "climbs. Eight seats stand open this year — generous odds, for a first attempt.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'beat-ladder.declare',
+    arc: 'beat-ladder',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    target: 'cursus.action.declare',
+    narration: "Declare your candidacy.",
+    advance: { kind: 'predicate', predicateId: 'quaestorCampaignDeclared' },
+  },
+  {
+    id: 'beat-ladder.canvass-intro',
+    arc: 'beat-ladder',
+    rail: 'hard',
+    requiresTab: 'Forum',
+    narration:
+      "Every leader you have courted can now be canvassed — locked support, not mere goodwill. " +
+      "Flaccus, whom you already know, is the surest bet in the chamber.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'beat-ladder.canvass',
+    arc: 'beat-ladder',
+    rail: 'hard',
+    requiresTab: 'Forum',
+    target: 'cursus.action.canvass',
+    narration: "Canvass him.",
+    advance: { kind: 'predicate', predicateId: 'flaccusCanvassedForQuaestor' },
+  },
+  {
+    id: 'beat-ladder.end-season-intro',
+    arc: 'beat-ladder',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    narration: "The city votes when Winter comes — and Winter is close now. Close out the season.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'beat-ladder.wait-for-election',
+    arc: 'beat-ladder',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    target: 'shared.end-season',
+    narration: "End the season, Domine. Rome does not wait, and neither, now, do you.",
+    advance: { kind: 'predicate', predicateId: 'quaestorWon' },
+  },
+  {
+    id: 'beat-ladder.audit-intro',
+    arc: 'beat-ladder',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    narration:
+      "Quaestor. The treasury's ledgers are yours now — and its audit powers. Appius Claudius " +
+      "Pulcher has held something over this family since before you could vote. Return the favour.",
+    advance: { kind: 'tap' },
+  },
+  {
+    id: 'beat-ladder.audit',
+    arc: 'beat-ladder',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    narration: "Open the office, choose Audit a Rival, and name him specifically.",
+    advance: { kind: 'predicate', predicateId: 'claudiusDeterred' },
+  },
+  {
+    id: 'beat-ladder.standoff',
+    arc: 'beat-ladder',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    narration:
+      "It is done. He holds what he held, still — but so, now, do you. Neither of you can move " +
+      "first without losing everything. Philon: \"That, Domine, is what protects a family in " +
+      "Rome. Not virtue. Leverage, and the nerve to hold it.\"",
+    advance: { kind: 'tap' },
+  },
+];
+
+// ── Goal + sandbox: a real ambition, WITH a deadline, CAN fail ─────────────
+// Same "beat still advances either way" discipline as Beat II —
+// beat-ladder.sandbox waits on EITHER outcome (ladderAmbitionResolved) and
+// beat-ladder.closing's narration is written to read correctly under either
+// one. philonAdvisoryUnlocked is NOT touched anywhere in this beat — already
+// true since end of Beat II (tutorial-rebuild-plan.md §2.6) — so the
+// player's own "Set an ambition" builder is already available throughout
+// this beat's sandbox, per this ticket's own checklist ("the player can
+// additionally set their own ambition during this beat's sandbox"):
+// ladderSetAmbition's own comment (tutorialEngine.ts) explains why this
+// ambition's scope ('character') leaves the 'family' slot free for exactly
+// that.
+const BEAT_LADDER_GOAL_STEPS: TutorialStep[] = [
+  {
+    id: 'beat-ladder.goal',
+    arc: 'beat-ladder',
+    rail: 'hard',
+    requiresTab: 'Cursus',
+    narration:
+      "Quaestor was the first rung, Domine, and I walked you up it. The next you climb alone: " +
+      "win the Aedileship, in your own time, before the year allows it to close. Not every " +
+      "climb succeeds — this one is yours to make or lose.",
+    advance: { kind: 'tap' },
+    onCompleteEffectId: 'ladderSetAmbition',
+  },
+  {
+    id: 'beat-ladder.sandbox',
+    arc: 'beat-ladder',
+    rail: 'guided',
+    narration:
+      "The ladder is yours to climb now, Domine — declare, canvass, court whichever leader stands " +
+      "against you, however you judge best. I'll know the moment the Aedileship is decided, " +
+      "one way or the other.",
+    advance: { kind: 'predicate', predicateId: 'ladderAmbitionResolved' },
+  },
+  {
+    id: 'beat-ladder.closing',
+    arc: 'beat-ladder',
+    rail: 'guided',
+    narration:
+      "Won or lost, Domine, you stood for it yourself, on your own name, with no hand steadying " +
+      "yours. That is the whole of the Cursus — not a certainty, a wager, made with what you've " +
+      "built. Rome's business does not pause for the outcome, and neither, now, will you.",
+    advance: { kind: 'tap' },
+    onCompleteEffectId: 'ladderSetCompleteFlag',
+  },
+];
+
+// ─── Arc I — The Prologue (Act IV) ──────────────────────────────────────────
+// Chained straight from 'beat-ladder' (TUTORIAL_ARC_ORDER, tutorialEngine.ts)
+// once ITS ambition resolves (met or failed — same "still advances either
+// way" discipline as Beat II). Acts I-III/V used to open/close this arc —
 // ticket 04 moved Acts I-II into 'beat-house', ticket 05 moved Act III into
-// 'beat-chamber' above; what remains starts at Act IV on purpose (see
-// models/tutorial.ts's TutorialArcId comment) and is otherwise untouched by
-// this ticket. Ticket 06 retires Act V into its own 'beat-ladder' arc.
+// 'beat-chamber', ticket 06 moved Act V into 'beat-ladder' (below) — what
+// remains is a single-act arc, Act IV/Provinciae, otherwise untouched by
+// this ticket. Left as its own arc rather than folded into 'beat-ladder' or
+// deleted outright: ticket 06's own review flagged that Act IV's scripted
+// "buy an asset in Campania" content now functionally duplicates ticket 02's
+// lesson-provinciae/lesson-assets just-in-time lessons, worth raising with
+// the design lead rather than resolved unilaterally here (CLAUDE.md's "no
+// assumptions on ambiguous game-design questions").
 
 // ── Act IV — Provinciae: denarii loop, the map, Campania ────────────────────
 // Completion: the player buys one asset in Campania. The purchase confirm
@@ -485,128 +697,6 @@ const PROLOGUE_ACT4_STEPS: TutorialStep[] = [
       "Open its Holdings, and buy one. A Country Villa suits a family building influence, " +
       "not just wealth — but the choice, again, is yours.",
     advance: { kind: 'predicate', predicateId: 'campaniaAssetOwned' },
-    unlocksTab: 'Cursus',
-  },
-];
-
-// ── Act V — Cursus: why all of it existed ───────────────────────────────────
-// Completion: Marcus declares for Quaestor, canvasses Flaccus, wins the
-// election, then uses Audit a Rival on Claudius — a mutual standoff
-// (isDeterred), Claudius's blackmail neutralised on screen, mechanically
-// real per the plan's own framing.
-//
-// Guaranteed-win numbers (per the plan's "do not invent numbers" instruction
-// — derived, not assumed): calcOfficeThreshold('quaestor') = 40 + 1*5 = 45
-// (Quaestor is OFFICES[1]). A targeted 2000-trial simulation of this EXACT
-// scripted sequence (fresh guided start -> Invite Flaccus to Dinner (Act II)
-// -> declare Quaestor -> canvass Flaccus, retrying on failure/event up to 3
-// times -> advance to Winter) won 2000/2000 (100%). Canvassing Flaccus
-// itself only actually locks his vote in ~87% of individual trials (roll vs.
-// threshold, retried), yet the election was won 100% of the time regardless
-// — Quaestor's 8 seats and the fresh-game rival pool's low bar guarantee the
-// win on their own; canvassing Flaccus is scripted here as a teaching beat
-// (Arc II's Command election re-tests the same verb — finding 16), not
-// because the win depends on it. No relationship-gain adjustment needed.
-//
-// Audit a Rival's own button lives inside OfficeActionsModal (a native
-// Modal, same as Act I's training and Act IV's asset purchase) — that step
-// is narration-only, predicate-driven, no spotlight cutout.
-const PROLOGUE_ACT5_STEPS: TutorialStep[] = [
-  {
-    id: 'prologue.act5.intro',
-    arc: 'prologue',
-    actLabel: 'Act V — The Cursus',
-    rail: 'hard',
-    requiresTab: 'Cursus',
-    narration:
-      "The Cursus Honorum, Domine — why any of it existed. Family, friendships, income, " +
-      "the Curia's patience: every one of them was spent so that a name could climb this ladder.",
-    advance: { kind: 'tap' },
-  },
-  {
-    id: 'prologue.act5.find-quaestor',
-    arc: 'prologue',
-    rail: 'hard',
-    requiresTab: 'Cursus',
-    target: 'cursus.office.quaestor',
-    narration:
-      "There: Quaestor. Financial magistrate, and the first rung nearly every serious career " +
-      "climbs. Eight seats stand open this year — generous odds, for a first attempt.",
-    advance: { kind: 'tap' },
-  },
-  {
-    id: 'prologue.act5.declare',
-    arc: 'prologue',
-    rail: 'hard',
-    requiresTab: 'Cursus',
-    target: 'cursus.action.declare',
-    narration: "Declare your candidacy.",
-    advance: { kind: 'predicate', predicateId: 'quaestorCampaignDeclared' },
-  },
-  {
-    id: 'prologue.act5.canvass-intro',
-    arc: 'prologue',
-    rail: 'hard',
-    requiresTab: 'Forum',
-    narration:
-      "Every leader you have courted can now be canvassed — locked support, not mere goodwill. " +
-      "Flaccus, whom you already know, is the surest bet in the chamber.",
-    advance: { kind: 'tap' },
-  },
-  {
-    id: 'prologue.act5.canvass',
-    arc: 'prologue',
-    rail: 'hard',
-    requiresTab: 'Forum',
-    target: 'cursus.action.canvass',
-    narration: "Canvass him.",
-    advance: { kind: 'predicate', predicateId: 'flaccusCanvassedForQuaestor' },
-  },
-  {
-    id: 'prologue.act5.end-season-intro',
-    arc: 'prologue',
-    rail: 'hard',
-    requiresTab: 'Cursus',
-    narration: "The city votes when Winter comes — and Winter is close now. Close out the season.",
-    advance: { kind: 'tap' },
-  },
-  {
-    id: 'prologue.act5.wait-for-election',
-    arc: 'prologue',
-    rail: 'hard',
-    requiresTab: 'Cursus',
-    target: 'shared.end-season',
-    narration: "End the season, Domine. Rome does not wait, and neither, now, do you.",
-    advance: { kind: 'predicate', predicateId: 'quaestorWon' },
-  },
-  {
-    id: 'prologue.act5.audit-intro',
-    arc: 'prologue',
-    rail: 'hard',
-    requiresTab: 'Cursus',
-    narration:
-      "Quaestor. The treasury's ledgers are yours now — and its audit powers. Appius Claudius " +
-      "Pulcher has held something over this family since before you could vote. Return the favour.",
-    advance: { kind: 'tap' },
-  },
-  {
-    id: 'prologue.act5.audit',
-    arc: 'prologue',
-    rail: 'hard',
-    requiresTab: 'Cursus',
-    narration: "Open the office, choose Audit a Rival, and name him specifically.",
-    advance: { kind: 'predicate', predicateId: 'claudiusDeterred' },
-  },
-  {
-    id: 'prologue.act5.standoff',
-    arc: 'prologue',
-    rail: 'hard',
-    requiresTab: 'Cursus',
-    narration:
-      "It is done. He holds what he held, still — but so, now, do you. Neither of you can move " +
-      "first without losing everything. Philon: \"That, Domine, is what protects a family in " +
-      "Rome. Not virtue. Leverage, and the nerve to hold it.\"",
-    advance: { kind: 'tap' },
   },
 ];
 
@@ -1273,11 +1363,17 @@ export const TUTORIAL_ARCS: Record<TutorialAnyArcId, TutorialArc> = {
     title: 'Beat II — The Chamber',
     steps: [...BEAT_CHAMBER_TEACH_STEPS, ...BEAT_CHAMBER_GOAL_STEPS],
   },
+  // Tutorial rebuild, ticket 06.
+  'beat-ladder': {
+    id: 'beat-ladder',
+    title: 'Beat III — The Ladder',
+    steps: [...BEAT_LADDER_TEACH_STEPS, ...BEAT_LADDER_GOAL_STEPS],
+  },
   prologue: {
     id: 'prologue',
     title: 'The First Year',
     steps: [
-      ...PROLOGUE_ACT4_STEPS, ...PROLOGUE_ACT5_STEPS,
+      ...PROLOGUE_ACT4_STEPS,
     ],
   },
   embassy:  { id: 'embassy',  title: 'The Embassy',     steps: [...EMBASSY_STEPS] },

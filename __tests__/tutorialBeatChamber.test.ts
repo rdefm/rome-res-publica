@@ -104,10 +104,11 @@ describe('beat-chamber script — structural sanity', () => {
     expect(TUTORIAL_ARCS['beat-chamber'].steps.length).toBeGreaterThanOrEqual(8);
   });
 
-  test('unlocksTab appears exactly once, for Provinciae (Curia unlocks off beat-house.sandbox, a different arc)', () => {
+  test('unlocksTab appears for Provinciae (mid-beat) and Cursus (the arc\'s real last step, ticket 06 — Curia unlocks off beat-house.sandbox, a different arc)', () => {
     const steps = TUTORIAL_ARCS['beat-chamber'].steps;
     const unlocks = steps.filter(s => s.unlocksTab).map(s => s.unlocksTab);
-    expect(unlocks).toEqual(['Provinciae']);
+    expect(unlocks).toEqual(['Provinciae', 'Cursus']);
+    expect(steps[steps.length - 1].unlocksTab).toBe('Cursus');
   });
 
   test('the goal step sets the ambition; the sandbox step waits on either outcome; the arc\'s last step marks completion', () => {
@@ -264,7 +265,7 @@ describe('guided run — Beat II: The Chamber, goal + sandbox', () => {
     expect(ambition.status).toBe('active');
   });
 
-  test('met path: passing a bill the player voted for resolves the ambition and advances into Beat III (today: prologue\'s Act IV)', () => {
+  test('met path: passing a bill the player voted for resolves the ambition and advances into Beat III (beat-ladder)', () => {
     reachSandbox();
     // Lex Frumentaria ('start-3') already carries +20 support — Vote For
     // alone clears the 0 pass threshold on the very next season-end.
@@ -285,9 +286,15 @@ describe('guided run — Beat II: The Chamber, goal + sandbox', () => {
     s = useGameStore.getState();
     expect(s.flags['tutorial-chamber-complete']).toBe(true);
     expect(s.philonAdvisoryUnlocked).toBe(true);
-    expect(s.tutorial.activeArc).toBe('prologue');
-    expect(s.tutorial.stepId).toBe('prologue.act4.intro');
+    expect(s.tutorial.activeArc).toBe('beat-ladder');
+    expect(s.tutorial.stepId).toBe('beat-ladder.intro');
     expect(s.tutorial.completedArcs).toEqual(['beat-chamber']);
+    // beat-chamber.philon-handoff (this beat's real last step) unlocked
+    // Cursus in the SAME transition that entered beat-ladder.intro —
+    // requiresTab: 'Cursus' (ticket 06 reversed the old Act IV/V order —
+    // see tutorialScript.ts's own comment on that step for why it can't be
+    // beat-ladder.intro itself).
+    expect(s.tutorial.unlockedTabs).toContain('Cursus');
   });
 
   test('missed path: letting the deadline pass resolves the ambition failed (capped Dignitas ding), still advances the beat — never blocks or retries', () => {
@@ -312,7 +319,7 @@ describe('guided run — Beat II: The Chamber, goal + sandbox', () => {
     s = useGameStore.getState();
     expect(s.flags['tutorial-chamber-complete']).toBe(true);
     expect(s.philonAdvisoryUnlocked).toBe(true); // unlocked regardless of outcome
-    expect(s.tutorial.activeArc).toBe('prologue');
-    expect(s.tutorial.stepId).toBe('prologue.act4.intro');
+    expect(s.tutorial.activeArc).toBe('beat-ladder');
+    expect(s.tutorial.stepId).toBe('beat-ladder.intro');
   });
 });

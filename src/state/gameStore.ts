@@ -1861,15 +1861,17 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       // so start one season early and it resolves in exactly one tap") no
       // longer holds: beat-house.sandbox (tutorialScript.ts) now spends
       // however many real end-season taps Beat I's own ambition takes,
-      // BEFORE Act III/IV/V are ever reached — unlike Act V's old
-      // wait-for-election caption, that wait has real visible progress (the
-      // Ambitions tablet leaf's denarii bar), so it doesn't have the same
-      // "reads identically every season" staleness problem Act V's own step
-      // was written to dodge. Act V's own election still resolves correctly
-      // on whatever Winter crossing comes next, just not necessarily on the
-      // very first post-Beat-I tap. Kept anyway: harmless for Beat I itself
-      // (nothing in it is season-specific), and ticket 06 revisits Act V's
-      // own pacing when it becomes 'beat-ladder'. Every other start is
+      // BEFORE beat-chamber/beat-ladder/prologue are ever reached — unlike
+      // the old wait-for-election caption, that wait has real visible
+      // progress (the Ambitions tablet leaf's denarii bar), so it doesn't
+      // have the same "reads identically every season" staleness problem
+      // that step was written to dodge. Kept anyway: harmless for Beat I
+      // itself (nothing in it is season-specific). Tutorial rebuild, ticket
+      // 06 confirmed beat-ladder.wait-for-election (the same content,
+      // renamed off prologue.act5) still resolves correctly on whatever
+      // Winter crossing comes next regardless of which tap it lands on —
+      // see tutorialBeatLadder.test.ts's teach-portion coverage — so this
+      // head start needed no further changes. Every other start is
       // unaffected (INITIAL_STATE.seasonIndex, i.e. Spring).
       seasonIndex: scriptId ? 2 : INITIAL_STATE.seasonIndex,
       // Held back for a guided start until beat-house's houseSetAmbition
@@ -3970,10 +3972,10 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
     } else {
       // Arc finished — auto-chain into the next arc in TUTORIAL_ARC_ORDER
       // (mirrors startTutorialArc's own enter logic) rather than going idle,
-      // so the guided run flows beat-house -> prologue -> embassy -> war ->
-      // courts without requiring some other call site to notice completion
-      // and re-invoke startTutorialArc itself. Only truly goes idle once
-      // courts finishes.
+      // so the guided run flows beat-house -> beat-chamber -> beat-ladder ->
+      // prologue -> embassy -> war -> courts without requiring some other
+      // call site to notice completion and re-invoke startTutorialArc
+      // itself. Only truly goes idle once courts finishes.
       const completedArcs = [...s.tutorial.completedArcs, current.arc];
       // TUTORIAL_ARC_ORDER only ever lists the main chain's arcs (T10's
       // standalone lessons are deliberately excluded — see its own header

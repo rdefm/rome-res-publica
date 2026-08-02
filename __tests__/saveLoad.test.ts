@@ -346,3 +346,23 @@ describe('Beat II save schema (tutorial rebuild, ticket 05)', () => {
     expect(s.tutorial.stepId).toBe('beat-chamber.bill-list');
   });
 });
+
+// Tutorial rebuild, ticket 06 — 'beat-ladder' added to the tutorial.activeArc
+// enum (models/tutorial.ts's TutorialArcId, saveLoad.ts's own z.enum). Same
+// discipline as the Beat I/II blocks above.
+describe('Beat III save schema (tutorial rebuild, ticket 06)', () => {
+  test('SaveSchema accepts activeArc: "beat-ladder" and a mid-Beat-III save loads correctly', () => {
+    useGameStore.getState().startGame('guided');
+    useGameStore.getState().startTutorialArc('beat-ladder');
+    useGameStore.getState().advanceTutorialStep(); // beat-ladder.intro -> find-quaestor
+    const midBeatLadder = JSON.parse(JSON.stringify(useGameStore.getState()));
+    expect(midBeatLadder.tutorial.activeArc).toBe('beat-ladder');
+    expect(midBeatLadder.tutorial.stepId).toBe('beat-ladder.find-quaestor');
+
+    expect(() => SaveSchema.parse(midBeatLadder)).not.toThrow();
+    expect(() => useGameStore.getState().loadGame(midBeatLadder)).not.toThrow();
+    const s = useGameStore.getState();
+    expect(s.tutorial.activeArc).toBe('beat-ladder');
+    expect(s.tutorial.stepId).toBe('beat-ladder.find-quaestor');
+  });
+});
