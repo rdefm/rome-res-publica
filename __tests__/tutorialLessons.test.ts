@@ -9,12 +9,20 @@
 // stamp is covered in inheritanceEngine.test.ts, alongside their other
 // assertions, per this repo's "extend the engine's existing test file"
 // convention.
+//
+// Tutorial rebuild, ticket 02 — lesson-provinciae/lesson-assets added below,
+// same getEligibleLesson coverage pattern as lesson-death/lesson-succession,
+// plus a new describe block for their own pending-flag stamp (gameStore's
+// openedProvinciaeCitySheet/openedAssetPurchaseModal) — the first two
+// lessons whose "true trigger" is a component mount rather than engine code,
+// so unlike pending-lesson-death/succession there's a callable action to
+// test directly rather than a turnSequencer/inheritanceEngine assertion.
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
-import { INITIAL_STATE } from '../src/state/gameStore';
+import { useGameStore, INITIAL_STATE } from '../src/state/gameStore';
 import type { GameState } from '../src/state/gameStore';
 import { processSeason } from '../src/engine/turnSequencer';
 import { getEligibleLesson } from '../src/engine/tutorialEngine';
@@ -108,6 +116,86 @@ describe('getEligibleLesson — entry gating', () => {
       flags: { 'pending-lesson-death': true, 'pending-lesson-succession': true },
     });
     expect(getEligibleLesson(state)).toBe('lesson-trial');
+  });
+
+  // Tutorial rebuild, ticket 02 — lesson-provinciae/lesson-assets. The
+  // pending flag's real source is a component mount (CitySheet.tsx /
+  // HoldingsModal.tsx via gameStore's openedProvinciaeCitySheet/
+  // openedAssetPurchaseModal, covered in the store-action describe block
+  // below), but getEligibleLesson itself only ever sees the flag — same
+  // as lesson-death/lesson-succession above.
+  test('lesson-provinciae: fires off the durable pending-lesson-provinciae flag', () => {
+    const state = makeState({ tutorial: IDLE_TUTORIAL, flags: { 'pending-lesson-provinciae': true } });
+    expect(getEligibleLesson(state)).toBe('lesson-provinciae');
+  });
+
+  test('lesson-provinciae: does not re-fire once taught, even if the pending flag is still set', () => {
+    const state = makeState({
+      tutorial: IDLE_TUTORIAL,
+      flags: { 'pending-lesson-provinciae': true, 'lesson-provinciae-taught': true },
+    });
+    expect(getEligibleLesson(state)).toBeNull();
+  });
+
+  test('lesson-assets: fires off the durable pending-lesson-assets flag', () => {
+    const state = makeState({ tutorial: IDLE_TUTORIAL, flags: { 'pending-lesson-assets': true } });
+    expect(getEligibleLesson(state)).toBe('lesson-assets');
+  });
+
+  test('lesson-assets: does not re-fire once taught, even if the pending flag is still set', () => {
+    const state = makeState({
+      tutorial: IDLE_TUTORIAL,
+      flags: { 'pending-lesson-assets': true, 'lesson-assets-taught': true },
+    });
+    expect(getEligibleLesson(state)).toBeNull();
+  });
+
+  test('priority order: provinciae beats assets when both are pending', () => {
+    const state = makeState({
+      tutorial: IDLE_TUTORIAL,
+      flags: { 'pending-lesson-provinciae': true, 'pending-lesson-assets': true },
+    });
+    expect(getEligibleLesson(state)).toBe('lesson-provinciae');
+  });
+
+  test('priority order: death still beats provinciae/assets when several are pending at once', () => {
+    const state = makeState({
+      tutorial: IDLE_TUTORIAL,
+      flags: {
+        'pending-lesson-death': true,
+        'pending-lesson-provinciae': true,
+        'pending-lesson-assets': true,
+      },
+    });
+    expect(getEligibleLesson(state)).toBe('lesson-death');
+  });
+});
+
+describe('openedProvinciaeCitySheet / openedAssetPurchaseModal — UI-mount trigger actions', () => {
+  beforeEach(() => {
+    useGameStore.setState({ ...INITIAL_STATE, gameStarted: true });
+  });
+
+  test('openedProvinciaeCitySheet stamps pending-lesson-provinciae', () => {
+    useGameStore.getState().openedProvinciaeCitySheet();
+    expect(useGameStore.getState().flags['pending-lesson-provinciae']).toBe(true);
+  });
+
+  test('openedProvinciaeCitySheet no-ops once lesson-provinciae is already taught', () => {
+    useGameStore.setState({ flags: { 'lesson-provinciae-taught': true } });
+    useGameStore.getState().openedProvinciaeCitySheet();
+    expect(useGameStore.getState().flags['pending-lesson-provinciae']).toBeUndefined();
+  });
+
+  test('openedAssetPurchaseModal stamps pending-lesson-assets', () => {
+    useGameStore.getState().openedAssetPurchaseModal();
+    expect(useGameStore.getState().flags['pending-lesson-assets']).toBe(true);
+  });
+
+  test('openedAssetPurchaseModal no-ops once lesson-assets is already taught', () => {
+    useGameStore.setState({ flags: { 'lesson-assets-taught': true } });
+    useGameStore.getState().openedAssetPurchaseModal();
+    expect(useGameStore.getState().flags['pending-lesson-assets']).toBeUndefined();
   });
 });
 

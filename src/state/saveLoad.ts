@@ -274,6 +274,8 @@ export const SaveSchema = z.object({
       'prologue', 'embassy', 'war', 'courts',
       // T10 — standalone just-in-time lessons (models/tutorial.ts's TutorialLessonId).
       'lesson-trial', 'lesson-battle', 'lesson-death', 'lesson-succession',
+      // Tutorial rebuild, ticket 02.
+      'lesson-provinciae', 'lesson-assets',
     ]).nullable().default(null),
     stepId:        z.string().nullable().default(null),
     completedArcs: z.array(z.string()).default([]),

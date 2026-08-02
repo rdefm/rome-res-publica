@@ -1023,6 +1023,55 @@ const LESSON_SUCCESSION_STEPS: TutorialStep[] = [
   },
 ];
 
+// Tutorial rebuild, ticket 02 — two more standalone lessons, same T10
+// convention (one-off, flag-gated, non-chaining), but sourced from a
+// component mount rather than a state-diff or engine effect: CitySheet.tsx /
+// HoldingsModal.tsx call gameStore's openedProvinciaeCitySheet /
+// openedAssetPurchaseModal on their own first mount, stamping
+// 'pending-lesson-provinciae' / 'pending-lesson-assets' (tutorialEngine.ts's
+// getEligibleLesson). This is what lets Provinciae and asset-buying be cut
+// from the mandatory guided path (prologue Act IV) without losing
+// player-facing coverage of those mechanics. HoldingsModal is wrapped in
+// ScrollModal, a real RN `Modal`, so the global TutorialCaption is invisible
+// while it's open — same precedent as every other modal-housed step in this
+// file (tutorialEngine.ts's TUTORIAL_TARGET_IDS header comment); its lesson
+// simply surfaces once the player closes the modal and returns to a screen
+// TutorialLayer can paint over. CitySheet itself sits in DragSheet (a plain
+// Animated View, not a real Modal — TutorialLayer COULD paint a live cutout
+// over it), but this chunk deliberately doesn't add a new spotlight target
+// for it, the same "unfamiliar UI, don't risk mis-instrumenting" call T10's
+// lesson-battle/lesson-death made for their own screens — both new lessons
+// are narration-only, tap-advance.
+
+const LESSON_PROVINCIAE_STEPS: TutorialStep[] = [
+  {
+    id: 'lesson-provinciae.intro',
+    arc: 'lesson-provinciae',
+    rail: 'guided',
+    narration:
+      "A province, Domine, not just a name on the map. Policy sets how hard you press it; Assets " +
+      "are what you build there to draw more from it; and every foreign holding still answers to " +
+      "Rome's patience, not yours alone. Open a city's sheet whenever you like — nothing here waits " +
+      "on my say-so.",
+    advance: { kind: 'tap' },
+    onCompleteEffectId: 'lessonProvinciaeSetTaught',
+  },
+];
+
+const LESSON_ASSETS_STEPS: TutorialStep[] = [
+  {
+    id: 'lesson-assets.intro',
+    arc: 'lesson-assets',
+    rail: 'guided',
+    narration:
+      "An asset is Denarii spent once for Denarii returned every season after — a granary, a " +
+      "garrison contract, a guild hall, whatever the holding allows. Buy what you can afford, " +
+      "upgrade it when you can afford more, and let the seasons pay you back.",
+    advance: { kind: 'tap' },
+    onCompleteEffectId: 'lessonAssetsSetTaught',
+  },
+];
+
 export const TUTORIAL_ARCS: Record<TutorialAnyArcId, TutorialArc> = {
   prologue: {
     id: 'prologue',
@@ -1041,4 +1090,8 @@ export const TUTORIAL_ARCS: Record<TutorialAnyArcId, TutorialArc> = {
   'lesson-battle':     { id: 'lesson-battle',     title: 'The Field',         steps: [...LESSON_BATTLE_STEPS] },
   'lesson-death':      { id: 'lesson-death',      title: 'A Death',          steps: [...LESSON_DEATH_STEPS] },
   'lesson-succession': { id: 'lesson-succession', title: 'A New Head',       steps: [...LESSON_SUCCESSION_STEPS] },
+
+  // Tutorial rebuild, ticket 02.
+  'lesson-provinciae': { id: 'lesson-provinciae', title: 'The Province',      steps: [...LESSON_PROVINCIAE_STEPS] },
+  'lesson-assets':     { id: 'lesson-assets',     title: 'The Holding',      steps: [...LESSON_ASSETS_STEPS] },
 };

@@ -1176,6 +1176,15 @@ export interface GameActions {
   /** Completes all four arcs and unlocks every tab. Confirm via dialog
    *  before calling. */
   skipAllTutorials: () => void;
+  /** Tutorial rebuild, ticket 02 — call once from CitySheet.tsx's own
+   *  mount-once effect (the component fully unmounts/remounts on
+   *  close/open, so mount IS "opened"). No-op once lesson-provinciae is
+   *  taught or already pending; otherwise stamps 'pending-lesson-provinciae'
+   *  for tutorialEngine.getEligibleLesson to pick up on the next commit. */
+  openedProvinciaeCitySheet: () => void;
+  /** Same as openedProvinciaeCitySheet, for HoldingsModal.tsx and
+   *  'pending-lesson-assets'/lesson-assets. */
+  openedAssetPurchaseModal: () => void;
 
   // ── Phase 1 — Season ledger + autosave (P1-D) ─────────────────────────────
   /**
@@ -3990,6 +3999,24 @@ export const useGameStore = create<GameState & GameActions>()((set, get) => ({
       },
       philonAdvisoryUnlocked: true,
     });
+  },
+
+  // Tutorial rebuild, ticket 02 — the two new lessons' "true trigger" is a
+  // component mount rather than engine code, so (unlike lesson-death/
+  // lesson-succession's inline stamps inside turnSequencer.ts/
+  // inheritanceEngine.ts) this needs a callable action. Guarded against
+  // already-taught AND already-pending so a component that happens to
+  // mount repeatedly (it won't, per CitySheet/HoldingsModal's own
+  // mount-once effects, but defensively) never writes the same flag twice.
+  openedProvinciaeCitySheet: () => {
+    const s = get();
+    if (s.flags['lesson-provinciae-taught'] || s.flags['pending-lesson-provinciae']) return;
+    set({ flags: { ...s.flags, 'pending-lesson-provinciae': true } });
+  },
+  openedAssetPurchaseModal: () => {
+    const s = get();
+    if (s.flags['lesson-assets-taught'] || s.flags['pending-lesson-assets']) return;
+    set({ flags: { ...s.flags, 'pending-lesson-assets': true } });
   },
 
   // ── Phase 1 — Season ledger + autosave (P1-D) ─────────────────────────────

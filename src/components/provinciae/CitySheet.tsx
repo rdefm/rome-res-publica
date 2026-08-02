@@ -112,6 +112,16 @@ export default function CitySheet({
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [province.id]);
 
+  // Tutorial rebuild, ticket 02 — mount-once (empty deps, deliberately NOT
+  // [province.id] like the scroll-reset effect above): ProvinciaeScreen
+  // unmounts this component entirely on close (selectedProvinceId -> null),
+  // so a fresh mount IS "the player opened a city sheet," whichever city.
+  const openedProvinciaeCitySheet = useGameStore(s => s.openedProvinciaeCitySheet);
+  useEffect(() => {
+    openedProvinciaeCitySheet();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const def = getCityDefinition(province.id);
   if (!def) return null;
 

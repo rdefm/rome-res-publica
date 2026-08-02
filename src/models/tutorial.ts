@@ -18,7 +18,14 @@ export type TutorialArcId = 'prologue' | 'embassy' | 'war' | 'courts';
  *  as "just finish, don't chain into anything." Fire on Free Start too,
  *  per the plan — unlike the four main arcs, entry never depends on
  *  `tutorial.activeArc` having been 'prologue' at game start. */
-export type TutorialLessonId = 'lesson-trial' | 'lesson-battle' | 'lesson-death' | 'lesson-succession';
+export type TutorialLessonId =
+  | 'lesson-trial' | 'lesson-battle' | 'lesson-death' | 'lesson-succession'
+  // Tutorial rebuild, ticket 02 — fire the first time a player opens a
+  // Provinciae city sheet / an asset-purchase modal, so Provinciae and
+  // asset-buying can be cut from the mandatory guided path without losing
+  // player-facing coverage of those mechanics. Same one-off, flag-gated,
+  // non-chaining convention as the four lessons above.
+  | 'lesson-provinciae' | 'lesson-assets';
 
 export type TutorialAnyArcId = TutorialArcId | TutorialLessonId;
 

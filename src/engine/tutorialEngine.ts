@@ -463,6 +463,17 @@ export const TUTORIAL_EFFECTS: Record<string, (s: GameState) => Partial<GameStat
   lessonSuccessionSetTaught: (s) => ({
     flags: { ...s.flags, 'lesson-succession-taught': true, 'pending-lesson-succession': false },
   }),
+
+  // Tutorial rebuild, ticket 02 — same pending/taught pair, but the pending
+  // flag's "true trigger" is a component mount (CitySheet.tsx / HoldingsModal.tsx)
+  // rather than engine code — see gameStore.ts's openedProvinciaeCitySheet/
+  // openedAssetPurchaseModal, the first UI-sourced stamps of this idiom.
+  lessonProvinciaeSetTaught: (s) => ({
+    flags: { ...s.flags, 'lesson-provinciae-taught': true, 'pending-lesson-provinciae': false },
+  }),
+  lessonAssetsSetTaught: (s) => ({
+    flags: { ...s.flags, 'lesson-assets-taught': true, 'pending-lesson-assets': false },
+  }),
 };
 
 export function getStep(stepId: string): TutorialStep | null {
@@ -596,10 +607,10 @@ export function isWorldFrozen(s: GameState): boolean {
  * never had `activeArc` set in the first place — both cases pass this
  * check identically).
  *
- * Priority order (trial, battle, death, succession) only matters on the
- * rare tick where more than one condition is simultaneously true; each
- * fires independently afterward once `!activeArc` again, since every
- * trigger below is a durable flag/field, not a transient one.
+ * Priority order (trial, battle, death, succession, provinciae, assets) only
+ * matters on the rare tick where more than one condition is simultaneously
+ * true; each fires independently afterward once `!activeArc` again, since
+ * every trigger below is a durable flag/field, not a transient one.
  *
  * - lesson-trial: `!completedArcs.includes('courts')` covers both Free
  *   Start and a guided run that skipped ahead — either way, the player
@@ -616,6 +627,15 @@ export function isWorldFrozen(s: GameState): boolean {
  *   an arc boundary (see this function's own PR discussion); a durable flag
  *   set once at the true trigger, cleared once consumed, is the same idiom
  *   `defeatedGeneral-<id>`/`secret-burned-ever` already use.
+ * - lesson-provinciae / lesson-assets (tutorial rebuild, ticket 02): same
+ *   pending-flag idiom as death/succession, but the true trigger is a
+ *   component mount rather than engine code — CitySheet.tsx / HoldingsModal.tsx
+ *   call gameStore's openedProvinciaeCitySheet/openedAssetPurchaseModal on
+ *   mount, which stamps 'pending-lesson-provinciae'/'pending-lesson-assets'
+ *   (both components fully unmount/remount on close/open — ProvinciaeScreen's
+ *   `selectedProvinceId`/HoldingsPanel's `selectedDef` — so a mount-once
+ *   effect is a genuine "first real open" signal, not a re-fire on every
+ *   render).
  */
 export function getEligibleLesson(s: GameState): TutorialLessonId | null {
   if (s.tutorial?.activeArc) return null;
@@ -631,6 +651,12 @@ export function getEligibleLesson(s: GameState): TutorialLessonId | null {
   }
   if (!s.flags['lesson-succession-taught'] && s.flags['pending-lesson-succession']) {
     return 'lesson-succession';
+  }
+  if (!s.flags['lesson-provinciae-taught'] && s.flags['pending-lesson-provinciae']) {
+    return 'lesson-provinciae';
+  }
+  if (!s.flags['lesson-assets-taught'] && s.flags['pending-lesson-assets']) {
+    return 'lesson-assets';
   }
   return null;
 }
