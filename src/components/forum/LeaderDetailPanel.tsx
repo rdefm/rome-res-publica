@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import type { RefObject } from 'react';
 import type { ClanLeader } from '../../models/clan';
 import { useGameStore } from '../../state/gameStore';
@@ -124,7 +125,7 @@ export function ForumActionBtn({
   // a genuine softlock under the hard-rail overlay. Scrolls itself into
   // view once it becomes the tutorial's active target (see
   // useTutorialTarget.ts's scrollRef param).
-  scrollRef?: RefObject<ScrollView | null>;
+  scrollRef?: RefObject<ScrollViewInstance | null>;
 }) {
   const isDisabled = disabled || !!locked;
   const tutorialTarget = useTutorialTarget(tutorialTargetId, scrollRef);
@@ -185,7 +186,7 @@ const fab = StyleSheet.create({
 function LeaderDetailPanel({ leader, clanId, scrollRef }: {
   leader: ClanLeader;
   clanId: string;
-  scrollRef?: RefObject<ScrollView | null>;
+  scrollRef?: RefObject<ScrollViewInstance | null>;
 }) {
   const {
     fides, denarii, campaigning, campaignVotes, familyReputations, clans, secrets, trials,

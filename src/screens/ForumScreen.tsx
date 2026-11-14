@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Modal, ImageBackground, Dimensions, ViewStyle, TextStyle,
 } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
 import SeasonOverlay from '../components/shared/SeasonOverlay';
@@ -383,7 +384,7 @@ export default function ForumScreen() {
   // LeaderDetailPanel so the Gens Valeria tile and the Invite to Dinner
   // button can scroll themselves into view once they become the tutorial's
   // active target (see useTutorialTarget.ts's scrollRef param).
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
 
   // Forum redesign, Chunk C1 (revised) — a fixed-height header banner
   // (10:3, forumAssets.headerBanner) instead of a full-screen background

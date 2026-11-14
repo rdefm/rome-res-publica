@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   innerLine: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     margin: 3,
     borderWidth: 1,
     borderColor: COLORS.gildFrameDark,

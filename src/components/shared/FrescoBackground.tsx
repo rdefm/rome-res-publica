@@ -65,7 +65,7 @@ export default function FrescoBackground({ children, style }: FrescoBackgroundPr
       <LinearGradient
         colors={[COLORS.scrimTop, COLORS.scrimBottom]}
         locations={[0, 0.85]}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
       {children}

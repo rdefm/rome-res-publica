@@ -11,6 +11,7 @@ import {
   ViewStyle,
   TextStyle,
 } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
 import type {
   CityState,
@@ -107,7 +108,7 @@ export default function CitySheet({
   // rect for it was measured/registered correctly — the target itself was
   // just off-screen inside its own ScrollView. Reset to top on every city
   // change closes this regardless of which two cities are involved.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [province.id]);

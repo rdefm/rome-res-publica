@@ -69,3 +69,34 @@ Move the project to a currently supported Expo SDK / React Native pair that meet
 
 - §4.1 also mentions "no splash image". The splash is handled in spec 02 alongside font loading, because the two are coupled (the splash holds until fonts are ready).
 - If the prebuild route is chosen, the CLAUDE.md "never hand-edit `android/`" rule becomes "there is no `android/`". Update CLAUDE.md and SITEMAP.md in the same branch.
+
+## Implementation status (2026-11-14)
+
+**Done in this branch:**
+- **SDK:** Expo SDK 51 → **58** (latest stable on the day): React Native 0.88.1, React 19.3, React Navigation 7, Reanimated 4.7 + react-native-worklets 0.13, AsyncStorage 2.2, `jest-expo` 58 on Jest 30, TypeScript 6.0. This was a direct jump, not a stepped one: every break showed up as a `tsc` error or in the smoke run below, and each fix was local.
+- **Native ownership:** prebuild / Continuous Native Generation. The committed `android/` was stock prebuild output with no hand customisations, so it was deleted. `/android` and `/ios` are now git-ignored. A local `expo prebuild` against SDK 58 produces `targetSdk 36`, `compileSdk 37`, `minSdk 24`, iOS 16.4, and `allowBackup="true"` carried over from `app.json`.
+- **Signing:** `preview` and `production` use EAS-managed credentials (`credentialsSource: "remote"`). `production` builds an AAB. `submit.production` targets the Play internal track (as a draft release) and TestFlight. No keystore is in the repo. The generated `android/` still carries the template's debug `signingConfig` as a placeholder, but EAS Build swaps in the managed upload key at build time. That placeholder only matters for a local `expo run:android --variant release`, which is not a store path.
+- **Dependencies:** removed `lottie-react-native`, `expo-app-loading`, and the direct `expo-modules-core` pin. Every Expo module is aligned to the SDK 58 `bundledNativeModules.json` (`npx expo install --check` reports no mismatches).
+- **Fixes the upgrade required.** Each is behaviour-preserving. Several would have been silent runtime breaks:
+  - `expo-file-system`'s function API now throws at runtime, which would have broken export/import save. `saveLoad.ts` moved to the `File`/`Paths` API.
+  - `StyleSheet.absoluteFillObject` is gone at runtime, which would have broken 7 overlay styles. They now use `StyleSheet.absoluteFill`.
+  - React Navigation 7's `useNavigationState` throws outside a navigator, which crashed every new game on render. The active tab is now tracked at the container (`onReady`/`onStateChange`).
+  - Fabric's `measureLayout` silently ignores a `findNodeHandle` number, which would have broken the tutorial's scroll-to-target and the Curia bill deep-link scroll on devices. `useTutorialTarget` and `LegesView` now pass the ScrollView host instance.
+  - The v7 tab-item layout moved the tab icons up about 15px. `tabBarIconStyle` restores the v6 layout.
+  - `expo-status-bar` dropped `backgroundColor`, because edge-to-edge is mandatory on Android.
+  - RN 0.88 ref types: `ViewInstance` and `ScrollViewInstance`.
+  - `React.JSX`.
+  - TS 6: `types`, and dropping `baseUrl`.
+  - Babel: the worklets plugin is now automatic.
+- **Verification:**
+  - `tsc --noEmit` reports 0 errors.
+  - The full Jest suite passes unchanged: 60/60 suites, 1475 tests, with the same 2 skips as before (the pre-existing `describe.skip` in `p5h.test.ts`). That includes the 4 save fixtures.
+  - Android, iOS and web Metro bundles export.
+  - A headless 390×844 run of the web export compared against an SDK 51 export of `HEAD` covered the start menu, Free Start → difficulty → ambitions, all 5 tabs, End Season (Spring → Summer, identical resource deltas), and the Guided Path. All matched, with no console errors.
+  - expo-doctor passes 18/20. The 2 failures need `exp.host` and `reactnative.directory`, which the sandbox can't reach.
+
+**Not done here / follow-ups:**
+- **Device matrix and store test tracks.** These need EAS credentials and real devices. The matrix is recorded in `docs/release-checklist.md` as ⏳ pending. The spec is not fully closed until a production build installs from the Play internal track and TestFlight.
+- **Web (§6.10):** still undecided, so nothing was added or removed for web. `react-native-web` was bumped to the SDK 58 version, because the web export is how the agent playtests run. Finding 7 is stale: no `Alert.alert` call remains in `src/`, since the ConfirmModal/inline-confirm replacements already landed. The one `Platform.OS === 'web'` branch (`ActionCluster.tsx`'s haptics guard) is unchanged.
+- **Android back button (story 18):** no regression. The generated manifest keeps legacy back handling (`enableOnBackInvokedCallback="false"`), and the tab navigator keeps `firstRoute` back behaviour. Modals without `onRequestClose` swallow back, so a press can't exit mid-decision. Whether back should *close* dismissable modals (ScrollModal, AgendaTablet, SettingsModal, ConfirmModal) is a UX change and needs a design-lead decision.
+- **Flagged, not changed (store-readiness, spec 16):** prebuild still emits the template permissions `SYSTEM_ALERT_WINDOW` and `READ`/`WRITE_EXTERNAL_STORAGE` (the storage ones are capped at API 32). They could be removed with `android.blockedPermissions` in `app.json`, which needs a decision. Prebuild also warns that `userInterfaceStyle: "dark"` needs `expo-system-ui` on Android. That was equally true on SDK 51 and is left for spec 02's splash/theme work.

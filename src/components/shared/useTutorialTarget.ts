@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { Dimensions, findNodeHandle } from 'react-native';
+import { Dimensions } from 'react-native';
 import type { RefObject } from 'react';
-import type { ScrollView, View } from 'react-native';
+import type { ScrollViewInstance, ViewInstance } from 'react-native';
 import {
   registerTarget, clearTarget, registerRemeasurer, unregisterRemeasurer,
 } from '../../engine/tutorialTargets';
@@ -32,9 +32,9 @@ import { useGameStore } from '../../state/gameStore';
 // TutorialOverlay.tsx's own off-screen-bail comment for that history).
 export function useTutorialTarget(
   id: TutorialTargetId | undefined,
-  scrollRef?: RefObject<ScrollView | null>,
+  scrollRef?: RefObject<ScrollViewInstance | null>,
 ) {
-  const nodeRef = useRef<View | null>(null);
+  const nodeRef = useRef<ViewInstance | null>(null);
 
   const measure = useCallback(() => {
     if (!id || !nodeRef.current) return;
@@ -44,7 +44,7 @@ export function useTutorialTarget(
     });
   }, [id]);
 
-  const ref = useCallback((node: View | null) => {
+  const ref = useCallback((node: ViewInstance | null) => {
     nodeRef.current = node;
   }, []);
 
@@ -63,20 +63,21 @@ export function useTutorialTarget(
     if (!id || !scrollRef?.current || !nodeRef.current) return;
     const step = stepId ? getStep(stepId) : null;
     if (step?.target !== id) return;
-    const scrollHandle = findNodeHandle(scrollRef.current);
-    if (!scrollHandle) return;
     // One frame's grace so the node's own layout pass has actually happened
     // before measureLayout runs (it can otherwise fire against a stale/zero
     // rect on the same tick the step becomes current).
     const raf = requestAnimationFrame(() => {
-      if (!nodeRef.current || !scrollRef.current) return;
+      const scrollNode = scrollRef.current;
+      if (!nodeRef.current || !scrollNode) return;
       // measureLayout gives a position relative to the ScrollView's own
       // content, not the window — unlike measureInWindow above, this is
       // scroll-offset-independent, so it works correctly no matter where
       // the ScrollView currently happens to be scrolled to (same technique
       // LegesView.tsx already uses for its bill deep-link scroll-to).
-      // @ts-ignore — measureLayout exists on the native host component ref at runtime.
-      nodeRef.current.measureLayout(scrollHandle, (_x: number, y: number, _w: number, height: number) => {
+      // Spec 01 (RN 0.88, New Architecture only) — pass the ScrollView's
+      // host instance, not a findNodeHandle number: Fabric's measureLayout
+      // silently no-ops on a numeric handle.
+      nodeRef.current.measureLayout(scrollNode, (_x: number, y: number, _w: number, height: number) => {
         const { height: screenH } = Dimensions.get('window');
         // Reveal the target's full height with a little margin above the
         // bottom edge. Every real case so far starts below the fold (a

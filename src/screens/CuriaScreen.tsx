@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
 } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '../state/gameStore';
 import type { CuriaSubTab } from '../models/curia';
@@ -43,7 +44,7 @@ export default function CuriaScreen() {
   // Curia Tab Redesign, Chunk C3 — owned here (not by LegesView) so
   // scroll-to-bill doesn't require nesting a second ScrollView inside this
   // shell's own scroll region.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
 
   // Curia Tab Redesign, Chunk C4 — the Basilica sheet now opens in place,
   // over Curia, instead of navigating to Cursus (Finding 13). Same

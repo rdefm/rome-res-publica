@@ -19,6 +19,7 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Image, StyleSheet } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import type { RefObject } from 'react';
 import type { Clan } from '../../models/clan';
 import { useGameStore } from '../../state/gameStore';
@@ -39,7 +40,7 @@ export default function ClanGridTile({ clan, isSelected, onPress, scrollRef }: {
   clan: Clan;
   isSelected: boolean;
   onPress: () => void;
-  scrollRef?: RefObject<ScrollView | null>;
+  scrollRef?: RefObject<ScrollViewInstance | null>;
 }) {
   const familyReputations = useGameStore(s => s.familyReputations);
   const electionRivals = useGameStore(s => s.electionRivals);

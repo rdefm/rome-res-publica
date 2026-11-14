@@ -1,24 +1,46 @@
 {
   "cli": {
-    "version": ">= 20.3.0",
+    "version": ">= 27.10.0",
     "appVersionSource": "remote"
   },
   "build": {
+    "base": {
+      "node": "22.23.4"
+    },
     "development": {
+      "extends": "base",
       "developmentClient": true,
       "distribution": "internal"
     },
     "preview": {
+      "extends": "base",
       "distribution": "internal",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "credentialsSource": "remote"
+      },
+      "ios": {
+        "credentialsSource": "remote"
       }
     },
     "production": {
-      "autoIncrement": true
+      "extends": "base",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle",
+        "credentialsSource": "remote"
+      },
+      "ios": {
+        "credentialsSource": "remote"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
+      }
+    }
   }
 }

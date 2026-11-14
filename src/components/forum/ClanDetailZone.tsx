@@ -16,6 +16,7 @@
 
 import React from 'react';
 import { View, Text, ScrollView, Image, StyleSheet } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import type { RefObject } from 'react';
 import type { Clan } from '../../models/clan';
 import { useGameStore } from '../../state/gameStore';
@@ -135,7 +136,7 @@ const rb = StyleSheet.create({
 
 export default function ClanDetailZone({ clan, scrollRef }: {
   clan: Clan;
-  scrollRef?: RefObject<ScrollView | null>;
+  scrollRef?: RefObject<ScrollViewInstance | null>;
 }) {
   const selectedLeaderId = useGameStore(s => s.selectedLeaderId);
   const selectLeader = useGameStore(s => s.selectLeader);

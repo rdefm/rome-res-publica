@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { NavigationContainer, useNavigationContainerRef, useNavigationState } from '@react-navigation/native';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -37,7 +37,7 @@ import {
 } from './src/engine/tutorialEngine';
 import type { TabName } from './src/models/agenda';
 import { generateAgenda } from './src/engine/agendaEngine';
-import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle, SEAL_CEREMONY_MS } from './src/components/shared/TabBar';
+import { renderTabIcon, renderTabLabel, TabBarBackground, tabBarStyle, tabBarIconStyle, SEAL_CEREMONY_MS } from './src/components/shared/TabBar';
 import StartMenuScreen from './src/screens/StartMenuScreen';
 import { COLORS } from './src/utils/theme';
 import { useGameStore } from './src/state/gameStore';
@@ -139,6 +139,7 @@ function AppNavigator() {
         headerShown: false,
         tabBarIcon: ({ focused }) => <TabIcon tab={route.name as TabName} focused={focused} />,
         tabBarLabel: () => null,
+        tabBarIconStyle,
         // Single Image covers the full bar — no per-item background needed
         tabBarBackground: () => <TabBarBackground height={barHeight} />,
         tabBarStyle: {
@@ -180,7 +181,7 @@ function AppNavigator() {
 // step, if any. Self-gated on tutorial.stepId — a Free Start or a
 // fully-skipped guided start renders nothing.
 
-function TutorialLayer() {
+function TutorialLayer({ activeTabName }: { activeTabName: TabName | undefined }) {
   const tutorial = useGameStore(s => s.tutorial);
   const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
   // Same blocking conditions as the advance-checker effect below (App.tsx's
@@ -221,7 +222,11 @@ function TutorialLayer() {
   // other spotlighted control, applied consistently to every tab
   // transition across every arc, not just the ones that happened to have
   // their own scripted "go to the Forum" beat.
-  const activeTabName = useNavigationState(state => state?.routes?.[state.index]?.name as TabName | undefined);
+  //
+  // `activeTabName` is passed in from GameRoot (Spec 01, React Navigation 7):
+  // this layer sits inside NavigationContainer but outside the tab navigator,
+  // where v7's useNavigationState throws instead of reading the root state
+  // the way v6 did. GameRoot derives the same value from the container.
   const needsTabSwitch = !!(currentStep?.requiresTab && activeTabName && activeTabName !== currentStep.requiresTab);
   const spotlightTargetId = needsTabSwitch ? TAB_BAR_TARGET_ID[currentStep!.requiresTab!] : currentStep?.target;
 
@@ -270,6 +275,17 @@ function GameRoot() {
 
   // ── Navigation ref — used by the uiNavRequest deep-link handler ─────────────
   const navRef = useNavigationContainerRef();
+
+  // ── Active tab — read from the container's root (tab navigator) state ─────
+  // Spec 01 (React Navigation 7) — TutorialLayer used to call
+  // useNavigationState itself; v7 only allows that inside a navigator, so the
+  // root state's focused route is tracked here and handed down. Undefined
+  // until the navigator is ready, exactly as the old hook returned.
+  const [activeTabName, setActiveTabName] = useState<TabName | undefined>(undefined);
+  const syncActiveTab = useCallback(() => {
+    const root = navRef.getRootState();
+    setActiveTabName(root?.routes?.[root.index]?.name as TabName | undefined);
+  }, [navRef]);
 
   // ── Welcome-back recap (local state — not in store) ────────────────────────
   const [showWelcomeBack, setShowWelcomeBack] = useState(false);
@@ -444,9 +460,13 @@ function GameRoot() {
   }
 
   return (
-    <NavigationContainer ref={navRef}>
+    <NavigationContainer ref={navRef} onReady={syncActiveTab} onStateChange={syncActiveTab}>
       <View style={styles.root}>
-        <StatusBar style="light" backgroundColor={COLORS.bg} />
+        {/* Spec 01 (SDK 58) — Android is always edge-to-edge now, so the
+            status bar is transparent over the root View's COLORS.bg and
+            expo-status-bar no longer accepts `backgroundColor`. The
+            ResourceBar already pads itself by the top safe-area inset. */}
+        <StatusBar style="light" />
         <ResourceBar />
         <AppNavigator />
         {/* TutorialLayer sits above the navigator but below every modal listed
@@ -456,7 +476,7 @@ function GameRoot() {
             native Modal, but EventModal etc. are native Modals and therefore
             paint above it regardless of this ordering anyway; ordered here to
             keep the JSX itself legible as a priority list. */}
-        <TutorialLayer />
+        <TutorialLayer activeTabName={activeTabName} />
         <TutorialDeflectionToast />
         {/* Modal priority: EventModal → AmbitionSelectionModal → BirthNamingModal → AgendaTablet → WelcomeBackModal.
             BirthNamingModal was imported but never mounted here until this fix — pendingBirthNaming

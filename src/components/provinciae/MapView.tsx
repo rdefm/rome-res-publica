@@ -11,6 +11,7 @@ import {
   ImageStyle,
   TextStyle,
 } from 'react-native';
+import type { ViewInstance } from 'react-native';
 import { COLORS, FONTS } from '../../utils/theme';
 import type { CityState, CityDefinition } from '../../models/city';
 import { getRelationshipTier } from '../../models/city';
@@ -192,7 +193,7 @@ function RegionTapTarget({
   // Tutorial redesign, T8 — the war arc spotlights Campania's region-ground
   // tap (opens RegionSheet/Muster) — a different control than the city
   // node's own 'provinciae.map.campania' target (opens CitySheet instead).
-  targetRef?: (node: View | null) => void;
+  targetRef?: (node: ViewInstance | null) => void;
   targetOnLayout?: () => void;
 }) {
   const centroid = regionCentroidPx(region);
@@ -270,7 +271,7 @@ function OrderHighlight({
   onPress: () => void;
   // Tutorial redesign, T8 — the war arc spotlights Sicilia's specific
   // destination highlight; every other call site omits these.
-  targetRef?: (node: View | null) => void;
+  targetRef?: (node: ViewInstance | null) => void;
   targetOnLayout?: () => void;
 }) {
   const centroid = regionCentroidPx(region);

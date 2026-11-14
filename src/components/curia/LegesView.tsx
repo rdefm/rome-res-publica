@@ -2,7 +2,8 @@
 // scroll region (owned by CuriaScreen, threaded in as scrollRef so this
 // view can scroll/highlight a deep-linked bill without nesting ScrollViews).
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, findNodeHandle } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import type { ScrollViewInstance, ViewInstance } from 'react-native';
 import { COLORS, FONTS, SPACING } from '../../utils/theme';
 import { useGameStore } from '../../state/gameStore';
 import InfoTap from '../shared/InfoTap';
@@ -11,7 +12,7 @@ import LawCard from './LawCard';
 import SubmitBillModal from './SubmitBillModal';
 
 interface LegesViewProps {
-  scrollRef: React.RefObject<ScrollView>;
+  scrollRef: React.RefObject<ScrollViewInstance | null>;
 }
 
 export default function LegesView({ scrollRef }: LegesViewProps) {
@@ -28,16 +29,20 @@ export default function LegesView({ scrollRef }: LegesViewProps) {
   const [activeLawsExpanded, setActiveLawsExpanded] = useState(false);
   const [highlightedBillId, setHighlightedBillId] = useState<string | null>(null);
 
-  const rowRefs = useRef<Record<string, View | null>>({});
+  const rowRefs = useRef<Record<string, ViewInstance | null>>({});
 
   useEffect(() => {
     if (!curiaBillTargetRequest) return;
     const billId = curiaBillTargetRequest;
     const node = rowRefs.current[billId];
-    const scrollHandle = findNodeHandle(scrollRef.current);
-    if (node && scrollHandle) {
-      // @ts-ignore — measureLayout exists on the native host component ref at runtime.
-      node.measureLayout(scrollHandle, (_x: number, y: number) => {
+    const scrollNode = scrollRef.current;
+    if (node && scrollNode) {
+      // Spec 01 (RN 0.88, New Architecture only) — measureLayout must be
+      // given the ScrollView's host instance itself: with a numeric handle
+      // from findNodeHandle it silently returns without measuring on Fabric.
+      // The ScrollView ref IS that host instance (scroll methods are mixed
+      // onto it), on native and on react-native-web alike.
+      node.measureLayout(scrollNode, (_x: number, y: number) => {
         scrollRef.current?.scrollTo({ y: Math.max(0, y - SPACING.md), animated: true });
       }, () => {});
     }

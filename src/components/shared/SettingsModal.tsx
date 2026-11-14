@@ -226,7 +226,7 @@ function SettingsButton({ label, desc, icon, onPress, disabled, danger }: {
 
 const s = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.7)',
   },
   sheet: {

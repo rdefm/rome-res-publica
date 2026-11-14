@@ -52,7 +52,26 @@ Run this end-to-end once before any release build; re-run the parts that changed
 4. **Each family boots** — Brutii (guided + standard), Duilia (after unlocking via any completed Hall run), Manlia (after unlocking via a Victory) — confirm correct gens naming everywhere (log, epilogue, agenda, glossary).
 5. **Each preset boots** — Clemens, Aequus, Ferox — confirm the picker shows the literal numbers, and the Hall/epilogue badge matches the chosen preset.
 6. **Export/import** — export a save mid-run, wipe the app (New Game or reinstall), import the exported file, confirm the exact state returns. *(Open — pending device session for the live share-sheet/file-picker flow; the schema-level round-trip is already automated.)*
-7. **Backup sanity** — confirm `app.json`'s `android.allowBackup: true` survives the next `eas build`/prebuild (spot-check the generated manifest if a native build is run).
+7. **Backup sanity** — confirm `app.json`'s `android.allowBackup: true` survives the next `eas build`/prebuild (spot-check the generated manifest if a native build is run). *(Spec 01: verified on a local `npx expo prebuild` against SDK 58 — the generated `AndroidManifest.xml` carries `android:allowBackup="true"`. Now that `android/` is generated, not committed, `app.json` is the only place this can be set.)*
+
+## Platform upgrade — device build matrix (Spec 01)
+
+The Expo SDK 51 → 58 upgrade (React Native 0.74 → 0.88, React 18 → 19, React Navigation 6 → 7, Reanimated 3 → 4, AsyncStorage 1 → 2) is covered automatically by the full Jest suite, `tsc`, Android/iOS/web Metro bundles, and a headless web playthrough compared screen-by-screen against the SDK 51 build. Native behaviour can only be confirmed on devices. Run the checks below on a **`preview` profile build** (`eas build --profile preview`) and record one row per device. A **production** build must also install from the Play internal track and TestFlight before this spec counts as done.
+
+**Generated platform levels (SDK 58):** Android `minSdk 24` / `targetSdk 36` / `compileSdk 37`; iOS deployment target 16.4. Re-check Google Play's target-API and Apple's SDK minimums on the day of submission.
+
+| Matrix slot | Date | Device | OS | Install | Launch | New game (guided + free) | End a season | Background → restore | Old save loads | Safe areas (resource bar, tab bar, full-screen modals) | Back button | Export / import save |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Android — min API (24, Android 7.0) | ⏳ | | | | | | | | | | | |
+| Android — target API (36, Android 16) | ⏳ | | | | | | | | | | | |
+| iOS — older supported (16.x / 17.x) | ⏳ | | | | | | | | | | | |
+| iOS — current | ⏳ | | | | | | | | | | | |
+
+What each column means:
+- **Old save loads:** install the SDK 51 build first, play into a season, then install the SDK 58 build over it (same package id, no uninstall) and press Continue. AsyncStorage 2 keeps the same native storage locations as 1.x (`RKStorage` DB on Android, `RCTAsyncLocalStorage_V1` on iOS, checked in the native sources), so the save should load unchanged. A failure here is a spec 04 migration, not something to patch over.
+- **Safe areas:** Android is now always edge-to-edge (the status and navigation bars are transparent and drawn over the app). The ResourceBar pads by the top inset and the tab bar by the bottom inset. Check a notched/punch-hole phone and a phone using 3-button navigation: nothing clipped, and nothing hidden under the system bars, on the start menu, all 5 tabs, BattleScreen, TrialSessionModal and EpilogueScreen.
+- **Back button (Android):** with no modal open, back moves to the Domus tab, then leaves the app (same as SDK 51). With a modal open, back must **not** leave the app. Known, unchanged since SDK 51: most modals have no `onRequestClose`, so back does nothing while they are open rather than closing them. Making back close the dismissable modals is a design follow-up, not part of this upgrade.
+- **Export / import save:** export now uses expo-file-system's `File` API, because the old function API throws on SDK 58. Export a save, then import it, on both platforms.
 
 ## Status summary
 
@@ -71,3 +90,5 @@ Run this end-to-end once before any release build; re-run the parts that changed
 | Export/import (live device) | ⏳ Pending — user to run |
 | Settings "Your saves" story | ✅ Added |
 | `saveVersion` + migration fixtures | ✅ Added, 10 passing tests |
+| SDK 58 upgrade — automated (tests, tsc, bundles, web playthrough) | ✅ Passing |
+| SDK 58 upgrade — device matrix + store test tracks | ⏳ Pending — user to run (needs EAS + devices) |

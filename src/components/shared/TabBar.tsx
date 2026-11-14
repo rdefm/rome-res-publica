@@ -19,7 +19,7 @@ const TAB_ICONS: Record<string, ReturnType<typeof require>> = {
 const MARBLE_BG = require('../../assets/images/marble_rectangle.png');
 
 // Rendered once as tabBarBackground — covers the full bar width at exactly the right height
-export function TabBarBackground({ height }: { height: number }): JSX.Element {
+export function TabBarBackground({ height }: { height: number }): React.JSX.Element {
   const { width } = useWindowDimensions();
   return (
     <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}>
@@ -50,7 +50,7 @@ export function renderTabIcon(
   badge?: boolean,
   sealed?: boolean,
   ceremonyActive?: boolean,
-): JSX.Element {
+): React.JSX.Element {
   const icon = TAB_ICONS[label];
   const tint = sealed ? COLORS.lockedText : focused ? COLORS.crimson : COLORS.tabInactive;
 
@@ -82,7 +82,7 @@ export function renderTabIcon(
 // moment a tab unseals. Self-contained animated overlay so renderTabIcon
 // itself can stay a plain function — this is the one piece that needs
 // Reanimated's hooks.
-function SealCrackFlourish(): JSX.Element {
+function SealCrackFlourish(): React.JSX.Element {
   const progress = useSharedValue(0);
 
   useEffect(() => {
@@ -112,6 +112,21 @@ export const tabBarStyle = {
   paddingBottom: 0,
   paddingTop: 0,
   elevation: 0,
+};
+
+// Spec 01 (React Navigation 7) — v7's bottom-tab item wraps `tabBarIcon` in
+// a fixed 31×28 box pinned to the top of a button that also gets 5px of
+// padding on every side ('uikit' variant). v6 instead let the icon container
+// flex to the full item, which is what renderTabIcon's own centred,
+// focus-bar-on-top layout was built against. Stretch the wrapper back to the
+// full item and cancel the library's padding so the bar renders as before.
+const NAV_V7_TAB_BUTTON_PADDING = 5;
+export const tabBarIconStyle = {
+  flex: 1,
+  alignSelf: 'stretch' as const,
+  width: 'auto' as const,
+  height: 'auto' as const,
+  margin: -NAV_V7_TAB_BUTTON_PADDING,
 };
 
 const bg = StyleSheet.create({

@@ -2,18 +2,17 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
-    "baseUrl": ".",
+    // Spec 01 (platform upgrade) — `baseUrl` was dropped: TypeScript 6
+    // deprecates it, and `paths` resolves relative to this file without it.
+    // The explicit `"module": "esnext"` override (QA Audit Fix Plan, Chunk F)
+    // was also dropped: expo/tsconfig.base (SDK 58) now sets
+    // `"module": "preserve"`, which already allows the dynamic `import()`
+    // calls in officeAction.test.ts that the override existed for.
+    // TypeScript 6 no longer auto-includes every installed @types package,
+    // so the ambient globals the test suite and scripts rely on are listed.
+    "types": ["jest", "node"],
     "paths": {
-      "@/*": ["src/*"]
-    },
-    // QA Audit Fix Plan, Chunk F — neither this file nor the extended
-    // expo/tsconfig.base sets `module` explicitly; with `target: "ESNext"`
-    // and no explicit `module`, TS's own default lands on "ES2015" (not
-    // "ESNext" — TS does not infer a matching `module` from `target`),
-    // which predates dynamic `import()` support in TS's module-flag
-    // allowlist. Fixes TS1323 on officeAction.test.ts's three dynamic
-    // imports (done "to avoid top-level side effects" per that file's own
-    // comment) without touching Jest/Babel config at all.
-    "module": "esnext"
+      "@/*": ["./src/*"]
+    }
   }
 }

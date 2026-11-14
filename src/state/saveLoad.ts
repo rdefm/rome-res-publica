@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { z } from 'zod';
@@ -273,10 +273,15 @@ export async function exportSave(state: GameState): Promise<void> {
   try {
     const json = JSON.stringify({ ...state, saveVersion: CURRENT_SAVE_VERSION }, null, 2);
     const filename = `rome-save-${Date.now()}.json`;
-    const uri = FileSystem.documentDirectory + filename;
-    await FileSystem.writeAsStringAsync(uri, json, { encoding: FileSystem.EncodingType.UTF8 });
+    // Spec 01 (SDK 58) — expo-file-system's old function API
+    // (documentDirectory / writeAsStringAsync / readAsStringAsync) now throws
+    // at runtime; the File/Paths object API replaces it. Strings are written
+    // as UTF-8 by default, matching the old explicit EncodingType.UTF8.
+    const file = new File(Paths.document, filename);
+    if (!file.exists) file.create();
+    await file.write(json);
     if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(uri);
+      await Sharing.shareAsync(file.uri);
     }
   } catch (e) {
     console.error('Export failed:', e);
@@ -289,7 +294,7 @@ export async function importSave(): Promise<GameState | null> {
     if (result.canceled) return null;
 
     const uri = result.assets[0].uri;
-    const raw = await FileSystem.readAsStringAsync(uri);
+    const raw = await new File(uri).text();
     const parsed = JSON.parse(raw);
     SaveSchema.parse(parsed);
     return parsed as GameState;
